@@ -18,25 +18,31 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
   const [jobs, setJobs] = useState<Review[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [lost, setLost] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    fetch("/api/analysis").then(response => response.json()).then((jobs: Review[]) => {
+    fetch("/api/analysis").then(response => { if (!response.ok) throw new Error(); return response.json(); }).then((jobs: Review[]) => {
       if (Array.isArray(jobs)) { setJobs(jobs); if (jobs[0]) setJobId(jobs[0].id); }
-    }).catch(() => {});
+    }).catch(() => setError("Could not load your past reviews. You can still start a new one."));
   }, []);
 
   useEffect(() => {
     if (!jobId) return;
     let active = true;
     async function refresh() {
-      const response = await fetch(`/api/analysis/${jobId}`);
-      const data = await response.json();
-      if (active) setReview(data);
+      // A failed check keeps the last known status and tries again on the next tick.
+      try {
+        const response = await fetch(`/api/analysis/${jobId}`);
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (active) { setReview(data); setLost(false); }
+      } catch { if (active) setLost(true); }
     }
     void refresh();
     const timer = setInterval(() => { if (review?.status === "queued" || review?.status === "running") void refresh(); }, 3000);
     return () => { active = false; clearInterval(timer); };
-  }, [jobId, review?.status]);
+  }, [jobId, review?.status, attempt]);
 
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,8 +67,8 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
 
   async function cancel() {
     if (!jobId) return;
-    const response = await fetch(`/api/analysis/${jobId}`, { method: "DELETE" });
-    if (!response.ok) setError("Could not stop review");
+    const response = await fetch(`/api/analysis/${jobId}`, { method: "DELETE" }).catch(() => null);
+    if (!response?.ok) setError("Could not stop this review. Try again.");
     else { const data = await response.json(); setReview(current => current && (data.status === "cancel_requested"
       ? { ...current, cancel_requested: true, stage: "cancel_requested" }
       : { ...current, status: data.status, stage: data.status })); }
@@ -88,6 +94,7 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
     </form>
     {jobs.length > 1 && <label className="mt-4 block text-sm">Saved reviews<select aria-label="Saved reviews" value={jobId ?? ""} onChange={event => { setReview(null); setJobId(event.target.value); }} className="ml-2 rounded-lg border border-border bg-background p-2">{jobs.map(job => <option key={job.id} value={job.id}>{label(job.status)} · review {job.id.slice(0, 4)}</option>)}</select></label>}
     {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+    {lost && <p role="alert" className="mt-3 text-sm text-danger">Could not check this review. It may still be running. <button type="button" onClick={() => setAttempt(count => count + 1)} className="underline">Check again</button></p>}
     {review && <div className="mt-4"><p role="status" className="text-sm">{review.cancel_requested && ["queued", "running"].includes(review.status) ? "Stop requested. Waiting for active work to finish stopping." : label(review.status)}</p>
       {review.review_request && <p className="mt-2 text-sm">{review.review_request.question} · {review.review_request.query.period.from} through {review.review_request.query.period.to}</p>}
       {review.review_progress && <div className="mt-2 text-sm text-muted-foreground"><p>Evidence checks {review.review_progress.queries.length}/{review.review_progress.request.budget.maxQueries} · Supporting records {review.review_progress.supportRecords}/{review.review_progress.request.budget.maxSupportRecords}</p>

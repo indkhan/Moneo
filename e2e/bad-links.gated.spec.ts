@@ -33,3 +33,12 @@ test("a refused money form explains why beside the form and keeps what was typed
   await expect(form.getByLabel("IBAN")).toHaveValue("NOT-AN-IBAN");
   await expect(page.getByRole("heading", { name: "This page couldn’t load" })).toHaveCount(0);
 });
+
+test("an unsent chat question survives switching to another chat", async ({ page }) => {
+  await page.goto("/ai?conversation=new");
+  const question = page.getByLabel("Ask about your finances");
+  await question.fill("Half-written question");
+  await page.goto("/settings");
+  await page.goBack();
+  await expect(question).toHaveValue("Half-written question");
+});

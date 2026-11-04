@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatRequest } from "@/lib/ai/use-chat-request";
+import { useFollowOutput } from "@/lib/use-follow-output";
 import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -94,7 +95,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   }, [open, load]);
   // Keep the newest answer, and any card under it, in view, as the AI page does.
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [history.length, pending]);
+  const followOutput = useFollowOutput(end, [history.length, pending]);
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
@@ -128,6 +129,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     const question = typed.trim() || ATTACHMENT_ONLY_MESSAGE;
     const id = conversationId ?? crypto.randomUUID();
     setConversationId(id);
+    followOutput();
     const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}), ...(spoken && VOICE_CONTEXT) };
     const selectionGeneration = generation.current;
     let live: PendingExchange = { question, attachments, tools: [], spoken };

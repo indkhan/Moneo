@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFollowOutput } from "@/lib/use-follow-output";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -82,7 +83,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   }
   const latest = useRef({ selectedId, draftId });
   useEffect(() => { latest.current = { selectedId, draftId }; if (selectedId) load(selectedId); }); // load() skips cached and in-flight chats
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [activeId, entry?.messages.length, active]);
+  const followOutput = useFollowOutput(end, [entry?.messages.length, active], activeId);
   // A run that kept going while the user was away shows as working until its answer is saved.
   const resuming = entry?.running && !active ? activeId : null;
   usePolling(() => void json<Loaded>(`/api/conversations/${resuming}`)
@@ -160,7 +161,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   // Mirrors each pending exchange so the finished answer can keep its plan and tool calls.
   const live = useRef<Record<string, PendingExchange>>({});
-  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { live.current[id] = { question, attachments, tools: [], spoken }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { followOutput(); live.current[id] = { question, attachments, tools: [], spoken }; setPending(current => ({ ...current, [id]: live.current[id] })); }
   function onEvent(id: string, event: ChatStreamEvent) {
     if (!live.current[id]) return;
     const next = live.current[id] = applyChatEvent(live.current[id], event);

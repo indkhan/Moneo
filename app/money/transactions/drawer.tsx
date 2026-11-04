@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
 import { applyCategoryToSimilar, clearLink, markOwnAccountTransfer, markRefund, quickEditTransaction, undoCorrection, undoTransactionSplits, undoVerifiedLink } from "./actions";
+import { FocusOnOpen } from "@/components/focus-on-open";
 import { SplitEditor } from "./split-editor";
 import { AskAbout } from "@/components/ask-about";
 import { VerifiedLinkEditor, type LinkPosting } from "./verified-link-editor";
@@ -79,6 +80,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
   const canSplit = selected.kind === "ordinary" && selected.status === "posted" && !selected.review_reasons?.length && !selected.transfer_id && !selected.refund_of_id && !inboundRefunds.data?.length && !inboundTransfer.data?.length;
 
   return <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 z-50 w-full max-w-lg overflow-y-auto border-l border-border bg-card shadow-2xl">
+    <FocusOnOpen label={`Details for ${selected.description}`} />
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-6 py-3">{close}<span className="text-xs text-muted-foreground">Esc to close · j/k to move</span></div>
     <div className="space-y-6 p-6">
       <header>

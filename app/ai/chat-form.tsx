@@ -23,6 +23,17 @@ export type ChatFormEvents = {
 // autoSend sends one message as soon as the form mounts (a new artifact's first request).
 export function ChatForm({ conversationId, selectionKey, empty = false, scope, placeholder = "Ask anything about your money", autoSend, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode; placeholder?: string; autoSend?: string } & ChatFormEvents) {
   const [message, setMessage] = useState("");
+  // An unsent question survives switching chats; it stays in this tab and leaves when sent.
+  const draftKey = `moneo-chat-draft:${conversationId}`;
+  const draftLoaded = useRef(false);
+  useEffect(() => {
+    try {
+      if (draftLoaded.current) { if (message) sessionStorage.setItem(draftKey, message); else sessionStorage.removeItem(draftKey); return; }
+      draftLoaded.current = true;
+      const saved = sessionStorage.getItem(draftKey);
+      if (saved) setMessage(current => current || saved);
+    } catch { /* storage can be blocked; drafts are a convenience */ }
+  }, [message, draftKey]);
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;

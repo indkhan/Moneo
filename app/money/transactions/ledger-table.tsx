@@ -87,6 +87,13 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
     return () => window.removeEventListener("keydown", onKey);
   });
   useEffect(() => { body.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
+  // Closing the drawer puts focus back on the row it came from.
+  const wasOpen = useRef(openId);
+  useEffect(() => {
+    const closed = wasOpen.current && !openId ? wasOpen.current : null;
+    wasOpen.current = openId;
+    if (closed) body.current?.querySelector<HTMLElement>(`a[href*="transaction=${closed}"]`)?.focus();
+  }, [openId]);
 
   if (!rows.length) return <p className="rounded-xl border border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground">No transactions match. Remove a filter or import a statement.</p>;
   const tableRows = table.getRowModel().rows;
