@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6KJFTVJ5W0QV3XFS8VX9B4B",
+  "strategy": "manual-commit",
+  "branch": "t3/user-testing-audit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "components/safe-form.tsx",
+    "lib/safe-action.test.ts",
+    "lib/safe-action.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 14,
+    "cache_creation_tokens": 17582,
+    "cache_read_tokens": 3361411,
+    "output_tokens": 8732,
+    "api_call_count": 7
+  },
+  "redaction": {
+    "replacements": 28,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 30,
+      "key_context": 4,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
