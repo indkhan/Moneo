@@ -21,7 +21,7 @@ try {
       !(process.argv.includes("--baseline") && file.startsWith("202610060011"))).sort();
     await replayMigrations(tx, files.map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      sql = applicationMigrationSql(file, sql);
+      sql = applicationMigrationSql(file, sql, schema);
       return { file, sql: isolated(sql) };
     }), "MNE008 disposable replay");
     for (const file of ["source-coverage.sql", "atomic-review.sql", "import-review.sql", "import-row-exclusions.sql"]) {

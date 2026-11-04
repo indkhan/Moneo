@@ -56,7 +56,12 @@ export function canonicalFunctionDefinition(definition) {
   return definition.slice(0, start) + normalized + definition.slice(end);
 }
 // Disposable application replays must not change Supabase-owned storage setup.
-export function applicationMigrationSql(file, sql) {
+/** @param {string} file @param {string} sql @param {string} [schema] */
+export function applicationMigrationSql(file, sql, schema) {
+  if (schema) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error("Invalid disposable schema name");
+    sql = sql.replace(/\bn\.nspname(\s*=\s*)'public'/g, `n.nspname$1'${schema}'`);
+  }
   if (file.endsWith("_initial.sql")) {
     const boundary = sql.indexOf("insert into storage.buckets");
     if (boundary < 0) throw new Error("Initial storage boundary changed; review disposable replay isolation");

@@ -19,7 +19,7 @@ try {
       await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users(id uuid primary key,email text); grant usage on schema ${schema} to authenticated,service_role`);
       const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort().map(file => {
         let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-        sql = applicationMigrationSql(file, sql);
+        sql = applicationMigrationSql(file, sql, schema);
         return { file, sql: isolated(sql) };
       });
       await replayMigrations(tx, migrations, "MNE020 disposable replay");

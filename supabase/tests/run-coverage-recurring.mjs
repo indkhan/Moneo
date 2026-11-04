@@ -57,7 +57,7 @@ try {
     record({phase: "ownership_verified", schemaOwner: ownership.schema_owner, markerVerified: true});
     const replay = files.filter(file => !(file === candidate && (baseline || upgrade))).map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      sql = applicationMigrationSql(file, sql);
+      sql = applicationMigrationSql(file, sql, schema);
       return {file, sql: isolated(sql)};
     });
     await replayMigrations(tx, replay, "MNE014 private replay");

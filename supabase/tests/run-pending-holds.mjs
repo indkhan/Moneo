@@ -19,7 +19,7 @@ try {
     const files = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort();
     await replayMigrations(tx, files.map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      sql = applicationMigrationSql(file, sql);
+      sql = applicationMigrationSql(file, sql, schema);
       return { file, sql: isolated(sql) };
     }), "fresh MNE006");
     const tests = ["pending-holds.sql", "import-review.sql", "import-control.sql", "import-reimport.sql", "workspace-isolation.sql"];

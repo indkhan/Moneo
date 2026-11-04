@@ -19,7 +19,7 @@ try {
     const files = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql") && (!process.argv.includes("--baseline") || !file.startsWith("202610060007"))).sort();
     await replayMigrations(tx, files.map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      sql = applicationMigrationSql(file, sql);
+      sql = applicationMigrationSql(file, sql, schema);
       return { file, sql: isolated(sql) };
     }), "fresh MNE007");
     const tests = process.argv.includes("--baseline") ? [process.argv.includes("--parity") ? "import-review-parity-baseline.sql" : "import-review-baseline.sql"] : ["import-review.sql", "import-row-exclusions.sql", "workspace-isolation.sql", "import-control.sql", "import-reimport.sql"];

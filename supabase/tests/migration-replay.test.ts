@@ -13,6 +13,14 @@ it("keeps application changes while excluding Supabase storage from fresh replay
   expect(() => applicationMigrationSql("202610270003_chat_attachments.sql", "changed")).toThrow(/boundary changed/);
 });
 
+it("keeps catalog-driven migration rewrites inside the disposable schema", () => {
+  for (const file of ["202610200003_remove_artifacts_and_library.sql", "202610310001_conflict_errors_as_409.sql"]) {
+    const sql = applicationMigrationSql(file, readFileSync(`supabase/migrations/${file}`, "utf8"), "qa_replay");
+    expect(sql).toMatch(/n\.nspname\s*=\s*'qa_replay'/);
+    expect(sql).not.toMatch(/n\.nspname\s*=\s*'public'/);
+  }
+});
+
 it("identifies a missing upgrade constraint without treating unrecorded SQL as applied", async () => {
   const cause = Object.assign(new Error("missing constraint"), { code: "42704" });
   const tx = { unsafe: async () => { throw cause; } };

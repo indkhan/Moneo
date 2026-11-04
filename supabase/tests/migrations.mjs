@@ -58,7 +58,7 @@ try {
     await tx.unsafe(`grant usage on schema ${schema} to authenticated, service_role`);
     const isolated = sql => sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);
     const isolatedMigrations = migrations.map(migration => {
-      const text = applicationMigrationSql(migration.file, migration.sql);
+      const text = applicationMigrationSql(migration.file, migration.sql, schema);
       return { ...migration, sql: isolated(text) };
     });
     await replayMigrations(tx, isolatedMigrations, "fresh");
