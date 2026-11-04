@@ -89,7 +89,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
         record("booked_balances_reviewed",{amountsMinor:["200000","0"]});
       };
       const candidate = page.locator("article").filter({hasText: `${label} invoice`});
-      const forecast = page.locator("section").filter({has: page.getByRole("heading", {name: "Liquid balance horizon",exact: true})});
+      const forecast = page.locator("section").filter({has: page.getByRole("heading", { name: /^Your cash over the next/ })});
       expect(latest > today).toBe(true); expect(postedLatest).toBe(today); expect(futureCount).toBeGreaterThan(0);
       const expected = `EUR ${(2000 - (futureCount-1) * 20).toFixed(2)}`;
       await page.goto("/money/recurring");

@@ -141,6 +141,8 @@ export function availableToSpend(input: ForecastInput):
 // These amounts are in input.currencyCode, after explicit dated FX conversion by the loader.
 // Inputs that make one account's own cash unknown, as opposed to the plan's as a whole.
 const ACCOUNT_INPUT = /^(?:balance|available-balance|fx:balance|fx:allocation|fx:pending|fx:assumption|fx:debt|debt|fx):([^:]+)/;
+/** The account a missing input is about, when it names one. */
+export const missingInputAccount = (key: string) => ACCOUNT_INPUT.exec(key)?.[1] ?? null;
 
 /**
  * The forecast limited to accounts whose cash is known, for a person who asked for an answer with its coverage stated.

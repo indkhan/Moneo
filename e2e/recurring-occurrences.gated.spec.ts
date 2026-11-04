@@ -44,7 +44,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
     const page = await context.newPage();
     page.setDefaultTimeout(30_000);
-    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: "Liquid balance horizon", exact: true }) });
+    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: /^Your cash over the next/ }) });
     await page.goto("/plan"); await expect(forecast).toContainText("EUR 900.00");
     await page.goto("/money/recurring");
     const review = page.getByRole("region", { name: "Occurrence reconciliation" });

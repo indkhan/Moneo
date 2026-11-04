@@ -55,7 +55,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await page.goto("/plan");
   const assumption=page.locator("li").filter({has:page.getByRole("heading",{name:label,exact:true})});
   await expect(assumption).toContainText("Detected from your transactions");await expect(assumption).toContainText("Used in forecast");
-  const forecast=page.locator("section").filter({has:page.getByRole("heading",{name:"Liquid balance horizon",exact:true})});
+  const forecast=page.locator("section").filter({has:page.getByRole("heading",{ name: /^Your cash over the next/ })});
   await expect(forecast).toContainText("EUR 990.00");await expect(forecast).not.toContainText("Forecast unavailable");
   await page.goto(`${sourceUrls[2]}&linkSearch=${encodeURIComponent(credit)}`);
   const detail=page.getByRole("complementary",{name:"Transaction details"});

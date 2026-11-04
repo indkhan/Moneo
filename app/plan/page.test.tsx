@@ -72,7 +72,8 @@ it("does not turn incomplete balance evidence into an available forecast", async
   vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: unknown, forecast: forecastDaily(unknown), available: availableToSpend(unknown), liquidity: accountLiquidity(unknown), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
   const html = await render({ account: "checking" });
   expect(html).toContain("From 1 of 2 accounts"); expect(html).toContain("Fix 1 balance");
-  expect(html).toContain("Not included: Checking");
+  expect(html).toContain("Left out of this forecast"); expect(html).toContain("Checking: its balance could not be confirmed.");
+  expect(html).toContain('href="/money/accounts#account-checking"');
   expect(html).toContain("Choose a current liquid account"); expect(html).not.toContain("Chosen-account headroom");
 });
 it("does not select pooled spending or discard unknown account and invalid funding input", async () => {
