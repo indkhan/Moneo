@@ -41,7 +41,7 @@ it("names what waits and keeps usage out of the attention row", async () => {
   rows.agent_proposals = [{ id: card, title: "Move Rent to Housing" }];
   try {
     const attention = await render("attention");
-    expect(attention).toContain("Needs your attention");
+    expect(attention).toContain("Needs attention");
     expect(attention).toContain("Move Rent to Housing");
     expect(attention).toContain("Ready to review");
     expect(attention).not.toContain("secret-model");

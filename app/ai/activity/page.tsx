@@ -79,7 +79,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1">
       <p className="eyebrow">{attention ? "Activity log" : "Imports · reviews · chats"}</p>
-      <h1 className="page-title">{attention ? "Needs your attention" : "Activity log"}</h1>
+      <h1 className="page-title">{attention ? "Needs attention" : "Activity log"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{attention ? "Failures and decisions waiting for you. An item leaves this list once it is resolved, not when you open it." : "Imports, reviews and chats in one feed. Failures and rows waiting for you are under Needs attention."}</p>
     </header>
     <nav aria-label="Activity filters" className="flex flex-wrap gap-2">{Object.entries(FILTERS).map(([key, label]) =>
