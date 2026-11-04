@@ -1,5 +1,6 @@
 import { SafeForm } from "@/components/safe-form";
 import { Settings2 } from "lucide-react";
+import { CurrencySelect } from "@/components/currency-select";
 import { requireWorkspace } from "@/lib/auth";
 import type { ForecastPreferences } from "@/lib/finance/preferences";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
@@ -25,7 +26,7 @@ export async function ForecastPreferenceEditor({ preferences, version, accounts,
     <section aria-labelledby="forecast-preferences-heading" className="space-y-4 border-t border-border px-5 py-4">
       <div><h2 id="forecast-preferences-heading" className="text-sm font-medium">Forecast preferences</h2><p className="mt-1 text-sm text-muted-foreground">Tune how cautious your forecast is. Saving never changes your real accounts.</p></div>
       <SafeForm action={saveForecastPreferencesSafely} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><input type="hidden" name="version" value={version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} />
-        <label className="text-sm font-medium">Currency<input name="currency" required maxLength={3} defaultValue={preferences.currency_code} className={field} /></label>
+        <label className="text-sm font-medium">Currency<span className="mt-1 block"><CurrencySelect name="currency" label="Currency" defaultValue={preferences.currency_code} locale={workspace.locale} /></span></label>
         <label className="text-sm font-medium">Safety buffer<input name="buffer" required inputMode="decimal" defaultValue={formatInputAmount(preferences.safety_buffer_minor, preferences.currency_code)} className={field} /></label>
         <label className="text-sm font-medium">Uncertainty (%)<input name="uncertaintyPercent" required inputMode="decimal" pattern="\d{1,3}(\.\d{1,2})?" defaultValue={bpsToPercent(preferences.uncertainty_bps)} className={field} /></label>
         <label className="text-sm font-medium">Extra daily spending<input name="dailySpending" required inputMode="decimal" defaultValue={formatInputAmount(preferences.daily_spending_minor, preferences.currency_code)} className={field} /></label>
