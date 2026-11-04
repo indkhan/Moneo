@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6M1WYDPXQJ7XTMVEHED7R96",
+  "strategy": "manual-commit",
+  "branch": "t3/user-testing-audit",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "components/focus-on-open.tsx",
+    "lib/use-follow-output.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 18852,
+    "cache_read_tokens": 3214957,
+    "output_tokens": 8176,
+    "api_call_count": 5
+  },
+  "redaction": {
+    "replacements": 30,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 30,
+      "key_context": 6,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
