@@ -1,13 +1,22 @@
 import { calendarDate } from "@/lib/finance/calendar";
+import { CurrencySelect } from "@/components/currency-select";
 import { SafeForm } from "@/components/safe-form";
+import { supportedCurrencies } from "@/lib/finance/fx";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { addFxRateSafely, setDisplayCurrencySafely } from "./actions";
+import { RateFields } from "./rate-fields";
 
 export const metadata = { title: "Currency" };
 
-export default async function CurrencyPage() {
+const RATE_LIMIT = 100, ALL_RATES_LIMIT = 1000;
+const code = (value?: string) => /^[A-Z]{3}$/.test(value ?? "") && supportedCurrencies().includes(value!) ? value : undefined;
+const card = "rounded-xl border border-border bg-card p-6";
+
+type Params = { from?: string; to?: string; saved?: string; rates?: string };
+
+export default async function CurrencyPage({ searchParams }: { searchParams?: Promise<Params> } = {}) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try {
     context = await requireWorkspace();
@@ -15,6 +24,8 @@ export default async function CurrencyPage() {
     redirect("/login");
   }
   const { supabase, workspace } = context;
+  const params = (await searchParams) ?? {};
+  const limit = params.rates === "all" ? ALL_RATES_LIMIT : RATE_LIMIT;
   const [{ data: accounts, error: accountsError }, { data: rates, error: ratesError }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).order("name"),
     supabase.from("fx_rates")
@@ -22,16 +33,18 @@ export default async function CurrencyPage() {
       .eq("workspace_id", workspace.id)
       .order("rate_date", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(100),
+      .limit(limit),
   ]);
   // A failed read must not claim there are no rates: the error page offers a retry instead.
   if (accountsError || ratesError) throw new Error("Currency data could not be loaded");
-  const currencies = [...new Set([
-    workspace.display_currency,
-    ...(accounts ?? []).map((account) => account.currency_code),
-    ...(rates ?? []).flatMap((rate) => [rate.from_currency, rate.to_currency]),
-  ])].sort();
+  const display = workspace.display_currency;
   const today = calendarDate(new Date(), workspace.timezone);
+  const foreign = [...new Set((accounts ?? []).map(account => account.currency_code))].filter(currency => currency !== display).sort();
+  const missing = foreign.filter(currency => !rates?.some(rate => (rate.from_currency === currency && rate.to_currency === display) || (rate.to_currency === currency && rate.from_currency === display)));
+  const to = code(params.to) ?? display;
+  const from = code(params.from) ?? foreign[0] ?? (to === "USD" ? "EUR" : "USD");
+  const pairs = new Map<string, NonNullable<typeof rates>>();
+  for (const rate of rates ?? []) { const pair = `${rate.from_currency} to ${rate.to_currency}`; pairs.set(pair, [...(pairs.get(pair) ?? []), rate]); }
 
   return (
     <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 text-foreground sm:px-8 lg:py-8">
@@ -41,62 +54,56 @@ export default async function CurrencyPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           Choose how amounts are shown. Your original transactions and balances are never changed.
         </p>
-        <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer underline">More details</summary><p className="mt-2">Balances convert using the latest rate on or before their date. Spending reports need a rate for the exact day. Missing rates stay unavailable, never zero.</p></details>
       </header>
+      {params.saved === "rate" && <p role="status" className="text-sm font-medium">Rate saved.</p>}
+      {params.saved === "display" && <p role="status" className="text-sm font-medium">Display currency is {display}.</p>}
 
-      <section className="rounded-xl border border-border bg-card p-6">
+      <section className={card}>
         <h2 className="text-sm font-medium">Display currency</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Currently {workspace.display_currency}. Enter a 3-letter currency code.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Currently {display}. Search by name or code.</p>
         <SafeForm action={setDisplayCurrencySafely} className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm font-medium">Currency
-            <input name="currency" list="currency-codes" defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="Display currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+            <CurrencySelect name="currency" label="Display currency" defaultValue={display} locale={workspace.locale} />
           </label>
-          <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save display currency</button>
+          <button className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save display currency</button>
         </SafeForm>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-6">
+      <section id="add-rate" className={`${card} scroll-mt-24`}>
         <h2 className="text-sm font-medium">Manual FX rate</h2>
-        <p className="mt-1 text-sm text-muted-foreground">How many units of the second currency you get for 1 unit of the first.</p>
-        <datalist id="currency-codes">{currencies.map((code) => <option key={code} value={code} />)}</datalist>
-        <SafeForm action={addFxRateSafely} className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="grid gap-1 text-sm font-medium">From
-            <input name="from" list="currency-codes" defaultValue={currencies[0] ?? "EUR"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="From currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium">To
-            <input name="to" list="currency-codes" defaultValue={currencies[1] ?? "USD"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="To currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium">Rate
-            <input name="rate" required placeholder="1.08" inputMode="decimal" aria-label="Rate" className="min-h-10 w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium">Rate date
-            <input name="rateDate" required type="date" defaultValue={today} max={today} aria-label="Rate date" className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium">Source
-            <input name="source" defaultValue="manual" maxLength={120} aria-label="Rate source" className="min-h-10 w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
-          </label>
-          <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Add rate</button>
+        <p className="mt-1 text-sm text-muted-foreground">How many units of the second currency you get for 1 unit of the first. Balances use the latest rate on or before their date. Spending reports need a rate for the exact day. Missing rates stay unavailable, never zero.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Results round to the second currency&apos;s smallest unit. Bank fees and spreads are only included if the rate you enter includes them.</p>
+        {foreign.length === 0 && <p className="mt-3 text-sm">All your accounts use {display}, so you do not need a rate.</p>}
+        {missing.length > 0 && <ul className="mt-3 space-y-1 text-sm">{missing.map(currency => <li key={currency}>No {currency} to {display} rate saved yet. <Link href={`/plan/currency?from=${currency}&to=${display}#add-rate`} className="font-medium text-brand underline">Add this rate</Link></li>)}</ul>}
+        <SafeForm action={addFxRateSafely} className="mt-4">
+          <RateFields key={`${from}:${to}`} from={from} to={to} today={today} locale={workspace.locale} />
         </SafeForm>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-6">
+      <section className={card}>
         <h2 className="text-sm font-medium">Saved rates</h2>
-        {rates?.length === 100 && <p className="mt-1 text-sm text-muted-foreground">Showing the latest 100 rates.</p>}
         {!rates?.length && <p className="mt-3 text-muted-foreground">No FX rates yet. Add one above to enable conversion.</p>}
-        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-          {rates?.map((rate, index) => (
-            <li key={`${rate.from_currency}-${rate.to_currency}-${rate.rate_date}-${index}`} className="rounded-lg border border-border bg-muted/35 p-3 text-sm">
-              1 {rate.from_currency} = {rate.rate_text} {rate.to_currency} · {String(rate.rate_date).slice(0, 10)} · {rate.source}
-            </li>
-          ))}
-        </ul>
+        <div className="mt-4 space-y-5">{[...pairs].map(([pair, rows]) => <div key={pair}>
+          <h3 className="text-sm font-medium">{pair}</h3>
+          <ul className="mt-2 grid gap-3 sm:grid-cols-2">
+            {rows.map((rate, index) => (
+              <li key={`${rate.rate_date}-${index}`} className="rounded-lg border border-border bg-muted/35 p-3 text-sm">
+                1 {rate.from_currency} = {rate.rate_text} {rate.to_currency} · {String(rate.rate_date).slice(0, 10)} · {rate.source}{index === 0 ? " · latest" : ""}
+              </li>
+            ))}
+          </ul>
+        </div>)}</div>
+        {rates?.length === RATE_LIMIT && <p className="mt-3 text-sm text-muted-foreground">Showing the latest {RATE_LIMIT} rates. <Link href="/plan/currency?rates=all" className="text-brand underline">Show older rates</Link></p>}
+        {rates?.length === ALL_RATES_LIMIT && <p className="mt-3 text-sm text-muted-foreground">Showing the latest {ALL_RATES_LIMIT} rates.</p>}
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-6">
+      <section className={card}>
         <h2 className="text-sm font-medium">Accounts</h2>
+        <p className="mt-1 text-sm text-muted-foreground">An account keeps the currency it was opened in. The display currency only changes how totals are shown.</p>
+        {!accounts?.length && <p className="mt-3 text-sm text-muted-foreground"><Link href="/money/accounts" className="text-brand underline">Add an account</Link> to start.</p>}
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {accounts?.map((account) => (
-            <li key={account.id} className="rounded-lg border border-border bg-muted/35 p-3 text-sm">{account.name}: {account.currency_code}</li>
+            <li key={account.id} className="rounded-lg border border-border bg-muted/35 p-3 text-sm"><Link href="/money/accounts" className="underline-offset-2 hover:underline">{account.name}</Link>: {account.currency_code}</li>
           ))}
         </ul>
       </section>
