@@ -89,7 +89,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     void sendMessage(autoSend);
   });
 
-  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder={placeholder} busyText="Waiting for a response…" attachments={files} voice={{ onSend: sendSpoken }} /></>;
+  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder={placeholder} busyText="Working on a reply. Anything you send now is queued." attachments={files} voice={{ onSend: sendSpoken }} /></>;
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
@@ -97,6 +97,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl">How can I help with your money today?</h2>
     <div className="mt-8">{composer}{notices}</div>
     <div className="mt-4 flex flex-wrap justify-center gap-2">{suggestions.map(prompt => <button key={prompt} type="button" onClick={() => { setMessage(prompt); document.getElementById("question")?.focus(); }} className="rounded-full border border-border px-3.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div>
+    <p className="mx-auto mt-6 max-w-xl text-center text-xs text-muted-foreground">Ask here for a quick answer. Run a deep review for a saved, evidence-checked report. Call to talk it through. Each one uses AI, tracked under <a href="/settings" className="underline">Settings</a>.</p>
     {scope}
   </div>;
 
