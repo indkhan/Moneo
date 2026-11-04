@@ -31,6 +31,9 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
     await context.addCookies([...cookies].map(([name,value])=>({name,value,domain:"localhost",path:"/",sameSite:"Lax" as const})));
     const page=await context.newPage();page.setDefaultTimeout(30_000);
+    // Compile the control route before timing Stop against a running worker.
+    const controlReady = await context.request.post(`/api/imports/${randomUUID()}/control`, { data: {} });
+    expect(controlReady.status()).toBe(400);
     const filename="controlled-5000.csv", accountName="Controlled cash";
     const csv=["date,description,amount,id",...Array.from({length:5000},(_,i)=>`2026-09-01,Synthetic expense ${String(i+1).padStart(4,"0")},-1.01,controlled-${i+1}`),""].join("\n");
     const file={name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)};
@@ -68,7 +71,8 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const initial=[...(await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number`)];
     const stopResponse=page.waitForResponse(response=>response.url().endsWith(`/api/imports/${importId}/control`)&&response.request().method()==="POST");
     await history.getByRole("button",{name:"Stop import",exact:true}).click();
-    expect((await stopResponse).ok()).toBe(true);
+    const stoppedResponse = await stopResponse;
+    expect(stoppedResponse.ok(), await stoppedResponse.text()).toBe(true);
     await expect(history.getByRole("status")).toHaveText("canceled");
     const stopped=await counts();expect(stopped.sources).toBeGreaterThan(0);expect(stopped.sources).toBeLessThan(5000);expect(stopped.transactions).toBe(stopped.sources);
     const [{run_version:stoppedVersion,source_id:source,storage_path:storagePath}]=await db`select run_version,source_id,storage_path from public.imports where id=${importId} and workspace_id=${workspace}`;
