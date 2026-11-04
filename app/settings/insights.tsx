@@ -11,5 +11,5 @@ export async function InsightSettings() {
   if (preferences.error || dismissed.error) return <p role="alert">Insight preferences are unavailable.</p>;
   const parsed = insightPreferencesSchema.safeParse(preferences.data ?? defaultInsightPreferences(workspace.display_currency));
   if (!parsed.success) return <p role="alert">Saved insight preferences need review.</p>;
-  return <InsightsForm preferences={parsed.data} dismissedCount={dismissed.count ?? 0} />;
+  return <InsightsForm preferences={parsed.data} dismissedCount={dismissed.count ?? 0} locale={workspace.locale} />;
 }

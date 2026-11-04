@@ -41,7 +41,7 @@ test("settings save revocation and display changes with an unchanged unavailable
     await expect(page.locator('input[name="ai_data_scopes"]:checked')).toHaveCount(0);
     await page.getByLabel("In-app summary preference").selectOption("none");
     await page.getByLabel("Appearance").selectOption("light");
-    await page.getByLabel("Display currency").fill("USD");
+    await page.getByRole("combobox", { name: "Display currency", exact: true }).fill("USD");
     await page.getByRole("button", { name: "Save preferences", exact: true }).click();
     await expect(page.getByText("Preferences saved.")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("form").getByRole("alert")).toHaveCount(0);

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Loader2, Play, Square } from "lucide-react";
+import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
 import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, INSIGHT_TYPES, VOICES, type WorkspaceSettings } from "@/lib/settings";
 import { saveSettings } from "./actions";
@@ -65,7 +66,9 @@ export function SettingsForm({ settings, currency, timeZones }: { settings: Work
   }, [unsaved]);
   // Take the person to the field that failed, even inside the closed Advanced section.
   useEffect(() => {
-    const field = state.field && form.current?.elements.namedItem(state.field);
+    const named = state.field && form.current?.elements.namedItem(state.field);
+    // A currency picker submits a hidden field; the box beside it is what can take focus.
+    const field = named instanceof HTMLInputElement && named.type === "hidden" ? named.nextElementSibling : named;
     if (!(field instanceof HTMLElement)) return;
     field.closest("details")?.setAttribute("open", "");
     field.focus();
@@ -77,7 +80,7 @@ export function SettingsForm({ settings, currency, timeZones }: { settings: Work
   return <form ref={form} action={action} onChange={() => setDirty(true)} onSubmit={() => setDirty(false)} onReset={event => event.preventDefault()} className="space-y-8">
     <fieldset id="display" className={card}><legend className={legend}>Display and calendar</legend>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className={label}>Display currency<input className={`${input} uppercase`} name="display_currency" defaultValue={currency} pattern="[A-Za-z]{3}" title="Three letters, such as EUR" maxLength={3} required {...invalid("display_currency")} /></label>
+        <label className={label}>Display currency<CurrencySelect name="display_currency" label="Display currency" defaultValue={currency} locale={settings.locale} onChange={() => setDirty(true)} /></label>
         <label className={label}>Timezone<select className={input} name="timezone" defaultValue={settings.timezone} {...invalid("timezone")}>{zones.map(zone => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}</select></label>
         <label className={label}>Date and number locale<select className={input} name="locale" defaultValue={settings.locale} onChange={event => setLocale(event.target.value)} {...invalid("locale")}>{locales.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
         <label className={label}>Appearance<select className={input} name="theme" defaultValue={settings.theme}><option value="system">Follow device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
