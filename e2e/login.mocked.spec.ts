@@ -4,7 +4,7 @@ import { hasSupabaseEnv } from "./fixtures";
 test("failed sign-in callback explains how to retry", async ({ page }) => {
   await page.goto("/auth/callback");
   await expect(page).toHaveURL(/\/login\?error=sign-in$/);
-  await expect(page.getByRole("status")).toContainText("The sign-in link could not be verified. Request a new link and try again.");
+  await expect(page.getByRole("alert")).toContainText("The sign-in link could not be verified. Request a new link and try again.");
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
 });
 
@@ -28,11 +28,14 @@ test("sign-in shows pending feedback and allows retry after a rejected request w
     await expect.poll(() => requests).toBe(1);
     await expect(page.getByRole("button", { name: "Working…", exact: true })).toBeDisabled();
     release();
-    await expect(page.getByRole("status")).toContainText("Synthetic sign-in request rejected");
+    await expect(page.getByRole("alert")).toContainText("Too many attempts. Wait a few minutes and try again.");
     const retry = page.getByRole("button", { name: "Send sign-in link", exact: true });
     await expect(retry).toBeEnabled();
     await retry.click();
     await expect(page.getByRole("status")).toContainText("Check your email for the sign-in link.");
+    await expect(page.getByText("qa-login@example.invalid")).toBeVisible();
     expect(requests).toBe(2);
+    await page.getByRole("button", { name: "Use a different email", exact: true }).click();
+    await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
   } finally { release(); }
 });

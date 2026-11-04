@@ -21,7 +21,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }));
 beforeEach(() => {
-  host.index = 0; host.slots = ["magic-link"]; vi.clearAllMocks();
+  host.index = 0; host.slots = ["magic-link", "a@b.co"]; vi.clearAllMocks();
   const { signInWithOtp, signInWithPassword, signUp, resetPasswordForEmail } = host;
   host.createClient.mockReturnValue({ auth: { signInWithOtp, signInWithPassword, signUp, resetPasswordForEmail } });
   vi.stubGlobal("window", { location: { origin: "http://localhost:3000"} });
@@ -40,7 +40,7 @@ it("returns deployed sign-in emails to the current website instead of localhost"
   host.signInWithOtp.mockResolvedValue({ error: null });
   await formSubmit(render())!(event);
   expect(host.signInWithOtp).toHaveBeenCalledWith({
-    email: "",
+    email: "a@b.co",
     options: { emailRedirectTo: "https://moneo.example.com/auth/callback" },
   });
 });
@@ -58,7 +58,9 @@ it("explains a failed callback and clears that message when retrying", async () 
 it("reports client configuration failures and permits a retry", async () => {
   host.createClient.mockImplementationOnce(() => { throw new Error("Supabase configuration is missing"); });
   await expect(formSubmit(render())!(event)).resolves.toBeUndefined();
-  expect(renderToStaticMarkup(render())).toContain("Supabase configuration is missing");
+  // Provider and configuration wording stays out of the page.
+  expect(renderToStaticMarkup(render())).toContain('role="alert"');
+  expect(renderToStaticMarkup(render())).toContain("Something went wrong. Try again.");
   host.signInWithOtp.mockResolvedValue({ error: null });
   await formSubmit(render())!(event);
   expect(renderToStaticMarkup(render())).toContain("Check your email for the sign-in link.");
@@ -72,10 +74,10 @@ it("sends one sign-in request while pending and unlocks the form after failure",
   const duplicate = submit(event);
   expect(host.signInWithOtp).toHaveBeenCalledOnce();
   expect(renderToStaticMarkup(render())).toMatch(/disabled=""[^>]*>Working/);
-  settle({ error: { message: "Try again later" } });
+  settle({ error: { message: "Email rate limit exceeded" } });
   await Promise.all([pending, duplicate]);
   const html = renderToStaticMarkup(render());
-  expect(html).toContain("Try again later");
+  expect(html).toContain("Too many attempts. Wait a few minutes and try again.");
   expect(html).not.toContain('disabled=""');
 });
 
@@ -100,5 +102,26 @@ it("sends password reset links back through the callback to the reset page", asy
   host.resetPasswordForEmail.mockResolvedValue({ error: null });
   await formSubmit(render())!(event);
   expect(host.resetPasswordForEmail).toHaveBeenCalledWith("a@b.co", { redirectTo: "http://localhost:3000/auth/callback?next=/reset-password" });
-  expect(renderToStaticMarkup(render())).toContain("Check your email for the password reset link.");
+  const html = renderToStaticMarkup(render());
+  expect(html).toContain("Check your email for the password reset link.");
+  expect(html).toContain("a@b.co");
+  expect(html).toContain("Use a different email");
+});
+
+it("sends a reset link to the reset page even when the login came with a return path", async () => {
+  vi.stubGlobal("window", { location: { origin: "http://localhost:3000", search: "?next=/plan" } });
+  host.slots = ["forgot", "a@b.co"];
+  host.resetPasswordForEmail.mockResolvedValue({ error: null });
+  await formSubmit(render())!(event);
+  expect(host.resetPasswordForEmail).toHaveBeenCalledWith("a@b.co", { redirectTo: "http://localhost:3000/auth/callback?next=/reset-password" });
+});
+
+it("opens on the reset form from a link and hides raw provider wording", async () => {
+  vi.stubGlobal("window", { location: { origin: "http://localhost:3000", search: "?mode=forgot" } });
+  host.slots = [undefined];
+  expect(renderToStaticMarkup(render())).toContain("Send reset link");
+  host.slots = ["sign-in", "a@b.co", "wrong"];
+  host.signInWithPassword.mockResolvedValue({ data: {}, error: { message: "Invalid login credentials", code: "invalid_credentials" } });
+  await formSubmit(render())!(event);
+  expect(renderToStaticMarkup(render())).toContain("That email and password do not match.");
 });
