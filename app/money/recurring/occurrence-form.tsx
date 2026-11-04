@@ -17,7 +17,7 @@ export function OccurrenceForm({ schedules, transactions }: { schedules: Schedul
   const [date, setDate] = useState("");
   const [fulfillment, setFulfillment] = useState("full");
   const schedule = schedules.find(row => row.value === scheduleValue);
-  const options = schedule ? transactions.filter(row => row.currency === schedule.currency && (!schedule.accountId || row.accountId === schedule.accountId)) : transactions;
+  const options = schedule ? transactions.filter(row => row.currency === schedule.currency && (!schedule.accountId || row.accountId === schedule.accountId) && row.amountMinor.startsWith("-") === schedule.amountMinor.startsWith("-")) : transactions;
   const transaction = options.find(row => row.value === transactionValue);
   const left = schedule && transaction ? size(schedule.amountMinor) - size(transaction.amountMinor) : null;
   return <ActionForm action={associateOccurrence} className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
