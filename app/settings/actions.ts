@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { APICallError, generateText } from "ai";
 import { requireWorkspace } from "@/lib/auth";
+import { createClient } from "@/lib/supabase-server";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
 import { modelForSettings } from "@/lib/ai/provider";
 import { minorDigits } from "@/lib/finance/fx";
@@ -42,24 +43,52 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
   }
 }
 
+// Storage RLS is keyed to the current workspace folder, so files go first while it is still ours.
+// ponytail: a failure after this leaves rows pointing at removed files; retrying clears them.
+async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>) {
+  for (const bucket of ["imports", "chat"]) {
+    for (;;) {
+      const listed = await supabase.storage.from(bucket).list(workspace.id, { limit: 1000 });
+      if (listed.error) throw listed.error;
+      if (!listed.data.length) break;
+      const removed = await supabase.storage.from(bucket).remove(listed.data.map(file => `${workspace.id}/${file.name}`));
+      if (removed.error) throw removed.error;
+      if (!removed.data.length) break; // RLS-denied removes return nothing; never spin
+    }
+  }
+}
+
+export async function signOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  revalidatePath("/", "layout");
+  redirect("/login");
+}
+
+export async function deleteAccount(_previous: { error?: string }, form: FormData): Promise<{ error?: string }> {
+  try {
+    const context = await requireWorkspace();
+    if (!z.literal("DELETE").safeParse(form.get("confirmation")).success) return { error: "Type DELETE to confirm" };
+    await removeWorkspaceFiles(context);
+    await revokeBankSessions(context.workspace.id);
+    const result = await context.supabase.rpc("delete_account");
+    if (result.error) throw result.error;
+    // The user is gone, so only this browser's session is left to clear.
+    await context.supabase.auth.signOut({ scope: "local" });
+  } catch {
+    return { error: "Your account could not be deleted. Try again." };
+  }
+  revalidatePath("/", "layout");
+  redirect("/login?deleted=1");
+}
+
 export async function resetAllData(_previous: { error?: string }, form: FormData): Promise<{ error?: string }> {
   try {
-    const { supabase, workspace } = await requireWorkspace();
+    const context = await requireWorkspace();
     if (!z.literal("RESET").safeParse(form.get("confirmation")).success) return { error: "Type RESET to confirm" };
-    // Storage RLS is keyed to the current workspace folder, so files go first while it is still ours.
-    // ponytail: a failed reset after this leaves rows pointing at removed files; retrying the reset clears them.
-    for (const bucket of ["imports", "chat"]) {
-      for (;;) {
-        const listed = await supabase.storage.from(bucket).list(workspace.id, { limit: 1000 });
-        if (listed.error) throw listed.error;
-        if (!listed.data.length) break;
-        const removed = await supabase.storage.from(bucket).remove(listed.data.map(file => `${workspace.id}/${file.name}`));
-        if (removed.error) throw removed.error;
-        if (!removed.data.length) break; // RLS-denied removes return nothing; never spin
-      }
-    }
-    await revokeBankSessions(workspace.id);
-    const result = await supabase.rpc("reset_workspace");
+    await removeWorkspaceFiles(context);
+    await revokeBankSessions(context.workspace.id);
+    const result = await context.supabase.rpc("reset_workspace");
     if (result.error) throw result.error;
   } catch {
     return { error: "Your data could not be reset. Try again." };

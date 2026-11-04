@@ -4,7 +4,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { SkeletonCard } from "@/components/skeleton";
 import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
-import { ResetData } from "./reset";
+import { signOut } from "./actions";
+import { DeleteAccount, ResetData } from "./reset";
 import { ConnectedBanks } from "@/components/connected-banks";
 import { AiUsage } from "./ai-usage";
 import { parseUsageWindow } from "@/lib/ai/usage";
@@ -12,6 +13,7 @@ import { parseUsageWindow } from "@/lib/ai/usage";
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
+  ["account", "Account"],
   ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
   ["banks", "Connected banks"], ["summaries", "Scheduled summaries"], ["usage", "AI usage"], ["danger", "Danger zone"],
 ] as const;
@@ -41,6 +43,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
+        <section id="account" className={card}><h2 className="text-sm font-medium">Account</h2>
+          <p className="mt-1 break-words text-sm text-muted-foreground">Signed in as {user.email}</p>
+          <form action={signOut} className="mt-4"><button className="min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Sign out</button></form>
+        </section>
         <SettingsForm settings={settings} currency={workspace.display_currency} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
@@ -52,7 +58,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <p className="mt-4 text-sm text-muted-foreground">Finished summaries appear in Activity. If one fails, run a new review from AI.</p>
         </section>
         <section id="usage" className={card}><h2 className="text-sm font-medium">AI usage</h2><p className="mt-1 text-sm text-muted-foreground">Tokens used by AI chat, per model. Requests the provider did not report are left out, not counted as zero.</p><Suspense fallback={<SkeletonCard lines={4} />}><AiUsage window={usageWindow} /></Suspense></section>
-        <div id="danger" className="scroll-mt-20"><ResetData /></div>
+        <div id="danger" className="scroll-mt-20 space-y-8"><ResetData /><DeleteAccount email={user.email ?? "this account"} /></div>
       </div>
     </div>
   </main>;
