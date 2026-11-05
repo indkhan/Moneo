@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6PJZ23Q5XWS09PD2HY5YTE0",
+  "strategy": "manual-commit",
+  "branch": "t3/scalable-capital-account-plan",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/scalable/portfolio.ts",
+    "supabase/migrations/202611050002_scalable_wealth_sync.sql"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 62,
+    "cache_creation_tokens": 67401,
+    "cache_read_tokens": 5466037,
+    "output_tokens": 31945,
+    "api_call_count": 31
+  },
+  "redaction": {
+    "replacements": 6,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 4,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
