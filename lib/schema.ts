@@ -185,6 +185,28 @@ export const bankConnectionAccounts = pgTable("bank_connection_accounts", {
   check("bank_connection_accounts_account_name_check", sql`char_length(${table.accountName}) between 1 and 100`),
 ]);
 
+// Scalable Capital over the official MCP (202611050001). Verifier and tokens are sealed, service_role only.
+export const scalableConnections = pgTable("scalable_connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: text("client_id").notNull(),
+  redirectUri: text("redirect_uri").notNull(),
+  authState: uuid("auth_state").defaultRandom().notNull().unique(),
+  pkceVerifierEncrypted: text("pkce_verifier_encrypted"),
+  tokensEncrypted: text("tokens_encrypted"),
+  status: text("status").notNull().default("pending"),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("scalable_connections_workspace_idx").on(table.workspaceId),
+  check("scalable_connections_client_id_check", sql`char_length(${table.clientId}) between 1 and 200`),
+  check("scalable_connections_redirect_uri_check", sql`char_length(${table.redirectUri}) between 1 and 500`),
+  check("scalable_connections_status_check", sql`${table.status} in ('pending','active','expired','revoked','error')`),
+  check("scalable_connections_last_error_check", sql`char_length(${table.lastError}) <= 1000`),
+  check("scalable_connections_check", sql`${table.status} <> 'active' or ${table.tokensEncrypted} is not null`),
+]);
+
 // IBANs of the owner's own accounts (202610260001): money moved between them is a transfer.
 // account_id null names an own account that Moneo does not track.
 export const ownAccountIdentifiers = pgTable("own_account_identifiers", {
