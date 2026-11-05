@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CoverageNote } from "@/components/coverage-note";
 import { HomeLiquidity } from "./account-liquidity-summary";
 import { ManualBalanceForm } from "./manual-balance-form";
-import { WeeklyBriefing, loadInsightEvidence } from "./insights/panel";
+import { WeeklyBriefing } from "./insights/panel";
 import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions } from "./home-sections";
 import { SectionFallback, card } from "./section-fallback";
 import { Suspense, type ReactNode } from "react";
@@ -12,7 +12,6 @@ import { cardSize, type CardSize } from "@/lib/cards/sizes";
 import { HomeGrid } from "./home-grid";
 import type { QueryShared } from "@/lib/ai/artifact-data";
 import { IntentLink } from "@/components/intent-link";
-import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { getSupabaseConfig } from "@/lib/env";
@@ -23,10 +22,10 @@ import { describeMissingInputs } from "@/lib/finance/format";
 import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
-import { AgentBriefing, loadAgentBriefing } from "./agent-briefing";
+import { AgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
-import { HomeHistory, loadHomeHistory } from "./home-history";
-import { RecurringDetection, WaitingForYou, detectRecurring, loadReview, loadWaitingForYou } from "./waiting-for-you";
+import { HomeHistory } from "./home-history";
+import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from "./waiting-for-you";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
@@ -56,17 +55,14 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
   const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
-  // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises. Recurring detection streams beside the page.
-  loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
-  loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
-  loadHomeHistory(supabase, workspace.id).catch(() => undefined);
-  loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
-  detectRecurring(supabase, workspace);
+  // Secondary widgets start inside their Suspense boundaries after the core reads finish.
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version, sizes").eq("workspace_id", workspace.id).maybeSingle());
   // Include published cards hidden from Home so Add widget can restore them without rendering their bodies.
   const pinnedPromise = supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id)
     .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, waiting, review] = await Promise.all([
+  const waitingPromise = loadWaitingForYou(supabase, workspace);
+  const reviewPromise = loadReview(supabase, workspace);
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -82,8 +78,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
-    loadWaitingForYou(supabase, workspace),
-    loadReview(supabase, workspace),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   // A bank sync imports into the account with the bank's name and currency, as on the Accounts page.
@@ -233,10 +227,16 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
         <IntentLink href="/ai?conversation=new&call=1" aria-label="Call Moneo: starts a voice call using your microphone" title="Starts a voice call in a new chat using your microphone. You can stop it at any time, or type in Ask instead." className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
       </header>
-      {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
+      {/* Review summaries and recurring detection stream independently; detection reloads only when a card changes. */}
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
-        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} afterFirst={<WaitingForYou proposals={waiting} review={review} locale={locale} />} />
+        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} afterFirst={<Suspense fallback={null}><HomeAttention waiting={waitingPromise} review={reviewPromise} locale={locale} /></Suspense>} />
     </main>
   );
+}
+
+// Review summaries stream independently of the account balances and dashboard layout.
+async function HomeAttention({ waiting, review, locale }: { waiting: ReturnType<typeof loadWaitingForYou>; review: ReturnType<typeof loadReview>; locale: string }) {
+  const [proposals, summary] = await Promise.all([waiting, review]);
+  return <WaitingForYou proposals={proposals} review={summary} locale={locale} />;
 }
