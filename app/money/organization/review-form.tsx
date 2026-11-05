@@ -38,7 +38,10 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
  const toggle=(ids:string[],on:boolean)=>{draftRevision.current++;setSelected(on?[...new Set([...selected,...ids])]:selected.filter(id=>!ids.includes(id)));};
  function applySuggestion(proposal:OrganizationProposal){
   const key=JSON.stringify(suggestion(proposal));draftRevision.current++;
-  setSelected([...new Set([...selected,...items.filter(item=>JSON.stringify(suggestion(item.proposal))===key).map(item=>item.row.id)])]);fill(proposal);
+  setSelected([...new Set([...selected,...items.filter(item=>JSON.stringify(suggestion(item.proposal))===key).map(item=>item.row.id)])]);
+  // Apply changes every selected row, so one chip must not retarget hand-picked rows it doesn't describe.
+  if(items.some(item=>selected.includes(item.row.id)&&JSON.stringify(suggestion(item.proposal))!==key))setAssistance('Added to your selection. These entries have different suggestions, so choose the category and merchant yourself.');
+  else{setAssistance('');fill(proposal);}
  }
  async function requestSuggestions(){
   const requestedRevision=draftRevision.current;
