@@ -39,7 +39,7 @@ it("keeps saved widget widths and drops unknown widgets or sizes too narrow for 
   expect(widgetSizesSchema.safeParse(["accounts"]).success).toBe(false);
   expect(widgetSize("accounts", {})).toBe("M");
   expect(widgetSize("accounts", { accounts: "XL" })).toBe("XL");
-  expect(sizeOptions("overview")).toEqual(["L", "XL"]);
+  expect(sizeOptions("overview")).toEqual(["M", "L", "XL"]);
   expect(sizeOptions(cardWidgetKey(id))).toEqual(["S", "M", "L", "XL"]);
 });
 

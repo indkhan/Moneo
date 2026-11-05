@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
 
 // Keys are stored in saved layouts; never rename one. Key order is the order offered under Add widget.
-export const BUILTIN_WIDGETS = { overview: "Overview", insights: "Weekly briefing", upcoming: "Coming up", spending: "Cash flow over six months, with where money came from and went",
+export const BUILTIN_WIDGETS = { overview: "Net worth", insights: "Weekly briefing", upcoming: "Coming up", spending: "Cash flow over six months, with where money came from and went",
   budgets: "Budgets", accounts: "Accounts", agents: "Agent team", history: "History of recent changes", recent: "Recent transactions", planning: "Available funds by account", goals: "Goals" };
 // Home without a saved layout; the rest stay available under Add widget.
 const DEFAULT_WIDGETS = ["overview", "insights", "upcoming", "spending", "budgets", "accounts", "agents", "history"];
@@ -32,9 +32,9 @@ export function setWidget(items: string[], key: string, on: boolean) {
 type BuiltinWidget = keyof typeof BUILTIN_WIDGETS;
 export const isBuiltinWidget = (key: string): key is BuiltinWidget => Object.hasOwn(BUILTIN_WIDGETS, key);
 // Width of each built-in widget until the user resizes it, and the narrowest that still fits its layout.
-const DEFAULT_SIZES: Record<BuiltinWidget, CardSize> = { overview: "XL", history: "XL", spending: "L", insights: "L", recent: "L", accounts: "M", agents: "M",
+const DEFAULT_SIZES: Record<BuiltinWidget, CardSize> = { overview: "L", history: "XL", spending: "L", insights: "L", recent: "L", accounts: "M", agents: "M",
   upcoming: "S", budgets: "S", planning: "S", goals: "S" };
-const MIN_SIZES: Partial<Record<BuiltinWidget, CardSize>> = { overview: "L", spending: "M", insights: "M" };
+const MIN_SIZES: Partial<Record<BuiltinWidget, CardSize>> = { overview: "M", spending: "M", insights: "M" };
 
 /** Saved widths of built-in widgets; unknown keys or sizes are dropped rather than rejected, like retired widgets. */
 export const widgetSizesSchema = z.record(z.string(), z.unknown()).transform(saved =>

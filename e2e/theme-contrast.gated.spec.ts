@@ -123,7 +123,7 @@ test("money and import text stays readable in persisted light, dark and system t
       await expectReadable(page, page.getByRole("link", { name: outDesc }), `${theme} description`);
       await expectReadable(page, outRow.locator("td").last(), `${theme} negative amount`);
       await expectReadable(page, inRow.locator("td").last(), `${theme} positive amount`);
-      await expectReadable(page, page.getByLabel("Search descriptions"), `${theme} filter input`);
+      await expectReadable(page, page.getByLabel("Describe what to find"), `${theme} filter input`);
       await expectReadable(page, page.getByRole("link", { name: viewName }), `${theme} saved-view label`);
       await expectReadable(page, page.getByText("2 transactions", { exact: true }), `${theme} muted count`);
       await expectReadable(page, page.getByRole("columnheader", { name: "Description" }), `${theme} table header`);

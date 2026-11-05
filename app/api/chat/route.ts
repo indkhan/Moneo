@@ -335,7 +335,8 @@ ${artifactBrief}` : ""}`,
       } else if (part.type === "finish-step") stepBreak = true;
       else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
     }
-    const [usage, steps] = await Promise.all([result.usage, result.steps]);
+    // totalUsage sums every step; usage is only the last one, which drops the tool-call rounds.
+    const [usage, steps] = await Promise.all([result.totalUsage, result.steps]);
     if (!text.trim()) throw new Error("The model returned no answer");
     // Several cards from one answer are grouped so they can also be added all at once.
     const cards = [...new Set(proposalCards)];

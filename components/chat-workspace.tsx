@@ -233,10 +233,10 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const empty = !entry?.messages.length && !active;
   const unavailable = selectedId && !entry ? errors[selectedId] : undefined;
 
-  return <main className="flex min-h-[calc(100dvh-4.75rem)]">
+  return <main className="flex h-full">
     <ConversationSelection selectionKey={selectionKey} id={selectedId ?? "new"} />
-    <aside className="sticky top-19 hidden h-[calc(100dvh-4.75rem)] w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
-    <section className="flex min-w-0 flex-1 flex-col">
+    <aside className="scroll-fade hidden h-full w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
       {calling ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex flex-wrap items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
@@ -251,6 +251,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
         </dialog>
         <button type="button" onClick={() => setCalling(true)} className={summary}><Phone className="size-4" aria-hidden="true" />Call</button>
       </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
         {notice && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
         {unavailable ? <div className="py-10"><h2 className="font-semibold">Conversation unavailable</h2><p role="alert" className="mt-1 text-sm">{unavailable}</p><Link href={href("new")} onClick={event => open(event, null)} className="mt-3 inline-block text-sm underline">New conversation</Link></div>
@@ -261,6 +262,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
             <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} onStart={onStart} onEvent={onEvent} onDone={onDone} />
           </>}
         <div ref={end} />
+      </div>
       </div>
       </>}
     </section>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
-import { applyCategoryToSimilarSafely, clearLinkSafely, markOwnAccountTransferSafely, markRefundSafely, quickEditTransactionSafely, undoCorrectionSafely, undoTransactionSplitsSafely, undoVerifiedLinkSafely } from "./actions";
+import { applyCategoryToSimilarSafely, clearLinkSafely, undoManualTransactionSafely, markOwnAccountTransferSafely, markRefundSafely, quickEditTransactionSafely, undoCorrectionSafely, undoTransactionSplitsSafely, undoVerifiedLinkSafely } from "./actions";
 import { SafeForm } from "@/components/safe-form";
 import { FocusOnOpen } from "@/components/focus-on-open";
 import { SplitEditor } from "./split-editor";
@@ -32,7 +32,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
   const [selectedResult, sources, manualSource, splitSet, history, inboundRefunds, inboundTransfer, receipt, rates] = await Promise.all([
     supabase.from("transactions").select("*, amount_minor::text").eq("workspace_id", ws).eq("id", id).maybeSingle(),
     supabase.from("transaction_sources").select("source_transactions(original_row, fee_evidence, import_id, row_number)").eq("transaction_id", id),
-    supabase.from("manual_transaction_entries").select("original_record, created_at").eq("workspace_id", ws).eq("transaction_id", id).maybeSingle(),
+    supabase.from("manual_transaction_entries").select("id, version, undone_at, original_record, created_at").eq("workspace_id", ws).eq("transaction_id", id).maybeSingle(),
     supabase.from("transaction_split_sets").select("id").eq("workspace_id", ws).eq("transaction_id", id).is("undone_at", null).maybeSingle(),
     supabase.from("correction_events").select("id, before, after, undone, created_at").eq("workspace_id", ws).eq("transaction_id", id).order("created_at", { ascending: false }),
     supabase.from("transactions").select("id, description, posted_on").eq("workspace_id", ws).eq("refund_of_id", id).order("posted_on", { ascending: false }).limit(10),
@@ -91,6 +91,12 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
         <p className="mt-2 flex flex-wrap gap-3"><AskAbout question="Explain this transaction: is it normal for me, is it recurring, and how does it compare with similar ones?" about={{ kind: "transaction", id: selected.id, label: `${selected.posted_on} · ${selected.description.slice(0, 60)}` }} /></p>
         {(selected.tags?.length || selected.event_name) ? <p className="mt-1 text-sm text-muted-foreground">{selected.tags?.length ? `Tags: ${selected.tags.join(", ")}` : ""}{selected.tags?.length && selected.event_name ? " · " : ""}{selected.event_name ? `Group: ${selected.event_name}` : ""}</p> : null}
       </header>
+
+      {/* A manual entry can be taken back while nothing else has touched it; the evidence stays and Restore brings back the same ID. */}
+      {manualSource.data && !manualSource.data.undone_at && selected.version === 0 && !selected.transfer_id && !selected.refund_of_id && <SafeForm action={undoManualTransactionSafely} className="flex flex-wrap items-center gap-3 text-sm">
+        {hidden("entryId", manualSource.data.id)}{hidden("entryVersion", manualSource.data.version)}{hidden("version", 0)}
+        <span className="text-muted-foreground">Added by hand.</span><button className="min-h-10 rounded-lg border border-input px-3 hover:bg-muted">Undo manual entry</button>
+      </SafeForm>}
 
       {selected.review_reasons?.length ? <div role="alert" className="rounded-lg border border-warning/40 bg-warning-soft p-3 text-sm text-warning">
         <p>Check this before relying on it for spending: {selected.review_reasons.map(reviewReasonLabel).join("; ")}.</p>
@@ -167,7 +173,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
       <details className="border-t border-border pt-5">
         <summary className="cursor-pointer font-medium">Original source</summary>
         <p className="mt-2 text-xs text-muted-foreground">Exactly as imported or entered. This record never changes.</p>
-        <pre aria-label="Original source evidence" className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted p-3 text-xs">{JSON.stringify(manualSource.data ? { type: "manual", ...manualSource.data } : sources.data ?? [], null, 2)}</pre>
+        <pre aria-label="Original source evidence" className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted p-3 text-xs">{JSON.stringify(manualSource.data ? { type: "manual", original_record: manualSource.data.original_record, created_at: manualSource.data.created_at } : sources.data ?? [], null, 2)}</pre>
       </details>
     </div>
   </aside>;

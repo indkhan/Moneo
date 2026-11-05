@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { AskAbout } from "@/components/ask-about";
-import type { ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { displayFormat } from "@/lib/display-format";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
-import { CashFlowLink, CashFlowView } from "./cash-flow-view";
+import { CashFlowView } from "./cash-flow-view";
 
 type SectionProps = { db: SupabaseClient; workspaceId: string; currency: string; today: string; locale: string };
 
@@ -19,29 +18,6 @@ export function Figure({ value, digits, className }: { value: string; digits: nu
 }
 
 const monthName = (from: string, locale: string, month: "short" | "long" = "long") => month === "short" ? displayFormat(locale).shortMonth(from) : displayFormat(locale).month(from);
-
-/** This month's money in, money out and what is left; In and Out open their breakdown in the six-month chart. */
-export async function MonthCashFlow({ db, workspaceId, currency, today, locale, children }: SectionProps & { children?: ReactNode }) {
-  let data;
-  try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
-  const days = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate();
-  const header = <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{monthName(today, locale)} cash flow</h2><span className="font-mono text-[11px] text-subtle">day {Number(today.slice(8, 10))} / {days}</span></div>;
-  if (!data) return <section aria-label="Cash flow this month" className={`${card} flex flex-col gap-5`}>{header}<p role="alert" className="text-sm text-muted-foreground">Cash flow is unavailable right now.</p>{children}</section>;
-  const { month, incomeMinor, spendingMinor } = data.thisMonth;
-  const left = incomeMinor - spendingMinor;
-  const outShare = incomeMinor > 0n ? Math.min(100, Number(spendingMinor * 100n / incomeMinor)) : spendingMinor > 0n ? 100 : 0;
-  const row = (flow: "in" | "out", label: string, value: string, tone: string) => <CashFlowLink changes={{ month, flow }} className="-mx-2 flex items-baseline justify-between gap-3 rounded-lg px-2 py-1 hover:bg-muted">
-    <span className="text-sm text-muted-foreground">{label}</span><span className={`font-mono text-xl ${tone}`}>{value}</span></CashFlowLink>;
-  return <section aria-label="Cash flow this month" className={`${card} flex flex-col gap-4`}>
-    {header}
-    {row("in", "In", `+${formatMoney(incomeMinor, currency, locale)}`, "text-brand")}
-    {row("out", "Out", formatMoney(-spendingMinor, currency, locale), "")}
-    <div aria-hidden="true" className="flex h-1.5 gap-1"><span className={`rounded-full ${left < 0n ? "bg-warning" : "bg-chart-out"}`} style={{ width: `${outShare}%` }} />{outShare < 100 && <span className="flex-1 rounded-full bg-brand" />}</div>
-    <div className="flex items-baseline justify-between gap-3 border-t border-border pt-5"><span className="text-sm text-muted-foreground">Left this month</span>
-      <Figure value={formatMoney(left, currency, locale)} digits={minorDigits(currency)} className={`display-figure text-[32px] ${left < 0n ? "text-warning" : ""}`} /></div>
-    {children}
-  </section>;
-}
 
 /** Six months of money in vs out; the In/Out/month selection happens in the browser over this one read. */
 export async function CashFlowPanel({ db, workspaceId, currency, today, locale }: SectionProps) {

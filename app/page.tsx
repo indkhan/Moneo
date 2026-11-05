@@ -3,7 +3,7 @@ import { CoverageNote } from "@/components/coverage-note";
 import { HomeLiquidity } from "./account-liquidity-summary";
 import { ManualBalanceForm } from "./manual-balance-form";
 import { WeeklyBriefing } from "./insights/panel";
-import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions } from "./home-sections";
+import { CashFlowPanel, Figure, RecentTransactions } from "./home-sections";
 import { SectionFallback, card } from "./section-fallback";
 import { Suspense, type ReactNode } from "react";
 import { BUILTIN_WIDGETS, cardIdFromKey, homeLayout, isBuiltinWidget, sizeOptions, widgetLabel, widgetSize } from "@/lib/finance/dashboard";
@@ -32,7 +32,7 @@ import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
-import { Phone, Sparkle } from "lucide-react";
+import { Phone } from "lucide-react";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
@@ -127,13 +127,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // The change needs last month's end on record; without it there is nothing to compare with.
   const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
   const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
-  const { date: fullDate, dayMonth, monthYear: monthLabel } = display;
+  const { date: fullDate, monthYear: monthLabel } = display;
   const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
   const dateTile = (date: string) => ({ month: display.shortMonth(date), day: date.slice(8, 10) });
 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
-  const available = projection.available;
   const saved = homeLayout(layout.data);
   if (!saved) throw new Error("Dashboard preferences are invalid; try again");
   const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row as unknown as HomeCardRow & { artifact_id: string }]));
@@ -151,8 +150,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     ...Object.fromEntries([...cards.values()].map(row => [`card:${row.id}`, <Suspense key={row.id} fallback={<CardSkeleton title={row.title} />}>
       <HomeCard card={row} context={context} shared={shared} open={`/ai/artifacts/${row.artifact_id}?tab=cards`} />
     </Suspense>])),
-    overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-3">
-      <div className={`${card} flex flex-col gap-5 lg:col-span-2`}>
+    overview: <section aria-label="Net worth" className={`${card} flex flex-col gap-5`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5"><h2 className="text-sm font-medium">Net worth</h2>
             {convertedCount > 0 && <span className="rounded-md border border-dashed border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">traced · {accounts.length} accounts · {valuations.included.length} valuations</span>}</div>
@@ -172,13 +170,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           {([["Accounts", parts.cash, "/money/accounts"], ["Investments & assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
         </dl>}
-      </div>
-      <Suspense fallback={<SectionFallback title="This month" />}><MonthCashFlow {...sectionProps}>
-        {available?.status === "available" && <Link href="/plan" className="mt-auto flex flex-col gap-1.5 rounded-[14px] border border-ai-border bg-ai-soft p-3.5 hover:border-ai">
-          <p className="flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Cash-flow forecaster</p>
-          <p className="text-[13px]">Lowest point after your buffer: <span className={`font-mono ${available.amountMinor < 0n ? "text-warning" : ""}`}>{money(available.amountMinor, displayCurrency)}</span> on {dayMonth(available.limitingDate)}.</p>
-        </Link>}
-      </MonthCashFlow></Suspense>
     </section>,
     spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" />}><CashFlowPanel {...sectionProps} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,

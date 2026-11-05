@@ -134,7 +134,8 @@ export async function undoManualTransaction(form: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
-  redirect("/money/transactions");
+  // The ledger offers Restore for this entry until the user moves on.
+  redirect(`/money/transactions?undone=${z.uuid().parse(form.get("entryId"))}`);
 }
 
 export async function restoreManualTransaction(form: FormData) {

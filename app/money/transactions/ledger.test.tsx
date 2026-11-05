@@ -25,7 +25,7 @@ function client() {
   return { from: (table: string) => {
     let single = false;
     const chain: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "neq", "is", "order", "limit", "or", "ilike", "contains", "gte", "lte", "gt", "lt", "in"]) chain[method] = (...args: unknown[]) => { calls.push([table, method, ...args]); return chain; };
+    for (const method of ["select", "eq", "neq", "is", "order", "limit", "range", "or", "ilike", "contains", "gte", "lte", "gt", "lt", "in"]) chain[method] = (...args: unknown[]) => { calls.push([table, method, ...args]); return chain; };
     chain.maybeSingle = () => { single = true; return chain; };
     chain.then = (resolve: (value: unknown) => unknown) => {
       const rows = (tables[table] ?? []) as unknown[];

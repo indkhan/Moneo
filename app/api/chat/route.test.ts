@@ -16,7 +16,7 @@ vi.mock("ai", () => ({ tool: (value: unknown) => value, stepCountIs: (value: num
   const run = generateText(options);
   run.catch(() => {});
   return { fullStream: (async function* () { const { text } = await run; yield { type: "text-delta", text }; yield { type: "finish-step" }; })(),
-    usage: run.then(result => result.usage ?? {}, () => ({})), steps: run.then(result => result.steps ?? [], () => []) };
+    totalUsage: run.then(result => result.usage ?? {}, () => ({})), steps: run.then(result => result.steps ?? [], () => []) };
 } }));
 const { after } = vi.hoisted(() => ({ after: vi.fn() }));
 vi.mock("next/server", async original => ({ ...await original<typeof import("next/server")>(), after }));
@@ -49,7 +49,7 @@ it("publishes the model's own Markdown answer with usage and tool calls", async 
   expect(body.answer).toBe("You spent **EUR 12.00**.");
   const context = await requireWorkspace();
   expect(vi.mocked(context.supabase.rpc).mock.calls.find(call => call[0] === "finish_chat_request")?.[1]).toMatchObject({ p_status: "completed", p_content: body.answer,
-    p_usage: { model_id: "free" }, p_tool_calls: [{ name: "accounts_list", input: {}, output: expect.stringContaining("listAccounts") }] });
+    p_usage: { model_id: "free", input_tokens: 5, output_tokens: 7, total_tokens: 12 }, p_tool_calls: [{ name: "accounts_list", input: {}, output: expect.stringContaining("listAccounts") }] });
 });
 it("gives the model readable tool output without internal evidence", async () => {
   vi.mocked(cashflow).mockResolvedValueOnce({ currencyCode: "EUR", spendingMinor: "2500", calculationEvidence: { rows: [] } } as never);

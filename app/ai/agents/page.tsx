@@ -36,14 +36,15 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
   const when = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone });
   const activeRun = !before.success ? page.find(run => run.status === "queued" || run.status === "running") : undefined;
   return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">
-    <header className="flex flex-wrap items-end gap-4">
-      <div className="mr-auto flex flex-col gap-1"><p className="eyebrow">Runs after every import</p><h1 className="page-title">Agent team</h1>
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-start">
+      <div className="flex flex-1 flex-col gap-1"><p className="eyebrow">Runs after every import</p><h1 className="page-title">Agent team</h1>
         <p className="mt-1 text-sm text-muted-foreground">After every sync the team checks your data: it categorizes what it is sure of, and leaves the rest, recurring payments and anything odd on Home for you. This is the record of each run.</p></div>
-      <div className="flex max-w-xs flex-col gap-1 sm:items-end sm:text-right">
+      <div className="flex max-w-xs shrink-0 flex-col gap-1 sm:items-end sm:text-right">
         {activeRun ? <Link href={`/ai/agents/${activeRun.id}`} className="inline-flex h-11 items-center rounded-xl bg-ai px-4 text-[13px] font-medium text-[#0f1011] hover:opacity-90">View running review</Link> : <StartAgentRun label="Review current data" />}
         <p className="text-xs text-muted-foreground">Checks your accounts and transactions. Most checks are rules; it may use a few AI calls, shown on the run.</p>
       </div>
     </header>
+    <PhoneCollapse label="How reviews work"><TeamFlow /></PhoneCollapse>
     {importId.success && (importRow?.data?.status === "failed"
       ? <p role="alert" className="rounded-lg bg-muted p-3 text-sm">That import failed, so no review started. <Link href="/import" className="underline">Open imports</Link></p>
       : <p role="status" className="rounded-lg bg-muted p-3 text-sm">The team starts as soon as that import&apos;s rows are in; this page moves to it by itself. <Link href="/import" className="underline">Open imports</Link><AutoRefresh /></p>)}
@@ -65,7 +66,6 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
       {(runs.data?.length ?? 0) > PAGE && <Link href={`/ai/agents?${new URLSearchParams({ before: page.at(-1)!.created_at })}`} className="inline-block min-h-11 py-3 text-sm underline">Older reviews</Link>}
       {before.success && <Link href="/ai/agents" className="ml-4 inline-block min-h-11 py-3 text-sm underline">Latest reviews</Link>}
     </section>
-    <PhoneCollapse label="How reviews work"><TeamFlow /></PhoneCollapse>
   </main>;
 }
 
