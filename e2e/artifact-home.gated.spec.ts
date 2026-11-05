@@ -21,6 +21,30 @@ const CARD = `export default function Card({ data, params, size }) {
 }`;
 const PARAMS = [{ kind: "choice", name: "pick", options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }], default: "a" }];
 
+test("an artifact keeps its older messages accessible after reopening", async ({ page }) => {
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
+  const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
+  const [{ id }] = await db`insert into public.artifacts (workspace_id, title) values (${workspaceId}, 'Artifact history QA') returning id`;
+  const [{ id: conversationId }] = await db`insert into public.conversations (workspace_id, artifact_id, title) values (${workspaceId}, ${id}, 'Artifact history QA') returning id`;
+  try {
+    for (let index = 0; index < 65; index++) await db`insert into public.messages (workspace_id, conversation_id, role, content, created_at) values (${workspaceId}, ${conversationId}, 'user', ${`History message ${index}`}, ${new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString()})`;
+    await page.goto(`/ai/artifacts/${id}`);
+    await page.reload();
+    await expect(page.getByText('History message 0', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('History message 64', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Older messages', exact: true }).click();
+    await expect(page.getByText('History message 5', { exact: true })).toBeAttached();
+    await page.getByRole('button', { name: 'Older messages', exact: true }).click();
+    await expect(page.getByText('History message 0', { exact: true })).toBeAttached();
+    await expect(page.getByRole('button', { name: 'Older messages', exact: true })).toHaveCount(0);
+    await expect(page.getByText('History message 64', { exact: true })).toHaveCount(1);
+  } finally {
+    await db`delete from public.messages where conversation_id = ${conversationId}`;
+    await db`delete from public.artifacts where id = ${id}`;
+    await db.end();
+  }
+});
+
 test("an artifact card previews natively, goes on Home at its size, reacts to its control and leaves with the artifact", async ({ page }) => {
   test.setTimeout(120_000);
   const title = `Artifact QA ${randomUUID().slice(0, 8)}`;

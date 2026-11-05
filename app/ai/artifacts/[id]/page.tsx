@@ -86,7 +86,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
         </div>
         <DeleteArtifactButton id={id} title={artifact.data.title} label="" className="mt-6" />
       </div>
-      <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} artifactId={start ? id : undefined} />
+      <ArtifactChat conversationId={conversationId} initial={history.messages} messagesCursor={history.messagesCursor} running={history.running ?? null} artifactId={start ? id : undefined} />
     </aside>
     <section aria-label="Artifact" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border max-lg:h-[85dvh] lg:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
