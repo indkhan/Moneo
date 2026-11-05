@@ -23,9 +23,6 @@ test("Home switches cash-flow In/Out in the browser and keeps the pick in the UR
   await expect(page).toHaveURL(/[?&]show=in&flow=in#cash-flow$/);
   await expect(panel.getByRole("heading", { name: /^Income by category in / })).toBeVisible();
   await expect(panel.getByRole("heading", { name: /^Top categories in / })).toHaveCount(0);
-  await page.getByRole("region", { name: "Cash flow this month" }).getByRole("link", { name: /^Out/ }).click();
-  await expect(page).toHaveURL(/[?&]flow=out/);
-  await expect(panel.getByRole("heading", { name: /^Top merchants in / })).toBeVisible();
   page.off("request", onRequest);
   expect(navigations).toEqual([]);
 

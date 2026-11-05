@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expect, it, vi } from "vitest";
-import { CashFlowPanel, MonthCashFlow, RecentTransactions } from "./home-sections";
+import { CashFlowPanel, RecentTransactions } from "./home-sections";
 
 vi.mock("next/link", () => ({ default: "a" }));
 let search = new URLSearchParams();
@@ -47,13 +47,6 @@ it("shows both sides by default and only the picked side's breakdown, linked to 
   expect(income).toContain("Acme GmbH");
   expect(income).toContain("merchant=employer&amp;from=2026-10-01&amp;to=2026-10-16&amp;direction=income");
   expect(income).not.toContain("Top merchants");
-});
-
-it("totals this month's money in and out and what is left", async () => {
-  search = new URLSearchParams();
-  const html = renderToStaticMarkup(await MonthCashFlow(props));
-  for (const text of ["October cash flow", "day 16 / 31", "+EUR 2500.00", "-EUR 40.00", "Left this month", "EUR 2460"]) expect(html).toContain(text);
-  expect(html).toContain('href="?month=2026-10&amp;flow=in#cash-flow"');
 });
 
 it("lists recent ledger entries with account names, status and the total count", async () => {
