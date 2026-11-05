@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6PM3K74JGZX8JK3SE1J2F8C",
+  "session_id": "317d2fb9-dbbb-46e3-b348-c51cfede59de",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-05T19:48:56.1300474Z",
+  "branch": "t3/fix-app-usability",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "components/app-shell.tsx",
+    "components/chat-workspace.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "8f146c4f1d2b",
+  "checkpoint_transcript_start": 223,
+  "transcript_lines_at_start": 223,
+  "compact_transcript_start": 30,
+  "token_usage": {
+    "input_tokens": 14,
+    "cache_creation_tokens": 12957,
+    "cache_read_tokens": 654465,
+    "output_tokens": 3437,
+    "api_call_count": 7
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
