@@ -40,7 +40,12 @@ export default async function CurrencyPage({ searchParams }: { searchParams?: Pr
   const display = workspace.display_currency;
   const today = calendarDate(new Date(), workspace.timezone);
   const foreign = [...new Set((accounts ?? []).map(account => account.currency_code))].filter(currency => currency !== display).sort();
-  const missing = foreign.filter(currency => !rates?.some(rate => (rate.from_currency === currency && rate.to_currency === display) || (rate.to_currency === currency && rate.from_currency === display)));
+  const unlisted = foreign.filter(currency => !rates?.some(rate => (rate.from_currency === currency && rate.to_currency === display) || (rate.to_currency === currency && rate.from_currency === display)));
+  // The list is capped, so a pair absent from a full list may still have an older rate.
+  const older = rates?.length === limit ? await Promise.all(unlisted.map(currency => supabase.from("fx_rates").select("rate_date").eq("workspace_id", workspace.id)
+    .or(`and(from_currency.eq.${currency},to_currency.eq.${display}),and(from_currency.eq.${display},to_currency.eq.${currency})`).limit(1))) : [];
+  if (older.some(check => check.error)) throw new Error("Currency data could not be loaded");
+  const missing = unlisted.filter((_, index) => !older[index]?.data?.length);
   const to = code(params.to) ?? display;
   const from = code(params.from) ?? foreign[0] ?? (to === "USD" ? "EUR" : "USD");
   const pairs = new Map<string, NonNullable<typeof rates>>();
