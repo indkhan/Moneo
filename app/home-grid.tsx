@@ -239,7 +239,15 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
     accessibility={{ announcements, screenReaderInstructions: { draggable: "Use the arrow keys to move this widget one place at a time." } }}>
     <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
       {customizing && <p className="mr-auto text-sm text-muted-foreground">Drag a widget by its handle, or focus the handle and use the arrow keys. On a phone, hold a widget to drag it.</p>}
-      <button type="button" aria-pressed={customizing} onClick={() => setCustomizing(on => !on)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">{customizing ? "Done" : "Customize"}</button>
+      {hidden.length > 0 && <div className="relative">
+        <button type="button" aria-expanded={menu} onClick={() => setMenu(open => !open)}
+          className="flex min-h-11 items-center gap-1.5 rounded-lg border border-input px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">
+          <Plus className="size-4" aria-hidden="true" />Add widget</button>
+        {menu && <ul aria-label="Hidden widgets" className="absolute top-full right-0 z-20 mt-2 w-max min-w-56 overflow-hidden rounded-xl border border-border bg-card py-1 shadow-lg">
+          {hidden.map(key => <li key={key}><button type="button" onClick={() => add(key)} className="block w-full px-4 py-2.5 text-left text-sm hover:bg-muted">{labels[key]}</button></li>)}
+        </ul>}
+      </div>}
+      <button type="button" aria-pressed={customizing} onClick={() => { setCustomizing(on => !on); setMenu(false); }} className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">{customizing ? "Done" : "Customize"}</button>
     </div>
     <SortableContext items={shown} strategy={stay}>
       <div ref={grid} className="grid gap-4 lg:grid-cols-6">
@@ -250,14 +258,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
             <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <SectionFallback title={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
           </Widget>{index === 0 && afterFirst && <div className="min-w-0 empty:hidden lg:col-span-6">{afterFirst}</div>}</Fragment>;
         })}
-        {hidden.length > 0 && <div className="relative lg:col-span-2">
-          <button type="button" aria-expanded={menu} onClick={() => setMenu(open => !open)}
-            className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-input text-sm text-muted-foreground hover:border-foreground/30 hover:text-foreground">
-            <Plus className="size-4" aria-hidden="true" />Add widget</button>
-          {menu && <ul aria-label="Hidden widgets" className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-56 overflow-hidden rounded-xl border border-border bg-card py-1 shadow-lg">
-            {hidden.map(key => <li key={key}><button type="button" onClick={() => add(key)} className="block w-full px-4 py-2.5 text-left text-sm hover:bg-muted">{labels[key]}</button></li>)}
-          </ul>}
-        </div>}
       </div>
     </SortableContext>
     <DragOverlay dropAnimation={{ duration: 200, easing: "cubic-bezier(.2,.8,.2,1)" }}>
