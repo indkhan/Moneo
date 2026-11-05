@@ -110,9 +110,9 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');
   const suggested=()=>cedar().getByRole('button',{name:/^Select 1 like this: Cedar Cooperative/});
   await expect(suggested()).toBeVisible();
-  await (await rules()).getByRole('button',{name:'Disable',exact:true}).click();await expect(page.getByText('Disabled (1)')).toBeVisible();
+  await (await rules()).getByRole('button',{name:/^Disable rule for Cedar Cooperative/}).click();await expect(page.getByText('Disabled (1)')).toBeVisible();
   await expect(suggested()).toHaveCount(0);
-  await (await rules()).getByRole('button',{name:'Enable',exact:true}).click();await expect(page.getByText('Disabled (1)')).toHaveCount(0);
+  await (await rules()).getByRole('button',{name:/^Enable rule for Cedar Cooperative/}).click();await expect(page.getByText('Disabled (1)')).toHaveCount(0);
   await expect(suggested()).toBeVisible();
   // Using the suggestion selects the entry and fills the bar.
   await suggested().click();await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toHaveValue('QA Groceries');await expect(queue()).toContainText('1 selected');
