@@ -1,0 +1,62 @@
+Delegated task node:delegated-task:command%3Amcp%3A736c3475-3152-4638-8395-8b1173bef9e5%3Adelegate-task%3A80107a37-7a0b-461c-9b80-156f28311255 (Sol review: money, auth, schema) [completed]:
+- **P2 — `app/money/organization/review-form.tsx:41`: Selecting a suggestion retains unrelated selected transactions while replacing the category and merchant for the entire selection.**  
+  **Scenario:** Select grocery entries, then click “Select … like this” on a taxi suggestion. The grocery entries remain selected, but `fill(proposal)` changes the shared target to the taxi merchant/category. Pressing Apply sends that patch for every selected row; `createReview` applies it immediately.  
+  **Smallest fix:** Replace the selection with the matching suggestion group, as before, or preserve existing selections only when their target matches the clicked suggestion.
+
+No additional serious defect was verified in the portions read.
+
+**Review coverage limitation:** Tool output was truncated, so I cannot honestly claim the requested complete review. Portions of `app/money/organization/review-form.tsx`, `app/money/wealth/page.tsx`, and surrounding code across the scope remain unread. The changed-file diffs were requested, but that does not establish full coverage. Next.js documentation was unavailable at `node_modules/next/dist/docs/`.
+
+No files were edited and no tests, database gates, commits, pushes, or GitHub comments were run.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A736c3475-3152-4638-8395-8b1173bef9e5%3Adelegate-task%3A5bccfe60-adda-4a03-928f-8c12feeeaba1 (Sol review: UI, recovery, E2E) [completed]:
+1. **P2 — Bulk high-confidence acceptance exceeds the action’s limit** — `components/mission-control.tsx:207`  
+   The button submits every high-confidence limit, but `decideAgentProposals` rejects arrays longer than 100. A run with 101 qualifying category/currency pairs shows a confirmation that always fails without applying anything. **Smallest fix:** cap this selection at 100, matching the existing “Accept all” implementation, and label it as a batch.
+
+2. **P2 — Missing-rate warnings use only the displayed history page** — `app/plan/currency/page.tsx:43`  
+   The page claims a currency pair has no saved rate when its rate falls outside the latest 100 records. For example, 100 newer EUR/USD rates hide an existing CHF/EUR rate and produce a false “No CHF to EUR rate saved yet” warning. **Smallest fix:** query pair existence separately from the limited history list.
+
+3. **P2 — Currency picker retains stale values after server updates** — `components/currency-select.tsx:38`  
+   The picker initializes its submitted currency from `defaultValue` once and never updates it when that prop changes. In the forecast editor, undoing a currency change can update the saved preferences while the mounted picker still submits the previous currency on the next save. **Smallest fix:** key the forecast editor form by the preferences version, or explicitly synchronize the picker when its saved value changes. The mounted-component behavior is verified statically; the navigation scenario was not run.
+
+Read the changed hunks for every path in scope, including all E2E specs. No in-scope changed file was left unread. Auth routes were excluded as assigned to the other reviewer.
+
+No files changed and no app, browser, or database checks ran. Local Next documentation was unavailable at `node_modules/next/dist/docs/`.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Aad1b6865-07da-47b3-80c7-9128b36c5ae7%3Adelegate-task%3A0b8664e4-e71b-4e86-b9d7-345a06a74f90 [completed]:
+The SQL fixture work is done: the migration gate passes on both fresh and upgrade, and `npm test` and lint pass on committed HEAD. The tree is clean and nothing has been pushed.
+
+**HEAD:** `75b79dd76b3e008daaf906a62b1728d5bfebf4e1` on `t3/user-testing-audit`
+
+**Commits (6):**
+| SHA | Change |
+|---|---|
+| `b22905f6` | Runs each SQL fixture in its own savepoint, with a unit test |
+| `08f12d21` | Stale import and metadata fixtures now expect PT409 instead of `serialization_failure` |
+| `fb917e0d` | Organization fixtures no longer collide with the default Groceries category |
+| `9b2ccc5a` | Reset and isolation fixtures now cover identifiers, voice calls, artifacts, cards and row decisions, plus a foreign-workspace denial case for `undo_import_row_decision` |
+| `de9fd93f` | `reviewed-balances.sql` now asserts date-only closing balance semantics |
+| `75b79dd7` | `settings-atomic.sql` sends the required `voice` preference |
+
+**Gate results (run one at a time on HEAD):**
+- **`node supabase/tests/migrations.mjs`:** passes. Fresh replayed 102 migrations and 49 SQL regressions. Upgrade had 0 pending migrations, ran the same 49 regressions, and its schema matched fresh. Rollback was verified.
+- **`npm test`:** 1302 passed, 10 skipped (default gated tests), 0 failed.
+- **`npm run lint`:** passes, including the privacy check.
+
+**Failures diagnosed:**
+- **`edit_assumption` P0002:** this was fixture leakage, not an app bug. `delete-account.sql` calls `reset_workspace()`, which sets `moneo.planning_undo` for the rest of the transaction, so audit rows were skipped in the later `planning-history.sql`. In the app each RPC runs in its own transaction, so it can't leak this way. The savepoints fix this for all fixtures.
+- **`reviewed-balances.sql`:** the two "ambiguous" assertions predated migration `202610190003`, which made a date-only balance that day's closing balance on purpose. I replaced them with stricter checks on status, exact amount and, on the first check, the pending hold. The ambiguity checks for reviewed balances are unchanged.
+
+**For Sol to check:**
+- **Balance change:** the two `reviewed-balances.sql` changes are the only places an existing financial assertion changed meaning, so they deserve the closest look. A timestamped posting later on the same day as a date-only baseline now counts as already included in that balance, which is what the migration specifies.
+- **Fixture isolation:** fixtures no longer see each other's leftovers, and the schema comparison now runs after they roll back. Any fixture that relied on an earlier one would have failed this run, and none did.
+
+**Unresolved:**
+- **`run-reviewed-balances.mjs`:** this standalone runner fails on the migrated QA database because it re-applies its already-applied migration before the fixture runs. I didn't change it, and the full gate covers the same fixture.
+- **Not run, as you asked:** `build`, `acceptance:fast`, `acceptance:required`, the production browser suite, push, and PR #140. The monthly cleanup invariant still needs its production browser run.
+
+Ready for Sol's findings.
