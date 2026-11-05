@@ -17,8 +17,11 @@ it.skipIf(process.env.RUN_IMPORT_ROW_UNDO_DB_TESTS !== "1")("reopens exact decis
       else {
         const [applied] = await tx`select statements from supabase_migrations.schema_migrations where version='202611040004'`;
         expect(applied, "Existing row decision schema must be tracked by its migration").toBeDefined();
-        expect(applied.statements.join("\n").replaceAll("\r\n", "\n").trim()).toBe(migration);
+        // The CLI ledger splits statements, dropping their semicolons and blank lines.
+        const comparable = (sql: string) => sql.replace(/[;\s]/g, "");
+        expect(comparable(applied.statements.join("\n"))).toBe(comparable(migration));
       }
+      await tx.unsafe(readFileSync("supabase/migrations/202611040005_import_row_undo_correction_history.sql", "utf8"));
       const actor = randomUUID(), other = randomUUID(), account = randomUUID(), imported = randomUUID(), source = randomUUID(), balance = randomUUID();
       await tx`insert into auth.users(id,email) values(${actor},${`qa-${actor}@example.invalid`}),(${other},${`qa-${other}@example.invalid`})`;
       const [{ id: workspace }] = await tx`select id from public.workspaces where owner_id=${actor}`;
@@ -74,6 +77,15 @@ it.skipIf(process.env.RUN_IMPORT_ROW_UNDO_DB_TESTS !== "1")("reopens exact decis
       await expect(tx.savepoint(sp => sp`select public.undo_import_row_decision(${accepted.id})`)).rejects.toThrow(/later transaction changes/);
       expect((await tx`select status from public.source_transactions where id=${source}`)[0].status).toBe("accepted");
       expect((await tx`select undone_at from public.import_row_decisions where id=${accepted.id}`)[0].undone_at).toBeNull();
+      // Correction history is retained after Undo, so both states refuse with the same honest reason.
+      const version = async () => (await tx`select version from public.transactions where id=${target}`)[0].version;
+      await tx`select public.correct_transaction(${target},${await version()},'Groceries','Corrected')`;
+      await expect(tx.savepoint(sp => sp`select public.undo_import_row_decision(${accepted.id})`)).rejects.toThrow(/correction history is kept/);
+      const [{ id: correction }] = await tx`select id from public.correction_events where transaction_id=${target} and not undone`;
+      await tx`select public.undo_transaction_correction(${correction},${await version()})`;
+      await expect(tx.savepoint(sp => sp`select public.undo_import_row_decision(${accepted.id})`)).rejects.toThrow(/correction history is kept/);
+      expect((await tx`select status from public.source_transactions where id=${source}`)[0].status).toBe("accepted");
+      expect(await tx`select id from public.transactions where id=${target}`).toHaveLength(1);
       await tx`select public.reset_workspace()`;
       expect(await tx`select id from public.import_row_decisions where workspace_id=${workspace}`).toHaveLength(0);
       const [{ id: replacement }] = await tx`select id from public.workspaces where owner_id=${actor}`;
