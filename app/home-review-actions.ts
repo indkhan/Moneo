@@ -62,11 +62,11 @@ export async function loadUncategorizedGroups() {
 const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.number().int().min(0) }).strict()).min(1).max(1000), categoryId: z.uuid(), key: z.string().max(1000) });
 
 /**
- * Categorizes a group through the audited organization review, 50 rows per batch, and saves a rule so later syncs
- * categorize the same description by themselves. Rows a person corrected meanwhile are left alone; each batch can be undone.
+ * Categorizes a group through the audited organization review, 50 rows per batch. Only when the person asks does it also
+ * save a rule, so later syncs categorize the same description by themselves. Rows a person corrected meanwhile are left alone; each batch can be undone.
  * A failure comes back as `error` with the groups applied before it, because production hides a thrown action's message.
  */
-export async function categorizeGroups(inputs: z.input<typeof groupInput>[]): Promise<{ applied: Record<string, number>; error?: string }> {
+export async function categorizeGroups(inputs: z.input<typeof groupInput>[], remember = false): Promise<{ applied: Record<string, number>; error?: string }> {
   const groups = z.array(groupInput).min(1).max(30).safeParse(inputs);
   if (!groups.success) return { applied: {}, error: "These transactions could not be categorized. Reload and try again." };
   const context = await requireWorkspace();
@@ -74,7 +74,7 @@ export async function categorizeGroups(inputs: z.input<typeof groupInput>[]): Pr
   const applied: Record<string, number> = {};
   let error: string | undefined;
   try {
-    for (const group of groups.data) applied[group.key] = await categorize(context, group);
+    for (const group of groups.data) applied[group.key] = await categorize(context, group, remember === true);
   } catch (cause) {
     console.error("categorizeGroups failed", cause);
     error = cause instanceof z.ZodError || !(cause instanceof Error) ? "Could not categorize these transactions. Reload and try again." : cause.message;
@@ -83,13 +83,13 @@ export async function categorizeGroups(inputs: z.input<typeof groupInput>[]): Pr
   return { applied, error };
 }
 
-async function categorize({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, { rows, categoryId, key }: z.infer<typeof groupInput>) {
+async function categorize({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, { rows, categoryId, key }: z.infer<typeof groupInput>, remember: boolean) {
   let applied = 0;
   for (let offset = 0; offset < rows.length; offset += 50) {
     const current = await loadOrganizationSuggestions(supabase, workspace.id, rows.slice(offset, offset + 50));
     if (!current.proposals.length) continue;
     const evidence = [...new Map(current.proposals.flatMap(item => item.evidence).map(row => [row.id, row])).values()];
-    const rule = offset === 0 && key.length >= 3 && current.proposals.every(item => item.descriptionKey === key) ? key : null;
+    const rule = remember && offset === 0 && key.length >= 3 && current.proposals.every(item => item.descriptionKey === key) ? key : null;
     const created = await supabase.rpc("create_organization_review", { p_rows: current.proposals.map(item => ({ id: item.transactionId, version: item.version })),
       p_patch: { category_id: categoryId }, p_merchant_name: null, p_rule_key: rule, p_evidence: evidence, p_request_id: crypto.randomUUID() });
     if (created.error) throw new Error(created.error.message);

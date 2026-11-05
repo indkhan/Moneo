@@ -39,12 +39,13 @@ test('noisy imported spending retains exact sources through reviewed organizatio
    await page.getByLabel('Financial statement files').setInputFiles({name:filename,mimeType:'text/csv',buffer:Buffer.from(csv)});expect((await inspected).ok()).toBe(true);
    await expect(page.getByText('Automatic interpretation unavailable. Choose the columns below.',{exact:true})).toBeVisible({timeout:20000});
    await page.getByLabel('Account name',{exact:true}).fill('Organization imported account');
-   for(const name of ['Date','Description','Amount','External ID'])await page.getByRole('combobox',{name,exact:true}).selectOption(name==='External ID'?'id':name.toLowerCase());
-   await page.getByRole('combobox',{name:'Source numeric convention'}).selectOption('decimal-dot');
+   await page.getByText('More columns (optional)').click();
+   for(const name of ['Date','Description','Amount','Transaction ID'])await page.getByRole('combobox',{name,exact:true}).selectOption(name==='Transaction ID'?'id':name.toLowerCase());
+   await page.getByRole('combobox',{name:'Number format in your file'}).selectOption('decimal-dot');
    const previewed=page.waitForResponse(response=>response.url().endsWith('/api/imports/inspect')&&response.request().method()==='POST');
    await page.getByRole('button',{name:'Preview correction',exact:true}).click();expect((await previewed).ok()).toBe(true);
    const confirmed=page.waitForResponse(response=>response.url().endsWith('/api/imports/confirm')&&response.request().method()==='POST');
-   await page.getByRole('button',{name:'Continue',exact:true}).click();const response=await confirmed;expect(response.ok()).toBe(true);
+   await page.getByRole('button',{name:'Start import',exact:true}).click();const response=await confirmed;expect(response.ok()).toBe(true);
    const {importId}=await response.json();expect(importId).toMatch(/^[0-9a-f-]{36}$/);
    await expect.poll(async()=>{const [row]=await db`select status from public.imports where id=${importId} and workspace_id=${workspace!}`;return row.status;},{timeout:60000}).toBe('completed');
    await page.reload();
@@ -65,13 +66,13 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   const impact=()=>page.getByRole('region',{name:'Organization impact preview'});
   // One step: Apply is the approval; the rule box is ticked by default.
   const apply=async(saveRule:boolean)=>{
-   const box=queue().getByRole('checkbox',{name:'Do the same for future entries',exact:false});if(saveRule)await box.check();else await box.uncheck();
+   const box=queue().getByRole('checkbox',{name:'Suggest the same for future entries',exact:false});if(saveRule)await box.check();else await box.uncheck();
    await queue().getByRole('button',{name:/^Apply to \d+$/}).click();await expect(impact().getByRole('heading',{name:/^Applied/})).toBeVisible();
   };
   const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').first().click();const disabled=details.locator('details');if(await disabled.count()&&!await disabled.evaluate(node=>(node as HTMLDetailsElement).open))await disabled.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
   await selectCedar();
   await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();
-  await expect(queue().getByRole('status')).toContainText('unavailable');
+  await expect(queue().getByRole('status').filter({ hasText: 'unavailable' })).toContainText('unavailable',{timeout:30000});
   await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toBeEnabled();
   // Controlled delayed response validates browser draft ownership, not model quality.
   let fulfill!:()=>Promise<void>;let requested!:()=>void;
@@ -79,7 +80,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await page.route('**/api/money/organization/suggestions',async route=>{fulfill=()=>route.fulfill({json:{providerStatus:'available',proposals:rows.filter(row=>row.description.includes('CEDAR')).map(row=>({transactionId:row.id,basis:'provider-suggestion',merchantId:null,merchantName:'Obsolete suggestion',categoryId:category,evidenceQuote:'CEDAR COOPERATIVE'}))}});requested();});
   await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();await requestStarted;
   await pick('Merchant','Cedar Cooperative');await fulfill();
-  await expect(queue().getByRole('status')).toContainText('draft changed');
+  await expect(queue().getByRole('status').filter({ hasText: 'draft changed' })).toContainText('draft changed');
   await expect(queue().getByRole('combobox',{name:'Merchant',exact:true})).toHaveValue('Cedar Cooperative');
   await page.unroute('**/api/money/organization/suggestions');
   await pick('Category','QA Groceries');
@@ -107,11 +108,11 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   expect((await db`select count(*)::int count from public.categories where workspace_id=${workspace!} and lower(name)='qa groceries'`)[0].count).toBe(1);
   const originalSources=[...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} order by id`];
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');
-  const suggested=()=>cedar().getByRole('button',{name:'Cedar Cooperative · QA Groceries',exact:true});
+  const suggested=()=>cedar().getByRole('button',{name:/^Select 1 like this: Cedar Cooperative/});
   await expect(suggested()).toBeVisible();
-  await (await rules()).getByRole('button',{name:'Disable',exact:true}).click();await expect(page.getByText('Disabled (1)')).toBeVisible();
+  await (await rules()).getByRole('button',{name:/^Disable rule for Cedar Cooperative/}).click();await expect(page.getByText('Disabled (1)')).toBeVisible();
   await expect(suggested()).toHaveCount(0);
-  await (await rules()).getByRole('button',{name:'Enable',exact:true}).click();await expect(page.getByText('Disabled (1)')).toHaveCount(0);
+  await (await rules()).getByRole('button',{name:/^Enable rule for Cedar Cooperative/}).click();await expect(page.getByText('Disabled (1)')).toHaveCount(0);
   await expect(suggested()).toBeVisible();
   // Using the suggestion selects the entry and fills the bar.
   await suggested().click();await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toHaveValue('QA Groceries');await expect(queue()).toContainText('1 selected');
@@ -124,7 +125,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await expect.poll(async()=>{const [row]=await db`select category_id,note,version from public.transactions where id=${moss.id} and workspace_id=${workspace!}`;return row;}).toMatchObject({category_id:category,note:'Retained owner correction',version:1});
   await page.keyboard.press('Escape');await expect(detail).toHaveCount(0);await page.goto('/money/organization');
   await expect(page).toHaveURL(/\/money\/organization$/);
-  await expect(page.getByRole('heading',{name:'Organize spending',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Organize transactions',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'Organization suggestions'}).getByRole('listitem').filter({hasText:'MOSS TRAVEL'})).toHaveCount(0);
   expect([...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} and id=any(${originalSources.map(row=>row.id)}) order by id`]).toEqual(originalSources);
   await page.screenshot({path:testInfo.outputPath('native-organization-rules-correction.png'),fullPage:true});

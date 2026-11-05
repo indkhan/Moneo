@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
-import { replayMigrations } from "./migration-replay.mjs";
+import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
 process.loadEnvFile(".env");
 const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
@@ -19,7 +19,7 @@ try {
     const files = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort();
     await replayMigrations(tx, files.map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      if (file.endsWith("_initial.sql")) sql = sql.slice(0, sql.indexOf("insert into storage.buckets"));
+      sql = applicationMigrationSql(file, sql, schema);
       return { file, sql: isolated(sql) };
     }), "fresh MNE006");
     const tests = ["pending-holds.sql", "import-review.sql", "import-control.sql", "import-reimport.sql", "workspace-isolation.sql"];

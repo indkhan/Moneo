@@ -23,6 +23,9 @@ function signed(minor: string, currency: string, locale: string) {
 }
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
+// A phone shows what a row is, when, and how much; the rest is one tap away in the drawer.
+const phoneHidden = (column: string) => ["date", "category", "merchant", "account"].includes(column) ? "max-md:hidden" : "";
+
 /**
  * Dense ledger table. Sorting and pagination are server-side (keyset, in the
  * URL); this component adds selection, grouping headers and keyboard
@@ -49,8 +52,9 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
       cell: ({ row }) => <input type="checkbox" aria-label={`Select ${row.original.description}`} checked={selected.includes(row.original.id)} onChange={() => toggle(row.original.id)} /> },
     { id: "date", header: () => <Link className="hover:text-brand" aria-label={`Sort by date (currently ${sortName})`} href={sortHrefs.date} scroll={false}>Date {arrow("date")}</Link>,
       cell: ({ row }) => <span className="font-mono text-muted-foreground">{row.original.posted_on}</span> },
-    { id: "description", header: "Description", cell: ({ row }) => <span className="flex min-w-0 items-center gap-2">
-      <Link className="truncate font-medium text-foreground hover:text-brand hover:underline" href={href(row.original.id)} scroll={false}>{row.original.description}</Link>
+    { id: "description", header: "Description", cell: ({ row }) => <span className="flex min-w-0 flex-wrap items-center gap-x-2 md:flex-nowrap">
+      <Link className="min-w-0 max-w-full truncate font-medium text-foreground hover:text-brand hover:underline" href={href(row.original.id)} scroll={false}>{row.original.description}</Link>
+      <span className="w-full font-mono text-xs text-muted-foreground md:hidden">{row.original.posted_on}</span>
       {row.original.kind !== "ordinary" || row.original.status !== "posted" ? <span className="shrink-0 text-[11px] text-muted-foreground">{[row.original.kind !== "ordinary" && kindLabel(row.original.kind), row.original.status !== "posted" && statusLabel(row.original.status)].filter(Boolean).join(" · ")}</span> : null}
       {row.original.review_reasons?.length ? <span title="Needs review" className="shrink-0 rounded-[5px] border border-warning px-1.5 font-mono text-[11px] text-warning">review</span> : null}
       {row.original.tags?.map(tag => <span key={tag} className="hidden shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground lg:inline">{tag}</span>)}
@@ -70,6 +74,8 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "Escape" && openId) { router.push(closeHref, { scroll: false }); return; }
       if (typing(event.target) || !rows.length) return;
+      // Enter belongs to the link, button or box that has focus.
+      if (event.key === "Enter" && event.target instanceof Element && event.target.closest("a, button, summary, input")) return;
       const move = (index: number) => { event.preventDefault(); const next = Math.min(rows.length - 1, Math.max(0, index)); setActive(next); if (openId) router.push(href(rows[next].id), { scroll: false }); };
       if (event.key === "j" || event.key === "ArrowDown") move(active + 1);
       else if (event.key === "k" || event.key === "ArrowUp") move(active - 1);
@@ -81,16 +87,23 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
     return () => window.removeEventListener("keydown", onKey);
   });
   useEffect(() => { body.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
+  // Closing the drawer puts focus back on the row it came from.
+  const wasOpen = useRef(openId);
+  useEffect(() => {
+    const closed = wasOpen.current && !openId ? wasOpen.current : null;
+    wasOpen.current = openId;
+    if (closed) body.current?.querySelector<HTMLElement>(`a[href*="transaction=${closed}"]`)?.focus();
+  }, [openId]);
 
   if (!rows.length) return <p className="rounded-xl border border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground">No transactions match. Remove a filter or import a statement.</p>;
   const tableRows = table.getRowModel().rows;
   const targets = rows.filter(row => selected.includes(row.id));
   return <>
-    <div className="overflow-auto rounded-[18px] border border-border bg-card [max-height:calc(100dvh-12rem)]">
-      <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
+    <div className="overflow-auto rounded-[18px] border border-border bg-card md:[max-height:calc(100dvh-12rem)]">
+      <table className="w-full border-separate md:min-w-[720px] border-spacing-0 text-left text-sm">
         <thead className="sticky top-0 z-10 bg-card font-mono text-[11px] uppercase tracking-[0.06em] text-subtle">
           {table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header =>
-            <th key={header.id} scope="col" className={`whitespace-nowrap border-b border-border px-3 py-3.5 font-normal ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
+            <th key={header.id} scope="col" className={`whitespace-nowrap border-b border-border px-3 py-3.5 font-normal ${phoneHidden(header.column.id)} ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
         </thead>
         <tbody ref={body}>
           {tableRows.map((row, index) => {
@@ -104,7 +117,7 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
               </th></tr>}
               <tr data-index={index} data-active={index === active || undefined} onClick={() => setActive(index)}
                 className={`${index === active ? "bg-muted" : "hover:bg-muted/60"} ${row.original.id === openId ? "outline outline-1 -outline-offset-1 outline-brand" : ""}`}>
-                {row.getAllCells().map(cell => <td key={cell.id} className={`max-w-xs whitespace-nowrap border-b border-border px-3 py-3.5 ${cell.column.id === "amount" ? "text-right" : ""}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
+                {row.getAllCells().map(cell => <td key={cell.id} className={`whitespace-nowrap border-b border-border px-3 py-3.5 ${phoneHidden(cell.column.id)} ${cell.column.id === "description" ? "max-md:w-full max-md:max-w-0 md:max-w-xs" : "md:max-w-xs"} ${cell.column.id === "amount" ? "text-right" : ""}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
               </tr>
             </Fragment>;
           })}

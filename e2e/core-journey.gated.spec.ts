@@ -85,10 +85,10 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       });
       await expect(page.getByText("august.csv (1 of 1)")).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "Continue", exact: true }),
+        page.getByRole("button", { name: "Start import", exact: true }),
       ).toBeVisible();
       await page
-        .getByRole("button", { name: "Continue", exact: true })
+        .getByRole("button", { name: "Start import", exact: true })
         .click();
       const firstImport = page.getByRole("region", { name: "Import history" })
         .locator("article").filter({ hasText: "august.csv" });
@@ -206,12 +206,12 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       });
       await expect(page.getByText("september.csv (1 of 1)")).toBeVisible();
       await page
-        .getByRole("button", { name: "Continue", exact: true })
+        .getByRole("button", { name: "Start import", exact: true })
         .click();
       const newerImport = page.getByRole("region", { name: "Import history" })
         .locator("article").filter({ hasText: "september.csv" });
       await expect(newerImport.getByText("completed")).toBeVisible({ timeout: 60_000 });
-      await expect(newerImport).toContainText(/2 new.*1 for review/);
+      await expect(newerImport).toContainText(/2 new.*1 to review/);
       await page.goto("/");
       await expect(
         page.getByRole("heading", { name: "Overview" }),

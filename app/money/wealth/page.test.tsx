@@ -1,7 +1,9 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-vi.mock("./actions", () => ({ saveWealthItem: async () => {}, removeWealthItem: async () => {}, undoWealthEvent: async () => {} }));
+vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock("./actions", () => ({ saveWealthItem: async () => {}, saveWealthItemSafely: async () => ({}), removeWealthItemSafely: async () => ({}), undoWealthEventSafely: async () => ({}) }));
+vi.mock("next/link", () => ({ default: "a" }));
 const item = (id: string, kind: string, name: string, amount_minor: string, as_of: string) => ({ id, kind, name, amount_minor, as_of, currency_code: "EUR", quantity_text: kind === "holding" ? "1" : null, unit_price_text: kind === "holding" ? "20.00" : null,
   cost_basis_minor: null, linked_account_id: null, payment_account_id: null, annual_rate_text: kind === "debt" ? "0" : null, monthly_payment_minor: null, next_payment_on: null,
   payment_assumption_id: null, payment_transaction_id: null, version: 1, removed_at: null });
@@ -31,5 +33,9 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   expect(html).toContain("Investments");
   expect(html).toContain("Debts");
   expect(html).toContain("1 valuation is dated before today");
-  expect(html).toContain("Undo wealth change");
+  expect(html).toContain("Undo Index fund change"); expect(html).toContain("Remove Car loan (keep history)");
+  // Debts are owed in plain amounts, and the outdated loan is named as left out rather than dropped silently.
+  expect(html).toContain("Amount you still owe (EUR)"); expect(html).toContain('value="15.00"');
+  expect(html).toContain("Older valuations left out"); expect(html).toContain("-EUR 15.00"); expect(html).toContain('href="#item-loan"');
+  expect(html).toContain("Net worth by month"); expect(html).toContain(">Today<");
 });

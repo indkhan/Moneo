@@ -1,4 +1,5 @@
 "use server";
+import { safely, type SafeState } from "@/lib/safe-action";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -27,3 +28,5 @@ export async function undoForecastPreferences(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout"); redirect("/plan");
 }
+export async function saveForecastPreferencesSafely(_state: SafeState, form: FormData) { return safely(form, saveForecastPreferences); }
+export async function undoForecastPreferencesSafely(_state: SafeState, form: FormData) { return safely(form, undoForecastPreferences); }

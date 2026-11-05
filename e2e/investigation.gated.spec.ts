@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test("owned September/August investigation uses exact splits/refunds, complete support, FX and read-only scenarios", async ({ browser }, testInfo) => {
   test.setTimeout(180_000);
@@ -90,7 +91,7 @@ test("owned September/August investigation uses exact splits/refunds, complete s
     await expect(page.getByRole("heading", { name: "Investigate your money" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Comparison results" })).toContainText("EUR 25.30");
     await expect(page.getByRole("region", { name: "Interpreted scope" })).toContainText("Leaving out eventsBerlin trip");
-    await expect(page.getByRole("listbox", { name: "Only these (empty means all)" }).first()).toHaveValues([account]);
+    await expect(page.locator(`input[name="accounts"][value="${account}"]`)).toBeChecked();
     await page.screenshot({ path: ".qa/mne017-investigation-desktop.png", fullPage: true });
     await page.getByRole("link", { name: "Open records (28)" }).click();
     await expect(page.getByRole("heading", { name: "Supporting records (28)" })).toBeVisible();
@@ -103,19 +104,7 @@ test("owned September/August investigation uses exact splits/refunds, complete s
     writeFileSync(".qa/mne017-browser-result.json", JSON.stringify({ result: "pass", syntheticOnly: true, rowPages: [25, 4], eurCurrentMinor: "2530", eurBaseCurrentMinor: "2630", canonicalMutations: false }));
   } finally {
     await context.close();
-    if (workspace) await db.begin(async tx => {
-      await tx`delete from public.transaction_sources where source_transaction_id in (select id from public.source_transactions where workspace_id=${workspace!})`;
-      for (const table of ["recurring_series_transactions", "recurring_series", "transaction_splits", "transaction_split_sets", "transactions", "fx_rates", "accounts", "categories", "merchants", "workspace_settings"])
-        await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-      await tx`delete from public.source_transactions where workspace_id=${workspace!}`;
-      await tx`delete from public.imports where workspace_id=${workspace!}`;
-      await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-    });
-    if (foreignWorkspace) await db.begin(async tx => {
-      for (const table of ["accounts", "categories", "workspace_settings"]) await tx`delete from ${tx("public." + table)} where workspace_id=${foreignWorkspace!}`;
-      await tx`delete from public.workspaces where id=${foreignWorkspace!} and owner_id=${foreignUser!}`;
-    });
-    for (const actor of [user, foreignUser]) if (actor) { expect((await admin.auth.admin.deleteUser(actor)).error).toBeNull(); expect((await db`select id from auth.users where id=${actor}`).length).toBe(0); }
+    for (const actor of [user, foreignUser]) if (actor) { await deleteDisposableUser(db, actor); expect((await db`select id from auth.users where id=${actor}`).length).toBe(0); }
     if (workspace) expect((await db`select id from public.workspaces where id=${workspace}`).length).toBe(0);
     if (foreignWorkspace) expect((await db`select id from public.workspaces where id=${foreignWorkspace}`).length).toBe(0);
     if (user) unlinkSync(journal);

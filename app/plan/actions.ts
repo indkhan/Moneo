@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { scheduleCadences } from "@/lib/finance/cadences";
@@ -11,6 +12,13 @@ import { calendarDate } from "@/lib/finance/calendar";
 const date = z.iso.date();
 const assumptionId = z.uuid();
 const assumptionCadence = z.enum(scheduleCadences);
+const currencyCode = z.string().regex(/^[A-Z]{3}$/, "Choose a currency from the list");
+
+/** Forms ask Income or Expense, so people type a plain amount; storage stays signed. Without a choice the typed sign stands. */
+function signedAmount(form: FormData, typed: bigint) {
+  const size = typed < 0n ? -typed : typed;
+  return form.get("direction") === "in" ? size : form.get("direction") === "out" ? -size : typed;
+}
 
 export async function updateGoalPlan(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
@@ -44,7 +52,7 @@ export async function undoGoalPlan(form: FormData) {
   revalidatePath("/", "layout"); redirect("/plan");
 }
 
-async function editAssumption(form: FormData, patch: Record<string, unknown>) {
+async function editAssumption(form: FormData, patch: Record<string, unknown>, destination = "/plan") {
   const { supabase } = await requireWorkspace();
   const id = assumptionId.parse(form.get("assumptionId"));
   const version = z.coerce.number().int().min(1).max(2147483647).parse(form.get("version"));
@@ -54,13 +62,13 @@ async function editAssumption(form: FormData, patch: Record<string, unknown>) {
   });
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
-  redirect("/plan");
+  redirect(destination);
 }
 
 export async function createGoal(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const name = z.string().trim().min(1).max(120).parse(form.get("name"));
-  const currency = z.string().regex(/^[A-Z]{3}$/).parse(form.get("currency"));
+  const currency = currencyCode.parse(form.get("currency"));
   const target = parseManualAmount(String(form.get("target") ?? ""), currency);
   if (target <= 0n) throw new Error("Goal target must be positive");
   const targetDate = form.get("targetDate") ? date.parse(form.get("targetDate")) : null;
@@ -110,7 +118,7 @@ export async function addAssumption(form: FormData) {
   const { data: account, error: accountError } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).single();
   if (accountError || !account) throw new Error("Account not found");
-  const amount = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
+  const amount = signedAmount(form, parseManualAmount(String(form.get("amount") ?? ""), account.currency_code));
   const { error } = await supabase.from("financial_assumptions").insert({
     workspace_id: workspace.id, account_id: accountId, name, kind: amount >= 0n ? "income" : "expense",
     amount_minor: amount.toString(), currency_code: account.currency_code, cadence,
@@ -133,7 +141,7 @@ export async function updateAssumption(form: FormData) {
   const { data: existing, error: lookupError } = await supabase.from("financial_assumptions")
     .select("id, currency_code").eq("workspace_id", workspace.id).eq("id", id).single();
   if (lookupError || !existing) throw new Error("Assumption not found");
-  const amount = parseManualAmount(String(form.get("amount") ?? ""), existing.currency_code);
+  const amount = signedAmount(form, parseManualAmount(String(form.get("amount") ?? ""), existing.currency_code));
   await editAssumption(form, {
     name, amount_minor: amount.toString(), kind: amount >= 0n ? "income" : "expense",
     cadence, starts_on: startsOn, ends_on: endsOn,
@@ -146,7 +154,7 @@ export async function toggleAssumption(form: FormData) {
 }
 
 export async function deleteAssumption(form: FormData) {
-  await editAssumption(form, { removed: true });
+  await editAssumption(form, { removed: true }, "/plan?removed=assumption#history-heading");
 }
 
 export async function undoPlanningEvent(form: FormData) {
@@ -181,10 +189,23 @@ export async function addScenarioEvent(form: FormData) {
   const { data: scenario } = await supabase.from("scenarios").select("id")
     .eq("workspace_id", workspace.id).eq("id", scenarioId).is("removed_at", null).maybeSingle();
   if (!account || !scenario) throw new Error("Account or scenario not found");
-  const amount = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
+  const amount = signedAmount(form, parseManualAmount(String(form.get("amount") ?? ""), account.currency_code));
   const { error } = await supabase.from("scenario_overrides").insert({ workspace_id: workspace.id,
     scenario_id: scenarioId, account_id: accountId, name, amount_delta_minor: amount.toString(),
     currency_code: account.currency_code, cadence, starts_on: start });
   if (error) throw error;
   redirect(`/plan?scenario=${scenarioId}`);
 }
+
+export async function createGoalSafely(_state: SafeState, form: FormData) { return safely(form, createGoal); }
+export async function addAssumptionSafely(_state: SafeState, form: FormData) { return safely(form, addAssumption); }
+export async function setAllocationSafely(_state: SafeState, form: FormData) { return safely(form, setAllocation); }
+export async function updateGoalPlanSafely(_state: SafeState, form: FormData) { return safely(form, updateGoalPlan); }
+export async function undoGoalPlanSafely(_state: SafeState, form: FormData) { return safely(form, undoGoalPlan); }
+export async function undoReservationSafely(_state: SafeState, form: FormData) { return safely(form, undoReservation); }
+export async function toggleAssumptionSafely(_state: SafeState, form: FormData) { return safely(form, toggleAssumption); }
+export async function deleteAssumptionSafely(_state: SafeState, form: FormData) { return safely(form, deleteAssumption); }
+export async function updateAssumptionSafely(_state: SafeState, form: FormData) { return safely(form, updateAssumption); }
+export async function undoPlanningEventSafely(_state: SafeState, form: FormData) { return safely(form, undoPlanningEvent); }
+export async function addScenarioEventSafely(_state: SafeState, form: FormData) { return safely(form, addScenarioEvent); }
+export async function createScenarioSafely(_state: SafeState, form: FormData) { return safely(form, createScenario); }

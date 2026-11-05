@@ -6,7 +6,7 @@ import { STANDALONE_KINDS, cardTransactions, type CardTransaction } from "@/lib/
 import { transactionAccountOptions } from "@/lib/ai/transaction-proposals";
 
 export type ChatProposal = { id: string; kind: string; title: string; detail: string; status: string; result: { error?: string; href?: string; createdAccount?: boolean } | null;
-  accounts?: { id: string; name: string }[]; selected?: string | null; needsCash?: boolean; conflict_key?: string; transactions?: CardTransaction[] };
+  accounts?: { id: string; name: string }[]; selected?: string | null; createsCash?: boolean; conflict_key?: string; transactions?: CardTransaction[] };
 
 /** What a chat card shows for a proposal. Accepting or dismissing goes through decideAgentProposals. */
 export async function loadIouProposal(id: string): Promise<ChatProposal | null> {

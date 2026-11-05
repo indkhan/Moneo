@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -29,7 +30,7 @@ export async function editAccount(_state: { error?: string }, form: FormData): P
     return { error: error instanceof z.ZodError ? "Enter a name of 1 to 120 characters" : error instanceof Error ? error.message : "Could not update account" };
   }
   revalidatePath("/", "layout");
-  redirect("/money/accounts");
+  redirect(`/money/accounts?saved=account:${String(form.get("accountId"))}#account-${String(form.get("accountId"))}`);
 }
 
 export async function undoMoneyMetadata(form: FormData) {
@@ -66,7 +67,7 @@ export async function updateBalance(_state: { error?: string }, form: FormData):
     return { error: error instanceof z.ZodError ? "Check the amount and date" : error instanceof Error ? error.message : "Could not update balance" };
   }
   revalidatePath("/", "layout");
-  redirect("/money/accounts");
+  redirect(`/money/accounts?saved=balance:${String(form.get("accountId"))}#account-${String(form.get("accountId"))}`);
 }
 
 export async function undoBalance(form: FormData) {
@@ -123,3 +124,10 @@ export async function findTransfersBetweenOwnAccounts() {
   const { supabase, workspace } = await requireWorkspace();
   transfersRedirect(await linkOwnTransfers(supabase, workspace.id));
 }
+
+export async function addAccountSafely(_state: SafeState, form: FormData) { return safely(form, addAccount); }
+export async function addOwnAccountSafely(_state: SafeState, form: FormData) { return safely(form, addOwnAccount); }
+export async function undoMoneyMetadataSafely(_state: SafeState, form: FormData) { return safely(form, undoMoneyMetadata); }
+export async function undoBalanceSafely(_state: SafeState, form: FormData) { return safely(form, undoBalance); }
+export async function removeOwnAccountSafely(_state: SafeState, form: FormData) { return safely(form, removeOwnAccount); }
+export async function findTransfersSafely(_state: SafeState, form: FormData) { return safely(form, findTransfersBetweenOwnAccounts); }

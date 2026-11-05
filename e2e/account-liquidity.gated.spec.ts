@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable synthetic auth and reviewed migration head");
 test("Home and Plan retain paying-account gaps, timely funding, donor protections and recurring bills", async ({ browser }, testInfo) => {
@@ -26,6 +27,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     writeFileSync(recovery, JSON.stringify({ project, user, workspace, checking, savings, goal }));
     const now = new Date().toISOString(), today = now.slice(0, 10);
     const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const formattedTomorrow = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${tomorrow}T00:00:00Z`));
     const late = new Date(Date.parse(`${today}T00:00:00Z`) + 2 * 86400000).toISOString().slice(0, 10);
     await db.begin(async tx => {
       await tx`insert into public.workspace_settings(workspace_id,timezone,locale,ai_data_scopes,summary_cadence) values(${workspace!},'UTC','en-GB','{}','none') on conflict(workspace_id) do update set timezone='UTC',locale='en-GB',ai_data_scopes='{}',summary_cadence='none'`;
@@ -33,6 +35,8 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
       for (const [account, amount] of [[checking, "10000"], [savings, "100000"]]) await tx`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,covered_transactions,actor_id) values(${workspace!},${account},${amount},'EUR',${now},'synthetic reviewed opening','reviewed_activity','[]'::jsonb,${user!})`;
       await tx`insert into public.financial_assumptions(workspace_id,account_id,kind,name,amount_minor,currency_code,cadence,starts_on,source,confirmed,enabled) values(${workspace!},${checking},'expense','Recurring bill QA',-50000,'EUR','monthly',${tomorrow},'recurring_confirmed',true,true)`;
       await tx`insert into public.forecast_preferences(workspace_id,currency_code,uncertainty_bps) values(${workspace!},'EUR',0)`;
+      // Available funds is not a default Home widget, so this user has added it.
+      await tx`insert into public.dashboard_layouts(workspace_id,items) values(${workspace!},${["planning", "upcoming"]})`;
       await tx`insert into public.goals(id,workspace_id,name,target_minor,currency_code) values(${goal},${workspace!},'Protected savings QA',90000,'EUR')`;
     });
     const cookies = new Map<string, string>();
@@ -48,16 +52,17 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await page.goto(`/?account=${checking}`);
     const home = page.getByRole("region", { name: "Available funds" });
     await expect(home).toContainText("EUR 600.00"); await expect(home).toContainText("Checking QA funding shortfall: EUR 400.00");
-    await expect(home).toContainText(tomorrow); await expect(home).toContainText("-EUR 400.00");
+    await expect(home).toContainText(formattedTomorrow); await expect(home).toContainText("-EUR 400.00");
     await expect(page.getByText("Recurring bill QA", { exact: false }).first()).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("home-checking.png"), fullPage: true });
     await home.getByRole("combobox", { name: "Paying account", exact: true }).selectOption(savings);
     await home.getByRole("button", { name: "Evaluate account", exact: true }).click();
     await expect(home).toContainText("Checking QA funding shortfall: EUR 400.00");
     await page.goto(`/plan?account=${checking}&horizon=3`);
-    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: "Liquid balance horizon", exact: true }) });
+    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: /^Your cash over the next/ }) });
     await expect(forecast).toContainText("Checking QA funding shortfall: EUR 400.00"); await expect(forecast).toContainText("EUR 600.00");
     await expect(forecast).toContainText("Recurring bill QA"); await expect(forecast).toContainText(tomorrow);
+    await forecast.getByText("Try a transfer", { exact: true }).click();
     await forecast.getByRole("combobox", { name: "Fund from (optional)", exact: true }).selectOption(savings);
     await forecast.getByLabel("Funding date", { exact: true }).fill(tomorrow);
     await forecast.getByLabel("Funding amount (EUR)", { exact: true }).fill("400.00");
@@ -66,7 +71,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await expect(forecast).toContainText("Internal funding in"); await page.screenshot({ path: testInfo.outputPath("plan-timely.png"), fullPage: true });
     await forecast.getByLabel("Funding date", { exact: true }).fill(late); await forecast.getByRole("button", { name: "Evaluate account", exact: true }).click();
     // GET navigation can commit the loading shell before the streamed plan arrives.
-    await expect(forecast.getByRole("heading", { name: "Liquid balance horizon", exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(forecast.getByRole("heading", { name: /^Your cash over the next/ })).toBeVisible({ timeout: 30_000 });
     await expect(forecast).toContainText("Checking QA funding shortfall: EUR 400.00"); await expect(forecast.getByLabel("Funding date", { exact: true })).toHaveValue(late);
     await page.screenshot({ path: testInfo.outputPath("plan-late.png"), fullPage: true });
     // Exact disposable donor reservation: only EUR100 can leave savings without invading protected funds.
@@ -99,11 +104,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
   } finally {
     await context.close().catch(() => {});
     try {
-      if (workspace) await db.begin(async tx => {
-        for (const table of ["insight_dismissals", "goal_reservation_events", "goal_allocations", "goal_events", "goals", "planning_events", "financial_assumptions", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-        await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-      });
-      if (user) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+      if (user) await deleteDisposableUser(db, user);
       if (workspace) expect((await db`select count(*)::int as count from public.workspaces where id=${workspace}`)[0].count).toBe(0);
       if (user) expect((await admin.auth.admin.getUserById(user)).data.user).toBeNull();
       if (user) {

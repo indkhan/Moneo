@@ -1,32 +1,35 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, pointerWithin, useSensor, useSensors,
-  type Announcements, type DragEndEvent, type DragOverEvent, type DragStartEvent, type UniqueIdentifier } from "@dnd-kit/core";
+  type Announcements, type CollisionDetection, type DragEndEvent, type DragMoveEvent, type DragStartEvent, type UniqueIdentifier } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { GripHorizontal, Plus, X } from "lucide-react";
 import { HomeCardSize } from "@/components/cards/card-view";
 import { CARD_SIZES, type CardSize } from "@/lib/cards/sizes";
+import { distanceToBox, dropSide, moveWidget, type Point } from "@/lib/home-grid-drop";
 import { resizeHomeCard, saveHomeLayout } from "./dashboard-actions";
 import { SectionFallback } from "./section-fallback";
 
 type Layout = { items: string[]; sizes: Record<string, CardSize> };
 type Drag = { id: string; from: string[]; clone: HTMLElement; width: number; height: number; touch: boolean };
 type Notice = { text: string; action?: { label: string; run: () => void } };
-export type HomeGridProps = Layout & { version: number; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]> };
+export type HomeGridProps = Layout & { version: number; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]>; afterFirst?: ReactNode };
 
 const CARD_KEY = "card:";
 // Widgets never shift under the dragged one: the order itself changes as it moves, and the grid lays out for real.
 const stay = () => null;
 // The page scrolls only when a widget is held right at the screen's edge: the default 20% band is most of a phone screen.
-const autoScroll = { threshold: { x: 0, y: 0.12 }, acceleration: 6 };
+const autoScroll = { threshold: { x: 0, y: 0.12 }, acceleration: 10 };
+// Plain text in a widget's heading row starts a drag too; its links and buttons keep working.
+const dragsWidget = (target: EventTarget) => target instanceof Element && !!target.closest("h2, h3") && !target.closest("a, button, input, select, textarea, summary");
 const nearest = (options: CardSize[], columns: number) => options.reduce((best, size) => Math.abs(CARD_SIZES[size].columns - columns) < Math.abs(CARD_SIZES[best].columns - columns) ? size : best);
 
 /**
  * Home's widgets in the user's order and widths. Drag a widget by its grip (or hold it on a phone) to move it, drag its right
  * edge to resize it, and hide or add widgets in place. Every change shows at once and saves in the background.
  */
-export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
+export function HomeGrid({ version, items, sizes, widgets, labels, options, afterFirst }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
   const currentLayout = useRef(layout);
   const currentWidgets = useRef(widgets);
@@ -42,10 +45,12 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
   const [notice, setNotice] = useState<Notice | null>(null);
   const [adding, setAdding] = useState<string[]>([]);
   const [menu, setMenu] = useState(false);
+  const [customizing, setCustomizing] = useState(false);
   const [said, setSaid] = useState("");
   const grid = useRef<HTMLDivElement>(null);
   const rects = useRef(new Map<string, { x: number; y: number }>());
-  const skip = useRef<UniqueIdentifier | null>(null);
+  const skip = useRef<string | null>(null);
+  const pointer = useRef<Point | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
@@ -75,7 +80,8 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
   const remember = () => { for (const [node, at] of measure()) rects.current.set(node.dataset.widget!, at); };
 
   useEffect(() => {
-    if (!notice) return;
+    // Something to act on stays until it is used, dismissed or replaced: slow readers must not lose Undo.
+    if (!notice || notice.action) return;
     const timer = setTimeout(() => setNotice(null), 6000);
     return () => clearTimeout(timer);
   }, [notice]);
@@ -114,13 +120,27 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     setSelected(null);
     setDrag({ id, from: layout.items, clone, width: node.offsetWidth, height: node.offsetHeight, touch });
   }
-  function dragOver({ active, over }: DragOverEvent) {
-    if (!over || over.id === active.id) { skip.current = null; return; }
-    // The widget it just swapped with is still under the pointer; wait until the pointer moves on.
-    if (over.id === skip.current) return;
-    skip.current = over.id;
+  /** A widget under the pointer, or else the nearest one, so empty space in a row or below the grid is somewhere to drop. */
+  const nearestWidget: CollisionDetection = args => {
+    pointer.current = args.pointerCoordinates;
+    const within = pointerWithin(args);
+    if (within.length || !args.pointerCoordinates) return within;
+    const at = args.pointerCoordinates;
+    return args.droppableContainers.flatMap(container => {
+      const rect = args.droppableRects.get(container.id);
+      return rect?.width ? [{ id: container.id, data: { droppableContainer: container, value: distanceToBox(rect, at) } }] : [];
+    }).sort((a, b) => a.data.value - b.data.value).slice(0, 1);
+  };
+  function dragMove({ active, over }: DragMoveEvent) {
+    const at = pointer.current;
+    if (!over || !at || over.id === active.id) { skip.current = null; return; }
+    const side = dropSide(over.rect, at);
+    // The widget it just moved past can still be nearest; wait until the pointer goes somewhere new.
+    const target = `${over.id}:${side}`;
+    if (target === skip.current) return;
+    skip.current = target;
     remember();
-    setLayout(current => ({ ...current, items: arrayMove(current.items, current.items.indexOf(String(active.id)), current.items.indexOf(String(over.id))) }));
+    setLayout(current => ({ ...current, items: moveWidget(current.items, String(active.id), String(over.id), side) }));
   }
   function dragEnd(event: DragEndEvent | null) {
     if (!drag) return;
@@ -215,16 +235,20 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     onDragCancel: ({ active }) => `Moving ${name(active.id)} was cancelled.`,
   };
 
-  return <DndContext id="home-grid" sensors={sensors} autoScroll={autoScroll} collisionDetection={pointerWithin} onDragStart={dragStart} onDragOver={dragOver} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
+  return <DndContext id="home-grid" sensors={sensors} autoScroll={autoScroll} collisionDetection={nearestWidget} onDragStart={dragStart} onDragMove={dragMove} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
     accessibility={{ announcements, screenReaderInstructions: { draggable: "Use the arrow keys to move this widget one place at a time." } }}>
+    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+      {customizing && <p className="mr-auto text-sm text-muted-foreground">Drag a widget by its handle, or focus the handle and use the arrow keys. On a phone, hold a widget to drag it.</p>}
+      <button type="button" aria-pressed={customizing} onClick={() => setCustomizing(on => !on)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">{customizing ? "Done" : "Customize"}</button>
+    </div>
     <SortableContext items={shown} strategy={stay}>
       <div ref={grid} className="grid gap-4 lg:grid-cols-6">
-        {shown.map(key => {
+        {shown.map((key, index) => {
           const size = resizing?.key === key ? resizing.size : layout.sizes[key] ?? "M";
-          return <Widget key={key} id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key} resizing={resizing?.key === key}
+          return <Fragment key={key}><Widget id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key || customizing} resizing={resizing?.key === key}
             onHide={() => hide(key)} onMoveKey={event => moveKey(key, event)} onResizeStart={event => startResize(key, event)} onResizeKey={event => resizeKey(key, event)}>
             <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <SectionFallback title={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
-          </Widget>;
+          </Widget>{index === 0 && afterFirst && <div className="min-w-0 empty:hidden lg:col-span-6">{afterFirst}</div>}</Fragment>;
         })}
         {hidden.length > 0 && <div className="relative lg:col-span-2">
           <button type="button" aria-expanded={menu} onClick={() => setMenu(open => !open)}
@@ -244,6 +268,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     {notice && <div role="status" className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 lg:bottom-6 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-4 rounded-xl bg-foreground px-4 py-3 text-sm text-background shadow-lg">
       <span>{notice.text}</span>
       {notice.action && <button type="button" onClick={notice.action.run} className="font-medium underline-offset-2 hover:underline">{notice.action.label}</button>}
+      {notice.action && <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)} className="-mr-1 rounded p-1 hover:bg-background/20"><X className="size-4" aria-hidden="true" /></button>}
     </div>}
   </DndContext>;
 }
@@ -256,15 +281,16 @@ function Widget({ id, label, size, lifted, options, selected, resizing, children
   // One sensor per event: touch on the whole widget, the mouse on the grip.
   const { onTouchStart, onMouseDown } = (listeners ?? {}) as Record<string, (event: SyntheticEvent) => void>;
   const tools = `transition-opacity ${lifted ? "invisible" : selected || resizing ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"}`;
-  // A mouse drags by the grip, so text and links inside stay usable; a finger holds anywhere on the widget.
-  return <div ref={setNodeRef} data-widget={id} onTouchStart={onTouchStart}
-    className={`group relative min-w-0 ${CARD_SIZES[size].span} touch-manipulation [-webkit-touch-callout:none] pointer-coarse:select-none [&>section]:h-full ${lifted ? "rounded-2xl bg-muted/50 outline-2 outline-offset-0 outline-dashed outline-input [&>*]:opacity-0" : ""} ${selected ? "rounded-2xl outline-2 outline-brand" : ""}`}>
+  // A mouse drags by the grip or heading, so other text and links stay usable; a finger holds anywhere on the widget.
+  return <div ref={setNodeRef} data-widget={id} onTouchStart={onTouchStart} onMouseDown={event => { if (dragsWidget(event.target)) onMouseDown?.(event); }}
+    className={`group relative min-w-0 ${CARD_SIZES[size].span} [&:has(>[data-tools]:first-child)]:hidden touch-manipulation [-webkit-touch-callout:none] pointer-coarse:select-none [&>section]:h-full [&_h2]:cursor-grab [&_h3:first-child]:cursor-grab ${lifted ? "rounded-2xl bg-muted/50 outline-2 outline-offset-0 outline-dashed outline-input [&>*]:opacity-0" : ""} ${selected ? "rounded-2xl outline-2 outline-brand" : ""}`}>
     {children}
-    <div className={`absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-border bg-card shadow-sm ${tools}`}>
+    {/* First child only when the widget has nothing to show: it then takes no space in the grid. */}
+    <div data-tools className={`absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-border bg-card shadow-sm ${tools}`}>
       <button type="button" ref={setActivatorNodeRef} {...attributes} aria-label={`Move ${label}`} data-grip title="Drag to move" onMouseDown={onMouseDown} onKeyDown={onMoveKey}
-        className="flex h-7 cursor-grab items-center rounded-l-full px-2.5 text-muted-foreground hover:text-foreground active:cursor-grabbing"><GripHorizontal className="size-4" aria-hidden="true" /></button>
+        className="flex h-7 cursor-grab items-center rounded-l-full px-2.5 pointer-coarse:h-11 pointer-coarse:px-4 text-muted-foreground hover:text-foreground active:cursor-grabbing"><GripHorizontal className="size-4" aria-hidden="true" /></button>
       <button type="button" aria-label={`Hide ${label}`} title="Hide" onClick={onHide}
-        className="flex h-7 items-center rounded-r-full border-l border-border px-2 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden="true" /></button>
+        className="flex h-7 items-center rounded-r-full border-l border-border px-2 pointer-coarse:h-11 pointer-coarse:px-4 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden="true" /></button>
     </div>
     {options.length > 1 && <button type="button" aria-label={`Resize ${label}, now ${size}`} title="Drag to resize" onPointerDown={onResizeStart} onKeyDown={onResizeKey}
       className={`absolute top-1/2 -right-2 z-10 hidden h-12 w-4 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center lg:flex ${tools}`}>

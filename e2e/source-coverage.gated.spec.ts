@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomUUID, randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test("source-only overlap gates budget remainder; rejection resolves coverage without changing accepted spending", async ({ browser }, testInfo) => {
   test.setTimeout(120_000);
@@ -40,7 +41,7 @@ test("source-only overlap gates budget remainder; rejection resolves coverage wi
     const page = await context.newPage();
     await page.goto("/");
     const detail = page.locator("details").filter({ hasText: "1 imported row still needs review." }).first();
-    await detail.locator("summary").click();
+    await detail.locator(":scope > summary").click();
     await expect(detail).toContainText("Gaps between statements are unknown");
     await page.goto("/plan/spending");
     const plan = page.locator("li").filter({ has: page.getByRole("heading", { name: "Synthetic coverage budget", exact: true }) });
@@ -59,13 +60,7 @@ test("source-only overlap gates budget remainder; rejection resolves coverage wi
     expect(status).toBe("rejected"); expect(original_row).toEqual({ Description: "Synthetic overlap", Amount: "-10.00" });
   } finally {
     await context.close();
-    if (workspace) await db.begin(async tx => {
-      await tx`delete from public.transaction_sources where source_transaction_id in (select id from public.source_transactions where workspace_id=${workspace!})`;
-      for (const table of ["balance_snapshots", "spending_plan_limits", "spending_plans", "transactions", "source_transactions", "imports", "data_sources", "accounts", "categories", "workspace_settings"])
-        await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-      await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-    });
-    if (user) { expect((await admin.auth.admin.deleteUser(user)).error).toBeNull(); expect((await db`select id from auth.users where id=${user}`).length).toBe(0); unlinkSync(journal); }
+    if (user) { await deleteDisposableUser(db, user); expect((await db`select id from auth.users where id=${user}`).length).toBe(0); unlinkSync(journal); }
     if (workspace) expect((await db`select id from public.workspaces where id=${workspace}`).length).toBe(0);
     await db.end();
   }

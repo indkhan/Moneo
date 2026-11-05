@@ -1,6 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasSupabase } from "@/lib/env";
+
+// Readable without a session. API routes answer 401 themselves.
+const PUBLIC_PATHS = /^\/(login|reset-password|privacy|terms|auth|api|manifest\.webmanifest|robots\.txt|sitemap\.xml)(\/|$)/;
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -23,8 +27,15 @@ export async function proxy(request: NextRequest) {
     },
   );
   // Refresh before rendering; route/action authorization still checks getUser.
-  await supabase.auth.getClaims();
-  return response;
+  const { data, error } = await supabase.auth.getClaims();
+  // An outage is not a signed-out user: let the page report it instead of sending them to login.
+  if (data?.claims || isAuthRetryableFetchError(error) || PUBLIC_PATHS.test(request.nextUrl.pathname)) return response;
+  const { pathname, search } = request.nextUrl;
+  const login = new URL("/login", request.url);
+  if (pathname !== "/" || search) login.searchParams.set("next", pathname + search);
+  const redirect = NextResponse.redirect(login);
+  response.cookies.getAll().forEach(cookie => redirect.cookies.set(cookie));
+  return redirect;
 }
 
 export const config = {

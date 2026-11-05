@@ -2,6 +2,12 @@ import { expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AiMessage } from "./ai-message";
 
+it("never adds a second h1 to the page around the answer", () => {
+  const html = renderToStaticMarkup(<AiMessage content={"# Report title\n\nBody"} />);
+  expect(html).toContain("<h2>Report title</h2>");
+  expect(html).not.toContain("<h1");
+});
+
 it("renders structured answers, code and existing source links", () => {
   const html = renderToStaticMarkup(<AiMessage content={'## Spending\n\n**EUR 420**\n\n| Category | Amount |\n| --- | --- |\n| Dining | EUR 420 |\n\n```sql\nSELECT amount_minor FROM transactions;\n```\n\n/money/transactions?transaction=00000000-0000-4000-8000-000000000002'} />);
   expect(html).toContain("<h2>Spending</h2>");

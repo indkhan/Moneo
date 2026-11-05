@@ -1,3 +1,4 @@
+import { z } from "zod";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
@@ -6,10 +7,14 @@ import { formatMoney } from "@/lib/finance/format";
 import { loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import type { InvestigationSpec } from "@/lib/finance/investigation";
 import { kindLabel, statusLabel } from "../transactions/labels";
-import { parseInvestigationParams } from "./input";
+import { PhoneCollapse } from "@/components/phone-collapse";
+import { defaultedChoices, parseInvestigationParams, periodProblem } from "./input";
+
+export const metadata = { title: "Investigations" };
 
 const field = "min-h-9 w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm";
 const destination = (spec: InvestigationSpec) => `/money/investigations?${new URLSearchParams({ query: JSON.stringify(spec) })}`;
+const days = ({ from, to }: { from: string; to: string }) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
 const METRICS: Record<string, string> = { spending: "Spending", income: "Income", net: "Net (in minus out)", signed: "Signed total", absolute: "Total movement", count: "Number of transactions" };
 const SORTS: Record<string, string> = { "absolute-delta-desc": "Biggest change", "delta-desc": "Largest increase", "delta-asc": "Largest decrease", "current-desc": "Highest this period", "current-asc": "Lowest this period", key: "Name" };
 const DIMENSIONS: Record<string, string> = { account: "Account", category: "Category", merchant: "Merchant", tag: "Tag", event: "Trip / event", date: "Day", month: "Month", kind: "Type", status: "Status" };
@@ -37,20 +42,26 @@ export default async function InvestigationPage({ searchParams }: { searchParams
   let error: string | undefined;
   // One entities read serves both this page's labels and the investigation itself.
   const entitiesRead = loadInvestigationEntities(context);
+  entitiesRead.catch(() => undefined);
   const params = await searchParams;
   try {
     spec = parseInvestigationParams(params, { from: monthStart, to: today });
     result = await runInvestigation(spec, context, { entities: entitiesRead });
     spec = { ...result.interpretedFilters, page: spec.page };
-  } catch (e) { error = e instanceof Error ? e.message : "Investigation unavailable"; }
-  const entities = await entitiesRead;
+  } catch (e) { error = e instanceof z.ZodError ? periodProblem(params) : "This investigation couldn’t run. Your filters are still here; try again."; }
+  const entities = await entitiesRead.catch(() => { error ??= "Your accounts and categories couldn’t load. Try again."; return { accounts: [], categories: [], merchants: [] } as unknown as Awaited<typeof entitiesRead>; });
+  const typed = (key: string) => { const raw = params[key]; return Array.isArray(raw) ? raw[0] : raw; };
+  const defaulted = defaultedChoices(params);
+  const openRecords = (groupKey: string) => `${destination({ ...spec!, page: { size: 25, period: "both", groupKey } })}#supporting-records`;
+  const groupLabel = (g: { dimensions: Record<string, unknown> }) => Object.entries(g.dimensions).map(([key, value]) => `${DIMENSIONS[key] ?? key}: ${display(key, value)}`).join(" · ") || "All transactions";
   const names = new Map([entities.accounts, entities.categories, entities.merchants].flat().map(e => [e.id, e.name]));
   const display = (key: string, value: unknown) => Array.isArray(value) ? value.join(", ") || "No tags" : value === null ? "Unassigned"
     : key === "kind" ? kindLabel(String(value)) : key === "status" ? statusLabel(String(value)) : names.get(String(value)) ?? String(value);
-  const money = (amount: string | null, currency: string) => amount === null ? "—" : spec?.metric === "count" ? amount : formatMoney(amount, currency, context.workspace.locale);
+  const money = (amount: string | null, currency: string) => amount === null ? (spec?.currencyPolicy.mode === "base" ? "Unavailable: missing rate" : "—") : spec?.metric === "count" ? amount : formatMoney(amount, currency, context.workspace.locale);
+  const selectedGroup = spec?.page.groupKey ? result?.groups.find(g => g.key === spec?.page.groupKey) : undefined;
   const lastMonth = shift(monthStart, -1);
   const presets = [
-    { label: "This month vs last", from: monthStart, to: today, comparisonFrom: lastMonth, comparisonTo: endOfMonth(lastMonth) },
+    { label: "Month to date vs all of last month", from: monthStart, to: today, comparisonFrom: lastMonth, comparisonTo: endOfMonth(lastMonth) },
     { label: "Last month vs month before", from: lastMonth, to: endOfMonth(lastMonth), comparisonFrom: shift(monthStart, -2), comparisonTo: endOfMonth(shift(monthStart, -2)) },
     { label: "Last 3 months vs previous 3", from: shift(monthStart, -3), to: endOfMonth(lastMonth), comparisonFrom: shift(monthStart, -6), comparisonTo: endOfMonth(shift(monthStart, -4)) },
     { label: "This year vs last", from: `${today.slice(0, 4)}-01-01`, to: today, comparisonFrom: `${Number(today.slice(0, 4)) - 1}-01-01`, comparisonTo: shift(today, -12) },
@@ -59,26 +70,27 @@ export default async function InvestigationPage({ searchParams }: { searchParams
     <header className="flex flex-col gap-1"><p className="eyebrow">Money · compare periods</p><h1 className="page-title">Investigate your money</h1><p className="mt-1 text-sm text-muted-foreground">Compare two periods and open the transactions behind each change.</p></header>
     <nav aria-label="Quick comparisons" className="flex flex-wrap gap-2">{presets.map(preset => {
       const { label, ...dates } = preset;
-      return <Link key={label} href={`/money/investigations?${new URLSearchParams({ ...dates, groupBy: "category" })}`} className="rounded-full border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted">{label}</Link>;
+      return <Link key={label} href={spec ? destination({ ...spec, groupBy: spec.groupBy?.length ? spec.groupBy : ["category"], period: { from: dates.from, to: dates.to }, comparison: { from: dates.comparisonFrom, to: dates.comparisonTo }, page: { size: 25, period: "both" } }) : `/money/investigations?${new URLSearchParams({ ...dates, groupBy: "category" })}`} className="rounded-full border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted">{label}</Link>;
     })}</nav>
-    <form className="space-y-5 rounded-xl border border-border bg-card p-5 [&_label]:text-muted-foreground" action="/money/investigations" method="get" aria-label="Investigation filters">
+    <PhoneCollapse label="Edit comparison" open={Boolean(error)}><form className="space-y-5 rounded-xl border border-border bg-card p-5 [&_label]:text-muted-foreground" action="/money/investigations" method="get" aria-label="Investigation filters">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <label className="grid gap-1 text-sm">From<input className={field} type="date" name="from" required defaultValue={spec?.period.from ?? monthStart} /></label>
-        <label className="grid gap-1 text-sm">To<input className={field} type="date" name="to" required defaultValue={spec?.period.to ?? today} /></label>
-        <label className="grid gap-1 text-sm">Compare from<input className={field} type="date" name="comparisonFrom" defaultValue={spec?.comparison?.from} /></label>
-        <label className="grid gap-1 text-sm">Compare to<input className={field} type="date" name="comparisonTo" defaultValue={spec?.comparison?.to} /></label>
+        <label className="grid gap-1 text-sm">From<input className={field} type="date" name="from" required defaultValue={spec?.period.from ?? typed("from") ?? monthStart} /></label>
+        <label className="grid gap-1 text-sm">To<input className={field} type="date" name="to" required defaultValue={spec?.period.to ?? typed("to") ?? today} /></label>
+        <label className="grid gap-1 text-sm">Compare from<input className={field} type="date" name="comparisonFrom" defaultValue={spec?.comparison?.from ?? typed("comparisonFrom")} /></label>
+        <label className="grid gap-1 text-sm">Compare to<input className={field} type="date" name="comparisonTo" defaultValue={spec?.comparison?.to ?? typed("comparisonTo")} /></label>
         <label className="grid gap-1 text-sm">Measure<select className={field} name="metric" defaultValue={spec?.metric ?? "spending"}>{Object.entries(METRICS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </div>
+      <p className="text-xs text-muted-foreground">Spending is money out less refunds. Income is money in. Net is in minus out. Signed total adds amounts as recorded, including any transfers you tick. Total movement adds them ignoring direction.</p>
       <fieldset className="space-y-2"><legend className="text-sm text-muted-foreground">Break down by</legend><Checks name="groupBy" options={DIMENSIONS} checked={spec?.groupBy ?? []} /></fieldset>
       <details className="space-y-4" open={Boolean(spec && (["accounts", "categories", "merchants", "tags", "events"] as const).some(key => spec![key]?.include?.length || spec![key]?.exclude?.length))}>
         <summary className="cursor-pointer text-sm font-medium">More filters and options</summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <label className="grid gap-1 text-sm">Sort results by<select className={field} name="sort" defaultValue={spec?.sort ?? "absolute-delta-desc"}>{Object.entries(SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="grid gap-1 text-sm">Currencies<select className={field} name="currencyMode" defaultValue={spec?.currencyPolicy.mode ?? "original"}><option value="original">Keep each currency separate</option><option value="base">Convert to one currency</option></select></label>
-          <label className="grid gap-1 text-sm">Currency code<input className={field} name="currency" placeholder="e.g. EUR" pattern="[A-Z]{3}" maxLength={3} defaultValue={spec?.currencyPolicy.mode === "base" ? spec.currencyPolicy.currency : spec?.currencyPolicy.currencies?.[0]} /></label>
+          <label className="grid gap-1 text-sm">Currency code<input className={field} name="currency" placeholder="e.g. EUR" pattern="[A-Za-z]{3}" maxLength={3} defaultValue={spec?.currencyPolicy.mode === "base" ? spec.currencyPolicy.currency : spec?.currencyPolicy.currencies?.[0]} /></label>
         </div>
         <div className="mt-3 grid gap-4 sm:grid-cols-3">{(["accounts", "categories", "merchants"] as const).map(key => <fieldset key={key} className="space-y-2"><legend className="text-sm font-medium capitalize">{key}</legend>{(["include", "exclude"] as const).map(operation =>
-          <label key={operation} className="grid gap-1 text-xs text-muted-foreground">{operation === "include" ? "Only these (empty means all)" : "Leave out"}<select multiple size={4} className={field} name={operation === "include" ? key : `exclude${key}`} defaultValue={spec?.[key]?.[operation]?.flatMap(ref => "id" in ref ? [ref.id] : [])}>{entities[key].map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label>)}</fieldset>)}</div>
+          <div key={operation} className="space-y-1"><p className="text-xs text-muted-foreground">{operation === "include" ? "Only these (none ticked means all)" : "Leave out (wins over Only these)"}</p><div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{entities[key].map(e => <label key={e.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name={operation === "include" ? key : `exclude${key}`} value={e.id} defaultChecked={spec?.[key]?.[operation]?.some(ref => "id" in ref && ref.id === e.id)} />{e.name}</label>)}{!entities[key].length ? <p className="text-xs text-muted-foreground">None yet</p> : null}</div></div>)}</fieldset>)}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{(["tags", "events"] as const).flatMap(key => (["include", "exclude"] as const).map(operation => <label key={`${key}${operation}`} className="grid gap-1 text-sm">{operation === "include" ? "Only" : "Leave out"} {key === "tags" ? "tags" : "trips / events"}<input className={field} name={operation === "include" ? key : `exclude${key[0].toUpperCase()}${key.slice(1)}`} placeholder="Comma separated" defaultValue={spec?.[key]?.[operation]?.join(", ")} /></label>))}</div>
         <div className="mt-3 grid gap-4 sm:grid-cols-3">
           <fieldset className="space-y-2"><legend className="text-sm font-medium">Status</legend><Checks name="statuses" options={{ posted: "Posted", pending: "Pending" }} checked={spec?.statuses ?? ["posted"]} /></fieldset>
@@ -87,10 +99,20 @@ export default async function InvestigationPage({ searchParams }: { searchParams
         </div>
       </details>
       <button className="min-h-9 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Run investigation</button>
-    </form>
-    {error ? <p role="alert" className="rounded-xl border border-border bg-card p-6 text-sm">{error}</p> : null}
+      {defaulted.length ? <p role="status" className="text-xs text-muted-foreground">{defaulted.join(". ")}.</p> : null}
+    </form></PhoneCollapse>
+    {error ? <p role="alert" className="rounded-xl border border-border bg-card p-6 text-sm">{error} <Link className="underline" href="/money/investigations">Start again</Link></p> : null}
     {result && spec ? <>
-      <section className="overflow-x-auto rounded-xl border border-border bg-card" aria-label="Comparison results"><table className="w-full text-sm"><thead className="sticky top-0 border-b border-border bg-muted text-left text-xs text-muted-foreground"><tr><th className="p-3 font-medium">Group</th><th className="p-3 text-right font-medium">This period</th><th className="p-3 text-right font-medium">Comparison</th><th className="p-3 text-right font-medium">Change</th><th className="p-3 font-medium">Transactions</th></tr></thead><tbody>{result.groups.map(g => <tr className="border-b border-border last:border-0" key={g.key}><td className="p-3">{Object.entries(g.dimensions).map(([key, value]) => `${DIMENSIONS[key] ?? key}: ${display(key, value)}`).join(" · ") || "All transactions"}<span className="ml-2 text-xs text-muted-foreground">{g.currency}</span></td><td className="p-3 text-right font-mono tabular-nums">{money(g.currentMinor, g.currency)}</td><td className="p-3 text-right font-mono tabular-nums">{money(g.comparisonMinor, g.currency)}</td><td className="p-3 text-right font-mono tabular-nums">{money(g.deltaMinor, g.currency)}</td><td className="p-3"><Link className="underline" href={destination({ ...spec!, page: { size: 25, period: "both", groupKey: g.key } })}>Open records ({g.supportCount})</Link></td></tr>)}</tbody></table>{!result.groups.length ? <p className="p-6 text-center text-sm text-muted-foreground">No transactions match these filters.</p> : null}</section>
+      <section className="rounded-xl border border-border bg-card" aria-label="Comparison results">
+        <p className="border-b border-border px-4 py-3 text-xs text-muted-foreground">{spec.comparison ? <>{spec.period.from} to {spec.period.to} ({days(spec.period)} days) compared with {spec.comparison.from} to {spec.comparison.to} ({days(spec.comparison)} days). Change is this period minus the comparison.</> : <>One period: {spec.period.from} to {spec.period.to} ({days(spec.period)} days). Add comparison dates to see changes.</>}</p>
+        <ul className="divide-y divide-border md:hidden">{result.groups.map(g => <li key={g.key} className="space-y-1 p-4 text-sm">
+          <p className="font-medium">{groupLabel(g)} <span className="text-xs font-normal text-muted-foreground">{g.currency}</span></p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5"><dt className="text-muted-foreground">This period</dt><dd className="text-right font-mono tabular-nums">{money(g.currentMinor, g.currency)}</dd>
+            {spec!.comparison ? <><dt className="text-muted-foreground">Comparison</dt><dd className="text-right font-mono tabular-nums">{money(g.comparisonMinor, g.currency)}</dd><dt className="text-muted-foreground">Change</dt><dd className="text-right font-mono tabular-nums">{money(g.deltaMinor, g.currency)}</dd></> : null}</dl>
+          <Link className="inline-flex min-h-8 items-center underline" href={openRecords(g.key)}>Open records ({g.supportCount})</Link></li>)}</ul>
+        <div className="overflow-x-auto max-md:hidden"><table className="w-full text-sm"><thead className="sticky top-0 border-b border-border bg-muted text-left text-xs text-muted-foreground"><tr><th className="p-3 font-medium">Group</th><th className="p-3 text-right font-medium">This period</th>{spec.comparison ? <><th className="p-3 text-right font-medium">Comparison</th><th className="p-3 text-right font-medium">Change</th></> : null}<th className="p-3 font-medium">Transactions</th></tr></thead><tbody>{result.groups.map(g => <tr className="border-b border-border last:border-0" key={g.key}><td className="p-3">{groupLabel(g)}<span className="ml-2 text-xs text-muted-foreground">{g.currency}</span></td><td className="p-3 text-right font-mono tabular-nums">{money(g.currentMinor, g.currency)}</td>{spec!.comparison ? <><td className="p-3 text-right font-mono tabular-nums">{money(g.comparisonMinor, g.currency)}</td><td className="p-3 text-right font-mono tabular-nums">{money(g.deltaMinor, g.currency)}</td></> : null}<td className="p-3"><Link className="underline" href={openRecords(g.key)}>Open records ({g.supportCount})</Link></td></tr>)}</tbody></table></div>
+        {!result.groups.length ? <p className="p-6 text-center text-sm text-muted-foreground">No transactions match these filters.</p> : null}</section>
+      {result.coverage.classificationExcluded > 0 && <p role="status" className="rounded-xl border border-warning/40 bg-card px-5 py-3 text-sm text-warning">{result.coverage.classificationExcluded} {result.coverage.classificationExcluded === 1 ? "record is" : "records are"} left out of these totals until reviewed. <Link className="underline" href="/money/organization">Review them</Link> or choose another review state in the filters.</p>}
       <section aria-label="Interpreted scope"><details className="rounded-xl border border-border bg-card px-5 py-4 text-sm"><summary className="cursor-pointer"><h2 className="inline font-medium">What this covers</h2> <span className="text-muted-foreground">· {result.coverage.includedRows} records · {spec.period.from} to {spec.period.to}</span></summary><div className="mt-3 space-y-2">
         <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-[auto_1fr]">
           <dt className="text-muted-foreground">Period</dt><dd>{spec.period.from} to {spec.period.to}{spec.comparison ? `, compared with ${spec.comparison.from} to ${spec.comparison.to}` : ""}</dd>
@@ -105,9 +127,9 @@ export default async function InvestigationPage({ searchParams }: { searchParams
         <p className="text-muted-foreground">{spec.currencyPolicy.mode === "original" ? "Each currency is shown separately." : `Amounts are converted to ${spec.currencyPolicy.currency} using the exchange rate on each posting date; totals stay unavailable if a rate is missing.`} Refunds reduce spending. {result.coverage.limitation}</p>
         <p className="text-xs text-muted-foreground">Data as of {result.evidence.capturedAt}.</p>
       </div></details></section>
-      <section className="space-y-3" aria-label="Supporting records"><div className="flex items-baseline justify-between"><h2 className="text-sm font-medium">Supporting records ({result.records.total})</h2>{spec.page.groupKey ? <Link className="text-sm underline" href={destination({ ...spec, page: { size: 25, period: "both" } })}>All matching records</Link> : null}</div>
+      <section id="supporting-records" className="scroll-mt-24 space-y-3" aria-label="Supporting records"><div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Supporting records ({result.records.total})</h2>{selectedGroup ? <p className="text-sm text-muted-foreground">{groupLabel(selectedGroup)} · {spec.period.from} to {spec.period.to}</p> : null}{spec.page.groupKey ? <Link className="text-sm underline" href={destination({ ...spec, page: { size: 25, period: "both" } })}>All matching records</Link> : null}</div>
         <div className="overflow-x-auto rounded-xl border border-border bg-card"><table className="w-full text-sm"><thead className="border-b border-border bg-muted text-left text-xs text-muted-foreground"><tr><th className="p-3 font-medium">Date</th><th className="p-3 font-medium">Transaction</th><th className="p-3 font-medium">Type</th><th className="p-3 text-right font-medium">Amount</th></tr></thead><tbody>{result.records.items.map(r => <tr key={r.id} className="border-b border-border last:border-0"><td className="p-3 font-mono">{r.date}<span className="block font-sans text-xs text-muted-foreground">{r.current ? "This period" : ""}{r.current && r.comparison ? " / " : ""}{r.comparison ? "Comparison" : ""}</span></td><td className="p-3"><Link className="underline" href={r.link}>{r.description}</Link><span className="block text-xs text-muted-foreground">{names.get(r.accountId)} · {display("category", r.categoryId)}{r.tags.length ? ` · ${r.tags.join(", ")}` : ""}{r.event ? ` · ${r.event}` : ""}</span></td><td className="p-3">{statusLabel(r.status)} · {kindLabel(r.kind)}{r.reviewReasons.length ? <span className="block text-xs text-warning">Needs review</span> : null}</td><td className="p-3 text-right font-mono tabular-nums">{formatMoney(r.amountMinor, r.currency, context.workspace.locale)}</td></tr>)}</tbody></table></div>
-        {result.records.nextCursor ? <Link className="inline-block rounded-md border border-border px-4 py-2 text-sm" href={destination({ ...spec, page: { ...spec.page, cursor: result.records.nextCursor } })}>Next supporting records</Link> : null}
+        <div className="flex flex-wrap gap-3">{spec.page.cursor ? <Link className="inline-block rounded-md border border-border px-4 py-2 text-sm" href={`${destination({ ...spec, page: { ...spec.page, cursor: undefined } })}#supporting-records`}>First records</Link> : null}{result.records.nextCursor ? <Link className="inline-block rounded-md border border-border px-4 py-2 text-sm" href={destination({ ...spec, page: { ...spec.page, cursor: result.records.nextCursor } })}>Next supporting records</Link> : null}</div>
       </section>
     </> : null}
   </main>;

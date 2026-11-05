@@ -246,6 +246,24 @@ export const sourceTransactions = pgTable("source_transactions", {
   check("source_transactions_review_reasons_check", sql`${table.reviewReasons} <@ array['source_transfer','source_exchange','source_type','refund_sign','fee_semantics','excluded_by_review']::text[]`),
 ]);
 
+export const importRowDecisions = pgTable("import_row_decisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  sourceId: uuid("source_id").notNull().references(() => sourceTransactions.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  sourceRecord: jsonb("source_record").notNull(),
+  transactionRecord: jsonb("transaction_record"),
+  balanceRecords: jsonb("balance_records").notNull().default([]),
+  actorId: uuid("actor_id").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`clock_timestamp()`).notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  undoneBy: uuid("undone_by").references(() => authUsers.id, { onDelete: "set null" }),
+}, table => [
+  uniqueIndex("import_row_decisions_active").on(table.sourceId).where(sql`${table.undoneAt} is null`),
+  index("import_row_decisions_workspace").on(table.workspaceId, table.sourceId),
+  check("import_row_decisions_action_check", sql`${table.action} in ('accepted','rejected')`),
+]);
+
 export const categories = pgTable("categories", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
@@ -625,6 +643,8 @@ export const artifacts = pgTable("artifacts", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  firstPrompt: text("first_prompt"),
+  firstPromptClaimedAt: timestamp("first_prompt_claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -632,6 +652,7 @@ export const artifacts = pgTable("artifacts", {
   index("artifacts_workspace_live").on(table.workspaceId, table.updatedAt.desc()).where(sql`${table.deletedAt} is null`),
   unique("artifacts_id_workspace_key").on(table.id, table.workspaceId),
   check("artifacts_title_check", sql`length(btrim(${table.title})) between 1 and 120`),
+  check("artifacts_first_prompt_check", sql`length(${table.firstPrompt}) <= 4000`),
 ]);
 
 export const artifactVersions = pgTable("artifact_versions", {

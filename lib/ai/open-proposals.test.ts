@@ -28,7 +28,7 @@ it("reads only this workspace's open cards outside agent runs, oldest first", as
 it("gives expense cards their account choices and leaves other cards as stored", async () => {
   const { db } = fakeDb({ agent_proposals: [expense, balance], accounts: [{ id: cash, name: "Wallet", type: "cash", currency_code: "EUR" }] });
   expect(await openStandaloneProposals(db, "w")).toEqual([
-    { id: "t", kind: "transaction_create", title: expense.title, detail: "Today", status: "proposed", accounts: [{ id: cash, name: "Wallet" }], selected: cash, needsCash: false },
+    { id: "t", kind: "transaction_create", title: expense.title, detail: "Today", status: "proposed", accounts: [{ id: cash, name: "Wallet" }], selected: cash, createsCash: false },
     { id: "b", kind: "balance_set", title: balance.title, detail: "", status: "failed" },
   ]);
 });

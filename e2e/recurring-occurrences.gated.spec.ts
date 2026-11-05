@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable Supabase auth and applied migration 202610060003");
 test("explicit partial/full occurrence association changes the forecast once and retains undo history", async ({ browser }) => {
@@ -43,16 +44,16 @@ test("explicit partial/full occurrence association changes the forecast once and
     await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
     const page = await context.newPage();
     page.setDefaultTimeout(30_000);
-    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: "Liquid balance horizon", exact: true }) });
+    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: /^Your cash over the next/ }) });
     await page.goto("/plan"); await expect(forecast).toContainText("EUR 900.00");
     await page.goto("/money/recurring");
     const review = page.getByRole("region", { name: "Occurrence reconciliation" });
     if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
     await review.getByRole("combobox", { name: "Schedule", exact: true }).selectOption(`${assumption}:1`);
     await review.getByLabel("Scheduled occurrence date", { exact: true }).fill(today);
-    await review.getByRole("combobox", { name: "Transaction", exact: true }).selectOption(`${transaction}:0`);
-    await review.getByRole("combobox", { name: "Fulfillment", exact: true }).selectOption("partial");
-    await review.getByRole("button", { name: "Mark as paid", exact: true }).click();
+    await review.getByRole("combobox", { name: /^Transaction(?: |$)/ }).selectOption(`${transaction}:0`);
+    await review.getByRole("combobox", { name: "Payment", exact: true }).selectOption("partial");
+    await review.getByRole("button", { name: "Record partial payment", exact: true }).click();
     await expect(review).toContainText("recorded partial settlement");
     await page.goto("/plan"); await expect(forecast).toContainText("EUR 940.00"); await expect(forecast).not.toContainText("Forecast unavailable");
     await page.goto("/money/recurring"); await review.getByRole("button", { name: "Undo", exact: true }).click();
@@ -62,9 +63,9 @@ test("explicit partial/full occurrence association changes the forecast once and
     if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
     await review.getByRole("combobox", { name: "Schedule", exact: true }).selectOption(`${assumption}:1`);
     await review.getByLabel("Scheduled occurrence date", { exact: true }).fill(today);
-    await review.getByRole("combobox", { name: "Transaction", exact: true }).selectOption(`${transaction}:0`);
-    await review.getByRole("combobox", { name: "Fulfillment", exact: true }).selectOption("full");
-    await review.getByRole("button", { name: "Mark as paid", exact: true }).click();
+    await review.getByRole("combobox", { name: /^Transaction(?: |$)/ }).selectOption(`${transaction}:0`);
+    await review.getByRole("combobox", { name: "Payment", exact: true }).selectOption("full");
+    await review.getByRole("button", { name: "Mark fully paid", exact: true }).click();
     await expect(review).toContainText("recorded full settlement");
     await page.goto("/plan"); await expect(forecast).toContainText("EUR 1000.00");
     expect((await db`select count(*)::int as count from public.recurring_occurrence_settlements where workspace_id=${workspace!}`)[0].count).toBe(2);
@@ -81,8 +82,9 @@ test("explicit partial/full occurrence association changes the forecast once and
     });
     await page.goto("/money/recurring");
     const salarySeries = page.locator("article").filter({ has: page.getByRole("heading", { name: salaryLabel, exact: true }) });
-    await salarySeries.getByRole("button", { name: "Confirm", exact: true }).click();
-    await expect(salarySeries).toContainText(/Confirmed.*used in forecast/);
+    await salarySeries.getByRole("button", { name: /^Confirm (?!recurring)/ }).click();
+    await salarySeries.getByRole("button", { name: "Confirm recurring", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Confirmed payments and income" })).toContainText(salaryLabel, { timeout: 30_000 });
     const [generated] = await db`select id,version from public.financial_assumptions where workspace_id=${workspace!} and name=${salaryLabel} and source='recurring_confirmed'`;
     expect(generated).toBeDefined();
     await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3000.00"); await expect(forecast).not.toContainText("EUR 4000.00");
@@ -90,9 +92,9 @@ test("explicit partial/full occurrence association changes the forecast once and
     if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
     await review.getByRole("combobox", { name: "Schedule", exact: true }).selectOption(`${generated.id}:${generated.version}`);
     await review.getByLabel("Scheduled occurrence date", { exact: true }).fill(salaryToday);
-    await review.getByRole("combobox", { name: "Transaction", exact: true }).selectOption(`${salaryTransaction}:0`);
-    await review.getByRole("combobox", { name: "Fulfillment", exact: true }).selectOption("full");
-    await review.getByRole("button", { name: "Mark as paid", exact: true }).click();
+    await review.getByRole("combobox", { name: /^Transaction(?: |$)/ }).selectOption(`${salaryTransaction}:0`);
+    await review.getByRole("combobox", { name: "Payment", exact: true }).selectOption("full");
+    await review.getByRole("button", { name: "Mark fully paid", exact: true }).click();
     const salarySettlement = review.getByRole("listitem").filter({ hasText: salaryLabel });
     await expect(salarySettlement).toContainText("recorded full settlement");
     await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3000.00");
@@ -111,18 +113,8 @@ test("explicit partial/full occurrence association changes the forecast once and
         expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "recurring-occurrences", run_id: runId});
         expect((await db`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
       }
-      if (workspace && user) await db.begin(async tx => {
-        expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
-        for (const table of ["recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "financial_assumptions", "balance_snapshots", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "accounts", "planning_events"]) {
-          if(table==="transactions") await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
-          await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-          expect((await tx`select count(*)::int as count from ${tx("public." + table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
-        }
-        await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-        expect((await tx`select count(*)::int as count from public.workspaces where id=${workspace!}`)[0].count).toBe(0);
-      });
       if (user) {
-        expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+        await deleteDisposableUser(db, user);
         expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);
         unlinkSync(recovery);
       }

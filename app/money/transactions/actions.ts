@@ -1,10 +1,11 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { bulkInput, parseManualAmount, splitInput, versionedRows } from "./input";
+import { bulkInput, directedAmount, splitInput, versionedRows } from "./input";
 import { similarRows } from "./similar";
 
 const uuidPattern = /^[0-9a-f-]{36}$/i;
@@ -113,7 +114,7 @@ export async function createManualTransaction(form: FormData) {
   const { data: account, error: accountError } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).maybeSingle();
   if (accountError || !account) throw new Error("Account not found");
-  const amount = parseManualAmount(z.string().parse(form.get("amount")), account.currency_code);
+  const amount = directedAmount(z.string().parse(form.get("amount")), z.enum(["out", "in"]).parse(form.get("direction")), account.currency_code);
   const { data, error } = await supabase.rpc("create_manual_transaction", {
     p_account_id: accountId, p_posted_on: z.iso.date().parse(form.get("postedOn")),
     p_description: z.string().trim().min(1).max(500).parse(form.get("description")), p_amount_minor: amount.toString(),
@@ -264,3 +265,19 @@ export async function undoTransactionSplits(form: FormData) {
   revalidatePath("/", "layout");
   redirect(`${returnPath(form)}&transaction=${z.uuid().parse(form.get("id"))}`);
 }
+
+export async function quickEditTransactionSafely(_state: SafeState, form: FormData) { return safely(form, quickEditTransaction); }
+export async function undoCorrectionSafely(_state: SafeState, form: FormData) { return safely(form, undoCorrection); }
+export async function verifiedLinkSafely(_state: SafeState, form: FormData) { return safely(form, verifiedLink); }
+export async function undoVerifiedLinkSafely(_state: SafeState, form: FormData) { return safely(form, undoVerifiedLink); }
+export async function undoManualTransactionSafely(_state: SafeState, form: FormData) { return safely(form, undoManualTransaction); }
+export async function restoreManualTransactionSafely(_state: SafeState, form: FormData) { return safely(form, restoreManualTransaction); }
+export async function applyCategoryToSimilarSafely(_state: SafeState, form: FormData) { return safely(form, applyCategoryToSimilar); }
+export async function undoTransactionBatchSafely(_state: SafeState, form: FormData) { return safely(form, undoTransactionBatch); }
+export async function markRefundSafely(_state: SafeState, form: FormData) { return safely(form, markRefund); }
+export async function markOwnAccountTransferSafely(_state: SafeState, form: FormData) { return safely(form, markOwnAccountTransfer); }
+export async function clearLinkSafely(_state: SafeState, form: FormData) { return safely(form, clearLink); }
+export async function splitTransactionSafely(_state: SafeState, form: FormData) { return safely(form, splitTransaction); }
+export async function undoTransactionSplitsSafely(_state: SafeState, form: FormData) { return safely(form, undoTransactionSplits); }
+export async function createManualTransactionSafely(_state: SafeState, form: FormData) { return safely(form, createManualTransaction); }
+export async function bulkEditTransactionsSafely(_state: SafeState, form: FormData) { return safely(form, bulkEditTransactions); }

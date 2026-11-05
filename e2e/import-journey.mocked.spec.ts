@@ -18,11 +18,13 @@
 // real row persistence, duplicate-detection against Postgres, background
 // workflow polling.
 import { test, expect } from "@playwright/test";
-import {
-  AUGUST_CSV,
+import { AUGUST_CSV,
   mockCompletedImport,
-  mockInspectResponse,
-} from "./fixtures";
+  mockInspectResponse, e2eStorageStatePath } from "./fixtures";
+
+// Pages need a session; the data behind them stays mocked.
+const signedIn = e2eStorageStatePath();
+if (signedIn) test.use({ storageState: signedIn });
 
 test.describe("deterministic import journey (mocked AI mapping, no credentials)", () => {
   test("requires a reviewed numeric convention and previews it before confirmation", async ({ page }) => {
@@ -36,11 +38,11 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await page.goto("/import");
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles({ name: "synthetic.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV) });
-    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
-    await page.getByRole("combobox", { name: "Source numeric convention" }).selectOption("decimal-comma");
-    await expect(page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start import", exact: true })).toBeDisabled();
+    await page.getByRole("combobox", { name: "Number format in your file" }).selectOption("decimal-comma");
+    await expect(page.getByRole("button", { name: "Start import", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Preview correction" }).click();
-    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Start import", exact: true })).toBeEnabled();
     expect(selected).toBe("decimal-comma");
   });
   test("keeps the statement picker disabled until its upload handler hydrates", async ({ page }) => {
@@ -69,7 +71,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByText("No imports yet.")).toBeVisible();
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles({ name: "august.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV) });
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Start import", exact: true }).click();
     await expect(page.locator("main").getByRole("alert").filter({ hasText: "Import history" })).toHaveText("Import history is unavailable. Try again.", { timeout: 15_000 });
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await expect(page.getByText("Working…", { exact: true })).toHaveCount(0);
@@ -149,12 +151,12 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByText("august.csv (1 of 1)")).toBeVisible();
     await expect(page.getByText("Checking").first()).toBeVisible();
     await expect(
-      page.getByText("2 rows", { exact: false }),
+      page.getByText("2 rows", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Salary Acme")).toBeVisible();
     await expect(page.getByText("AMZN MKTP DE")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Continue", exact: true }),
+      page.getByRole("button", { name: "Start import", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Correct", exact: true }),
@@ -174,18 +176,18 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await page
       .getByRole("button", { name: "Preview correction" })
       .click();
-    await expect(page.getByText("Checking (corrected)")).toBeVisible();
+    await expect(page.getByText("Checking (corrected)", { exact: true })).toBeVisible();
     expect(inspectCalls).toBe(2);
 
     // 4. Continue — confirm the import; history shows exact row counts and
     //    the preview section clears.
     await page
-      .getByRole("button", { name: "Continue", exact: true })
+      .getByRole("button", { name: "Start import", exact: true })
       .click();
     await expect(page.getByText("august.csv")).toBeVisible();
     await expect(
       page.getByText(
-        "2 new · 0 matched · 0 for review · 0 rejected · 2 total",
+        "2 new · 0 already imported · 0 to review · 0 left out · 2 total",
       ),
     ).toBeVisible();
     await expect(
@@ -257,10 +259,10 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
       name: "august.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV, "utf-8"),
     });
     await expect(page.getByRole("button", { name: "Preview correction" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start import", exact: true })).toHaveCount(0);
     await page.getByLabel("Amount signs").selectOption("signed");
     await page.getByRole("button", { name: "Preview correction" }).click();
-    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start import", exact: true })).toBeVisible();
   });
 
   test("selects matching headers when automatic interpretation fails", async ({ page }) => {
@@ -284,6 +286,13 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByRole("combobox", { name: "Date", exact: true })).toHaveValue("Completed Date");
     await expect(page.getByRole("combobox", { name: "Description", exact: true })).toHaveValue("Description");
     await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveValue("Amount");
-    await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start import" })).toHaveCount(0);
+    // Advanced columns start folded, and the amount layouts cannot both be filled.
+    await expect(page.getByRole("combobox", { name: "Transaction ID", exact: true })).toHaveCount(0);
+    await page.getByRole("radio", { name: "Two columns, money out and money in" }).check();
+    await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Money out", exact: true })).toHaveValue("");
+    await page.getByRole("radio", { name: "One column, like -12.50 or 12.50" }).check();
+    await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveValue("");
   });
 });

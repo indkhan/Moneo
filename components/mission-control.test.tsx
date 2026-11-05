@@ -45,6 +45,31 @@ it("ends with the briefing and a review screen with evidence, lead notes and und
   expect(html).not.toContain(">Stop<");
 });
 
+it("counts open decisions, filters by agent and previews a bulk accept instead of applying it at once", () => {
+  const initial = run("completed");
+  const limit = (n: number, confidence: number) => ({ ...initial.proposals[1], id: `00000000-0000-4000-8000-00000000010${n}`, title: `Limit ${n}`, status: "proposed", result: null, notes: [], confidence });
+  const html = renderToStaticMarkup(<MissionControl initial={{ ...initial, proposals: [...initial.proposals, limit(1, 75), limit(2, 55)] }} locale="en-GB" />);
+  expect(html).toContain("3 open decisions");
+  expect(html).toContain("2 here, 1 on Home");
+  expect(html).toContain("Accept 1 high confidence…");
+  expect(html).toContain("Accept all…");
+  expect(html).not.toContain("Confirm 1");
+  expect(html).toContain('aria-label="Show results from"');
+  expect(html).toContain("All (4)");
+  expect(html).toContain("Pattern strength");
+  expect(html).toContain("Accept Limit 1");
+  expect(html).toContain("All runs");
+});
+
+it("offers bulk decisions only within the 100 the action accepts", () => {
+  const initial = run("completed");
+  const limits = Array.from({ length: 101 }, (_, index) => ({ ...initial.proposals[1], id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, title: `Limit ${index}`, status: "proposed", result: null, notes: [], confidence: 75 }));
+  const html = renderToStaticMarkup(<MissionControl initial={{ ...initial, proposals: limits }} locale="en-GB" />);
+  expect(html).toContain("Accept 100 high confidence…");
+  expect(html).toContain("Accept first 100…");
+  expect(html).toContain("Reject first 100");
+});
+
 it("lights up the flowchart with each agent's live status", () => {
   const html = renderToStaticMarkup(<MissionControl initial={run("running")} locale="en-GB" />);
   expect(html).toContain("Live run");

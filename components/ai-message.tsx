@@ -43,6 +43,8 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
 
 export function AiMessage({ content }: { content: string }) {
   return <div className="ai-markdown"><Markdown remarkPlugins={[remarkGfm, appLinks]} skipHtml components={{
+    // A reply sits inside a page that already has its h1.
+    h1: ({ children }) => <h2>{children}</h2>,
     img: () => null,
     pre: ({ children }) => {
       const code = isValidElement<{ className?: string; children?: unknown }>(children) ? children.props : null;

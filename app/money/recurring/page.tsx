@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { recurringCadences } from "@/lib/finance/cadences";
+import { cadenceWords, recurringCadences } from "@/lib/finance/cadences";
 import { calendarDate } from "@/lib/finance/calendar";
 import { expandSchedule } from "@/lib/finance/model";
 import { formatInputAmount } from "@/lib/finance/format";
@@ -12,6 +12,8 @@ import { ScheduleDialog } from "./forms";
 import { DetectedPatterns } from "./detected";
 import { OccurrenceReview } from "./occurrences";
 import { RecurringReview } from "./review";
+
+export const metadata = { title: "Recurring" };
 
 type Schedule = { id: string; name: string; category: { name: string } | null; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; schedule_anchor_on: string | null; source: string };
 const UPCOMING_DAYS = 30;
@@ -40,12 +42,12 @@ export default async function RecurringPage() {
     const amount = BigInt(item.amount_minor);
     return { ...item, amount, next: expandSchedule(dated, today, 400)[0]?.date ?? null, upcoming: amount * BigInt(upcoming.length), monthly: monthlyEquivalent(amount, item.cadence) };
   }).sort((a, b) => (a.next ?? "9999").localeCompare(b.next ?? "9999") || a.name.localeCompare(b.name));
-  const totals = new Map<string, { out: bigint; in: bigint; upcoming: bigint }>();
+  const totals = new Map<string, { out: bigint; in: bigint; upcomingOut: bigint; upcomingIn: bigint }>();
   for (const item of schedules) {
     if (!item.next) continue;
-    const total = totals.get(item.currency_code) ?? { out: 0n, in: 0n, upcoming: 0n };
+    const total = totals.get(item.currency_code) ?? { out: 0n, in: 0n, upcomingOut: 0n, upcomingIn: 0n };
     if (item.monthly < 0n) total.out += item.monthly; else total.in += item.monthly;
-    total.upcoming += item.upcoming;
+    if (item.upcoming < 0n) total.upcomingOut += item.upcoming; else total.upcomingIn += item.upcoming;
     totals.set(item.currency_code, total);
   }
 
@@ -64,19 +66,19 @@ export default async function RecurringPage() {
       {accountsError && <p role="alert">Could not load accounts: {accountsError.message}</p>}
       <Suspense fallback={null}><RecurringReview supabase={supabase} workspace={workspace} prices /></Suspense>
 
-      <section aria-label="Bills and subscriptions" className="space-y-3">
+      <section aria-label="Confirmed payments and income" className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="text-sm font-medium">Bills and subscriptions</h2>
+          <h2 className="text-sm font-medium">Confirmed payments and income</h2>
           {totals.size > 0 && <dl className="flex flex-wrap gap-x-6 gap-y-1 text-right text-sm">{[...totals].map(([currency, total]) => <div key={currency} className="grid">
-            <dt className="text-xs text-muted-foreground">Per month ({currency})</dt>
-            <dd className="font-mono font-semibold tabular-nums">{money(total.out, currency)}{total.in > 0n && <span className="ml-2 text-success">+{money(total.in, currency)} in</span>}</dd>
-            <dd className="text-xs text-muted-foreground">Next {UPCOMING_DAYS} days: {money(total.upcoming, currency)}</dd>
+            <dt className="text-xs text-muted-foreground">About per month ({currency})</dt>
+            <dd className="font-mono font-semibold tabular-nums">{money(total.out, currency)} out{total.in > 0n && <span className="ml-2 text-success">+{money(total.in, currency)} in</span>}</dd>
+            <dd className="text-xs text-muted-foreground">Next {UPCOMING_DAYS} days: {money(total.upcomingOut, currency)} out{total.upcomingIn > 0n ? `, +${money(total.upcomingIn, currency)} in` : ""}</dd>
           </div>)}</dl>}
         </div>
         {schedulesError ? <p role="alert">Could not load confirmed schedules: {schedulesError.message}</p> : schedules.length ? <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[480px] text-left text-sm">
+          <table className="w-full text-left text-sm">
             <thead className="border-b border-border text-xs text-muted-foreground"><tr>
-              <th className="px-4 py-2.5 font-medium">Name</th><th className="px-3 py-2.5 font-medium">Category</th><th className="px-3 py-2.5 font-medium">Cadence</th><th className="px-3 py-2.5 font-medium">Next</th>
+              <th className="px-4 py-2.5 font-medium">Name</th><th className="px-3 py-2.5 font-medium max-sm:hidden">Category</th><th className="px-3 py-2.5 font-medium max-sm:hidden">How often</th><th className="px-3 py-2.5 font-medium">Next</th>
               <th className="px-4 py-2.5 text-right font-medium">Amount</th>
             </tr></thead>
             <tbody className="divide-y divide-border">{schedules.map(item => <tr key={item.id} className={item.next ? "" : "text-muted-foreground"}>
@@ -84,15 +86,16 @@ export default async function RecurringPage() {
                 action={updateSchedule} remove={deleteSchedule} hidden={{ assumptionId: item.id }} categories={categories}
                 defaults={{ name: item.name, amount: formatInputAmount(item.amount < 0n ? -item.amount : item.amount, item.currency_code), direction: item.amount < 0n ? "out" : "in",
                   cadence: item.cadence, startsOn: item.next ?? item.starts_on, category: item.category?.name ?? "", currencyCode: item.currency_code }} />
-                <span className="ml-2 text-xs text-muted-foreground">{item.account_id ? names[item.account_id] ?? "Unknown account" : "No account"}</span></td>
-              <td className="px-3 py-2.5 text-muted-foreground">{item.category?.name ?? "—"}</td>
-              <td className="px-3 py-2.5 capitalize">{item.cadence}</td>
+                <span className="ml-2 text-xs text-muted-foreground max-sm:ml-0 max-sm:block">{item.account_id ? names[item.account_id] ?? "Unknown account" : "No account"}</span>
+                <span className="block text-xs text-muted-foreground sm:hidden">{[item.category?.name, cadenceWords[item.cadence] ?? item.cadence].filter(Boolean).join(" · ")}</span></td>
+              <td className="px-3 py-2.5 text-muted-foreground max-sm:hidden">{item.category?.name ?? "—"}</td>
+              <td className="px-3 py-2.5 max-sm:hidden">{cadenceWords[item.cadence] ?? item.cadence}</td>
               <td className="whitespace-nowrap px-3 py-2.5 font-mono">{item.next ?? "Ended"}</td>
               <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${item.amount > 0n ? "text-success" : ""}`}>{money(item.amount, item.currency_code)}</td>
             </tr>)}</tbody>
           </table>
-        </div> : <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No confirmed schedules yet. Confirm a detected pattern below or add one with Add recurring.</p>}
-        <p className="text-xs text-muted-foreground">Click a name to change its amount, date or category, or to remove it. Pause or end a schedule in <Link href="/plan" className="underline">Plan</Link>. Monthly totals are per currency (52 weeks a year).</p>
+        </div> : <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{liveAccounts.length ? "No confirmed schedules yet. Confirm a detected pattern below or add one with Add recurring." : accountsError ? "Accounts couldn’t load, so schedules can’t be added right now. Reload to try again." : <>A recurring payment needs an account. <Link className="underline" href="/money/accounts">Add one in Accounts</Link>.</>}</p>}
+        <p className="text-xs text-muted-foreground">Click a name to change its amount, date or category, or to remove it. Pause, end or change the account of a schedule in <Link href="/plan" className="underline">Plan</Link>. Monthly totals are approximate and per currency (52 weeks a year).</p>
       </section>
 
       <Suspense fallback={<p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">Looking for recurring patterns in your history…</p>}>

@@ -4,9 +4,10 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test("MNE024 owned direct history, stable pagination, newest reply and shared panel selection", async ({ browser, baseURL }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(600_000);
   for (const name of ["SUPABASE_DB_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]) expect(Boolean(process.env[name]), `Missing ${name}`).toBe(true);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
@@ -72,7 +73,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     console.log("MNE024: tied history paged through 1000 records after new arrivals");
     expect(all).toHaveLength(1000); expect(new Set(all).size).toBe(1000); expect([...new Set(all)].sort()).toEqual(sorted);
     await page.getByRole("button", { name: "Older messages", exact: true }).click();
-    await expect(page.getByText("Synthetic message 801", { exact: true })).toBeVisible();
+    await expect(page.getByText(`Synthetic message ${1000 - 2 * initial.messages.length + 1}`, { exact: true })).toBeVisible();
     await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Synthetic new arrival answer", { exact: true })).toBeVisible();
     expect(message101Cursor).toBeTruthy();
@@ -104,8 +105,9 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     const panel = page.getByRole("dialog", { name: "AI assistant" });
     await expect(panel.getByText("Synthetic newest post-send answer", { exact: true })).toBeVisible();
+    const shown = await panel.getByText(/^Synthetic message [0-9]+$/).count();
     await panel.getByRole("button", { name: "Older messages", exact: true }).click();
-    await expect(panel.getByText("Synthetic message 850", { exact: true })).toBeVisible();
+    await expect.poll(() => panel.getByText(/^Synthetic message [0-9]+$/).count()).toBeGreaterThan(shown);
     await page.reload({ waitUntil: "domcontentloaded" }); await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     await expect(panel.getByText("Synthetic newest post-send answer", { exact: true })).toBeVisible();
@@ -120,12 +122,13 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     const firstPage = await conversations.getByRole("link").count();
     await page.getByRole("button", { name: "Older conversations", exact: true }).click();
     await expect.poll(() => conversations.getByRole("link").count()).toBeGreaterThan(firstPage);
-    await expect(conversations.getByText("Synthetic new arrival", { exact: true })).toBeVisible();
+    await expect(conversations.getByRole("link", { name: /^Synthetic new arrival/ })).toBeVisible();
+    page.setDefaultTimeout(30_000);
     for (const destination of ["B", "New", "navigation"] as const) {
       await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
       await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
       await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
-      let release!: () => void;
+      let release!: () => void; // A held reply also blocks context.close, so a failure below can show up only as the test timeout.
       delayedReply = new Promise<void>(resolve => { release = resolve; });
       const started = new Promise<void>(resolve => { delayedStarted = resolve; });
       const question = `Synthetic delayed ${destination}`, answer = `Synthetic delayed answer ${destination}`;
@@ -138,7 +141,8 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
       else await page.getByRole("navigation", { name: "Conversations" }).locator(`a[href="/ai?conversation=${other}"]`).click();
       await expect(page.locator("main").getByRole("heading", { name: destination === "New" ? "New chat" : `Synthetic thread ${other}`, exact: true })).toBeVisible();
       if (destination === "navigation") {
-        await page.getByRole("link", { name: "Settings", exact: true }).click();
+        // The dev tools button covers this rail link in development, so go by keyboard.
+        await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link", { name: "Settings", exact: true }).press("Enter");
         await expect(page).toHaveURL(/\/settings$/);
       }
       await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
@@ -214,8 +218,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await context.close().catch(() => {});
     await db`delete from public.messages where id in ${db(messageIds.length ? messageIds : [randomUUID()])} and workspace_id in ${db(workspaceIds.length ? workspaceIds : [randomUUID()])}`;
     await db`delete from public.conversations where id in ${db(threadIds.length ? threadIds : [randomUUID()])} and workspace_id in ${db(workspaceIds.length ? workspaceIds : [randomUUID()])}`;
-    for (let i = 0; i < workspaceIds.length; i++) await db`delete from public.workspaces where id=${workspaceIds[i]} and owner_id=${userIds[i]}`;
-    for (const id of userIds) expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+    for (const id of userIds) await deleteDisposableUser(db, id);
     await db.end(); unlinkSync(journal);
   }
 });

@@ -9,13 +9,13 @@ const DOT: Record<string, string> = { running: "bg-ai animate-pulse", done: "bg-
 const Agent = ({ agent, status }: { agent: AgentId; status?: Status }) => <div data-status={status ?? "idle"}
   className={`flex min-w-0 flex-col gap-0.5 rounded-[10px] bg-muted p-2.5 transition-opacity duration-500 ${status === "skipped" || status === "canceled" ? "opacity-50" : ""}`}>
   <span className="flex items-center gap-2 text-[13px]"><span className={`size-1.5 shrink-0 rounded-full ${status ? DOT[status] ?? "bg-input" : "bg-ai"}`} aria-hidden="true" />{AGENTS[agent].name}</span>
-  <span className={`text-[11px] ${status ? "font-mono" : ""} ${status === "failed" ? "text-danger" : status === "running" ? "text-ai" : "text-muted-foreground"}`}>{status ? LABEL[status] ?? status : AGENTS[agent].role}</span>
+  <span className={`text-xs ${status ? "font-mono" : ""} ${status === "failed" ? "text-danger" : status === "running" ? "text-ai" : "text-muted-foreground"}`}>{status ? LABEL[status] ?? status : AGENTS[agent].role}</span>
 </div>;
 
 // A numbered stage; the lead's stages are violet like the rest of the AI's own work.
 const Stage = ({ n, title, lead, wide, status, children }: { n: number; title: string; lead?: boolean; wide?: boolean; status?: Status; children: React.ReactNode }) =>
   <li data-status={status ?? "idle"} className={`flex min-w-0 flex-col gap-2.5 rounded-[14px] border p-3.5 ${wide ? "flex-[3_1_420px]" : "flex-[1_1_150px]"} ${lead ? "border-ai-border bg-ai-soft" : "border-border"} ${status === "running" ? "ring-2 ring-ai/30" : ""}`}>
-    <span className={`font-mono text-[10px] uppercase ${lead ? "text-ai" : "text-subtle"}`}>{String(n).padStart(2, "0")} · {title}{status ? ` · ${LABEL[status] ?? status}` : ""}</span>
+    <span className={`font-mono text-[11px] uppercase ${lead ? "text-ai" : "text-subtle"}`}>{String(n).padStart(2, "0")} · {title}{status ? ` · ${LABEL[status] ?? status}` : ""}</span>
     {children}
   </li>;
 
@@ -32,18 +32,18 @@ export function TeamFlow({ statuses, finished }: { statuses?: Partial<Record<Age
   return <section aria-label="How a run works" className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6">
     <h2 className="text-sm font-medium">{live ? "Live run" : "How a run works"}</h2>
     <ol className="flex flex-wrap items-stretch gap-2.5">
-      <Stage n={1} title="Plan" lead status={plan}><span className="text-sm font-medium">Lead</span><span className="text-xs text-muted-foreground">Splits the work across the team</span></Stage>
+      <Stage n={1} title="Plan" lead status={plan}><span className="text-sm font-medium">Lead</span><span className="text-xs text-muted-foreground">Decides which checks your data needs</span></Stage>
       {WAVES.slice(0, -1).map((wave, index) => <Stage key={index} n={index + 2} title={wave.length > 1 ? "In parallel" : "Next"} wide>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(150px,100%),1fr))] gap-2">{wave.map(agent => <Agent key={agent} agent={agent} status={of(agent)} />)}</div>
       </Stage>)}
-      <Stage n={WAVES.length + 1} title="Merge + write" lead status={merge}>
+      <Stage n={WAVES.length + 1} title="Check + write" lead status={merge}>
         <span className="text-sm font-medium">Lead · {writers.map(agent => AGENTS[agent].name).join(" · ")}</span>
-        <span className="text-xs text-muted-foreground">Resolves conflicts, verifies findings, writes the briefing</span>
+        <span className="text-xs text-muted-foreground">Settles overlaps, checks findings, writes the summary</span>
       </Stage>
       <Stage n={WAVES.length + 2} title="You decide" status={live ? finished ? "done" : "pending" : undefined}>
         <span className="text-sm font-medium">{live && finished ? "Ready: review the proposals below" : "Review each proposal: accept or dismiss"}</span>
       </Stage>
     </ol>
-    {!live && <p className="text-xs text-muted-foreground">Agents with nothing to do are skipped. Nothing changes until you accept.</p>}
+    {!live && <p className="text-xs text-muted-foreground">Agents with nothing to do are skipped. Category changes it is sure of happen automatically and can be undone. Everything else waits for your decision.</p>}
   </section>;
 }

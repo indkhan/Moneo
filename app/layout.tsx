@@ -9,7 +9,7 @@ import { hasSupabase } from "@/lib/env";
 import { requireWorkspace } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Moneo — Personal Finance Workspace",
+  title: { default: "Moneo — Personal Finance Workspace", template: "%s — Moneo" },
   description: "Understand your money, plan decisions, and build reusable financial tools with AI.",
   applicationName: "Moneo",
   appleWebApp: { capable: true, title: "Moneo", statusBarStyle: "default" },

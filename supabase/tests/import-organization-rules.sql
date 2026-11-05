@@ -7,7 +7,7 @@ begin
   select id into strict workspace from public.workspaces where owner_id=actor;
   select id into strict other_workspace from public.workspaces where owner_id=stranger;
   insert into public.merchants(id,workspace_id,name,normalized_name) values(merchant,workspace,'Northstar Market','northstar market');
-  insert into public.categories(id,workspace_id,name) values(category,workspace,'Groceries'),(foreign_category,other_workspace,'Foreign');
+  insert into public.categories(id,workspace_id,name) values(category,workspace,'Synthetic groceries'),(foreign_category,other_workspace,'Foreign');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   result:=public.save_organization_rule(workspace,'northstar market',merchant,category,true,0);
   rule:=(result->>'id')::uuid;

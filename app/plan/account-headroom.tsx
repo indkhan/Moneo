@@ -1,6 +1,6 @@
 import { accountLiquidity, forecastDaily, withInternalFunding, type ForecastInput } from "@/lib/finance/calculations";
 import { forecastInput } from "@/lib/finance/tools";
-import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
+import { formatMoney } from "@/lib/finance/format";
 import { positiveMinor, field } from "./ui";
 
 export type LiquidityParams = { horizon?: string; scenario?: string; account?: string; fundingFrom?: string; fundingDate?: string; funding?: string };
@@ -25,30 +25,35 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
   input: ForecastInput; params: LiquidityParams; names: Map<string, string>; locale?: string; result: ReturnType<typeof planLiquidity>;
 }) {
   const { liquidity, fundingError, fundingMinor } = result;
+  // The page lists what to fix first; there is nothing to evaluate until then.
+  if (liquidity.status === "unavailable") return null;
   const money = (amount: bigint) => formatMoney(amount, input.currencyCode, locale);
-  const selected = liquidity.status === "available" ? liquidity.accounts.find(account => account.accountId === params.account) : undefined;
+  const selected = liquidity.accounts.find(account => account.accountId === params.account);
   const invalidAccount = params.account && !input.accounts.some(account => account.id === params.account);
   return <div id="account-headroom" className="scroll-mt-20 space-y-5">
     <form method="get" className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="horizon" value={params.horizon ?? input.horizonDays} />
       {params.scenario && <input type="hidden" name="scenario" value={params.scenario} />}
-      <label className="grid gap-1 text-sm font-medium">Paying account<select name="account" defaultValue={params.account ?? ""} className={field}>
+      <label className="grid gap-1 text-sm font-medium">Paying account<select name="account" required defaultValue={params.account ?? ""} className={field}>
         <option value="">Choose a paying account</option>{invalidAccount && <option value={params.account}>Unavailable account</option>}
         {input.accounts.map(account => <option key={account.id} value={account.id}>{names.get(account.id) ?? account.id}</option>)}
       </select></label>
+      <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Evaluate account</button>
+      <details className="basis-full" open={!!(params.fundingFrom || params.fundingDate || params.funding)}><summary className="min-h-11 cursor-pointer content-center text-sm underline">Try a transfer</summary>
+        <div className="mt-2 flex flex-wrap items-end gap-3">
       <label className="grid gap-1 text-sm font-medium">Fund from (optional)<select name="fundingFrom" defaultValue={params.fundingFrom ?? ""} className={field}>
         <option value="">No funding</option>{params.fundingFrom && !input.accounts.some(account => account.id === params.fundingFrom) && <option value={params.fundingFrom}>Unavailable account</option>}
         {input.accounts.map(account => <option key={account.id} value={account.id}>{names.get(account.id) ?? account.id}</option>)}
       </select></label>
       <label className="grid gap-1 text-sm font-medium">Funding date<input type="date" name="fundingDate" defaultValue={params.fundingDate ?? ""} className={field} /></label>
       <label className="grid gap-1 text-sm font-medium">Funding amount ({input.currencyCode})<input name="funding" inputMode="decimal" placeholder="0.00" defaultValue={params.funding ?? ""} className={field} /></label>
-      <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Evaluate account</button>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">No automatic transfer from another account. Funding here is only a what-if; your real balances do not change. Press Evaluate account to apply it.</p>
+      </details>
     </form>
-    <p className="text-sm text-muted-foreground">No automatic transfer from another account. Funding here is only a what-if; your real balances do not change.</p>
     {fundingError && <p role="alert" className="text-sm text-foreground font-medium">Funding was not applied: {fundingError}</p>}
     {invalidAccount && <p role="alert" className="text-sm text-foreground font-medium">Choose a current liquid account.</p>}
-    {liquidity.status === "unavailable" ? <div role="alert" className="text-sm"><p className="font-medium">Forecast unavailable</p><ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">{describeMissingInputs(liquidity.missingInputs, names).map(item => <li key={item}>{item}</li>)}</ul></div> : <>
-      <div className="rounded-lg bg-muted/60 p-4"><h3 className="font-semibold">Aggregate headroom</h3><p className="font-mono text-2xl">{money(liquidity.aggregate.amountMinor)}</p><p className="text-sm text-muted-foreground">Lowest combined cash after protections, on {liquidity.aggregate.limitingDate}.</p></div>
+    <div className="rounded-lg bg-muted/60 p-4"><h3 className="font-semibold">Aggregate headroom</h3><p className="font-mono text-2xl">{money(liquidity.aggregate.amountMinor)}</p><p className="text-sm text-muted-foreground">Lowest combined cash after protections, on {liquidity.aggregate.limitingDate}.</p></div>
     <p className="text-sm text-muted-foreground">Workspace buffer: {money(liquidity.workspaceBufferMinor)}, kept once across all accounts. Chosen-account spending is limited by both account liquidity and aggregate headroom.</p>
     {liquidity.workspaceBufferPressureMinor > 0n && <p role="alert" className="text-sm">Workspace buffer pressure: {money(liquidity.workspaceBufferPressureMinor)} on {liquidity.aggregate.limitingDate}.</p>}
       {selected ? <div className="rounded-lg border border-border p-4"><h3 className="font-semibold">Chosen-account headroom — {names.get(selected.accountId) ?? selected.accountId}</h3><p className="font-mono text-2xl">{money(selected.spendableMinor)}</p><p className="text-sm">Tightest day {selected.spendingLimitingDate}, after protections. Account cash: {money(selected.amountMinor)} on {selected.limitingDate}. {selected.shortfallMinor > 0n ? "Funding is needed before spending more." : "Extra spending should stay within this amount."}</p></div> : <p className="text-sm text-muted-foreground">Choose a paying account to evaluate spending.</p>}
@@ -66,7 +71,6 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
           {!account.supportingEvents.length && <p className="text-sm text-muted-foreground">No payments before this low point.</p>}
         </article>;
       })}</div>
-    </>}
   </div>;
 }
 

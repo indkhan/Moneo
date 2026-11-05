@@ -64,7 +64,8 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await page.route(`**/api/cards/${cardId}?*`, async route => {
       const response = await route.fetch();
       if (new URL(route.request().url()).searchParams.get("size") === "M") await new Promise(resolve => setTimeout(resolve, 800));
-      await route.fulfill({ response });
+      // The page may have cancelled this older request while it was held back.
+      await route.fulfill({ response }).catch(() => {});
     });
     const resize = page.getByRole("button", { name: new RegExp(`^Resize ${title} card`) });
     await resize.focus();
@@ -126,7 +127,7 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
   }
 });
 
-test("an empty Home cards tab sends the build request and shows progress", async ({ page }) => {
+test("an empty Home cards tab sends the build request only after a press", async ({ page }) => {
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
   const [{ id }] = await db`insert into public.artifacts (workspace_id, title) values (${workspaceId}, 'Home card start QA') returning id`;
@@ -139,8 +140,12 @@ test("an empty Home cards tab sends the build request and shows progress", async
     await route.fulfill({ json: { answer: "Build test complete", conversationId: route.request().postDataJSON().conversationId } });
   });
   try {
-    await page.goto(`/ai/artifacts/${id}`);
-    await page.getByRole("link", { name: "Home cards", exact: true }).click();
+    // A link alone never sends anything, whatever it carries.
+    await page.goto(`/ai/artifacts/${id}?tab=cards&start=${encodeURIComponent("Sent by a link")}`);
+    await expect(page.getByRole("button", { name: "Create a Home card", exact: true })).toBeVisible();
+    await page.waitForTimeout(1000);
+    expect(requests).toEqual([]);
+    await page.getByRole("button", { name: "Create a Home card", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Building your Home card" })).toBeVisible();
     await expect.poll(() => requests.length).toBe(1);
     expect(requests[0].message).toContain("Create a Home card from this artifact");
@@ -149,6 +154,29 @@ test("an empty Home cards tab sends the build request and shows progress", async
     await expect(page.getByText("Build test complete", { exact: true })).toBeVisible();
   } finally {
     finish();
+    await page.unrouteAll({ behavior: "wait" });
+    await db`delete from public.artifacts where id = ${id}`;
+    await db.end();
+  }
+});
+
+test("a new artifact sends its first request once, and a failed one takes a press", async ({ page }) => {
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
+  const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
+  const [{ id }] = await db`insert into public.artifacts (workspace_id, title, first_prompt) values (${workspaceId}, 'First request QA', 'Build the first page') returning id`;
+  const requests: string[] = [];
+  await page.route("**/api/chat", async route => { requests.push(route.request().postDataJSON().message); await route.fulfill({ status: 500, json: { error: "Synthetic failure" } }); });
+  try {
+    await page.goto(`/ai/artifacts/${id}`);
+    await expect.poll(() => requests).toEqual(["Build the first page"]);
+    await page.reload();
+    const again = page.getByRole("button", { name: "Send it again", exact: true });
+    await expect(again).toBeVisible();
+    await page.waitForTimeout(1000);
+    expect(requests).toHaveLength(1);
+    await again.click();
+    await expect.poll(() => requests).toHaveLength(2);
+  } finally {
     await page.unrouteAll({ behavior: "wait" });
     await db`delete from public.artifacts where id = ${id}`;
     await db.end();

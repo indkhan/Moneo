@@ -34,21 +34,22 @@ export function Modal({ open, onClose, label, className, children }: { open: boo
   </dialog>;
 }
 
-export function CommandPalette({ open, onClose, commands, onAsk }: { open: boolean; onClose: () => void; commands: Command[]; onAsk?: (question: string) => void }) {
+export function CommandPalette({ open, onClose, commands, onAsk, onSearch }: { open: boolean; onClose: () => void; commands: Command[]; onAsk?: (question: string) => void; onSearch?: (text: string) => void }) {
   return <Modal open={open} onClose={onClose} label="Command palette" className="inset-0 size-full items-start justify-center px-4 pt-[12vh]">
-    <PaletteBody commands={commands} onClose={onClose} onAsk={onAsk} />
+    <PaletteBody commands={commands} onClose={onClose} onAsk={onAsk} onSearch={onSearch} />
   </Modal>;
 }
 
 // Mounted only while open, so the query and selection reset each time.
-function PaletteBody({ commands, onClose, onAsk }: { commands: Command[]; onClose: () => void; onAsk?: (question: string) => void }) {
+function PaletteBody({ commands, onClose, onAsk, onSearch }: { commands: Command[]; onClose: () => void; onAsk?: (question: string) => void; onSearch?: (text: string) => void }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listId = useId();
   const question = query.trim();
-  // Whatever is typed can always be sent to the assistant, so it is the last row.
+  // Free text can always look through the ledger, which costs nothing, and only then be sent to the assistant.
+  const searching: Command[] = onSearch && question ? [{ id: "search-ledger", label: `Search transactions for “${question}”`, group: "Transactions", run: () => onSearch(question) }] : [];
   const asking: Command[] = onAsk && question ? [{ id: "ask-moneo", label: `Ask Moneo “${question}”`, group: "Ask Moneo", run: () => onAsk(question) }] : [];
-  const results = [...filterCommands(commands, query), ...asking];
+  const results = [...filterCommands(commands, query), ...searching, ...asking];
   const selected = Math.min(active, Math.max(results.length - 1, 0));
   const run = (command: Command | undefined) => { if (!command) return; onClose(); command.run(); };
 

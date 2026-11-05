@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { e2eStorageStatePath } from "./fixtures";
+
+// Pages need a session; the data behind them stays mocked.
+const signedIn = e2eStorageStatePath();
+if (signedIn) test.use({ storageState: signedIn });
 
 // The agent team starts when an import's rows are in; the completed import links to its live run.
 // Mission control itself is server-rendered behind auth and covered by render tests.

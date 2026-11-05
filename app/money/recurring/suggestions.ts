@@ -16,6 +16,27 @@ type Stored = { id: string; account_id: string; currency_code: string; cadence: 
 
 /** Detected recurring patterns with their review state. Reads up to 10k postings in serial keyset pages; shared by the Recurring page and chat. */
 // Memoized per request, so Overview and the Recurring page sections share one detection pass.
+/**
+ * Bills first. One suggestion per merchant leads, the steadiest and best evidenced; competing cadences for that merchant and
+ * payments whose amount varies by more than 15% (groceries, taxis) wait under Less likely. Nothing is hidden or decided.
+ */
+export function rankSuggestions<T extends { series: { label: string; currencyCode: string; occurrences: number; amountMinMinor: bigint; amountMaxMinor: bigint } }>(pending: T[]) {
+  const spread = ({ series }: T) => {
+    const low = series.amountMinMinor < 0n ? -series.amountMinMinor : series.amountMinMinor, high = series.amountMaxMinor < 0n ? -series.amountMaxMinor : series.amountMaxMinor;
+    const [small, large] = low < high ? [low, high] : [high, low];
+    return large === 0n ? 0 : Number(((large - small) * 1000n) / large);
+  };
+  const ordered = [...pending].sort((a, b) => spread(a) - spread(b) || b.series.occurrences - a.series.occurrences);
+  const seen = new Set<string>(), likely: T[] = [], lessLikely: T[] = [];
+  for (const item of ordered) {
+    const merchant = `${item.series.label.toLocaleLowerCase("en")}|${item.series.currencyCode}`;
+    if (seen.has(merchant) || spread(item) > 150) lessLikely.push(item);
+    else likely.push(item);
+    seen.add(merchant);
+  }
+  return { likely, lessLikely };
+}
+
 export const loadSuggestions = cache(async (supabase: SupabaseClient, workspace: { id: string }) => {
   // Started now (builders are lazy thenables) so it runs while transactions page in.
   const storedQuery = Promise.resolve(supabase.from("recurring_series")

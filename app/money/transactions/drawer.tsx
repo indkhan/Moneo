@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
-import { applyCategoryToSimilar, clearLink, markOwnAccountTransfer, markRefund, quickEditTransaction, undoCorrection, undoTransactionSplits, undoVerifiedLink } from "./actions";
+import { applyCategoryToSimilarSafely, clearLinkSafely, markOwnAccountTransferSafely, markRefundSafely, quickEditTransactionSafely, undoCorrectionSafely, undoTransactionSplitsSafely, undoVerifiedLinkSafely } from "./actions";
+import { SafeForm } from "@/components/safe-form";
+import { FocusOnOpen } from "@/components/focus-on-open";
 import { SplitEditor } from "./split-editor";
 import { AskAbout } from "@/components/ask-about";
 import { VerifiedLinkEditor, type LinkPosting } from "./verified-link-editor";
@@ -79,6 +81,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
   const canSplit = selected.kind === "ordinary" && selected.status === "posted" && !selected.review_reasons?.length && !selected.transfer_id && !selected.refund_of_id && !inboundRefunds.data?.length && !inboundTransfer.data?.length;
 
   return <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 z-50 w-full max-w-lg overflow-y-auto border-l border-border bg-card shadow-2xl">
+    <FocusOnOpen label={`Details for ${selected.description}`} />
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-6 py-3">{close}<span className="text-xs text-muted-foreground">Esc to close · j/k to move</span></div>
     <div className="space-y-6 p-6">
       <header>
@@ -96,7 +99,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
 
       {selected.status === "pending" && selected.kind === "ordinary" && amount < 0n && <PendingHoldPanel transaction={selected} />}
 
-      <form action={quickEditTransaction} className="space-y-3" aria-label="Quick edit">
+      <section aria-label="Quick edit"><SafeForm action={quickEditTransactionSafely} className="space-y-3">
         {hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}{hidden("requestId", crypto.randomUUID())}
         {hidden("originalCategory", categoryName)}{hidden("originalNote", selected.note ?? "")}{hidden("originalMerchant", selected.merchant_id ?? "")}
         <label className="block text-sm">Category<input name="category" list="drawer-categories" defaultValue={categoryName} readOnly={!!splitSet.data} maxLength={100} placeholder="Uncategorized" className={field} /></label>
@@ -106,20 +109,20 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
         <label className="block text-sm">Note<textarea name="note" defaultValue={selected.note ?? ""} maxLength={2000} rows={2} className={field} /></label>
         <button className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90">Save correction</button>
         <p className="text-xs text-muted-foreground">Each change is recorded below and can be undone.</p>
-      </form>
+      </SafeForm></section>
 
-      {similar.length > 0 && <form action={applyCategoryToSimilar} aria-label="Similar transactions" className="space-y-2 rounded-lg border border-border p-3 text-sm">
+      {similar.length > 0 && <section aria-label="Similar transactions"><SafeForm action={applyCategoryToSimilarSafely} className="space-y-2 rounded-lg border border-border p-3 text-sm">
         {hidden("id", selected.id)}{hidden("query", query)}
         <p>{similar.length} other {similar.length === 1 ? "transaction has" : "transactions have"} this description but {similar.length === 1 ? "is" : "are"} not in {categoryName}.</p>
         <button className="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-muted">Put {similar.length === 1 ? "it" : `all ${similar.length}`} in {categoryName}</button>
         <p className="text-xs text-muted-foreground">Also saves a rule so future imports and agent runs use {categoryName}. Undo from <Link href="/money/organization" className="underline">Organization</Link>.</p>
-      </form>}
+      </SafeForm></section>}
 
       {splitSet.data ? <section aria-label="Split allocations" className="rounded-lg border border-border p-3">
         <h3 className="font-medium">Split allocations</h3>
         <p className="mt-1 text-xs text-muted-foreground">The original amount, source and category are kept. Balances count the original once; spending uses these allocations. Undo the split before changing the category or linking transfers or refunds.</p>
         <ul className="mt-2 text-sm">{splitRows.data?.map(row => <li key={row.id}>{money(row.amount_minor, selected.currency_code)} · {categoryNames[row.category_id ?? ""] ?? "Uncategorized"}{row.note ? ` · ${row.note}` : ""}</li>)}</ul>
-        <form action={undoTransactionSplits} className="mt-3">{hidden("setId", splitSet.data.id)}{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="text-sm underline">Undo splits</button></form>
+        <SafeForm action={undoTransactionSplitsSafely} className="mt-3">{hidden("setId", splitSet.data.id)}{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="text-sm underline">Undo splits</button></SafeForm>
       </section> : canSplit && <SplitEditor locale={workspace.locale} id={selected.id} version={selected.version} amountMinor={selected.amount_minor} currency={selected.currency_code} categories={categories} query={query} requestId={crypto.randomUUID()} />}
 
       <section aria-label="Transfer or refund" className="space-y-3 border-t border-border pt-5">
@@ -135,17 +138,17 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
             <p>Verified {receipt.data.operation === "refund" ? "refund" : "transfer"}. The original source amounts are kept.</p>
             {fees.data?.length ? <ul className="text-muted-foreground">{fees.data.map(fee => <li key={fee.transaction_id}>Fee {money(fee.fee_minor, fee.transaction_id === selected.id ? selected.currency_code : counterpart.data?.currency_code ?? selected.currency_code)} ({fee.treatment === "included" ? "included in the posting" : "charged separately"}) · {fee.note}</li>)}</ul> : null}
             {receipt.data.fx_evidence ? <details><summary className="cursor-pointer text-muted-foreground">Exchange-rate evidence</summary><pre className="mt-2 whitespace-pre-wrap text-xs">{JSON.stringify(receipt.data.fx_evidence, null, 2)}</pre></details> : null}
-            <form action={undoVerifiedLink}>{hidden("id", selected.id)}{hidden("linkId", receipt.data.id)}{hidden("query", query)}{hidden("rows", versionRows)}<button className="underline">Undo verified link</button></form>
+            <SafeForm action={undoVerifiedLinkSafely}>{hidden("id", selected.id)}{hidden("linkId", receipt.data.id)}{hidden("query", query)}{hidden("rows", versionRows)}<button className="underline">Undo verified link</button></SafeForm>
           </div> : <>
-            <form method="get" className="flex flex-wrap items-end gap-2">{hidden("transaction", selected.id)}<label className="text-sm">Find the other side by description<input name="linkSearch" defaultValue={linkSearch} maxLength={200} className={field} /></label><button className="rounded-lg border border-border px-3 py-2 text-sm">Search</button></form>
+            <form method="get" className="flex flex-wrap items-end gap-2">{[...new URLSearchParams(query)].filter(([key]) => key !== "transaction" && key !== "linkSearch").map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}{hidden("transaction", selected.id)}<label className="text-sm">Find the other side by description<input name="linkSearch" defaultValue={linkSearch} maxLength={200} className={field} /></label><button className="rounded-lg border border-border px-3 py-2 text-sm">Search</button></form>
             {canLinkTransfer && <VerifiedLinkEditor locale={workspace.locale} operation="transfer" primary={selected} candidates={(transferCandidates.data ?? []) as LinkPosting[]} rates={rates.data ?? []} categories={categories} query={query} />}
-            {untrackedOwn.data?.length ? <form action={markOwnAccountTransfer} className="flex flex-wrap items-end gap-2">{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}
+            {untrackedOwn.data?.length ? <SafeForm action={markOwnAccountTransferSafely} className="flex flex-wrap items-end gap-2">{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}
               <label className="text-sm">{amount < 0n ? "Moved to" : "Moved from"} my own account Moneo doesn’t track<select name="identifierId" required className={field}>{untrackedOwn.data.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-              <button className="rounded-lg border border-border px-3 py-2 text-sm">Mark as transfer</button></form> : null}
+              <button className="rounded-lg border border-border px-3 py-2 text-sm">Mark as transfer</button></SafeForm> : null}
             {canLinkRefund && <><VerifiedLinkEditor locale={workspace.locale} operation="refund" primary={selected} candidates={(refundCandidates.data ?? []) as LinkPosting[]} rates={rates.data ?? []} categories={categories} query={query} />
-              <form action={markRefund}>{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="text-sm underline">Mark as a refund without linking a purchase</button></form></>}
+              <SafeForm action={markRefundSafely}>{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="text-sm underline">Mark as a refund without linking a purchase</button></SafeForm></>}
           </>}
-          {!receipt.data && (selected.kind !== "ordinary" || selected.transfer_id || selected.refund_of_id) && <form action={clearLink} className="border-t border-border pt-4">{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="text-sm underline">Make this a regular transaction again</button></form>}
+          {!receipt.data && (selected.kind !== "ordinary" || selected.transfer_id || selected.refund_of_id) && <SafeForm action={clearLinkSafely} className="border-t border-border pt-4">{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="text-sm underline">Make this a regular transaction again</button></SafeForm>}
         </>}
       </section>
 
@@ -156,7 +159,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
           return <li key={event.id} className="rounded-lg border border-border p-3">
             <p className="text-xs text-muted-foreground">{operationLabel((event.after as { operation?: unknown })?.operation)} · {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · Undone" : ""}</p>
             <ul className={`mt-1 ${event.undone ? "text-muted-foreground line-through" : ""}`}>{(changes.length ? changes : ["No visible field changes"]).map(change => <li key={change}>{change}</li>)}</ul>
-            {index === latestUndoable && <form action={undoCorrection} className="mt-2">{hidden("rows", versionRows)}{hidden("eventId", event.id)}{hidden("transactionId", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="underline">Undo correction</button></form>}
+            {index === latestUndoable && <SafeForm action={undoCorrectionSafely} className="mt-2">{hidden("rows", versionRows)}{hidden("eventId", event.id)}{hidden("transactionId", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="underline">Undo correction</button></SafeForm>}
           </li>;
         })}</ol> : <p className="mt-2 text-sm text-muted-foreground">No corrections yet.</p>}
       </section>

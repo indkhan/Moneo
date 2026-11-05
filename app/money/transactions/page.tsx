@@ -4,17 +4,20 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
 import { calendarDate } from "@/lib/finance/calendar";
-import { createManualTransaction } from "./actions";
 import { EditingHistory } from "./editing-history";
 import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, toggleSort, type ParsedTransactionParams, type TransactionGroup } from "./filters";
 import { invalidStoredViewScope, parseStoredFilters, parseViewId, savedViewToParams } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
+import { PhoneCollapse } from "@/components/phone-collapse";
 import { FilterBar } from "./filter-bar";
+import { ManualTransactionForm } from "./manual-form";
 import { LedgerTable, type LedgerRow } from "./ledger-table";
 import { TransactionDrawer } from "./drawer";
 import { kindLabel, statusLabel } from "./labels";
 import { summarizeGroups, orderByGroup } from "./grouping";
 import { ledgerTable, scopeLedger } from "./scope";
+
+export const metadata = { title: "Transactions" };
 
 const PAGE_SIZE = 50;
 // ponytail: subtotals scan at most this many matching rows (PostgREST max rows); an RPC aggregate lifts the cap if ledgers grow.
@@ -57,8 +60,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const header = (count?: number | null) => <header className="flex flex-wrap items-end justify-between gap-4">
     <div className="flex flex-col gap-1"><p className="eyebrow">{count != null ? `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"} · ` : ""}{activeCount} {activeCount === 1 ? "account" : "accounts"}</p><h1 className="page-title">Transactions</h1></div>
     <div className="flex flex-wrap gap-2 text-[13px]">
-      <Link href="/import" className="inline-flex h-11 items-center rounded-xl border border-input px-4 hover:bg-muted">Import CSV / Excel</Link>
-      <a href="#add-transaction" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 font-medium text-primary-foreground hover:opacity-90">Add transaction</a>
+      <Link href="/import" className="inline-flex h-11 items-center rounded-xl border border-input px-4 hover:bg-muted max-md:hidden">Import CSV / Excel</Link>
+      <a href="?add=1#add-transaction" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 font-medium text-primary-foreground hover:opacity-90">Add transaction</a>
     </div>
   </header>;
 
@@ -124,8 +127,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     ["account", filters.accountId && (accountNames[filters.accountId] ?? "Account")],
     ["category", filters.uncategorized ? "Uncategorized" : filters.categoryId && (categoryNames[filters.categoryId] ?? "Category")],
     ["merchant", filters.merchantUnknown ? "Unknown merchant" : filters.merchantId && (merchantNames[filters.merchantId] ?? "Merchant")],
-    ["minAmount", filters.minAmountMinor !== undefined && `At least ${formatMoney(filters.minAmountMinor, amountCurrency, workspace.locale)}`],
-    ["maxAmount", filters.maxAmountMinor !== undefined && `At most ${formatMoney(filters.maxAmountMinor, amountCurrency, workspace.locale)}`],
+    ["minAmount", filters.minAmountMinor !== undefined && (filters.direction === "outflow" ? `Up to ${formatMoney(filters.minAmountMinor.replace(/^-/, ""), amountCurrency, workspace.locale)}` : `At least ${formatMoney(filters.minAmountMinor, amountCurrency, workspace.locale)}`)],
+    ["maxAmount", filters.maxAmountMinor !== undefined && (filters.direction === "outflow" ? `At least ${formatMoney(filters.maxAmountMinor.replace(/^-/, ""), amountCurrency, workspace.locale)}` : `At most ${formatMoney(filters.maxAmountMinor, amountCurrency, workspace.locale)}`)],
     ["direction", filters.direction && (filters.direction === "income" ? "Money in" : "Money out")],
     ["status", filters.status && statusLabel(filters.status)], ["kind", filters.kind && kindLabel(filters.kind)],
     ["tag", filters.tag && `Tag: ${filters.tag}`], ["event", filters.eventName && `Group: ${filters.eventName}`],
@@ -133,10 +136,11 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const filterValues = Object.fromEntries(shareable);
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
 
-  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-4 text-foreground max-md:flex max-md:flex-col sm:px-8 md:py-6 lg:py-8">
     {header(filters.cursor ? null : count)}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
-    <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
+    {/^\d+$/.test(params.applied ?? "") ? <p role="status" className="rounded-xl border border-border bg-card px-4 py-3 text-sm">Updated {params.applied} {params.applied === "1" ? "transaction" : "transactions"}. Showing that category. Undo the batch under <a className="underline" href="#editing-history">Editing history</a>, or <Link className="underline" href="/ai">return to the conversation</Link>.</p> : null}
+    <div className="max-md:order-last"><PhoneCollapse label="Saved views" open={!!activeView}><SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} /></PhoneCollapse></div>
     <div className="grid gap-6">
       <div className="min-w-0 space-y-4">
         <FilterBar key={shareable.toString()} values={filterValues} accounts={accounts ?? []} categories={categories ?? []} merchants={merchants ?? []} displayCurrency={workspace.display_currency} timezone={workspace.timezone} />
@@ -146,7 +150,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             {chips.map(([key, label]) => <li key={key}><Link href={withParams(shareable, { [key]: null })} scroll={false} aria-label={`Remove filter ${label}`} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs hover:bg-muted">{label}<span aria-hidden>×</span></Link></li>)}
             {chips.length ? <li><Link href="/money/transactions" className="px-1 text-xs text-muted-foreground underline">Clear all</Link></li> : null}
           </ul>
-          <div className="flex items-center gap-3 max-lg:w-full max-lg:flex-wrap max-lg:justify-between">
+          <div className="flex items-center gap-3 max-md:hidden max-lg:w-full max-lg:flex-wrap max-lg:justify-between">
             {count !== null ? <span className="font-mono text-xs text-muted-foreground max-lg:whitespace-nowrap">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
             <nav aria-label="Group by" className="flex items-center gap-1 text-xs"><span className="text-muted-foreground">Group</span>
               {GROUPS.map(option => <Link key={option.value} scroll={false} aria-current={(filters.group ?? "") === option.value ? "true" : undefined}
@@ -155,32 +159,24 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             </nav>
           </div>
         </div>
-        {groups && (groups.by === "category" || (grouped?.data && count !== null && count > grouped.data.length)) ? <p className="text-xs text-muted-foreground">
-          {grouped?.data && count !== null && count > grouped.data.length ? `Subtotals cover the ${grouped.data.length.toLocaleString(workspace.locale)} most recent matches; narrow the dates for complete totals. ` : ""}
-          {groups.by === "category" ? "Split transactions are grouped under their original category." : ""}</p> : null}
+        {groups ? <p className="text-xs text-muted-foreground">
+          {grouped?.data && count !== null && count > grouped.data.length ? `Subtotals cover the ${grouped.data.length.toLocaleString(workspace.locale)} most recent matches, not everything; narrow the dates for complete totals. ` : "Subtotals cover every match, including rows on other pages. "}
+          {groups.by === "category" ? "Split transactions are grouped under their original category, so these can differ from spending reports, which use the allocations." : ""}</p> : null}
         {error ? <p role="alert">Could not load transactions: {error.message}</p> : <LedgerTable rows={rows} accountNames={accountNames} categories={categories ?? []} merchants={merchants ?? []}
           query={current.toString()} sort={filters.sort} sortHrefs={{ date: sortHref("date"), amount: sortHref("amount") }} groups={groups} openId={filters.transactionId ?? null}
           closeHref={`/money/transactions${current.size ? `?${current}` : ""}`} locale={workspace.locale} requestId={crypto.randomUUID()} />}
         <div className="flex flex-wrap items-center gap-4 text-sm">
           {filters.cursor ? <Link className="underline" href={withParams(viewBase, {})}>First page</Link> : null}
           {next ? <Link className="underline" href={withParams(viewBase, { cursor: next })}>Next page</Link> : null}
+          <span className="text-xs text-muted-foreground">{filters.cursor ? `Showing ${pageRows.length} from here` : count !== null && count > pageRows.length ? `Showing 1–${pageRows.length} of ${count.toLocaleString(workspace.locale)}` : ""}</span>
           <p className="ml-auto hidden text-xs text-muted-foreground sm:block"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>x</kbd> select · <kbd>/</kbd> search · <kbd>Esc</kbd> close</p>
         </div>
-        <details id="add-transaction" className="scroll-mt-24 rounded-xl border border-border bg-card p-5">
+        <details id="add-transaction" open={params.add === "1"} className="scroll-mt-24 rounded-xl border border-border bg-card p-5">
           <summary className="cursor-pointer text-sm font-medium">Add a manual transaction</summary>
-          {!activeAccounts.length ? <p className="mt-3 text-sm text-muted-foreground">Add or restore an active account before entering a transaction.</p> : <form action={createManualTransaction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 [&_input]:min-h-10 [&_input]:rounded-lg [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:px-3 [&_input]:text-sm [&_select]:min-h-10 [&_select]:rounded-lg [&_select]:border [&_select]:border-border [&_select]:bg-card [&_select]:px-3 [&_select]:text-sm">
-            <input type="hidden" name="requestId" value={crypto.randomUUID()} />
-            <label className="grid gap-1 text-sm">Account<select name="accountId" required>{activeAccounts.map(account => <option key={account.id} value={account.id}>{account.name} ({account.currency_code})</option>)}</select></label>
-            <label className="grid gap-1 text-sm">Posting date<input name="postedOn" type="date" required defaultValue={calendarDate(new Date(), workspace.timezone)} /></label>
-            <label className="grid gap-1 text-sm">Description<input name="description" required maxLength={500} /></label>
-            <label className="grid gap-1 text-sm">Signed decimal amount<input name="amount" required maxLength={30} inputMode="decimal" placeholder="-12.34" /><span className="text-xs text-muted-foreground">Use a minus sign for spending, e.g. -12.34.</span></label>
-            <label className="grid gap-1 text-sm">Status<select name="status" defaultValue="posted"><option value="posted">Posted</option><option value="pending">Pending</option></select></label>
-            <label className="grid gap-1 text-sm">Category<select name="categoryId"><option value="">Uncategorized</option>{categories?.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-            <label className="grid gap-1 text-sm">Note<input name="note" maxLength={2000} /></label>
-            <button className="min-h-10 self-end rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Add transaction</button>
-          </form>}
+          {!activeAccounts.length ? <p className="mt-3 text-sm text-muted-foreground">A transaction needs an account. <Link className="underline" href="/money/accounts">Add or restore one in Accounts</Link>.</p> : <ManualTransactionForm accounts={activeAccounts} categories={categories ?? []} today={calendarDate(new Date(), workspace.timezone)} requestId={crypto.randomUUID()} />}
         </details>
         <Suspense fallback={<p className="text-sm text-muted-foreground">Loading batch history…</p>}>
+          <div id="editing-history" className="scroll-mt-24" />
           <EditingHistory query={current.toString()} names={{ categories: categoryNames, merchants: merchantNames }} />
         </Suspense>
       </div>

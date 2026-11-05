@@ -1,3 +1,4 @@
+import { applicationMigrationSql } from "./migration-replay.mjs";
 // MNE014 disposable-schema cadence regression. Requires explicit shared-slot release.
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
@@ -56,7 +57,7 @@ try {
     record({phase: "ownership_verified", schemaOwner: ownership.schema_owner, markerVerified: true});
     const replay = files.filter(file => !(file === candidate && (baseline || upgrade))).map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      if (file.endsWith("_initial.sql")) sql = sql.slice(0, sql.indexOf("insert into storage.buckets"));
+      sql = applicationMigrationSql(file, sql, schema);
       return {file, sql: isolated(sql)};
     });
     await replayMigrations(tx, replay, "MNE014 private replay");

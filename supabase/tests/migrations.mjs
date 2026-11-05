@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
-import { canonicalFunctionDefinition, replayMigrations } from "./migration-replay.mjs";
+import { applicationMigrationSql, canonicalFunctionDefinition, replayMigrations, runIsolatedFixture } from "./migration-replay.mjs";
 
 process.loadEnvFile(".env");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL is required");
@@ -58,19 +58,18 @@ try {
     await tx.unsafe(`grant usage on schema ${schema} to authenticated, service_role`);
     const isolated = sql => sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);
     const isolatedMigrations = migrations.map(migration => {
-      let text = migration.sql;
-      if (migration.file.endsWith("_initial.sql")) text = text.slice(0, text.indexOf("insert into storage.buckets"));
+      const text = applicationMigrationSql(migration.file, migration.sql, schema);
       return { ...migration, sql: isolated(text) };
     });
     await replayMigrations(tx, isolatedMigrations, "fresh");
-    for (const file of regressionFiles) await tx.unsafe(isolated(readFileSync(`supabase/tests/${file}`, "utf8")));
+    for (const file of regressionFiles) await runIsolatedFixture(tx, `Fresh SQL regression ${file}`, isolated(readFileSync(`supabase/tests/${file}`, "utf8")));
     fresh = await metadata(tx, schema);
   });
   assert.equal((await db`select 1 from pg_namespace where nspname=${schema}`).length, 0, "QA schema must be rolled back");
   console.log(`PASS: fresh replay ${migrations.length} migrations and ${regressionFiles.length} SQL regressions; disposable schema rollback verified`);
   await rolledBack(async tx => {
     await replayMigrations(tx, pending, "upgrade");
-    for (const file of regressionFiles) await tx.unsafe(readFileSync(`supabase/tests/${file}`, "utf8"));
+    for (const file of regressionFiles) await runIsolatedFixture(tx, `Upgrade SQL regression ${file}`, readFileSync(`supabase/tests/${file}`, "utf8"));
     upgraded = await metadata(tx, "public");
   });
   for (const key of Object.keys(fresh)) assert.deepEqual(normalize(fresh[key], key === "functions"), normalize(upgraded[key], key === "functions"), `${key}: fresh and upgraded schema differ`);

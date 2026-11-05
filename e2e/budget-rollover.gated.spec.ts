@@ -21,7 +21,7 @@ test("budget rollover rules persist and undo while historical missing targets st
   await page.goto("/plan/spending");
   await page.getByRole("combobox", { name: "Category", exact: true }).selectOption(categoryId);
   await page.getByRole("textbox", { name: "Monthly limit", exact: true }).fill("100.00");
-  await page.getByRole("button", { name: "Save plan", exact: true }).click();
+  await page.getByRole("button", { name: "Set limit", exact: true }).click();
   const plan = page.locator("li").filter({ has: page.getByRole("heading", { name, exact: true }) });
   await expect(plan).toBeVisible({ timeout: 30_000 });
   await plan.getByText("Edit limit and rollover", { exact: true }).click();
@@ -35,11 +35,10 @@ test("budget rollover rules persist and undo while historical missing targets st
   const record = (await db.from("spending_plans").select("id").eq("workspace_id", workspace!.id).eq("category_id", categoryId).single()).data!;
   const event = (await db.from("planning_events").select("id").eq("entity_id", record.id).eq("entity_type", "spending_plan").order("created_at", { ascending: false }).limit(1).single()).data!;
   const undo = page.locator("form").filter({ has: page.locator(`input[name="eventId"][value="${event.id}"]`) });
-  await undo.getByRole("button", { name: "Undo", exact: true }).click();
+  await undo.getByRole("button", { name: `Undo ${name} (EUR) change`, exact: true }).click();
   await expect(plan.locator('input[name="rollover"]')).not.toBeChecked({ timeout: 30_000 });
   const month = await page.getByLabel("Calendar month", { exact: true }).inputValue();
   const year = Number(month.slice(0, 4));
   await page.getByLabel("Calendar month", { exact: true }).fill(`${year - 1}-01`);
-  await page.getByRole("button", { name: "View month", exact: true }).click();
   await expect(plan).toContainText("Unknown historical target", { timeout: 30_000 });
 });

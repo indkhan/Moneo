@@ -1,18 +1,24 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, HousePlus, Maximize2, Minimize2, RefreshCw, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, HousePlus, Maximize2, RefreshCw, X } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
 import { ArtifactFrame } from "@/components/artifact-frame";
 import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { loadConversation } from "@/lib/ai/conversation-history";
 import { cardWidgetKey, homeLayout, isBuiltinWidget, widgetLabel } from "@/lib/finance/dashboard";
 import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
-import { publishCard, setCardSize, unpublishCard } from "@/app/dashboard-actions";
+import { publishCardSafely, setCardSizeSafely, unpublishCardSafely } from "@/app/dashboard-actions";
+import { SafeForm } from "@/components/safe-form";
 import { DeleteArtifactButton } from "../delete-artifact-button";
-import { ArtifactChat } from "./artifact-chat";
+import { ArtifactChat, SendButton } from "./artifact-chat";
+import { ExitFullScreen, PendingSubmit, RenameArtifact } from "./artifact-controls";
 
-type Search = { v?: string; full?: string; tab?: string; start?: string; card?: string; cv?: string };
+const cardControl = "flex flex-wrap items-center gap-2";
+
+export const metadata = { title: "Artifact" };
+
+type Search = { v?: string; full?: string; tab?: string; card?: string; cv?: string };
 type CardRow = { id: string; title: string; size: string; published_version: number | null; artifact_card_versions: { version: number; title: string }[] };
 
 export default async function ArtifactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
@@ -22,7 +28,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const [{ id }, search] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const [artifact, versions, cards, layout, chat] = await Promise.all([
-    supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
+    supabase.from("artifacts").select("id, title, first_prompt, first_prompt_claimed_at").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
     supabase.from("artifact_versions").select("version, prompt").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
     supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, title)").eq("workspace_id", workspace.id).eq("artifact_id", id).is("deleted_at", null).order("created_at"),
     supabase.from("dashboard_layouts").select("items").eq("workspace_id", workspace.id).maybeSingle(),
@@ -38,52 +44,64 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
     conversationId = created.data.id as string;
   }
   const history = await loadConversation(supabase, workspace.id, conversationId);
+  // Sent once, by whichever page claims it first. After that a request takes a press, so no reload or link can spend money.
+  const waiting = !history.messages.length && !history.running && !!artifact.data.first_prompt;
+  const start = waiting && !artifact.data.first_prompt_claimed_at;
+  const retry = waiting && !start ? artifact.data.first_prompt : null;
 
   const pages = versions.data ?? [];
   const current = pages.find(item => String(item.version) === search.v) ?? pages.at(-1);
   const latest = pages.at(-1)?.version ?? 0;
   const tab = search.tab === "cards" ? "cards" : "page";
   const at = (query: Partial<Search>) => `/ai/artifacts/${id}?${new URLSearchParams(Object.entries({ tab, ...(current ? { v: String(current.version) } : {}), ...query }).filter((entry): entry is [string, string] => !!entry[1]))}`;
-  // The frame reruns the saved queries on every open, so the page always shows today's data.
+  // The frame reruns the saved queries on every open, so even an older design shows today's data. Say both, separately.
+  const dataAsOf = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone }).format(new Date());
+  const older = !!current && current.version < latest;
+  const dataLabel = `${older ? "Older design, current data" : "Data"} as of ${dataAsOf}`;
   const frame = current && <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} className="size-full" />;
 
-  if (search.full && frame) return <div className="fixed inset-0 z-50 bg-background">
-    {frame}
-    <Link href={at({ full: undefined })} aria-label="Exit full screen" className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg border border-border bg-card/90 px-3 py-1.5 text-xs shadow hover:bg-muted">
-      <Minimize2 className="size-3.5" aria-hidden="true" />Exit</Link>
+  if (search.full && frame) return <div className="fixed inset-0 z-50 flex flex-col bg-background">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-card px-3 py-1.5 text-xs">
+      <h1 className="min-w-0 flex-1 basis-40 truncate text-sm font-medium">{artifact.data.title}</h1>
+      <span>Design v{current.version} of {latest}</span><span className="text-muted-foreground">{dataLabel}</span>
+      <ExitFullScreen href={at({ full: undefined })} />
+    </div>
+    <div className="min-h-0 flex-1">{frame}</div>
   </div>;
 
   const homeItems = homeLayout(layout.data)?.items ?? [];
   // Neighbours in the preview are the user's own Home widgets, so the card is seen where it will sit.
   const neighbours = homeItems.filter(isBuiltinWidget).filter(key => key !== "overview").map(widgetLabel);
   const buildCard = "Create a Home card from this artifact, keeping its purpose, design and live data. Use the existing page and conversation as context. Save it as a draft for me to preview before adding it to Home.";
-  const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name, start: name === "cards" && !cards.data?.length && !history.running ? buildCard : undefined })} aria-current={tab === name ? "page" : undefined}
+  const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
 
-  return <main className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(300px,400px)_1fr] lg:grid-rows-1">
-    <aside className="flex min-h-0 min-w-0 flex-col gap-3">
+  return <main className="grid gap-4 p-4 max-lg:h-full max-lg:overflow-y-auto lg:h-full lg:min-h-0 lg:grid-cols-[minmax(300px,400px)_1fr] lg:grid-rows-1 lg:overflow-hidden">
+    <aside className="flex min-w-0 flex-col gap-3 max-lg:h-[70dvh] lg:min-h-0">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <Link href="/ai/artifacts" className="text-xs text-muted-foreground hover:underline">← Artifacts</Link>
-          <h1 className="mt-1 truncate font-display text-2xl font-semibold tracking-tight">{artifact.data.title}</h1>
+          <h1 title={artifact.data.title} className="mt-1 truncate font-display text-2xl font-semibold tracking-tight">{artifact.data.title}</h1>
+          <RenameArtifact id={id} title={artifact.data.title} />
         </div>
         <DeleteArtifactButton id={id} title={artifact.data.title} label="" className="mt-6" />
       </div>
-      <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} start={search.start?.slice(0, 4000)} />
+      <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} artifactId={start ? id : undefined} />
     </aside>
-    <section aria-label="Artifact" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border">
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
+    <section aria-label="Artifact" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border max-lg:h-[85dvh] lg:min-h-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
         <nav aria-label="View" className="flex gap-1">{tabLink("page", "Page")}{tabLink("cards", `Home cards${cards.data?.length ? ` · ${cards.data.length}` : ""}`)}</nav>
-        {tab === "page" && current && <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
+        {tab === "page" && current && <span className="inline-flex flex-wrap items-center gap-1">
+          <span className="mr-2 text-muted-foreground">{dataLabel}</span>
           {current.version > 1 ? <Link href={at({ v: String(current.version - 1) })} aria-label="Previous version" className="rounded p-1 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronLeft className="size-3.5" /></span>}
-          v{current.version} of {latest}
+          <span>Design v{current.version} of {latest}</span>
           {current.version < latest ? <Link href={at({ v: String(current.version + 1) })} aria-label="Next version" className="rounded p-1 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronRight className="size-3.5" /></span>}
           <Link href={at({ full: "1" })} className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
         </span>}
       </div>
-      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || search.start ? "Building your artifact… Follow the progress in the chat." : "No page yet. Describe what to build in the chat."}</p>}</div>
+      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || start ? "Building your artifact… Follow the progress in the chat." : retry ? <SendButton prompt={retry} idle="Your first request did not finish." label="Send it again" sending="Building your artifact… Follow the progress in the chat." /> : "No page yet. Describe what to build in the chat."}</p>}</div>
         : <div className="min-h-0 flex-1 space-y-8 overflow-y-auto bg-background p-4">
-          {!cards.data?.length && <p role="status" className="text-sm text-muted-foreground">{history.running || search.start ? "Building your Home card… Follow the progress in the chat." : "No Home card was created. Click Home cards to build one."}</p>}
+          {!cards.data?.length && (history.running || start ? <p role="status" className="text-sm text-muted-foreground">Follow the progress in the chat.</p> : <SendButton prompt={buildCard} idle="No Home card yet. Moneo can make one from this page, using an AI request." label="Create a Home card" sending="Building your Home card… Follow the progress in the chat." />)}
           {(cards.data as CardRow[] | null)?.map(card => {
             const all = card.artifact_card_versions.map(item => item.version).sort((a, b) => a - b);
             const newest = all.at(-1) ?? 0;
@@ -94,23 +112,24 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
             const cardAt = (version: number) => at({ card: card.id, cv: String(version) });
             return <article key={card.id} aria-label={card.title} className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-sm">{card.artifact_card_versions.find(item => item.version === shown)?.title ?? card.title}</span>
                   <span className="inline-flex items-center gap-1 text-muted-foreground">
-                    {shown > 1 ? <Link href={cardAt(shown - 1)} aria-label="Previous card version" className="rounded p-0.5 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-0.5 opacity-30"><ChevronLeft className="size-3.5" /></span>}
+                    {shown > 1 ? <Link href={cardAt(shown - 1)} aria-label={`Previous version of ${card.title}`} className="rounded p-1.5 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronLeft className="size-3.5" /></span>}
                     v{shown} of {newest}
-                    {shown < newest ? <Link href={cardAt(shown + 1)} aria-label="Next card version" className="rounded p-0.5 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-0.5 opacity-30"><ChevronRight className="size-3.5" /></span>}
+                    {shown < newest ? <Link href={cardAt(shown + 1)} aria-label={`Next version of ${card.title}`} className="rounded p-1.5 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronRight className="size-3.5" /></span>}
                   </span>
                   <span className={onHome ? "text-brand" : "text-muted-foreground"}>{onHome ? card.published_version === shown ? "On Home" : `Home shows v${card.published_version}` : "Not on Home"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span role="group" aria-label="Size" className="inline-flex rounded-lg border border-border p-0.5">{CARD_SIZE_KEYS.map(key => <form key={key} action={setCardSize.bind(null, card.id, key)}>
-                    <button type="submit" aria-pressed={size === key} className="rounded-md px-2 py-0.5 font-mono text-[11px] text-muted-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground">{CARD_SIZES[key].label}</button></form>)}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SafeForm action={setCardSizeSafely} className={cardControl}><input type="hidden" name="id" value={card.id} />
+                    <span role="group" aria-label={`Size of ${card.title}. Applies on Home straight away.`} title="Applies on Home straight away" className="inline-flex rounded-lg border border-border p-0.5">{CARD_SIZE_KEYS.map(key =>
+                      <PendingSubmit key={key} name="size" value={key} aria-pressed={size === key} className="min-h-7 min-w-7 rounded-md px-2 py-0.5 font-mono text-xs text-muted-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground">{CARD_SIZES[key].label}</PendingSubmit>)}</span></SafeForm>
                   {!onHome || card.published_version !== shown
-                    ? <form action={publishCard.bind(null, card.id, shown, card.published_version)}><button type="submit" className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">
-                      {onHome ? <><RefreshCw className="size-3.5" aria-hidden="true" />Update on Home</> : <><HousePlus className="size-3.5" aria-hidden="true" />Add to Home</>}</button></form>
+                    ? <SafeForm action={publishCardSafely} className={cardControl}><input type="hidden" name="id" value={card.id} /><input type="hidden" name="version" value={shown} /><input type="hidden" name="shown" value={card.published_version ?? ""} /><PendingSubmit className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">
+                      {onHome ? <><RefreshCw className="size-3.5" aria-hidden="true" />Update on Home</> : <><HousePlus className="size-3.5" aria-hidden="true" />Add to Home</>}</PendingSubmit></SafeForm>
                     : <span className="inline-flex items-center gap-1 px-2 text-brand"><Check className="size-3.5" aria-hidden="true" />On Home</span>}
-                  {onHome && <form action={unpublishCard.bind(null, card.id)}><button type="submit" className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</button></form>}
+                  {onHome && <SafeForm action={unpublishCardSafely} className={cardControl}><input type="hidden" name="id" value={card.id} /><PendingSubmit className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</PendingSubmit></SafeForm>}
                 </div>
               </div>
               {/* The card in its Home slot, between the user's own widgets, with live data. */}

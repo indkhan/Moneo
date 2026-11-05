@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const tables: string[] = [];
+const filters: [string, string][] = [];
 const rows: Record<string, unknown[]> = {
   imports: [
     { id: "i1", filename: "failed.csv", status: "failed", total_rows: 1, new_rows: 0, matched_rows: 0, review_rows: 0, classification_review_rows: 0, rejected_rows: 0, error: "Bad file", created_at: "2026-10-02T10:00:00Z" },
@@ -12,7 +13,8 @@ const rows: Record<string, unknown[]> = {
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", locale: "en-US", timezone: "UTC" }, supabase: { from: (table: string) => {
   tables.push(table);
   const query: Record<string, unknown> = { then: (resolve: (value: unknown) => void) => resolve({ data: rows[table] ?? [], error: null }) };
-  for (const method of ["select", "eq", "neq", "in", "order", "limit"]) query[method] = () => query;
+  for (const method of ["select", "eq", "neq", "in", "not", "order", "limit"]) query[method] = () => query;
+  query.or = (value: string) => { filters.push([table, value]); return query; };
   return query;
 } } }) }));
 
@@ -32,6 +34,20 @@ it("filters the shared feed and queries only the sources a filter shows", async 
   expect(await render("chats")).toContain("Chat reply completed");
 });
 
+it("names what waits and keeps usage out of the attention row", async () => {
+  const card = "00000000-0000-4000-8000-000000000012";
+  rows.chat_requests.push({ id: "c3", conversation_id: "z", status: "completed", error: null, usage: { model: "secret-model", total_tokens: 5 }, updated_at: "2026-10-05T10:00:00Z",
+    answer: ["Added.", "```moneo-proposals", JSON.stringify([card]), "```"].join(String.fromCharCode(10)) });
+  rows.agent_proposals = [{ id: card, title: "Move Rent to Housing" }];
+  try {
+    const attention = await render("attention");
+    expect(attention).toContain("Needs attention");
+    expect(attention).toContain("Move Rent to Housing");
+    expect(attention).toContain("Ready to review");
+    expect(attention).not.toContain("secret-model");
+  } finally { rows.chat_requests.pop(); delete rows.agent_proposals; }
+});
+
 it("flags a chat reply whose cards are still open, even after the user left before it finished", async () => {
   const card = "00000000-0000-4000-8000-000000000010", decided = "00000000-0000-4000-8000-000000000011";
   rows.chat_requests.push({ id: "c2", conversation_id: "y", status: "completed", error: null, usage: null, updated_at: "2026-10-04T10:00:00Z",
@@ -43,4 +59,12 @@ it("flags a chat reply whose cards are still open, even after the user left befo
     expect(attention).toContain("/ai?conversation=y");
     expect(attention).not.toContain("Chat reply completed");
   } finally { rows.chat_requests.pop(); delete rows.agent_proposals; }
+});
+
+it("asks for unresolved imports directly under Needs attention, so old ones cannot fall out of a sample", async () => {
+  filters.length = 0;
+  await render();
+  expect(filters).toEqual([]);
+  await render("attention");
+  expect(filters).toContainEqual(["imports", "status.eq.failed,review_rows.gt.0,classification_review_rows.gt.0"]);
 });

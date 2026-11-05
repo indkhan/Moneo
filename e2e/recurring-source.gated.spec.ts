@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication and database fixtures");
 
 test("source correction invalidates the inferred forecast obligation and undo restores it",async({browser})=>{
@@ -41,19 +42,20 @@ test("source correction invalidates the inferred forecast obligation and undo re
     await manual.getByRole("combobox",{name:"Account",exact:true}).selectOption({label:`${accountNames[i===3?1:0]} (EUR)`});
     await manual.getByLabel("Description",{exact:true}).fill(i===3?credit:label);
     await manual.getByLabel("Posting date",{exact:true}).fill(i===3?"2026-09-15":`2026-0${i+7}-15`);
-    await manual.getByLabel("Signed decimal amount").fill(i===3?"10.00":"-10.00");
+    await manual.getByLabel("Direction").selectOption(i===3?"in":"out");await manual.getByLabel("Amount").fill("10.00");
     await manual.getByRole("button",{name:"Add transaction",exact:true}).click();
     await page.waitForURL(/transaction=[0-9a-f-]{36}/,{timeout:30_000});sourceUrls.push(page.url());
   }
   await page.goto("/money/recurring");
   const series=page.locator("article").filter({has:page.getByRole("heading",{name:label,exact:true})});
   await expect(series).toContainText("3 payments found");
-  await series.getByRole("button",{name:"Confirm",exact:true}).click();
-  await expect(series).toContainText("Confirmed",{timeout:30_000});
+  await series.getByRole("button",{name:/^Confirm (?!recurring)/}).click();
+  await series.getByRole("button",{name:"Confirm recurring",exact:true}).click();
+  await expect(page.getByRole("region",{name:"Confirmed payments and income"})).toContainText(label,{timeout:30_000});
   await page.goto("/plan");
   const assumption=page.locator("li").filter({has:page.getByRole("heading",{name:label,exact:true})});
   await expect(assumption).toContainText("Detected from your transactions");await expect(assumption).toContainText("Used in forecast");
-  const forecast=page.locator("section").filter({has:page.getByRole("heading",{name:"Liquid balance horizon",exact:true})});
+  const forecast=page.locator("section").filter({has:page.getByRole("heading",{ name: /^Your cash over the next/ })});
   await expect(forecast).toContainText("EUR 990.00");await expect(forecast).not.toContainText("Forecast unavailable");
   await page.goto(`${sourceUrls[2]}&linkSearch=${encodeURIComponent(credit)}`);
   const detail=page.getByRole("complementary",{name:"Transaction details"});
@@ -63,7 +65,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await transfer.getByRole("checkbox").check();await transfer.getByRole("button",{name:"Confirm verified transfer",exact:true}).click();
   await expect(detail.getByText("Transfer pair:",{exact:false})).toBeVisible({timeout:30_000});
   await page.goto("/money/recurring");
-  await expect(page.getByRole("heading",{name:"Confirmed source evidence changed",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Payments behind a confirmed schedule changed",exact:true})).toBeVisible();
   await page.goto("/plan");
   const disabled=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} (disabled)`,exact:true})});
   await expect(disabled).toContainText("Not used in forecast");
@@ -72,8 +74,8 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await page.goto(sourceUrls[2]);await detail.getByRole("button",{name:"Undo verified link",exact:true}).click();
   await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible({timeout:30_000});
   await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-1000"');
-  await page.goto("/money/recurring");await expect(series).toContainText("Confirmed");
-  await expect(page.getByRole("heading",{name:"Confirmed source evidence changed",exact:true})).not.toBeVisible();
+  await page.goto("/money/recurring");await expect(page.getByRole("region",{name:"Confirmed payments and income"})).toContainText(label);
+  await expect(page.getByRole("heading",{name:"Payments behind a confirmed schedule changed",exact:true})).not.toBeVisible();
   await page.goto("/plan");await expect(assumption).toContainText("Used in forecast");
   await expect(assumption).toContainText("Detected from your transactions");
   await expect(forecast).toContainText("EUR 990.00");
@@ -87,21 +89,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
         expect(owned.data.user?.user_metadata).toMatchObject({qa_test:"recurring-source",run_id:runId});
         expect((await db`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
       }
-      if(workspace&&user)await db.begin(async tx=>{
-        expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
-        for(const table of ["transaction_link_fees","transaction_links","correction_events","recurring_occurrence_settlements","recurring_series_transactions","recurring_series"]) {
-          await tx`delete from ${tx("public."+table)} where workspace_id=${workspace!}`;
-          expect((await tx`select count(*)::int as count from ${tx("public."+table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
-        }
-        await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
-        for(const table of ["financial_assumptions","manual_transaction_entries","balance_snapshots","transactions","forecast_preference_events","forecast_preferences","accounts","planning_events"]) {
-          await tx`delete from ${tx("public."+table)} where workspace_id=${workspace!}`;
-          expect((await tx`select count(*)::int as count from ${tx("public."+table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
-        }
-        await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-        expect((await tx`select count(*)::int as count from public.workspaces where id=${workspace!}`)[0].count).toBe(0);
-      });
-      if(user){expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);unlinkSync(recovery);}
+      if(user){await deleteDisposableUser(db, user);expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);unlinkSync(recovery);}
       if(migrationLedger)expect(await db`select version,name,statements from supabase_migrations.schema_migrations order by version`).toEqual(migrationLedger);
     } finally {await db.end();}
   }

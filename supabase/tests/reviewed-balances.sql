@@ -19,7 +19,9 @@ begin
     values(workspace,account,today,'Synthetic date-only posting',-200,'EUR','posted') returning id into date_only;
   insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status)
     values(workspace,account,today,'Synthetic pending hold',-1000,'EUR','pending');
-  if public.reservation_balance_evidence(account,clock_timestamp(),'Europe/Berlin')->>'status'<>'ambiguous' then raise exception 'Unconfirmed same-day boundary became usable'; end if;
+  -- A date-only balance is that day's closing balance: same-day postings are already included.
+  evidence:=public.reservation_balance_evidence(account,clock_timestamp(),'Europe/Berlin');
+  if evidence->>'status'<>'current' or evidence->>'amount_minor'<>'10000' or evidence->>'pending_hold_minor'<>'1000' then raise exception 'Date-only closing balance double counted same-day postings'; end if;
   select jsonb_agg(public.balance_review_record(t) order by t.id) into receipt from public.transactions t where t.id in(morning,date_only);
   execute 'set local role authenticated';
   begin perform public.record_manual_balance(foreign_account,'10000',today,true,'[]',null,0,gen_random_uuid()); raise exception 'Foreign balance accepted' using errcode='ZX001'; exception when sqlstate 'P0002' then null; end;
@@ -55,7 +57,9 @@ begin
   execute 'reset role';
   if not exists(select 1 from public.balance_snapshots where id=request and actor_id=actor and undone_by=actor and version=2 and covered_transactions=receipt and undone_at is not null)
     or not exists(select 1 from public.balance_snapshots where id=baseline) then raise exception 'Undo destroyed history/evidence'; end if;
-  if public.reservation_balance_evidence(account,clock_timestamp(),'Europe/Berlin')->>'status'<>'ambiguous' then raise exception 'Undo did not restore previous uncertainty'; end if;
+  -- The reviewed receipt no longer applies, so its corrected-coverage ambiguity gives way to the baseline closing balance.
+  evidence:=public.reservation_balance_evidence(account,clock_timestamp(),'Europe/Berlin');
+  if evidence->>'status'<>'current' or evidence->>'amount_minor'<>'10000' then raise exception 'Undo did not restore previous closing balance'; end if;
   -- Replay retains the undone result; old receipt version cannot be used to write after undo.
   execute 'set local role authenticated';
   if public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,request)->>'undone'<>'true' then raise exception 'Retry resurrected undone balance'; end if;

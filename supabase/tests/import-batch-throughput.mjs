@@ -1,3 +1,4 @@
+import { applicationMigrationSql } from "./migration-replay.mjs";
 // Real database budgets in one rollback-only complete private application
 // replay. Serialize with auth/browser gates: this managed database acquires
 // real auth-table locks even for CREATE POLICY on a private dummy table.
@@ -21,7 +22,7 @@ try {
     await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users(id uuid primary key,email text); grant usage on schema ${schema} to authenticated,service_role`);
     for (const file of readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort()) {
       let text = readFileSync(`supabase/migrations/${file}`, "utf8");
-      if (file.endsWith("_initial.sql")) text = text.slice(0, text.indexOf("insert into storage.buckets")).replace(/^create extension if not exists pgcrypto;\s*/i, "");
+      text = applicationMigrationSql(file, text, schema).replace(/^create extension if not exists pgcrypto;\s*/i, "");
       await tx.unsafe(isolated(text));
     }
     managedAuthRelationLocks = await tx`select l.mode,count(*)::integer as count from pg_locks l join pg_class c on c.oid=l.relation join pg_namespace n on n.oid=c.relnamespace where l.pid=pg_backend_pid() and n.nspname='auth' group by l.mode`;

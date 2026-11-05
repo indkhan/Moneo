@@ -3,6 +3,7 @@ import { AskAbout } from "@/components/ask-about";
 import type { ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
+import { displayFormat } from "@/lib/display-format";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
 import { CashFlowLink, CashFlowView } from "./cash-flow-view";
@@ -17,7 +18,7 @@ export function Figure({ value, digits, className }: { value: string; digits: nu
   return <p className={className}>{match ? <>{match[1]}<span className="text-[0.5em] tracking-tight text-subtle">{match[2]}</span>{match[3]}</> : value}</p>;
 }
 
-const monthName = (from: string, locale: string, month: "short" | "long" = "long") => new Intl.DateTimeFormat(locale, { month, timeZone: "UTC" }).format(new Date(`${from}T00:00:00Z`));
+const monthName = (from: string, locale: string, month: "short" | "long" = "long") => month === "short" ? displayFormat(locale).shortMonth(from) : displayFormat(locale).month(from);
 
 /** This month's money in, money out and what is left; In and Out open their breakdown in the six-month chart. */
 export async function MonthCashFlow({ db, workspaceId, currency, today, locale, children }: SectionProps & { children?: ReactNode }) {
@@ -65,7 +66,7 @@ export async function RecentTransactions({ db, workspaceId, locale, names }: Omi
     {error ? <p role="alert" className="mt-3 text-sm">Recent transactions are unavailable right now.</p>
       : rows.length ? <ul className="mt-2 divide-y divide-border">{rows.map(row => <li key={row.id}>
         <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-center gap-3 py-2 text-sm hover:bg-muted">
-          <span className="w-20 shrink-0 font-mono text-xs text-muted-foreground">{row.posted_on}</span>
+          <span className="w-20 shrink-0 font-mono text-xs text-muted-foreground">{displayFormat(locale).date(row.posted_on)}</span>
           <span className="min-w-0 flex-1"><span className="block truncate">{row.description ?? "Recorded posting"}</span><span className="block truncate text-xs text-muted-foreground">{names.get(row.account_id) ?? "Account"}{row.status === "pending" ? " · pending" : ""}{row.review_reasons?.length ? " · needs review" : ""}</span></span>
           <span className="shrink-0 font-mono">{formatMoney(row.amount_minor, row.currency_code, locale)}</span>
         </Link>

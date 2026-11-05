@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatRequest } from "@/lib/ai/use-chat-request";
+import { useFollowOutput } from "@/lib/use-follow-output";
 import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -17,11 +18,37 @@ import { selectConversation } from "@/lib/ai/selected-conversation";
 import type { AskSeed } from "./ask-about";
 
 export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose: () => void; seed?: (AskSeed & { nonce: number }) | null }) {
-  // Non-modal: the page behind stays usable while the panel is open.
+  // Beside the page on desktop, where it stays usable. Below lg the panel covers the page, so it is modal and keeps focus.
   const dialog = useRef<HTMLDialogElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => { close.current = onClose; }, [onClose]);
   useEffect(() => {
-    if (open) dialog.current?.show();
-    else dialog.current?.close();
+    const panel = dialog.current;
+    if (!panel) return;
+    if (!open) { panel.close(); return; }
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const covering = matchMedia("(max-width: 1023px)");
+    const present = () => {
+      panel.close();
+      if (covering.matches) panel.showModal();
+      else panel.show();
+    };
+    // Escape works wherever focus is on desktop, unless a modal elsewhere (the command palette) owns it.
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector("dialog:modal:not(#moneo-ai-panel)")) return;
+      event.preventDefault();
+      close.current();
+    };
+    present();
+    covering.addEventListener("change", present);
+    document.addEventListener("keydown", escape);
+    return () => {
+      covering.removeEventListener("change", present);
+      document.removeEventListener("keydown", escape);
+      // present() reopens on a resize, so the browser's own focus return no longer knows the opener.
+      panel.close();
+      opener?.focus();
+    };
   }, [open]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
@@ -68,7 +95,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   }, [open, load]);
   // Keep the newest answer, and any card under it, in view, as the AI page does.
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [history.length, pending]);
+  const followOutput = useFollowOutput(end, [history.length, pending]);
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
@@ -102,6 +129,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     const question = typed.trim() || ATTACHMENT_ONLY_MESSAGE;
     const id = conversationId ?? crypto.randomUUID();
     setConversationId(id);
+    followOutput();
     const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}), ...(spoken && VOICE_CONTEXT) };
     const selectionGeneration = generation.current;
     let live: PendingExchange = { question, attachments, tools: [], spoken };
@@ -128,7 +156,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   }
   const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId ?? "", startQueued);
 
-  return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); onClose(); } }} className="fixed inset-y-0 right-0 left-auto z-40 m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-xl">
+  return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onCancel={event => { event.preventDefault(); onClose(); }} className="fixed inset-y-0 right-0 left-auto z-40 m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-xl">
     <div className="flex h-full flex-col">
       <header className="flex flex-row-reverse items-center gap-1 border-b border-border px-3 py-2.5">
         <button type="button" onClick={onClose} aria-label="Close AI assistant" className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" /></button>

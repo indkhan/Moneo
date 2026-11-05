@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -13,11 +14,13 @@ const optionalId = (form: FormData, key: string) => form.get(key) ? z.uuid().par
 export async function saveWealthItem(form: FormData) {
   const { supabase } = await requireWorkspace();
   const kind = z.enum(["holding", "asset", "debt"]).parse(form.get("kind"));
-  const currency = z.string().regex(/^[A-Z]{3}$/).parse(form.get("currency")); minorDigits(currency);
+  const currency = z.string().regex(/^[A-Z]{3}$/, "Choose a currency from the list").parse(form.get("currency")); minorDigits(currency);
   const quantity = kind === "holding" ? z.string().trim().max(43).parse(form.get("quantity")) : null;
   const price = kind === "holding" ? z.string().trim().max(43).parse(form.get("unitPrice")) : null;
-  const amount = kind === "holding" ? holdingValue(quantity!, price!, currency) : wealthAmount(z.string().parse(form.get("amount")), currency);
-  if ((kind === "debt" && amount > 0n) || (kind !== "debt" && amount < 0n)) throw new Error("Debt principal must be negative; asset values must be nonnegative");
+  const entered = kind === "holding" ? holdingValue(quantity!, price!, currency) : wealthAmount(z.string().parse(form.get("amount")), currency);
+  // The form asks what is still owed as a plain amount; a debt is stored negative.
+  const amount = kind === "debt" && entered > 0n ? -entered : entered;
+  if (kind !== "debt" && amount < 0n) throw new Error("Values cannot be negative. Add money you owe as a debt.");
   const rate = kind === "debt" ? z.string().trim().max(43).parse(form.get("annualRate")) : null;
   if (rate) { const ratio = decimalRatio(rate); if (ratio.numerator > 1000n * ratio.denominator) throw new Error("Annual rate exceeds supported range"); }
   const payment = kind === "debt" ? wealthAmount(z.string().parse(form.get("monthlyPayment")), currency) : null;
@@ -37,7 +40,7 @@ export async function removeWealthItem(form: FormData) {
   const { supabase } = await requireWorkspace();
   const { error } = await supabase.rpc("edit_wealth_item", { p_id: z.uuid().parse(form.get("id")), p_expected_version: version.parse(form.get("version")), p_record: {}, p_remove: true, p_request_id: z.uuid().parse(form.get("requestId")) });
   if (error) throw new Error(error.message);
-  revalidatePath("/", "layout"); redirect("/money/wealth");
+  revalidatePath("/", "layout"); redirect("/money/wealth?removed=1#wealth-history");
 }
 
 export async function undoWealthEvent(form: FormData) {
@@ -46,3 +49,7 @@ export async function undoWealthEvent(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout"); redirect("/money/wealth");
 }
+
+export async function saveWealthItemSafely(_state: SafeState, form: FormData) { return safely(form, saveWealthItem); }
+export async function removeWealthItemSafely(_state: SafeState, form: FormData) { return safely(form, removeWealthItem); }
+export async function undoWealthEventSafely(_state: SafeState, form: FormData) { return safely(form, undoWealthEvent); }

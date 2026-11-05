@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
@@ -8,8 +9,8 @@ import { minorDigits } from "@/lib/finance/fx";
 
 function parseCurrency(raw: unknown): string {
   const normalized = String(raw ?? "").trim().toUpperCase();
-  const code = z.string().regex(/^[A-Z]{3}$/).parse(normalized);
-  minorDigits(code);
+  const code = z.string().regex(/^[A-Z]{3}$/, "Choose a currency from the list").parse(normalized);
+  try { minorDigits(code); } catch { throw new Error(`${code} is not a supported currency. Choose one from the list.`); }
   return code;
 }
 
@@ -17,7 +18,7 @@ function parseRateText(raw: unknown): string {
   const text = String(raw ?? "").trim();
   if (text.length > 40) throw new Error("Rate is too long");
   const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
-  if (!match) throw new Error(`Invalid rate: ${text}`);
+  if (!match) throw new Error("Enter the rate as a number with a dot for decimals, like 1.08");
   if (BigInt(`${match[1]}${match[2] ?? ""}`) <= 0n) throw new Error("Rate must be positive");
   return text;
 }
@@ -28,7 +29,7 @@ export async function setDisplayCurrency(form: FormData) {
   // Display-only: original transactions, accounts and balances are never mutated.
   const { error } = await supabase.from("workspaces").update({ display_currency: currency }).eq("id", workspace.id);
   if (error) throw error;
-  redirect("/plan/currency");
+  redirect("/plan/currency?saved=display");
 }
 
 export async function addFxRate(form: FormData) {
@@ -50,7 +51,10 @@ export async function addFxRate(form: FormData) {
     rate_date: rateDate,
     source,
   });
-  if (error && error.code === "23505") throw new Error("A rate for this pair and date already exists");
+  if (error && error.code === "23505") throw new Error(`A ${from} to ${to} rate for ${rateDate} is already saved. Choose another date, or use the saved one.`);
   if (error) throw error;
-  redirect("/plan/currency");
+  redirect("/plan/currency?saved=rate");
 }
+
+export async function addFxRateSafely(_state: SafeState, form: FormData) { return safely(form, addFxRate); }
+export async function setDisplayCurrencySafely(_state: SafeState, form: FormData) { return safely(form, setDisplayCurrency); }

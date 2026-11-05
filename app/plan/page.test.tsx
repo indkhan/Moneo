@@ -7,6 +7,8 @@ import { evaluatePlan } from "@/lib/finance/model";
 import { accountLiquidity, availableToSpend, forecastDaily, type ForecastInput } from "@/lib/finance/calculations";
 import { evaluateForecast } from "@/lib/finance/tools";
 
+vi.mock("@/components/currency-select", () => ({ CurrencySelect: () => null }));
+vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("./history", () => ({ PlanningHistory: () => null }));
@@ -70,8 +72,10 @@ it("does not turn incomplete balance evidence into an available forecast", async
   const unknown = { ...input, missingInputs: ["balance:checking:boundary evidence unavailable"] };
   vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: unknown, forecast: forecastDaily(unknown), available: availableToSpend(unknown), liquidity: accountLiquidity(unknown), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
   const html = await render({ account: "checking" });
-  expect(html).toContain("Forecast unavailable"); expect(html).toContain("boundary evidence unavailable");
-  expect(html).not.toContain("Aggregate headroom"); expect(html).not.toContain("Chosen-account headroom");
+  expect(html).toContain("From 1 of 2 accounts"); expect(html).toContain("Fix 1 balance");
+  expect(html).toContain("Left out of this forecast"); expect(html).toContain("Checking: its balance could not be confirmed.");
+  expect(html).toContain('href="/money/accounts#account-checking"');
+  expect(html).toContain("Choose a current liquid account"); expect(html).not.toContain("Chosen-account headroom");
 });
 it("does not select pooled spending or discard unknown account and invalid funding input", async () => {
   expect(await render()).toContain("Choose a paying account");
@@ -115,4 +119,19 @@ it("lists upcoming obligations under the forecast chart and compares a scenario 
   const withScenario = await render({ horizon: "3", scenario: "00000000-0000-4000-8000-000000000001" });
   expect(withScenario).toContain("Real plan compared with Test scenario");
   expect(withScenario).toContain("Compared with the real plan: EUR 0.00 change in spare cash over 3 days.");
+});
+
+it("says when a scenario link no longer works and shows the real plan", async () => {
+  const html = await render({ scenario: "00000000-0000-4000-8000-00000000dead" });
+  expect(html).toContain("This scenario is unavailable"); expect(html).not.toContain("Viewing hypothetical scenario");
+});
+it("marks the scenario in view and lists payments past the first eight without the chart", async () => {
+  const many = { ...input, horizonDays: 12, events: Array.from({ length: 10 }, (_, day) => ({ date: `2026-10-${String(day + 8).padStart(2, "0")}`, accountId: "checking", expectedMinor: -100n, name: `Bill ${day}`, source: "confirmed" as const })) };
+  vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: many, forecast: forecastDaily(many), available: availableToSpend(many), liquidity: accountLiquidity(many), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
+  const html = await render({ horizon: "12", scenario: "00000000-0000-4000-8000-000000000001" });
+  expect(html).toContain("Viewing hypothetical scenario"); expect(html).toContain('aria-current="page"');
+  expect(html).toContain("Bill 9"); expect(html).toContain("Show 2 more payments"); expect(html).toContain("Daily forecast table");
+});
+it("offers undo beside the history after an assumption is removed", async () => {
+  expect(await render({ removed: "assumption" })).toContain("Assumption removed");
 });

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { cardWidgetKey, dashboardLayoutSchema, homeLayout, setWidget, widgetSizesSchema } from "@/lib/finance/dashboard";
 import { CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
+import { safely, type SafeState } from "@/lib/safe-action";
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 
@@ -101,4 +102,17 @@ export async function setCardSize(id: string, size: string) {
 /** A card resized on Home: the grid already shows the new width and the card fetches its new body, so nothing re-renders. */
 export async function resizeHomeCard(id: string, size: string) {
   await writeCardSize(id, size);
+}
+
+/** The artifact page's card controls: a refusal comes back as a message beside the control, not the error page. */
+export async function publishCardSafely(_state: SafeState, form: FormData) {
+  return safely(form, data => { const shown = String(data.get("shown") ?? ""); return publishCard(String(data.get("id")), Number(data.get("version")), shown ? Number(shown) : null); });
+}
+
+export async function unpublishCardSafely(_state: SafeState, form: FormData) {
+  return safely(form, data => unpublishCard(String(data.get("id"))));
+}
+
+export async function setCardSizeSafely(_state: SafeState, form: FormData) {
+  return safely(form, data => setCardSize(String(data.get("id")), String(data.get("size"))));
 }

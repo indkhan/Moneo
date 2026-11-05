@@ -58,3 +58,10 @@ it('returns organization Undo to its owned review and guards the full current se
  await expect(undoReview({},form({reviewId:id(30),rows:JSON.stringify(selection)}))).rejects.toThrow('REDIRECT /money/organization?review='+id(30));
  expect(rpc).toHaveBeenCalledWith('undo_transaction_batch',{p_batch_id:id(50),p_rows:selection});
 });
+
+it("groups the queue by description with the newest entry first in each group", async () => {
+  const { groupedByDescription } = await import("./review-form");
+  const entry = (description: string, posted_on: string) => ({ row: { description, posted_on } });
+  const groups = groupedByDescription([entry("Salary Acme", "2026-06-01"), entry("Netto", "2026-07-01"), entry("salary acme ", "2026-08-01")]);
+  expect(groups.map(group => group.map(item => item.row.posted_on))).toEqual([["2026-08-01", "2026-06-01"], ["2026-07-01"]]);
+});

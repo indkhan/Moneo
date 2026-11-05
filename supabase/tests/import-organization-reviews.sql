@@ -6,7 +6,7 @@ begin
   select id into strict workspace from public.workspaces where owner_id=actor;
   perform set_config('request.jwt.claim.sub',actor::text,true);
   insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Organization review','EUR');
-  insert into public.categories(id,workspace_id,name) values(category,workspace,'Groceries');
+  insert into public.categories(id,workspace_id,name) values(category,workspace,'Synthetic groceries');
   transaction_id:=(public.create_manual_transaction(account,'2026-09-03','NORTHSTAR MARKET REF:781','-9007199254740993','posted',null,'',gen_random_uuid())->>'id')::uuid;
   select to_jsonb(t)-array['version','merchant_id','category_id'] into original from public.transactions t where id=transaction_id;
   selection:=jsonb_build_array(jsonb_build_object('id',transaction_id,'version',0));

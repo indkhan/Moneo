@@ -1,5 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { mockInspectResponse } from "./fixtures";
+import { mockInspectResponse, e2eStorageStatePath } from "./fixtures";
+
+// Pages need a session; the data behind them stays mocked.
+const signedIn = e2eStorageStatePath();
+if (signedIn) test.use({ storageState: signedIn });
 
 test("reviews a corrected observation and explicit exclusion before confirmation", async ({ page }) => {
   let inspected = false;
@@ -25,16 +29,16 @@ test("reviews a corrected observation and explicit exclusion before confirmation
   await page.goto("/import");
   await expect(page.getByLabel("Financial statement files")).toBeEnabled();
   await page.getByLabel("Financial statement files").setInputFiles({ name: "synthetic.csv", mimeType: "text/csv", buffer: Buffer.from("Date,Description,Amount\n2026-09-01,First,1\nbad,Second,2\n,Total,3") });
-  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Start import", exact: true })).toBeDisabled();
   await page.getByLabel("Source row 3 Date").fill("2026-09-02");
   await page.getByRole("button", { name: "Use correction for row 3" }).click();
   await page.getByLabel("Exclusion reason for row 4").fill("Statement footer");
   await page.getByRole("button", { name: "Exclude row 4" }).click();
   await page.getByRole("button", { name: "Preview correction" }).click();
   await expect(page.getByText("2 accepted · 1 corrected · 1 excluded · 0 unresolved")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Start import", exact: true })).toBeDisabled();
   await page.getByLabel("I checked the corrections and exclusions against the original file.").check();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Start import", exact: true }).click();
   expect(inspected).toBe(true);
   expect(confirmed).toBe(true);
 });

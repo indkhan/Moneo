@@ -130,7 +130,7 @@ test("money and import text stays readable in persisted light, dark and system t
       await expectReadable(page, outRow.getByText("Uncategorized", { exact: true }), `${theme} category label`);
       await expectReadable(page, page.getByText("Group", { exact: true }), `${theme} group toolbar`);
       await page.getByRole("link", { name: viewName }).click();
-      await expect(page.getByText(`Showing ${viewName}.`, { exact: true })).toBeVisible();
+      await expect(page.locator("p").filter({ hasText: `Showing ${viewName}.` })).toBeVisible();
       await page.goto(`/money/transactions?view=${badView}`);
       await expectReadable(page, page.locator('section[aria-label="Invalid saved view"]').getByRole("alert"), `${theme} saved-view error`);
     }

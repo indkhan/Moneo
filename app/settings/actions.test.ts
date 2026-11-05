@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { resetAllData, saveSettings } from "./actions";
+import { deleteAccount, resetAllData, saveSettings } from "./actions";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { modelForSettings } from "@/lib/ai/provider";
@@ -10,6 +10,7 @@ vi.mock("next/headers", () => ({ cookies: async () => ({ set: vi.fn() }) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
+vi.mock("@/lib/supabase-server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn() }));
 vi.mock("ai", async importOriginal => ({ ...await importOriginal<typeof import("ai")>(), generateText: vi.fn() }));
 
@@ -145,5 +146,43 @@ it("reports a failed reset instead of redirecting", async () => {
   const { context } = resetWorkspaceWith(vi.fn(async () => ({ error: { message: "boom" } })));
   vi.mocked(requireWorkspace).mockResolvedValue(context);
   expect(await resetAllData({}, resetForm("RESET"))).toEqual({ error: expect.stringContaining("could not be reset") });
+  expect(redirect).not.toHaveBeenCalled();
+});
+
+function deleteForm(confirmation: string) {
+  const data = new FormData(); data.set("confirmation", confirmation); return data;
+}
+
+function deletableWorkspace(rpc: ReturnType<typeof vi.fn>) {
+  const signOut = vi.fn(async () => ({ error: null }));
+  const { remove, context } = resetWorkspaceWith(rpc, ["a.csv"]);
+  (context.supabase as unknown as { auth: unknown }).auth = { signOut };
+  vi.mocked(requireWorkspace).mockResolvedValue(context);
+  vi.mocked(redirect).mockClear();
+  return { remove, signOut };
+}
+
+it("requires the exact DELETE confirmation before removing anything", async () => {
+  const rpc = vi.fn();
+  const { remove } = deletableWorkspace(rpc);
+  for (const typed of ["", "delete", "RESET"]) expect(await deleteAccount({}, deleteForm(typed))).toEqual({ error: "Type DELETE to confirm" });
+  expect(rpc).not.toHaveBeenCalled();
+  expect(remove).not.toHaveBeenCalled();
+});
+
+it("removes files, deletes the account, clears this session and reports it on the login page", async () => {
+  const rpc = vi.fn(async () => ({ error: null }));
+  const { remove, signOut } = deletableWorkspace(rpc);
+  await deleteAccount({}, deleteForm("DELETE"));
+  expect(remove).toHaveBeenCalledWith(["owned/a.csv"]);
+  expect(rpc).toHaveBeenCalledWith("delete_account");
+  expect(signOut).toHaveBeenCalledWith({ scope: "local" });
+  expect(redirect).toHaveBeenCalledWith("/login?deleted=1");
+});
+
+it("keeps the user on Settings with an error when deletion fails", async () => {
+  const { signOut } = deletableWorkspace(vi.fn(async () => ({ error: { message: "boom" } })));
+  expect(await deleteAccount({}, deleteForm("DELETE"))).toEqual({ error: expect.stringContaining("could not be deleted") });
+  expect(signOut).not.toHaveBeenCalled();
   expect(redirect).not.toHaveBeenCalled();
 });

@@ -11,7 +11,7 @@ export function answerCardIds(content: string | null | undefined): string[] {
 
 /** A bank transaction a card is about (a repayment, a flagged charge), shown under the card so it can be decided there. */
 export type CardTransaction = { id: string; date: string; description: string; amountMinor: string; currency: string };
-export type OpenProposal = { id: string; kind: string; title: string; detail: string; status: string; conflict_key?: string; accounts?: { id: string; name: string }[]; selected?: string | null; needsCash?: boolean;
+export type OpenProposal = { id: string; kind: string; title: string; detail: string; status: string; conflict_key?: string; accounts?: { id: string; name: string }[]; selected?: string | null; createsCash?: boolean;
   transactions?: CardTransaction[] };
 
 export const cardTransactions = (evidence: unknown): CardTransaction[] => {

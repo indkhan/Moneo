@@ -87,6 +87,29 @@ begin
   insert into public.bank_connections(id,workspace_id,aspsp_name,aspsp_country) values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'Synthetic Bank','DE');
   insert into public.bank_connection_accounts(connection_id,workspace_id,provider_account_uid,currency_code,account_name)
     values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'synthetic','EUR','Synthetic Bank');
+  if to_regclass(format('%I.own_account_identifiers',app_schema)) is not null then
+    insert into public.own_account_identifiers(workspace_id,account_id,iban,label)
+      values(seed_ws,md5('accounts'||seed_ws)::uuid,'DE89370400440532013000','Synthetic own identifier');
+  end if;
+  if to_regclass(format('%I.voice_calls',app_schema)) is not null then
+    insert into public.voice_calls(id,workspace_id,conversation_id,duration_seconds,transcript,tasks)
+      values(md5('voice_calls'||seed_ws)::uuid,seed_ws,md5('conversations'||seed_ws)::uuid,10,'[]','[]');
+  end if;
+  if to_regclass(format('%I.artifacts',app_schema)) is not null then
+    insert into public.artifacts(id,workspace_id,title) values(md5('artifacts'||seed_ws)::uuid,seed_ws,'Synthetic artifact');
+    insert into public.artifact_versions(workspace_id,artifact_id,version,prompt,html)
+      values(seed_ws,md5('artifacts'||seed_ws)::uuid,1,'Synthetic prompt','<p>Synthetic</p>');
+  end if;
+  if to_regclass(format('%I.artifact_cards',app_schema)) is not null then
+    insert into public.artifact_cards(id,workspace_id,artifact_id,title)
+      values(md5('artifact_cards'||seed_ws)::uuid,seed_ws,md5('artifacts'||seed_ws)::uuid,'Synthetic card');
+    insert into public.artifact_card_versions(workspace_id,card_id,version,title,kind,source,compiled,prompt)
+      values(seed_ws,md5('artifact_cards'||seed_ws)::uuid,1,'Synthetic card','code','Synthetic','Synthetic','Synthetic prompt');
+  end if;
+  if to_regclass(format('%I.import_row_decisions',app_schema)) is not null then
+    insert into public.import_row_decisions(workspace_id,source_id,action,source_record,actor_id)
+      values(seed_ws,md5('source_transactions'||seed_ws)::uuid,'rejected','{}',seed_user);
+  end if;
   -- Links that the delete guards protect: a refund of the seeded transaction.
   perform set_config('moneo.link_edit','on',true);
   insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code)

@@ -22,7 +22,7 @@ begin
   begin
     perform public.edit_money_metadata('account',account,1,'{"name":"Stale"}',gen_random_uuid());
     raise exception 'Stale metadata edit accepted' using errcode='ZX001';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   archive_event:=public.edit_money_metadata('account',account,2,'{"archived":true}',gen_random_uuid());
   perform public.undo_money_metadata(archive_event,3,gen_random_uuid());
   perform public.undo_money_metadata(event,4,gen_random_uuid());

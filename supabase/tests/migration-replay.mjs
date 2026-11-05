@@ -7,6 +7,14 @@ export async function replayMigrations(tx, migrations, path) {
   }
 }
 
+// Fixtures share one rollback-only transaction. A savepoint per fixture keeps
+// their data, role and transaction-local settings from reaching the next one.
+export async function runIsolatedFixture(tx, label, sql) {
+  const done = new Error("Fixture rolled back");
+  try { await tx.savepoint(async savepoint => { await savepoint.unsafe(sql); throw done; }); }
+  catch (cause) { if (cause !== done) throw new Error(`${label}: ${cause.message}`, { cause }); }
+}
+
 // Historical pg_get_functiondef bodies retain checkout newlines. Only code
 // whitespace is equivalent; quoted data and the generated header stay exact.
 export function canonicalFunctionDefinition(definition) {
@@ -54,4 +62,29 @@ export function canonicalFunctionDefinition(definition) {
     }
   }
   return definition.slice(0, start) + normalized + definition.slice(end);
+}
+// Disposable application replays must not change Supabase-owned storage setup.
+/** @param {string} file @param {string} sql @param {string} [schema] */
+export function applicationMigrationSql(file, sql, schema) {
+  if (schema) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error("Invalid disposable schema name");
+    sql = sql.replace(/\bn\.nspname(\s*=\s*)'public'/g, `n.nspname$1'${schema}'`);
+  }
+  if (file.endsWith("_initial.sql")) {
+    const boundary = sql.indexOf("insert into storage.buckets");
+    if (boundary < 0) throw new Error("Initial storage boundary changed; review disposable replay isolation");
+    return sql.slice(0, boundary);
+  }
+  if (file === "202610270003_chat_attachments.sql") {
+    const boundary = sql.indexOf("alter table public.messages");
+    if (boundary < 0) throw new Error("Chat storage boundary changed; review disposable replay isolation");
+    return sql.slice(boundary);
+  }
+  if (file === "202610200003_remove_artifacts_and_library.sql") {
+    const start = sql.indexOf("drop policy private_finance_files on storage.objects;");
+    const end = sql.indexOf("create or replace function public.reset_workspace()", start);
+    if (start < 0 || end < 0) throw new Error("Storage policy boundary changed; review disposable replay isolation");
+    return sql.slice(0, start) + sql.slice(end);
+  }
+  return sql;
 }

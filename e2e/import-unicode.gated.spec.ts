@@ -26,13 +26,14 @@ test("explicit Unicode merchants import without splitting a character and retain
   await picker.setInputFiles({ name: filename, mimeType: "text/csv", buffer: Buffer.from(csv) });
   await expect(page.getByText("Automatic interpretation unavailable. Choose the columns below.")).toBeVisible();
   await page.getByLabel("Account name", { exact: true }).fill(`Unicode QA ${suffix}`);
-  await page.getByRole("combobox", { name: "Source numeric convention" }).selectOption("decimal-dot");
+  await page.getByRole("combobox", { name: "Number format in your file" }).selectOption("decimal-dot");
+  await page.getByText("More columns (optional)").click();
   for (const column of ["Date", "Description", "Amount", "Currency", "Merchant"]) {
     await page.getByRole("combobox", { name: column, exact: true }).selectOption(column);
   }
   await page.getByRole("button", { name: "Preview correction", exact: true }).click();
   await expect(page.getByText("1 accepted", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Start import", exact: true }).click();
   const history = page.getByRole("region", { name: "Import history" }).locator("article").filter({ hasText: filename });
   await expect(history.getByRole("status")).toHaveText("completed", { timeout: 120_000 });
   await expect(history).toContainText("1 new");

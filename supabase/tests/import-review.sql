@@ -82,11 +82,11 @@ begin
   begin
     perform public.resolve_normalized_import_review(archived_source,'accept',replacement,replacement,1);
     raise exception 'Stale frozen route accepted' using errcode='ZX001';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   begin
     perform public.resolve_normalized_import_review(archived_source,'accept',account,replacement,99);
     raise exception 'Stale destination version accepted' using errcode='ZX001';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   perform public.resolve_normalized_import_review(archived_source,'accept',account,replacement,1);
   perform public.resolve_normalized_import_review(archived_source,'accept',account,replacement,1);
   execute 'reset role';
@@ -133,6 +133,6 @@ begin
   begin
     perform public.resolve_normalized_import_review(source,'accept');
     raise exception 'Undone import accepted again' using errcode='ZX001';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   execute 'reset role';
 end $$;

@@ -27,7 +27,11 @@ begin
   if not exists(select 1 from public.goal_allocations where goal_id=goal and account_id=account and amount_minor=0 and version=4) then raise exception 'Release lost continuous version/evidence'; end if;
   execute 'reset role';
   insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code) values(workspace,account,today,'Same day unknown boundary',-1,'EUR');
-  if public.reservation_balance_evidence(account,now(),'Europe/Berlin')->>'status'<>'ambiguous' then raise exception 'Date-only same-day activity resolved without evidence'; end if;
+  evidence:=public.reservation_balance_evidence(account,now(),'Europe/Berlin');
+  if evidence->>'status'<>'current' or evidence->>'amount_minor'<>'10000' then raise exception 'Date-only closing balance counted same-day activity twice'; end if;
+  -- Reviewed activity needs an exact covered-row receipt, unlike a date-only closing balance.
+  update public.balance_snapshots set boundary_kind='reviewed_activity',covered_transactions='[]',actor_id=actor where account_id=account;
+  if public.reservation_balance_evidence(account,now(),'Europe/Berlin')->>'status'<>'ambiguous' then raise exception 'Uncovered reviewed same-day activity resolved without evidence'; end if;
   execute 'set local role authenticated';
   begin perform public.reserve_goal_funds(goal,account,'1',4,gen_random_uuid()); raise exception 'Ambiguous cash reserved' using errcode='ZX001'; exception when sqlstate '22023' then null; end;
   execute 'reset role';

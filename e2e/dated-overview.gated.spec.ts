@@ -44,7 +44,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     const originalLedger = await ledger();
     const wealth = await db`select id,amount_minor::text,currency_code,as_of::text,version from public.wealth_items where workspace_id=${workspace!} order by id`;
     const cash = async () => {const evidence = await loadBalanceEvidence(admin, workspace!); return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, "UTC")[0].balance;};
-    expect(await cash()).toMatchObject({status: "stale", amount_minor: null, estimated_amount_minor: "9650"});
+    expect(await cash()).toMatchObject({status: "stale", amount_minor: "9650", estimated_amount_minor: "9650"});
     context = await browser.newContext({baseURL});
     const cookies = new Map<string, string>();
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {cookies: {getAll: () => [...cookies].map(([name, value]) => ({name, value})), setAll: values => values.forEach(({name, value}) => cookies.set(name, value))}});
@@ -74,7 +74,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     await card.getByText("Manual balance history and undo", {exact: true}).click();
     await card.getByRole("button", {name: "Undo balance", exact: true}).click();
     console.log('MNE012 step: Undo submitted');
-    await expect(async () => {expect(await cash()).toMatchObject({status: "stale", amount_minor: null, estimated_amount_minor: "9650"});}).toPass({timeout: 30_000});
+    await expect(async () => {expect(await cash()).toMatchObject({status: "stale", amount_minor: "9650", estimated_amount_minor: "9650"});}).toPass({timeout: 30_000});
     await page.reload({waitUntil: 'domcontentloaded'});
     expect((await db`select count(*)::int count from public.balance_snapshots where account_id=${account} and undone_at is not null`)[0].count).toBe(1);
     expect(await ledger()).toEqual(originalLedger);

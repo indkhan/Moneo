@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { selectConversation } from "@/lib/ai/selected-conversation";
 import { useChatRequest, type ChatAnswer, type ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { useChatQueue } from "@/lib/ai/use-chat-queue";
@@ -23,6 +24,19 @@ export type ChatFormEvents = {
 // autoSend sends one message as soon as the form mounts (a new artifact's first request).
 export function ChatForm({ conversationId, selectionKey, empty = false, scope, placeholder = "Ask anything about your money", autoSend, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode; placeholder?: string; autoSend?: string } & ChatFormEvents) {
   const [message, setMessage] = useState("");
+  // An unsent question survives switching chats; it stays in this tab and leaves when sent.
+  const draftKey = `moneo-chat-draft:${conversationId}`;
+  const draftLoaded = useRef(false);
+  useEffect(() => {
+    try {
+      if (draftLoaded.current) { if (message) sessionStorage.setItem(draftKey, message); else sessionStorage.removeItem(draftKey); return; }
+      draftLoaded.current = true;
+      const saved = sessionStorage.getItem(draftKey);
+      // Storage is only readable after hydration, so the restore has to happen here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (saved) setMessage(current => current || saved);
+    } catch { /* storage can be blocked; drafts are a convenience */ }
+  }, [message, draftKey]);
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
@@ -76,7 +90,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     void sendMessage(autoSend);
   });
 
-  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder={placeholder} busyText="Waiting for a response…" attachments={files} voice={{ onSend: sendSpoken }} /></>;
+  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder={placeholder} busyText="Working on a reply. Anything you send now is queued." attachments={files} voice={{ onSend: sendSpoken }} /></>;
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
@@ -84,6 +98,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl">How can I help with your money today?</h2>
     <div className="mt-8">{composer}{notices}</div>
     <div className="mt-4 flex flex-wrap justify-center gap-2">{suggestions.map(prompt => <button key={prompt} type="button" onClick={() => { setMessage(prompt); document.getElementById("question")?.focus(); }} className="rounded-full border border-border px-3.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div>
+    <p className="mx-auto mt-6 max-w-xl text-center text-xs text-muted-foreground">Ask here for a quick answer. Run a deep review for a saved, evidence-checked report. Call to talk it through. Each one uses AI, tracked under <Link href="/settings" className="underline">Settings</Link>.</p>
     {scope}
   </div>;
 

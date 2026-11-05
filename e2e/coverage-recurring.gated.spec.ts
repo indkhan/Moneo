@@ -1,4 +1,5 @@
 import {test, expect as baseExpect} from "@playwright/test";
+import { deleteDisposableUser } from "./fixtures";
 const expect = baseExpect.configure({ timeout: 30_000 });
 import {createClient} from "@supabase/supabase-js";
 import {createServerClient} from "@supabase/ssr";
@@ -88,28 +89,27 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
         record("booked_balances_reviewed",{amountsMinor:["200000","0"]});
       };
       const candidate = page.locator("article").filter({hasText: `${label} invoice`});
-      const forecast = page.locator("section").filter({has: page.getByRole("heading", {name: "Liquid balance horizon",exact: true})});
+      const forecast = page.locator("section").filter({has: page.getByRole("heading", { name: /^Your cash over the next/ })});
       expect(latest > today).toBe(true); expect(postedLatest).toBe(today); expect(futureCount).toBeGreaterThan(0);
       const expected = `EUR ${(2000 - (futureCount-1) * 20).toFixed(2)}`;
       await page.goto("/money/recurring");
       await expect(candidate).toHaveCount(1); await expect(candidate).toContainText(cadence);
       await expect(candidate).toContainText("3 payments found");
-      await expect(candidate).toContainText("not a probability");
-      await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
+      await candidate.getByRole("button", {name: /^Confirm (?!recurring)/}).click(); await candidate.getByRole("button", {name: "Confirm recurring",exact: true}).click(); await expect(page.getByRole("region", {name: "Confirmed payments and income"})).toContainText(`MNE014 ${cadence}`);
       const [generated] = await db`select a.id,a.version,a.cadence,a.schedule_anchor_on::text from public.financial_assumptions a join public.recurring_series s on s.assumption_id=a.id where s.workspace_id=${workspace!} and s.account_id=${account}`;
       expect(generated.cadence).toBe(cadence); expect(generated.schedule_anchor_on).toBe(anchor);
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected); await expect(forecast).not.toContainText("Forecast unavailable");
-      await page.goto("/money/recurring"); await candidate.getByRole("button", {name: "Not recurring",exact: true}).click(); await expect(candidate).toContainText("Dismissed");
+      await page.goto("/money/recurring"); await page.getByText(/^Already decided/).click(); await candidate.getByRole("button", {name: /^Not recurring/}).click(); await expect(candidate).toContainText("Dismissed");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2000.00");
-      await page.goto("/money/recurring"); await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
+      await page.goto("/money/recurring"); await page.getByText(/^Already decided/).click(); await candidate.getByRole("button", {name: /^Confirm (?!recurring)/}).click(); await candidate.getByRole("button", {name: "Confirm recurring",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
       const review = page.getByRole("region", {name: "Occurrence reconciliation"});
       const [{version}] = await db`select version from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
       if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
       await review.getByRole("combobox", {name: "Schedule",exact: true}).selectOption(`${generated.id}:${version}`);
       await review.getByLabel("Scheduled occurrence date", {exact: true}).fill(latest);
-      await review.getByRole("combobox", {name: "Transaction",exact: true}).selectOption(`${ids[2]}:0`);
-      await review.getByRole("combobox", {name: "Fulfillment",exact: true}).selectOption("full");
-      await review.getByRole("button", {name: "Mark as paid",exact: true}).click(); await expect(review).toContainText("recorded full settlement");
+      await review.getByRole("combobox", {name: /^Transaction(?: |$)/}).selectOption(`${ids[2]}:0`);
+      await review.getByRole("combobox", {name: "Payment",exact: true}).selectOption("full");
+      await review.getByRole("button", {name: "Mark fully paid",exact: true}).click(); await expect(review).toContainText("recorded full settlement");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       await page.goto("/money/recurring"); await review.getByRole("button", {name: "Undo",exact: true}).click(); await expect(review).toContainText("undone");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
@@ -120,7 +120,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await choices.selectOption((await choices.locator("option").filter({hasText: creditLabel}).getAttribute("value"))!);
       await transfer.getByRole("checkbox").check(); await transfer.getByRole("button", {name: "Confirm verified transfer",exact: true}).click();
       await expect(detail.getByText("Transfer pair:", {exact: false})).toBeVisible();
-      await page.goto("/money/recurring"); await expect(page.getByRole("heading", {name: "Confirmed source evidence changed",exact: true})).toBeVisible();
+      await page.goto("/money/recurring"); await expect(page.getByRole("heading", {name: "Payments behind a confirmed schedule changed",exact: true})).toBeVisible();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("Forecast unavailable");
       await reviewBookedBalances();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2000.00");
@@ -131,11 +131,11 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       // Paid today for a future slot: provenance-only Plan toggles must not pay it twice.
       const schedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0`,exact:true})});
-      await schedule.getByRole("button",{name:"Disable",exact:true}).click();
+      await schedule.getByRole("button",{name:/^Disable /}).click();
       await expect(forecast).toContainText("EUR 2000.00");
       const disabledSchedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0 (disabled)`,exact:true})});
-      await disabledSchedule.getByRole("button",{name:"Enable",exact:true}).click();
-      await expect(schedule.getByRole("button",{name:"Disable",exact:true})).toBeVisible();
+      await disabledSchedule.getByRole("button",{name:/^Enable /}).click();
+      await expect(schedule.getByRole("button",{name:/^Disable /})).toBeVisible();
       await expect(disabledSchedule).toHaveCount(0);
       await page.goto("/plan?horizon=365");
       await expect(forecast).toContainText(expected);
@@ -144,7 +144,8 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       record("early_payment_toggle_verified",{scheduledOn:latest,postedOn:postedLatest});
       // Dismiss candidate discovery while retaining this intentional schedule's paid proof.
       await page.goto("/money/recurring");
-      await candidate.getByRole("button",{name:"Not recurring",exact:true}).click();
+      await page.getByText(/^Already decided/).click();
+      await candidate.getByRole("button",{name:/^Not recurring:/}).click();
       await expect(candidate).toContainText("Dismissed");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       await page.goto(`/money/transactions?transaction=${ids[2]}&linkSearch=${encodeURIComponent(creditLabel)}`);
@@ -176,17 +177,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
           expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "MNE014", run_id: runId});
           expect((await db`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
         }
-        if (workspace && user) await db.begin(async tx => {
-          expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
-          for (const table of ["transaction_link_fees", "transaction_links", "correction_events", "recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "financial_assumptions", "balance_snapshots", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "merchants", "accounts", "planning_events"]) {
-            if(table==="transactions") await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
-            await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-            expect((await tx`select count(*)::int as count from ${tx("public." + table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
-          }
-          await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-          expect((await tx`select count(*)::int as count from public.workspaces where id=${workspace!}`)[0].count).toBe(0);
-        });
-        if (user) {expect((await admin.auth.admin.deleteUser(user)).error).toBeNull(); expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);}
+        if (user) {await deleteDisposableUser(db, user); expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);}
         if (migrationLedger) expect(await db`select version,name,statements from supabase_migrations.schema_migrations order by version`).toEqual(migrationLedger);
         record("cleanup", {remainingOwnedRecords: 0, exactCleanupZero: true, migrationLedgerUnchanged: true});
       } finally {await db.end();}

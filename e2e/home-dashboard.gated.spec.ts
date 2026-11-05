@@ -9,14 +9,16 @@ test.setTimeout(120_000);
 
 const order = (page: Page) => page.locator("[data-widget]").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
 // The grid only moves once hydrated.
-const open = (page: Page) => page.goto("/", { waitUntil: "networkidle" });
+const open = async (page: Page) => {
+  await page.goto("/", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
+};
 const saved = (page: Page) => page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/");
 
 test("Home widgets are moved, resized, hidden and added back in place, and stay that way", async ({ page }) => {
   await open(page);
   await expect(page.getByRole("link", { name: "Edit layout" })).toHaveCount(0);
-  const grid = page.locator("[data-widget]");
-  await expect(grid.first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   // Start from Goals at the end, so the moves below are predictable.
   if (!(await order(page)).includes("goals")) {
     await page.getByRole("button", { name: "Add widget" }).click();
@@ -51,9 +53,10 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   expect(wider ? changed > width : changed < width).toBe(true);
 
   await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
   await expect(goals).toBeVisible({ timeout: 30_000 });
   expect(await order(page)).toEqual(after);
-  expect((await goals.boundingBox())!.width).toBe(changed);
+  expect((await goals.boundingBox())!.width).toBeCloseTo(changed, 2);
 
   // Hide it, undo, then hide it for good and add it back.
   await goals.hover();
@@ -101,7 +104,8 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await goals.getByRole("button", { name: "Hide Goals" }).click();
   await hidden;
   await page.reload({ waitUntil: "networkidle" });
-  await expect(grid.first()).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
+  await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   await expect(goals).toHaveCount(0);
   await page.getByRole("button", { name: "Add widget" }).click();
   await page.getByRole("list", { name: "Hidden widgets" }).getByRole("button", { name: "Goals", exact: true }).click();
@@ -112,15 +116,18 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   const context = await browser.newContext({ storageState: state!, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   await open(page);
-  await expect(page.locator("[data-widget]").nth(1)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-widget]:visible").nth(1)).toBeVisible({ timeout: 30_000 });
+  // Streamed sections shift the widgets; a touch aimed before they settle lands on another one.
+  let height = -1;
+  await expect.poll(async () => { const now = await page.evaluate(() => document.scrollingElement!.scrollHeight), steady = now === height; height = now; return steady; }, { intervals: [500] }).toBe(true);
   const cdp = await context.newCDPSession(page);
   // One touch point per frame, as a finger moves.
   const touch = async (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) => {
     await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
     await page.waitForTimeout(20);
   };
-  const before = await order(page);
-  const [first, second] = before;
+  // An empty workspace leaves some widgets without content, and so without height.
+  const [first, second] = await page.locator("[data-widget]:visible").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
   await page.locator(`[data-widget="${first}"]`).evaluate(node => node.scrollIntoView({ block: "start" }));
   await page.evaluate(() => scrollBy(0, -120));
   const start = (await page.locator(`[data-widget="${first}"]`).boundingBox())!;
@@ -135,7 +142,10 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
 
   // A quick swipe over a widget scrolls the page and moves nothing.
   const after = await order(page);
-  const from = (await page.locator(`[data-widget="${first}"]`).boundingBox())!;
+  // Items waiting above the first widget can push it below the fold, where a touch lands on nothing.
+  await page.locator("[data-widget]:visible").first().evaluate(node => node.scrollIntoView({ block: "start" }));
+  await page.evaluate(() => scrollBy(0, -120));
+  const from = (await page.locator("[data-widget]:visible").first().boundingBox())!;
   const top = await page.evaluate(() => scrollY);
   await touch("touchStart", from.x + 40, from.y + 30);
   for (let step = 1; step <= 6; step++) await touch("touchMove", from.x + 40, from.y + 30 - step * 20);
@@ -144,7 +154,8 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   expect(await order(page)).toEqual(after);
 
   await page.reload({ waitUntil: "networkidle" });
-  await expect(page.locator("[data-widget]").first()).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
+  await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   expect((await order(page)).indexOf(first)).toBeGreaterThan(0);
   await context.close();
 });

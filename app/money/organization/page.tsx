@@ -6,17 +6,24 @@ import {MAX_ORGANIZATION_RULES,organizationDisplayName} from '@/lib/import/organ
 import {loadLoanPayoutIds} from '@/lib/finance/iou';
 import {formatMoney} from '@/lib/finance/format';
 import {versionedRows} from '../transactions/input';
-import {dismissReview,toggleRule} from './actions';
+import {SafeForm} from '@/components/safe-form';
+import {dismissReviewSafely,toggleRuleSafely} from './actions';
 import {OrganizationQueue,ApprovalForm,UndoReviewForm} from './review-form';
+
+export const metadata = { title: "Organization" };
 
 const snapshotSchema=z.object({id:z.uuid(),version:z.number().int().nonnegative(),description:z.string(),posted_on:z.iso.date(),amount_minor:z.string().regex(/^-?\d+$/),currency_code:z.string().regex(/^[A-Z]{3}$/),merchant_id:z.uuid().nullable(),category_id:z.uuid().nullable()}).passthrough();
 export default async function OrganizationPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
  const {supabase,workspace}=await requireWorkspace();const params=await searchParams;
- const reviewId=params.review===undefined?null:z.uuid().parse(params.review);
- const importId=params.import===undefined?null:z.uuid().parse(params.import);
+ const requestedReview=z.uuid().safeParse(params.review);
+ const reviewId=requestedReview.success?requestedReview.data:null;
+ let invalidLink=params.review!==undefined&&!requestedReview.success;
+ const requestedImport=z.uuid().safeParse(params.import);
+ const importId=requestedImport.success?requestedImport.data:null;
+ if(params.import!==undefined&&!requestedImport.success)invalidLink=true;
  let cursor:{date:string;id:string}|null=null;
- if(params.cursor){const parts=z.string().parse(params.cursor).split(':');if(parts.length!==2)throw new Error('Invalid organization cursor');cursor={date:z.iso.date().parse(parts[0]),id:z.uuid().parse(parts[1])};}
- let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on').eq('workspace_id',workspace.id).neq('status','voided').neq('kind','transfer');
+ if(params.cursor){const parts=String(params.cursor).split(':');const date=z.iso.date().safeParse(parts[0]),id=z.uuid().safeParse(parts[1]);if(parts.length===2&&date.success&&id.success)cursor={date:date.data,id:id.data};else invalidLink=true;}
+ let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on',{count:'exact'}).eq('workspace_id',workspace.id).neq('status','voided').neq('kind','transfer');
  query=query.or(cursor?`and(or(merchant_id.is.null,category_id.is.null),or(posted_on.lt.${cursor.date},and(posted_on.eq.${cursor.date},id.lt.${cursor.id})))`:'merchant_id.is.null,category_id.is.null');
  if(importId)query=query.eq('transaction_sources.source_transactions.import_id',importId);
  // A loan's payout is recorded in Wealth; it is not spending to organize.
@@ -33,6 +40,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  if(queue.error||merchants.error||categories.error||rules.error||reviews.error||selectedReview.error)throw queue.error??merchants.error??categories.error??rules.error??reviews.error??selectedReview.error;
  const queueRows=z.array(z.object({id:z.uuid(),version:z.number().int().nonnegative(),posted_on:z.iso.date()})).parse(queue.data);
  if(merchants.data.length>500||categories.data.length>500||rules.data.length>MAX_ORGANIZATION_RULES)throw new Error('Organization target coverage exceeded; use Transactions for manual correction');
+ const queueTotal=queue.count??queueRows.length;
  const selected=queueRows.slice(0,50).map(({id,version})=>({id,version}));
  const suggestions=selected.length?await loadOrganizationSuggestions(supabase,workspace.id,selected):null;
  const items=(suggestions?.proposals??[]).map(proposal=>({proposal,row:suggestions!.rows.find(row=>row.id===proposal.transactionId)!}));
@@ -52,10 +60,11 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  const patchCategory=review&&Object.hasOwn(review.patch,'category_id')?categoryName(review.patch.category_id)??'uncategorized':undefined;
  const card='rounded-xl border border-border bg-card p-6';
  // A rule shows the payee's cleaned name, not the bank text it matches; the full key stays in the tooltip.
- const ruleItem=(rule:typeof rules.data[number])=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium" title={rule.description_key}>{merchantName(rule.merchant_id)??organizationDisplayName(rule.description_key)}</span> → {categoryName(rule.category_id)??'no category'}</span><form action={toggleRule}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button className="text-xs underline">{rule.enabled?'Disable':'Enable'}</button></form></li>;
+ const ruleItem=(rule:typeof rules.data[number])=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium" title={rule.description_key}>{merchantName(rule.merchant_id)??organizationDisplayName(rule.description_key)}</span> → {categoryName(rule.category_id)??'no category'}</span><SafeForm action={toggleRuleSafely}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button aria-label={(rule.enabled?'Disable':'Enable')+' rule for '+(merchantName(rule.merchant_id)??organizationDisplayName(rule.description_key))} className="min-h-6 text-xs underline">{rule.enabled?'Disable':'Enable'}</button></SafeForm></li>;
  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
-  <header><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Organize spending</h1>
-   <p className="mt-2 text-sm text-muted-foreground">Tick entries, pick a category, press Apply. Every batch can be undone.</p></header>
+  {invalidLink&&<p role="alert" className="text-sm">That link is out of date, so this is the start of your queue.</p>}
+  <header><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Organize transactions</h1>
+   <p className="mt-2 text-sm text-muted-foreground">Tick entries, pick a category, press Apply. Each batch stays in history, and you can undo it unless a later edit conflicts.</p></header>
   {reviewId&&!review&&<p role="alert" className="text-sm">This review is no longer available.</p>}
   {review&&<section aria-label="Organization impact preview" className={card}>
    <h2 className="text-sm font-medium">{batch.data?.undone?'Undone':review.status==='applied'?'Applied':review.status==='dismissed'?'Dismissed':'Not applied yet'}{patchCategory&&` · ${patchCategory}`}{patchMerchant&&` · ${patchMerchant}`}</h2>
@@ -66,14 +75,16 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
     return <li key={row.id} className="flex flex-wrap items-baseline gap-x-3 py-2"><span className="font-mono text-xs text-muted-foreground">{row.posted_on}</span><Link className="min-w-0 flex-1 truncate hover:underline" href={'/money/transactions?transaction='+row.id}>{row.description}</Link><span className="font-mono">{formatMoney(row.amount_minor,row.currency_code,workspace.locale)}</span>
      <span className="basis-full text-xs text-muted-foreground">{`Merchant: ${beforeMerchant} → ${patchMerchant??beforeMerchant}`} · {`Category: ${beforeCategory} → ${patchCategory??beforeCategory}`}</span></li>;
    })}</ul></details>
-   {review.status==='pending'&&<><ApprovalForm reviewId={review.id} canSaveRule={Boolean(review.rule_key)} /><form action={dismissReview} className="mt-3"><input type="hidden" name="reviewId" value={review.id} /><button className="text-sm text-muted-foreground underline">Dismiss</button></form></>}
-   {review.batch_id&&!batch.data?.undone&&currentRows.data.length===snapshots.length&&<UndoReviewForm reviewId={review.id} rows={versionedRows.parse(currentRows.data)} />}
+   {review.status==='pending'&&<><ApprovalForm reviewId={review.id} canSaveRule={Boolean(review.rule_key)} /><SafeForm action={dismissReviewSafely} className="mt-3"><input type="hidden" name="reviewId" value={review.id} /><button className="text-sm text-muted-foreground underline">Dismiss</button></SafeForm></>}
+   {review.status==='applied'&&review.rule_key&&<p className="mt-2 text-sm text-muted-foreground">{rules.data.some(rule=>rule.enabled&&rule.description_key===review.rule_key)?'A rule suggests the same for future entries with this description.':'No rule was saved for future entries.'}</p>}
+   {review.batch_id&&!batch.data?.undone&&(currentRows.data.length===snapshots.length?<UndoReviewForm reviewId={review.id} rows={versionedRows.parse(currentRows.data)} />:<p className="mt-3 text-sm text-muted-foreground">Undo isn’t available: {snapshots.length-currentRows.data.length} of these entries no longer exist. The history above is kept; correct the rest in <Link className="underline" href="/money/transactions">Transactions</Link>.</p>)}
   </section>}
   <section aria-label="Organization suggestions" className="space-y-3">
-   <h2 className="text-sm font-medium">{items.length?`${items.length}${queueRows.length>50?'+':''} to organize`:'Everything here is organized'}</h2>
+   <h2 className="text-sm font-medium">{items.length?`${queueTotal} ${cursor?'older ':''}${queueTotal===1?'entry':'entries'} to organize${queueTotal>items.length?`, showing ${items.length}`:''}`:queueRows.length?`${queueTotal} ${queueTotal===1?'entry needs':'entries need'} organizing, with no suggestion yet`:importId?'Nothing left to organize in this import':cursor?'No older entries to organize':'Everything is organized'}</h2>
+   {!items.length&&queueRows.length>0&&<p className="text-sm text-muted-foreground">Set their category or merchant in <Link className="underline" href="/money/transactions?category=none">Transactions</Link>.</p>}
    {items.length>0&&<OrganizationQueue key={items.map(item=>item.row.id+':'+item.row.version).join(',')} items={items} merchants={merchants.data} categories={categories.data} requestId={crypto.randomUUID()} locale={workspace.locale} />}
-   {next&&<Link className="inline-block text-sm underline" href={'/money/organization?'+next}>Older entries</Link>}
-   <p className="text-xs text-muted-foreground">Suggestions compare up to 2,000 recent posted entries and 2,000 rules. For one-off fixes use <Link className="underline" href="/money/transactions">Manual correction in Transactions</Link>.</p>
+   <div className="flex flex-wrap gap-4 text-sm">{cursor&&<Link className="underline" href={'/money/organization'+(importId?'?import='+importId:'')}>Newest entries</Link>}{next&&<Link className="underline" href={'/money/organization?'+next}>Older entries</Link>}</div>
+   <p className="text-xs text-muted-foreground">Newest first. Suggestions compare up to 2,000 recent posted entries and 2,000 rules. For one-off fixes use <Link className="underline" href="/money/transactions">Manual correction in Transactions</Link>.</p>
   </section>
   <details className={card}><summary className="cursor-pointer text-sm font-medium">Rules ({rules.data.filter(rule=>rule.enabled).length}) and recent reviews</summary>
    <ul className="mt-3 divide-y divide-border text-sm">{rules.data.filter(rule=>rule.enabled).map(ruleItem)}</ul>

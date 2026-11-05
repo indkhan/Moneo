@@ -64,12 +64,12 @@ begin
   begin
     perform public.ingest_import_row(second_import,workspace,1,account,payload||jsonb_build_object('sourceId',second_source,'transactionId',gen_random_uuid(),'balanceId',gen_random_uuid(),'action','new'));
     raise exception 'Stale new overlap created another canonical' using errcode='ZX001';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if exists(select 1 from public.source_transactions where id=second_source) then raise exception 'Stale overlap retained source effects'; end if;
   begin
     perform public.ingest_import_row(second_import,workspace,1,account,payload||jsonb_build_object('sourceId',second_source,'balanceId',gen_random_uuid(),'action','matched','expectedTransactionVersion',canonical_version-1));
     raise exception 'Stale canonical match accepted' using errcode='ZX001';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if exists(select 1 from public.source_transactions where id=second_source) then raise exception 'Stale match wrote source effects'; end if;
   perform public.ingest_import_row(second_import,workspace,1,account,payload||jsonb_build_object('sourceId',second_source,'balanceId',gen_random_uuid(),'action','matched','expectedTransactionVersion',canonical_version));
   if not exists(select 1 from public.transactions where id=transaction_id and kind='transfer' and category_id=corrected_category and amount_minor=-9007199254740993) then raise exception 'Stable match overwrote canonical correction'; end if;

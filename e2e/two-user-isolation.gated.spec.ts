@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomUUID, randomBytes } from "node:crypto";
 import postgres from "postgres";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_DB_URL || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   "Requires configured Supabase admin/auth/database for disposable real users; no stored auth state or email needed");
@@ -68,7 +69,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       const response = await stranger.goto(path);
       // loading.tsx may stream headers before the owned-resource lookup finishes.
       expect([200, 404]).toContain(response?.status());
-      await expect(stranger.getByRole("heading", { name: "404", exact: true })).toBeVisible();
+      await expect(stranger.getByRole("heading", { name: "This page isn’t here", exact: true })).toBeVisible();
       await expect(stranger.locator('meta[name="robots"]').first()).toHaveAttribute("content", "noindex");
       await expect(stranger.locator("body")).not.toContainText(secret);
     }
@@ -79,16 +80,21 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await expect(page.locator("body")).toContainText(secret);
     await page.goto("/money/accounts");
     const article = page.locator("article").filter({ has: page.locator(`input[name="name"][value*="${secret}"]`) });
-    await article.getByLabel("Name", { exact: true }).fill(`${secret} renamed`);
-    await article.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(article.first().getByLabel("Name", { exact: true })).toHaveValue(`${secret} renamed`);
-    await page.getByRole("button", { name: "Archive account", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Restore account", exact: true })).toBeVisible();
+    await article.getByLabel(/^Name of /).fill(`${secret} renamed`);
+    await article.getByRole("button", { name: /^Save changes/ }).click();
+    await expect(article.first().getByLabel(/^Name of /)).toHaveValue(`${secret} renamed`);
+    // The saved row remounts when its version changes, so wait for that before opening its menu.
+    await expect(page.getByRole("button", { name: /^Save changes/ })).toHaveCount(0);
+    await page.locator("article").getByText("More", { exact: true }).first().click();
+    await page.getByRole("button", { name: /^Archive / }).click();
+    await expect(page.locator("button", { hasText: "Restore account" })).toHaveCount(1);
     await expect(page.locator("article")).toContainText("Archived");
-    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
-    await expect(page.getByRole("button", { name: "Archive account", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
-    await expect(page.locator("article").getByLabel("Name", { exact: true }).first()).toHaveValue(secret);
+    await page.getByRole("button", { name: /^Undo: / }).first().click();
+    await expect(page.locator("button", { hasText: "Archive account" })).toHaveCount(1);
+    // The history list refreshes after the page; wait, so the next Undo is the rename and not the one just used.
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /^Undo: / }).first().click();
+    await expect(page.locator("article").getByLabel(/^Name of /).first()).toHaveValue(secret);
     await page.goto("/money/transactions");
     const views = page.getByRole("region", { name: "Saved views" });
     await views.getByText(`Manage ${secret}`, { exact: true }).click();
@@ -98,8 +104,9 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await views.getByText(`Manage ${secret} renamed view`, { exact: true }).click();
     await views.getByRole("button", { name: `Delete saved view ${secret} renamed view`, exact: true }).click();
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toHaveCount(0);
-    await page.goto("/money/accounts");
-    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
+    // History streams in after the page, and Undo needs hydration.
+    await page.goto("/money/accounts", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Undo: / }).first().click();
     await expect.poll(async () => (await db`select removed_at from public.transaction_views where id=${savedView}`)[0].removed_at).toBeNull();
     await page.goto("/money/transactions");
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toBeVisible();
@@ -123,7 +130,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     expect(foreignDismissals.data).toEqual([]);
     expect((await sessions[1].from("insight_dismissals").insert({ workspace_id: workspace, evidence_key: "b".repeat(64), insight_type: "data_quality" })).error).not.toBeNull();
     await page.goto("/settings");
-    await page.getByLabel("Minimum spending change", { exact: true }).fill("90071992547409.93");
+    await page.getByLabel("Minimum spending increase", { exact: true }).fill("90071992547409.93");
     await page.getByLabel("Upcoming payment lookahead (days)", { exact: true }).fill("30");
     await page.getByLabel("Maximum insights", { exact: true }).fill("20");
     await page.getByRole("button", { name: "Save insight preferences", exact: true }).click();
@@ -142,19 +149,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
   } finally {
     for (const context of contexts) await context.close();
     if (storagePath) expect((await admin.storage.from("imports").remove([storagePath])).error).toBeNull();
-    for (const workspace of workspaces) await db.begin(async tx => {
-      await tx`delete from public.money_metadata_events where workspace_id=${workspace}`;
-      await tx`delete from public.transaction_views where workspace_id=${workspace}`;
-      await tx`delete from public.saved_analyses where workspace_id=${workspace}`;
-      await tx`delete from public.background_jobs where workspace_id=${workspace}`;
-      await tx`delete from public.source_transactions where workspace_id=${workspace}`;
-      await tx`delete from public.imports where workspace_id=${workspace}`;
-      await tx`delete from public.transactions where workspace_id=${workspace}`;
-      await tx`delete from public.accounts where workspace_id=${workspace}`;
-      await tx`delete from public.categories where workspace_id=${workspace}`;
-      await tx`delete from public.workspaces where id=${workspace} and owner_id in ${tx(users)}`;
-    });
-    for (const user of users) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+    for (const user of users) await deleteDisposableUser(db, user);
     if (users.length) expect((await db`select id from auth.users where id in ${db(users)}`).length).toBe(0);
     if (existsSync(recoveryPath)) unlinkSync(recoveryPath);
     await db.end();

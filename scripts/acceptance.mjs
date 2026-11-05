@@ -46,7 +46,7 @@ try {
     const units = `${directory}/units.json`, browser = `${directory}/browser.json`;
     // Live fixture DDL locks shared auth/workspace tables. Serialize files while
     // retaining each test's deliberate concurrent database connections.
-    run("units", "node_modules/vitest/vitest.mjs", ["run", "--no-file-parallelism", "--reporter=json", `--outputFile=${units}`], { RUN_RESERVATION_DB_TESTS: "1", RUN_IMPORT_EXCLUSION_DB_TESTS: "1", RUN_VERIFIED_EVIDENCE_DB_TESTS: "1", RUN_INVESTIGATION_REQUEST_DB_TESTS: "1" });
+    run("units", "node_modules/vitest/vitest.mjs", ["run", "--no-file-parallelism", "--reporter=json", `--outputFile=${units}`], { RUN_RESERVATION_DB_TESTS: "1", RUN_IMPORT_EXCLUSION_DB_TESTS: "1", RUN_IMPORT_ROW_UNDO_DB_TESTS: "1", RUN_VERIFIED_EVIDENCE_DB_TESTS: "1", RUN_INVESTIGATION_REQUEST_DB_TESTS: "1" });
     const unitReport = JSON.parse(readFileSync(units, "utf8"));
     result.units = { total: unitReport.numTotalTests, failed: unitReport.numFailedTests, skipped: unitReport.numPendingTests };
     assertRequiredResults("vitest", unitReport);

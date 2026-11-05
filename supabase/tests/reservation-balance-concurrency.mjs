@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import postgres from "postgres";
-import { replayMigrations } from "./migration-replay.mjs";
+import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
 process.loadEnvFile(".env");
 const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
@@ -49,7 +49,7 @@ try {
     await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users(id uuid primary key,email text); grant usage on schema ${schema} to authenticated,service_role`);
     const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort().map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      if (file.endsWith("_initial.sql")) sql = sql.slice(0, sql.indexOf("insert into storage.buckets"));
+      sql = applicationMigrationSql(file, sql, schema);
       return { file, sql: isolated(sql) };
     });
     await replayMigrations(tx, migrations, "isolated-reservation-race");

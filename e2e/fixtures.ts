@@ -4,6 +4,16 @@
 // Supabase workflows and configured free-provider calls. See e2e/README.md
 // for each check's limits and required authentication.
 import * as fs from "node:fs";
+import type { Sql } from "postgres";
+
+// Removes a spec's disposable user through the same RPC as Settings "Delete account",
+// so cleanup cannot drift behind the schema. The caller removes storage objects first.
+export async function deleteDisposableUser(db: Sql, user: string) {
+  await db.begin(async tx => {
+    await tx`select set_config('request.jwt.claim.sub', ${user}, true)`;
+    await tx`select public.delete_account()`;
+  });
+}
 
 // Minimal two-row statement. Amounts are exact decimal strings; the app owns
 // minor-unit conversion, so fixtures never pre-convert.
