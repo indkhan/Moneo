@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6PMMZHQ0F8WZA6CR6P14HQ0",
+  "strategy": "manual-commit",
+  "branch": "t3/fix-app-usability",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/home-sections.test.tsx",
+    "app/home-sections.tsx",
+    "app/page.tsx",
+    "e2e/home-cash-flow.gated.spec.ts",
+    "lib/finance/dashboard.test.ts",
+    "lib/finance/dashboard.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 30,
+    "cache_creation_tokens": 27976,
+    "cache_read_tokens": 2545605,
+    "output_tokens": 7229,
+    "api_call_count": 15
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
