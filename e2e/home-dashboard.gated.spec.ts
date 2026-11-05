@@ -117,6 +117,9 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   const page = await context.newPage();
   await open(page);
   await expect(page.locator("[data-widget]:visible").nth(1)).toBeVisible({ timeout: 30_000 });
+  // Streamed sections shift the widgets; a touch aimed before they settle lands on another one.
+  let height = -1;
+  await expect.poll(async () => { const now = await page.evaluate(() => document.scrollingElement!.scrollHeight), steady = now === height; height = now; return steady; }, { intervals: [500] }).toBe(true);
   const cdp = await context.newCDPSession(page);
   // One touch point per frame, as a finger moves.
   const touch = async (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) => {

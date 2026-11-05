@@ -35,6 +35,8 @@ test("a widget dropped in the empty space of a row goes there and stays after a 
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await page.waitForURL(url => url.pathname === "/");
+    // The grid only moves once hydrated.
+    await page.waitForLoadState("networkidle");
     const widget = (name: string) => page.locator(`[data-widget="${name}"]`);
     await expect(widget("goals")).toBeVisible();
     const box = async (name: string) => (await widget(name).boundingBox())!;
@@ -48,7 +50,7 @@ test("a widget dropped in the empty space of a row goes there and stays after a 
     expect((await box("goals")).x).toBeGreaterThan((await box("recent")).x);
 
     await expect.poll(async () => (await db`select items from public.dashboard_layouts where workspace_id=${workspace}`)[0].items).toEqual(["recent", "goals", "accounts"]);
-    await page.reload();
+    await page.reload({ waitUntil: "networkidle" });
     await expect(widget("goals")).toBeVisible();
     expect(Math.abs((await box("goals")).y - (await box("recent")).y)).toBeLessThan(2);
 

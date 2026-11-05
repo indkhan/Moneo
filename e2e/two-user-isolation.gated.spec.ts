@@ -104,7 +104,8 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await views.getByText(`Manage ${secret} renamed view`, { exact: true }).click();
     await views.getByRole("button", { name: `Delete saved view ${secret} renamed view`, exact: true }).click();
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toHaveCount(0);
-    await page.goto("/money/accounts");
+    // History streams in after the page, and Undo needs hydration.
+    await page.goto("/money/accounts", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Undo: / }).first().click();
     await expect.poll(async () => (await db`select removed_at from public.transaction_views where id=${savedView}`)[0].removed_at).toBeNull();
     await page.goto("/money/transactions");

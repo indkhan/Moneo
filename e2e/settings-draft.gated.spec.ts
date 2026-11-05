@@ -40,7 +40,7 @@ test("rejected preferences retain every edited field so the timezone can be corr
     await page.reload();
     await expectValues(edited);
   } finally {
-    await page.goto("/settings");
+    await page.goto("/settings", { waitUntil: "networkidle" });
     await fill(original);
     await form.getByRole("button", { name: "Save preferences", exact: true }).click();
     await expect(form.getByRole("status")).toContainText("Preferences saved.");

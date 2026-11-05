@@ -10,7 +10,10 @@ test("current cash reservations persist and undo without claiming recorded savin
   const adder = page.locator("details").filter({ has: page.locator("summary", { hasText: "Add account" }) });
   await adder.locator("summary").click();
   await adder.getByLabel("Name", { exact: true }).fill(accountName);
+  // Leaving before the save answers would cancel it.
+  const added = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/money/accounts");
   await adder.getByRole("button", { name: "Add account", exact: true }).click();
+  expect((await added).ok()).toBe(true);
   await page.goto("/");
   const account = page.locator("article").filter({ has: page.getByRole("heading", { name: accountName, exact: true }) });
   await expect(account).toBeVisible({ timeout: 30_000 });
