@@ -154,7 +154,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
   const artifactEditor = /^\/ai\/artifacts\/[^/]+$/.test(pathname);
   return <div className={cn("min-h-screen bg-background", artifactEditor && "h-dvh overflow-hidden")}>
     <a href="#main-content" className="sr-only z-50 rounded bg-card p-3 text-sm underline focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
-    <nav aria-label="Main" className="scrollbar-none fixed inset-y-0 left-0 z-30 hidden w-22 flex-col items-center gap-5 overflow-y-auto border-r border-border bg-sidebar px-3 py-5 lg:flex">
+    <nav aria-label="Main" className="fixed inset-y-0 left-0 z-30 hidden w-22 flex-col items-center gap-5 overflow-y-auto border-r border-border bg-sidebar px-3 py-5 lg:flex">
       <Link href="/" aria-label="Moneo home" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-lime font-display text-[22px] font-bold tracking-tighter text-[#0f1011]">m</Link>
       <div className="flex flex-col items-center gap-0.5">
         <p className="eyebrow pb-1 text-[10px]">Money</p>
@@ -178,7 +178,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
             <Link href={settingsItem.href} aria-label="Settings" className="flex size-11 items-center justify-center rounded-full bg-input text-muted-foreground hover:text-foreground lg:hidden"><SlidersHorizontal className="size-[18px]" aria-hidden="true" /></Link>
           </div>
         </div>
-        {section?.items && !artifactEditor && <nav aria-label={section.label} className="scrollbar-none flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
+        {section?.items && !artifactEditor && <nav aria-label={section.label} className="flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
           {section.items.map(item => <IntentLink key={item.href} href={item.href} title={item.about} aria-current={current === item ? "page" : undefined}
             className={cn("flex h-11 shrink-0 items-center gap-2 rounded-[10px] lg:h-9 px-3.5 text-[13px]", current === item ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
             {item.label}<Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>

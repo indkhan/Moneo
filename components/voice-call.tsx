@@ -66,7 +66,7 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
       <p className="font-display text-lg font-semibold">Call with Moneo</p>
       {live && <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success"><span className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" aria-hidden="true" />Live</span>}
     </header>
-    <div ref={body} className="scrollbar-none mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-y-auto px-4 sm:px-8">
+    <div ref={body} className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-y-auto px-4 sm:px-8">
       <div className="flex flex-col items-center pt-4 sm:pt-8">
         <Orb levels={call.levels} state={state} />
         <p role="status" className="flex h-7 items-center gap-2 font-display text-lg font-medium">{state === "connecting" && <Loader2 className="size-4 text-ai motion-safe:animate-spin" aria-hidden="true" />}{label}</p>
