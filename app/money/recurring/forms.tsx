@@ -69,9 +69,9 @@ export function ScheduleDialog({ title, trigger, triggerLabel, triggerClassName,
         <div className="flex flex-wrap items-center gap-2">
           <button disabled={pending || removing} className="min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : submitLabel}</button>
           <button type="button" onClick={close} className="min-h-10 rounded-lg border border-border px-4 text-sm hover:bg-muted">Cancel</button>
-          {remove && !confirmingRemove && <button type="button" onClick={() => setConfirmingRemove(true)} className="ml-auto min-h-10 rounded-lg px-3 text-sm text-danger hover:bg-muted">Remove from recurring</button>}
+          {remove && !confirmingRemove && <button type="button" onClick={() => setConfirmingRemove(true)} className="ml-auto min-h-10 rounded-lg border border-danger/40 px-4 text-sm font-medium text-danger hover:bg-danger-soft">Remove from recurring</button>}
         </div>
-        {remove && confirmingRemove && <div role="group" aria-label="Confirm removal" className="space-y-2 rounded-lg border border-border p-3 text-sm"><p>This stops {values.name}’s future forecast dates. Past transactions and marked payments stay.</p><button formAction={removeSubmit} formNoValidate disabled={pending || removing} className="min-h-10 rounded-lg px-3 text-danger hover:bg-muted disabled:opacity-50">{removing ? "Removing…" : `Yes, remove ${values.name}`}</button></div>}
+        {remove && confirmingRemove && <div role="group" aria-label="Confirm removal" className="space-y-2 rounded-lg border border-border p-3 text-sm"><p>This stops {values.name}’s future forecast dates. Past transactions and marked payments stay.</p><button formAction={removeSubmit} formNoValidate disabled={pending || removing} className="min-h-10 rounded-lg bg-danger px-4 text-sm font-medium text-background disabled:opacity-50">{removing ? "Removing…" : `Yes, remove ${values.name}`}</button></div>}
       </form>
     </Modal>
   </>;
