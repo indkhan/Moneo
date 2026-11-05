@@ -5,7 +5,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
 import { calendarDate } from "@/lib/finance/calendar";
 import { EditingHistory, RestoreManualEntry } from "./editing-history";
-import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, toggleSort, type ParsedTransactionParams, type TransactionGroup } from "./filters";
+import { DEFAULT_SORT, SORT_ORDER, parseTransactionParams, toQueryParams, toggleSort, type ParsedTransactionParams, type TransactionGroup } from "./filters";
 import { invalidStoredViewScope, parseStoredFilters, parseViewId, savedViewToParams } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
 import { PhoneCollapse } from "@/components/phone-collapse";
@@ -16,6 +16,7 @@ import { TransactionDrawer } from "./drawer";
 import { kindLabel, statusLabel } from "./labels";
 import { summarizeGroups, orderByGroup } from "./grouping";
 import { ledgerTable, scopeLedger } from "./scope";
+import { LedgerPagination } from "./pagination";
 
 export const metadata = { title: "Transactions" };
 
@@ -36,11 +37,11 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const loadLedger = (filters: ParsedTransactionParams) => {
     const table = ledgerTable(filters);
     const { column, ascending } = SORT_ORDER[filters.sort];
-    let query = scopeLedger(supabase.from(table).select("id, version, posted_on, description, amount_minor::text, currency_code, status, kind, account_id, category_id, merchant_id, tags, event_name, review_reasons", { count: "exact" })
-      .eq("workspace_id", workspace.id), filters).order(column, { ascending }).order("id", { ascending }).limit(PAGE_SIZE + 1);
-    if (filters.cursor) query = query.or(cursorClause(filters.sort, filters.cursor));
+    const query = scopeLedger(supabase.from(table).select("id, version, posted_on, description, amount_minor::text, currency_code, status, kind, account_id, category_id, merchant_id, tags, event_name, review_reasons", { count: "exact" })
+      .eq("workspace_id", workspace.id), filters).order(column, { ascending }).order("id", { ascending });
+    const offset = ((filters.page ?? 1) - 1) * PAGE_SIZE;
     return Promise.all([
-      query,
+      query.range(offset, offset + PAGE_SIZE - 1),
       filters.group ? scopeLedger(supabase.from(table).select("category_id, merchant_id, posted_on, amount_minor::text, currency_code").eq("workspace_id", workspace.id), filters)
         .order("posted_on", { ascending: false }).order("id").limit(GROUP_SCAN_LIMIT) : Promise.resolve(null),
     ]);
@@ -84,15 +85,13 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   let filters: ParsedTransactionParams = urlFilters;
   if (activeView) {
     const saved = savedViewToParams(parseStoredFilters(viewRow!.filters as unknown));
-    // Only ephemeral navigation (cursor re-validated against the saved sort,
-    // open transaction, grouping) comes from the URL in view mode.
-    const { cursor } = parseTransactionParams({ cursor: params.cursor, sort: saved.sort });
-    filters = { ...saved, ...(cursor ? { cursor } : {}), ...(urlFilters.transactionId ? { transactionId: urlFilters.transactionId } : {}), ...(urlFilters.group ? { group: urlFilters.group } : {}) };
+    // Only ephemeral navigation (page, open transaction, grouping) comes from the URL in view mode.
+    filters = { ...saved, ...(urlFilters.page ? { page: urlFilters.page } : {}), ...(urlFilters.transactionId ? { transactionId: urlFilters.transactionId } : {}), ...(urlFilters.group ? { group: urlFilters.group } : {}) };
   }
   const [{ data, error, count }, grouped] = await (urlLedger ?? loadLedger(filters));
   if (grouped?.error) throw grouped.error;
-  const pageRows = (data ?? []).slice(0, PAGE_SIZE) as LedgerRow[];
-  const next = data && data.length > PAGE_SIZE ? nextCursorForRow(pageRows[PAGE_SIZE - 1], filters.sort) : null;
+  const pageRows = (data ?? []) as LedgerRow[];
+  const pageCount = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
   const accountNames = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
   const categoryNames = Object.fromEntries((categories ?? []).map(row => [row.id, row.name]));
@@ -106,10 +105,10 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   } : null;
   const rows = groups ? orderByGroup(pageRows, groups.by) : pageRows;
 
-  // Shareable filter params (no cursor/open transaction). In view mode,
+  // Shareable filter params (no page/open transaction). In view mode,
   // navigation keeps the opaque view link; sort headers and chip removal
   // open an ad-hoc filtered URL (same exposure as normal filtering).
-  const shareable = toQueryParams({ ...filters, cursor: undefined, transactionId: undefined });
+  const shareable = toQueryParams({ ...filters, page: undefined, transactionId: undefined });
   const withParams = (base: URLSearchParams, changes: Record<string, string | null>) => {
     const out = new URLSearchParams(base);
     for (const [key, value] of Object.entries(changes)) if (value === null) out.delete(key); else out.set(key, value);
@@ -117,9 +116,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   };
   const viewBase = new URLSearchParams(activeView ? { view: activeView.id, ...(filters.group ? { group: filters.group } : {}) } : shareable);
   const current = new URLSearchParams(viewBase);
-  if (filters.cursor) current.set("cursor", `${filters.cursor.value}|${filters.cursor.id}`);
+  if (filters.page) current.set("page", String(filters.page));
   const sortHref = (columnName: "date" | "amount") => { const sort = toggleSort(filters.sort, columnName); return withParams(shareable, { sort: sort === DEFAULT_SORT ? null : sort }); };
-  const saveDefaults = Object.fromEntries(toQueryParams({ ...filters, cursor: undefined, transactionId: undefined, group: undefined }));
+  const saveDefaults = Object.fromEntries(toQueryParams({ ...filters, page: undefined, transactionId: undefined, group: undefined }));
 
   const amountCurrency = (accounts ?? []).find(row => row.id === filters.accountId)?.currency_code ?? workspace.display_currency;
   const chips: [string, string][] = [
@@ -137,7 +136,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-4 text-foreground max-md:flex max-md:flex-col sm:px-8 md:py-6 lg:py-8">
-    {header(filters.cursor ? null : count)}
+    {header(count)}
     {/^[0-9a-f-]{36}$/i.test(params.undone ?? "") ? <Suspense fallback={null}><RestoreManualEntry entryId={params.undone!} /></Suspense> : null}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
     {/^\d+$/.test(params.applied ?? "") ? <p role="status" className="rounded-xl border border-border bg-card px-4 py-3 text-sm">Updated {params.applied} {params.applied === "1" ? "transaction" : "transactions"}. Showing that category. Undo the batch under <a className="underline" href="#editing-history">Editing history</a>, or <Link className="underline" href="/ai">return to the conversation</Link>.</p> : null}
@@ -152,10 +151,10 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             {chips.length ? <li><Link href="/money/transactions" className="px-1 text-xs text-muted-foreground underline">Clear all</Link></li> : null}
           </ul>
           <div className="flex items-center gap-3 max-md:hidden max-lg:w-full max-lg:flex-wrap max-lg:justify-between">
-            {count !== null ? <span className="font-mono text-xs text-muted-foreground max-lg:whitespace-nowrap">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
+            {count !== null ? <span className="font-mono text-xs text-muted-foreground max-lg:whitespace-nowrap">{`${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
             <nav aria-label="Group by" className="flex items-center gap-1 text-xs"><span className="text-muted-foreground">Group</span>
               {GROUPS.map(option => <Link key={option.value} scroll={false} aria-current={(filters.group ?? "") === option.value ? "true" : undefined}
-                href={withParams(viewBase, { group: option.value || null, cursor: null })}
+                href={withParams(viewBase, { group: option.value || null, page: null })}
                 className={`inline-flex min-h-11 items-center rounded-md px-2 py-1 max-lg:whitespace-nowrap lg:min-h-0 ${(filters.group ?? "") === option.value ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted"}`}>{option.label}</Link>)}
             </nav>
           </div>
@@ -167,9 +166,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           query={current.toString()} sort={filters.sort} sortHrefs={{ date: sortHref("date"), amount: sortHref("amount") }} groups={groups} openId={filters.transactionId ?? null}
           closeHref={`/money/transactions${current.size ? `?${current}` : ""}`} locale={workspace.locale} requestId={crypto.randomUUID()} />}
         <div className="flex flex-wrap items-center gap-4 text-sm">
-          {filters.cursor ? <Link className="underline" href={withParams(viewBase, {})}>First page</Link> : null}
-          {next ? <Link className="underline" href={withParams(viewBase, { cursor: next })}>Next page</Link> : null}
-          <span className="text-xs text-muted-foreground">{filters.cursor ? `Showing ${pageRows.length} from here` : count !== null && count > pageRows.length ? `Showing 1–${pageRows.length} of ${count.toLocaleString(workspace.locale)}` : ""}</span>
+          <LedgerPagination page={filters.page ?? 1} pageCount={pageCount} href={page => withParams(viewBase, { page: page > 1 ? String(page) : null })} />
+          {count ? <span className="text-xs text-muted-foreground">Showing {(((filters.page ?? 1) - 1) * PAGE_SIZE + 1).toLocaleString(workspace.locale)}–{(((filters.page ?? 1) - 1) * PAGE_SIZE + pageRows.length).toLocaleString(workspace.locale)} of {count.toLocaleString(workspace.locale)}</span> : null}
           <p className="ml-auto hidden text-xs text-muted-foreground sm:block"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>x</kbd> select · <kbd>/</kbd> search · <kbd>Esc</kbd> close</p>
         </div>
         <details id="add-transaction" open={params.add === "1"} className="scroll-mt-24 rounded-xl border border-border bg-card p-5">

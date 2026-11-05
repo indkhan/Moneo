@@ -38,7 +38,7 @@ export type ParsedTransactionParams = {
   minAmountMinor?: string;
   maxAmountMinor?: string;
   sort: TransactionSort;
-  cursor?: { value: string; id: string };
+  page?: number;
   transactionId?: string;
   /** Display-only grouping; never stored in saved views. */
   group?: TransactionGroup;
@@ -91,20 +91,11 @@ export function normalizeEventName(raw: unknown): string | undefined {
   return eventName;
 }
 
-function parseCursor(raw: string | undefined, sort: TransactionSort): ParsedTransactionParams["cursor"] {
-  const text = first(raw);
-  if (!text) return undefined;
-  const separator = text.indexOf("|");
-  if (separator < 0) return undefined;
-  const value = text.slice(0, separator);
-  const id = text.slice(separator + 1);
-  if (!UUID_PATTERN.test(id)) return undefined;
-  if (sort === "date-desc" || sort === "date-asc") {
-    if (!validDate(value)) return undefined;
-  } else {
-    if (parseMinorUnits(value) === undefined) return undefined;
-  }
-  return { value, id };
+/** Page 1 is the default and never appears in the URL. */
+function parsePage(raw: string | undefined): number | undefined {
+  if (!raw || !/^\d{1,6}$/.test(raw)) return undefined;
+  const page = Number(raw);
+  return page > 1 ? page : undefined;
 }
 
 export function parseTransactionParams(
@@ -130,7 +121,7 @@ export function parseTransactionParams(
   const transactionId = first(raw.transaction);
   const minAmountMinor = parseMinorUnits(first(raw.minAmount));
   const maxAmountMinor = parseMinorUnits(first(raw.maxAmount));
-  const cursor = parseCursor(first(raw.cursor) ?? undefined, sort);
+  const page = parsePage(first(raw.page));
 
   return {
     ...(q ? { q } : {}),
@@ -154,34 +145,11 @@ export function parseTransactionParams(
     ...(eventName ? { eventName } : {}),
     ...(minAmountMinor === undefined ? {} : { minAmountMinor }),
     sort,
-    ...(cursor ? { cursor } : {}),
+    ...(page ? { page } : {}),
     ...(transactionId && UUID_PATTERN.test(transactionId) ? { transactionId } : {}),
     ...(maxAmountMinor === undefined ? {} : { maxAmountMinor }),
     ...((TRANSACTION_GROUPS as readonly string[]).includes(group ?? "") ? { group: group as TransactionGroup } : {}),
   };
-}
-
-function isAmountSort(sort: TransactionSort): boolean {
-  return sort === "amount-desc" || sort === "amount-asc";
-}
-
-/**
- * Keyset pagination predicate for a Supabase `.or()` call.
- * Inputs must come from parseTransactionParams, so interpolation is safe.
- */
-export function cursorClause(sort: TransactionSort, cursor: { value: string; id: string }): string {
-  const { column, ascending } = SORT_ORDER[sort];
-  const op = ascending ? "gt" : "lt";
-  return `${column}.${op}.${cursor.value},and(${column}.eq.${cursor.value},id.${op}.${cursor.id})`;
-}
-
-/** Encode the next-page cursor from the last row of the current page. */
-export function nextCursorForRow(
-  row: { posted_on: string; amount_minor: string; id: string },
-  sort: TransactionSort,
-): string {
-  const value = isAmountSort(sort) ? BigInt(row.amount_minor).toString() : row.posted_on;
-  return `${value}|${row.id}`;
 }
 
 /** Toggle helper for the Date / Amount column headers. */
@@ -190,10 +158,10 @@ export function toggleSort(current: TransactionSort, column: "date" | "amount"):
   return current === "amount-desc" ? "amount-asc" : "amount-desc";
 }
 
-/** Serialize filters back to shareable URL params (cursor dropped by default). */
+/** Serialize filters back to shareable URL params (page dropped by default). */
 export function toQueryParams(
   filters: ParsedTransactionParams,
-  options: { includeCursor?: boolean } = {},
+  options: { includePage?: boolean } = {},
 ): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.q) params.set("q", filters.q);
@@ -213,6 +181,6 @@ export function toQueryParams(
   if (filters.maxAmountMinor !== undefined) params.set("maxAmount", filters.maxAmountMinor);
   if (filters.sort !== DEFAULT_SORT) params.set("sort", filters.sort);
   if (filters.group) params.set("group", filters.group);
-  if (options.includeCursor && filters.cursor) params.set("cursor", `${filters.cursor.value}|${filters.cursor.id}`);
+  if (options.includePage && filters.page) params.set("page", String(filters.page));
   return params;
 }

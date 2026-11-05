@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  cursorClause,
-  nextCursorForRow,
   parseMinorUnits,
   parseTransactionParams,
   toQueryParams,
@@ -9,7 +7,6 @@ import {
 } from "./filters";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
-const UUID2 = "123e4567-e89b-12d3-a456-426614174001";
 
 describe("transaction minor-unit amounts", () => {
   it("accepts exact integer strings without floating point", () => {
@@ -39,22 +36,6 @@ describe("transaction sort safety", () => {
     expect(parseTransactionParams({ sort: "amount-asc" }).sort).toBe("amount-asc");
   });
 
-  it("builds keyset clauses only from the fixed column map", () => {
-    const cursor = { value: "2026-09-01", id: UUID };
-    expect(cursorClause("date-desc", cursor)).toBe(
-      `posted_on.lt.2026-09-01,and(posted_on.eq.2026-09-01,id.lt.${UUID})`,
-    );
-    expect(cursorClause("date-asc", cursor)).toBe(
-      `posted_on.gt.2026-09-01,and(posted_on.eq.2026-09-01,id.gt.${UUID})`,
-    );
-    expect(cursorClause("amount-desc", { value: "-1099", id: UUID })).toBe(
-      `amount_minor.lt.-1099,and(amount_minor.eq.-1099,id.lt.${UUID})`,
-    );
-    expect(cursorClause("amount-asc", { value: "-1099", id: UUID })).toBe(
-      `amount_minor.gt.-1099,and(amount_minor.eq.-1099,id.gt.${UUID})`,
-    );
-  });
-
   it("toggles date and amount headers", () => {
     expect(toggleSort("date-desc", "date")).toBe("date-asc");
     expect(toggleSort("amount-desc", "date")).toBe("date-desc");
@@ -63,28 +44,10 @@ describe("transaction sort safety", () => {
   });
 });
 
-describe("transaction cursor validation", () => {
-  it("accepts a date cursor for date sorts and rejects injection", () => {
-    expect(parseTransactionParams({ cursor: `2026-09-01|${UUID}` }).cursor).toEqual({
-      value: "2026-09-01",
-      id: UUID,
-    });
-    expect(parseTransactionParams({ cursor: `2026-09-01),x|${UUID}` }).cursor).toBeUndefined();
-    expect(parseTransactionParams({ cursor: `-1099|${UUID}` }).cursor).toBeUndefined();
-    expect(parseTransactionParams({ cursor: `2026-09-01|not-a-uuid` }).cursor).toBeUndefined();
-  });
-
-  it("accepts a minor-unit cursor for amount sorts", () => {
-    const parsed = parseTransactionParams({ sort: "amount-desc", cursor: `-1099|${UUID}` });
-    expect(parsed.cursor).toEqual({ value: "-1099", id: UUID });
-    expect(parseTransactionParams({ sort: "amount-desc", cursor: `10.99|${UUID}` }).cursor).toBeUndefined();
-    expect(parseTransactionParams({ sort: "amount-desc", cursor: `2026-09-01|${UUID}` }).cursor).toBeUndefined();
-  });
-
-  it("encodes the next cursor from the row's sort value", () => {
-    const row = { posted_on: "2026-09-01", amount_minor: "-1099", id: UUID };
-    expect(nextCursorForRow(row, "date-desc")).toBe(`2026-09-01|${UUID}`);
-    expect(nextCursorForRow(row, "amount-desc")).toBe(`-1099|${UUID}`);
+describe("transaction page number", () => {
+  it("accepts whole pages above 1 and ignores anything else", () => {
+    expect(parseTransactionParams({ page: "3" }).page).toBe(3);
+    for (const page of ["1", "0", "-2", "2.5", "x", "9999999"]) expect(parseTransactionParams({ page }).page).toBeUndefined();
   });
 });
 
@@ -103,22 +66,22 @@ describe("transaction filter params", () => {
     expect(parseTransactionParams({ minAmount: "10.99" }).minAmountMinor).toBeUndefined();
   });
 
-  it("round-trips shareable params and drops the cursor by default", () => {
+  it("round-trips shareable params and drops the page by default", () => {
     const parsed = parseTransactionParams({
       q: "coffee",
       category: "none",
       minAmount: "100",
       sort: "amount-desc",
-      cursor: `-5|${UUID2}`,
+      page: "4",
       transaction: UUID,
     });
     const withoutCursor = toQueryParams(parsed);
-    expect(withoutCursor.get("cursor")).toBeNull();
+    expect(withoutCursor.get("page")).toBeNull();
     expect(withoutCursor.get("category")).toBe("none");
     expect(withoutCursor.get("minAmount")).toBe("100");
     expect(withoutCursor.get("sort")).toBe("amount-desc");
     expect(withoutCursor.get("transaction")).toBeNull();
-    expect(toQueryParams(parsed, { includeCursor: true }).get("cursor")).toBe(`-5|${UUID2}`);
+    expect(toQueryParams(parsed, { includePage: true }).get("page")).toBe("4");
     expect(toQueryParams(parseTransactionParams({})).get("sort")).toBeNull();
   });
 
