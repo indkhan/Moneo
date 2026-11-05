@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>brit7pzbr</task-id>
+<tool-use-id>toolu_01CoDdaetnBpoQySrq4986jH</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\bdb49bc3b4b3e01d\b3664061-18ac-4937-8bf9-a7eee4a1b235\tasks\brit7pzbr.output</output-file>
+<status>failed</status>
+<summary>Background command "Commit the fixture fix, rerun fast acceptance, reset QA workspace, run required acceptance" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b3yjkk1mb</task-id>
+<tool-use-id>toolu_01XfQMJLWeJx5ouweJ5ksvnx</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\bdb49bc3b4b3e01d\b3664061-18ac-4937-8bf9-a7eee4a1b235\tasks\b3yjkk1mb.output</output-file>
+<status>failed</status>
+<summary>Background command "Rerun the four failing browser specs on the production build" failed with exit code 1</summary>
+</task-notification>
