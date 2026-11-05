@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>b8vzfqszv</task-id>
+<tool-use-id>toolu_019X8einWWoTcw74eWYsSf5B</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\bdb49bc3b4b3e01d\b3664061-18ac-4937-8bf9-a7eee4a1b235\tasks\b8vzfqszv.output</output-file>
+<status>failed</status>
+<summary>Background command "Commit fixes, build, rerun three specs, then the full required suite" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>beirefb4b</task-id>
+<tool-use-id>toolu_01PfGwd4hXSdxxngG8EYU1xS</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\bdb49bc3b4b3e01d\b3664061-18ac-4937-8bf9-a7eee4a1b235\tasks\beirefb4b.output</output-file>
+<status>failed</status>
+<summary>Background command "Reset QA workspace and rerun the full required acceptance suite" failed with exit code 1</summary>
+</task-notification>
