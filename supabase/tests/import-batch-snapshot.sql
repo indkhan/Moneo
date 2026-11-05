@@ -18,14 +18,14 @@ begin
   begin
     perform public.stage_import_rows(imported,workspace,1,imported::text,snapshot_mapping,routes,source,snapshot_rows);
     raise exception 'Privileged normalization mapping drift staged stale financial values' using errcode='ZX001';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if exists(select 1 from public.import_staging where import_id=imported) or exists(select 1 from public.source_transactions where import_id=imported)
     or exists(select 1 from public.transactions where workspace_id=workspace) then raise exception 'Rejected snapshot left financial/staging effects'; end if;
   update public.imports set mapping=mapping-'amountSign'||'{"amountSign":"signed"}'::jsonb where id=imported;
   update public.imports set route_accounts='{}' where id=imported;
-  begin perform public.stage_import_rows(imported,workspace,1,imported::text,snapshot_mapping,routes,source,snapshot_rows); raise exception 'Changed route snapshot staged' using errcode='ZX001'; exception when serialization_failure then null; end;
+  begin perform public.stage_import_rows(imported,workspace,1,imported::text,snapshot_mapping,routes,source,snapshot_rows); raise exception 'Changed route snapshot staged' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   update public.imports set route_accounts=routes,source_id=null where id=imported;
-  begin perform public.stage_import_rows(imported,workspace,1,imported::text,snapshot_mapping,routes,source,snapshot_rows); raise exception 'Changed legacy source identity staged' using errcode='ZX001'; exception when serialization_failure then null; end;
+  begin perform public.stage_import_rows(imported,workspace,1,imported::text,snapshot_mapping,routes,source,snapshot_rows); raise exception 'Changed legacy source identity staged' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   update public.imports set source_id=source where id=imported;
   perform public.stage_import_rows(imported,workspace,1,imported::text,snapshot_mapping,routes,source,snapshot_rows);
   perform public.stage_import_rows(imported,workspace,1,imported::text,snapshot_mapping,routes,source,snapshot_rows);

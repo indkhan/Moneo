@@ -22,7 +22,7 @@ begin
   begin perform public.stage_import_rows(imported,workspace,1,'changed',(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),staged); raise exception 'Wrong hash staged' using errcode='ZX001'; exception when invalid_parameter_value then null; end;
   perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),staged);
   perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),staged);
-  begin perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),jsonb_set(staged,'{0,row,description}','"changed"')); raise exception 'Staging was replaced' using errcode='ZX001'; exception when serialization_failure then null; end;
+  begin perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),jsonb_set(staged,'{0,row,description}','"changed"')); raise exception 'Staging was replaced' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   begin update public.import_staging set rows=staged where import_id=imported; raise exception 'Staging was updated' using errcode='ZX001'; exception when invalid_parameter_value then null; end;
   candidate:=public.import_batch_candidates(imported,workspace,1,0);
   if candidate->0->'candidates'<>'[]'::jsonb then raise exception 'Fresh synthetic batch overlaps'; end if;
@@ -51,11 +51,11 @@ begin
   candidate:=public.import_batch_candidates(second_import,workspace,1,0);
   if candidate->0->'candidates'->0->>'stableExternalMatch'<>'true' then raise exception 'Batch stable matching evidence differs'; end if;
   version:=(candidate->0->'candidates'->0->>'version')::integer;
-  begin perform public.ingest_import_batch(second_import,workspace,1,0,jsonb_build_array(jsonb_build_object('rowNumber',2,'action','matched','transactionId',candidate->0->'candidates'->0->>'id','expectedTransactionVersion',version+1))); raise exception 'Stale match posted' using errcode='ZX001'; exception when serialization_failure then null; end;
+  begin perform public.ingest_import_batch(second_import,workspace,1,0,jsonb_build_array(jsonb_build_object('rowNumber',2,'action','matched','transactionId',candidate->0->'candidates'->0->>'id','expectedTransactionVersion',version+1))); raise exception 'Stale match posted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   perform public.ingest_import_batch(second_import,workspace,1,0,jsonb_build_array(jsonb_build_object('rowNumber',2,'action','matched','transactionId',candidate->0->'candidates'->0->>'id','expectedTransactionVersion',version)));
   if (select count(*) from public.transactions where workspace_id=workspace)<>1 or (select matched_rows from public.imports where id=second_import)<>1 then raise exception 'Batch overlap duplicated canonical posting'; end if;
   update public.imports set mapping=mapping||'{"changed":true}'::jsonb where id=second_import;
-  begin perform public.read_import_stage(second_import,workspace,1); raise exception 'Changed interpretation replayed' using errcode='ZX001'; exception when serialization_failure then null; end;
+  begin perform public.read_import_stage(second_import,workspace,1); raise exception 'Changed interpretation replayed' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   update public.imports set mapping=mapping-'changed' where id=second_import;
   perform public.finish_import_run(second_import,workspace,1,null);
   execute 'set local role authenticated';
