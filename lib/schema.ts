@@ -661,13 +661,18 @@ export const artifactVersions = pgTable("artifact_versions", {
   artifactId: uuid("artifact_id").notNull().references(() => artifacts.id, { onDelete: "cascade" }),
   version: integer("version").notNull(),
   prompt: text("prompt").notNull(),
-  html: text("html").notNull(),
+  html: text("html"),
+  source: text("source"),
+  compiled: text("compiled"),
+  params: jsonb("params").notNull().default(sql`'[]'::jsonb`),
   queries: jsonb("queries").notNull().default([]),
   model: text("model"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("artifact_versions_workspace").on(table.workspaceId),
   unique("artifact_versions_artifact_id_version_key").on(table.artifactId, table.version),
+  check("artifact_versions_rendering_check", sql`(${table.html} is not null and ${table.source} is null and ${table.compiled} is null) or (${table.html} is null and length(${table.source}) between 1 and 200000 and length(${table.compiled}) between 1 and 400000 and ${table.source} is not null and ${table.compiled} is not null)`),
+  check("artifact_versions_params_check", sql`jsonb_typeof(${table.params}) = 'array'`),
 ]);
 
 export const artifactCards = pgTable("artifact_cards", {

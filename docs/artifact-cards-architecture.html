@@ -93,7 +93,7 @@
 <section id="architecture">
   <p class="eyebrow">Architecture</p>
   <h2>One chat, two outputs, one data contract</h2>
-  <p class="intro">The artifact's chat is the normal Moneo chat with four extra tools. A designer model writes the Page (HTML) or a card (React). The app saves the queries the work needs and reruns them every time anything is shown, so the data is always current and app-made.</p>
+  <p class="intro">The artifact's chat is the normal Moneo chat with four extra tools. A designer model writes the Page or a card as isolated React. The app saves the queries the work needs and reruns them every time anything is shown, so the data is always current and app-made.</p>
   <div class="panel">
     <svg class="diagram" viewBox="0 0 1060 470" role="img" aria-label="Architecture diagram">
       <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#5d6170"/></marker></defs>
@@ -174,7 +174,7 @@
 <section id="render">
   <p class="eyebrow">Rendering</p>
   <h2>AI-written React that never runs in your browser</h2>
-  <p class="intro">The card's code runs once on the server inside QuickJS, a JavaScript engine compiled to WASM. Its only output is a tree of plain data, <code>{ type, props, children }</code>. The app checks that tree and draws it with its own React, so it gets your fonts and theme, switches dark mode instantly, and has no iframe.</p>
+  <p class="intro">Page and card code run on the server inside QuickJS, a JavaScript engine compiled to WASM. Its only output is a tree of plain data, <code>{ type, props, children }</code>. The app checks that tree and draws it with its own React, so it gets your fonts and theme, switches dark mode instantly, and has no iframe.</p>
   <div class="grid2">
     <div class="panel">
       <h3>Measured (benchmark script in the repo)</h3>
@@ -196,6 +196,7 @@
 </section>
 
 <section id="safety">
+  <p class="intro">Pages now use the same QuickJS and checked-tree boundary as cards. Migration 202611050001 keeps old HTML versions intact. Old designs are view-only inside an inert, scripts-disabled frame, with current query data shown separately by the app. Ask the artifact chat to rebuild its Page to restore live charts and controls; the original stays in version history.</p>
   <p class="eyebrow">Safety</p>
   <h2>Five walls between the model and your Home</h2>
   <p class="intro">The model writes the code, and text in your transactions could try to steer it, so we treat both the code and its output as untrusted.</p>
@@ -251,7 +252,7 @@
   <p class="eyebrow">Limits</p>
   <h2>What still isn't perfect</h2>
   <div class="grid2">
-    <div class="card"><h3>No live browser maths on Home</h3><p>A slider on a card asks the server to re-render, which is fast but not 60 fps. The Page (sandboxed iframe) keeps full client-side interactivity.</p></div>
+    <div class="card"><h3>No live browser maths on Home</h3><p>Pages and cards support app-owned tabs and declared month, period and choice controls. Parameter changes ask the server to re-render. Arbitrary browser scripts, DOM controls and free-form sliders are unavailable.</p></div>
     <div class="card"><h3>Durability equals chat's</h3><p>A deploy or crash mid-build loses that run. The request shows as failed, and you ask again.</p></div>
     <div class="card"><h3>A card can show a wrong number</h3><p>The sandbox stops capabilities, not wrong arithmetic or labels: a card can compute or hard-code an amount and nothing rejects it. The preview, drafts and version history are how you catch and undo that. Enforcing it would mean cards bind to values instead of rendering them, which would cost the design freedom this version was built for.</p></div>
     <div class="card"><h3>Tailwind classes</h3><p>Only classes the app already uses exist, so designed cards style themselves with style objects and scoped CSS.</p></div>

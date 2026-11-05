@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { Check, ChevronLeft, ChevronRight, HousePlus, Maximize2, RefreshCw, X } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
-import { ArtifactFrame } from "@/components/artifact-frame";
+import { ArtifactPageContent } from "./artifact-page-content";
 import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { loadConversation } from "@/lib/ai/conversation-history";
 import { cardWidgetKey, homeLayout, isBuiltinWidget, widgetLabel } from "@/lib/finance/dashboard";
@@ -58,7 +58,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const dataAsOf = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone }).format(new Date());
   const older = !!current && current.version < latest;
   const dataLabel = `${older ? "Older design, current data" : "Data"} as of ${dataAsOf}`;
-  const frame = current && <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} className="size-full" />;
+  const frame = current && <Suspense fallback={<p role="status" className="p-6 text-sm text-muted-foreground">Loading Page...</p>}><ArtifactPageContent id={id} title={artifact.data.title} version={current.version} context={context} /></Suspense>;
 
   if (search.full && frame) return <div className="fixed inset-0 z-50 flex flex-col bg-background">
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-card px-3 py-1.5 text-xs">
@@ -66,7 +66,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
       <span>Design v{current.version} of {latest}</span><span className="text-muted-foreground">{dataLabel}</span>
       <ExitFullScreen href={at({ full: undefined })} />
     </div>
-    <div className="min-h-0 flex-1">{frame}</div>
+    <div className="min-h-0 flex-1 overflow-y-auto">{frame}</div>
   </div>;
 
   const homeItems = homeLayout(layout.data)?.items ?? [];
@@ -99,7 +99,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
           <Link href={at({ full: "1" })} className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
         </span>}
       </div>
-      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || start ? "Building your artifact… Follow the progress in the chat." : retry ? <SendButton prompt={retry} idle="Your first request did not finish." label="Send it again" sending="Building your artifact… Follow the progress in the chat." /> : "No page yet. Describe what to build in the chat."}</p>}</div>
+      {tab === "page" ? <div className="min-h-0 flex-1 overflow-y-auto">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || start ? "Building your artifact… Follow the progress in the chat." : retry ? <SendButton prompt={retry} idle="Your first request did not finish." label="Send it again" sending="Building your artifact… Follow the progress in the chat." /> : "No page yet. Describe what to build in the chat."}</p>}</div>
         : <div className="min-h-0 flex-1 space-y-8 overflow-y-auto bg-background p-4">
           {!cards.data?.length && (history.running || start ? <p role="status" className="text-sm text-muted-foreground">Follow the progress in the chat.</p> : <SendButton prompt={buildCard} idle="No Home card yet. Moneo can make one from this page, using an AI request." label="Create a Home card" sending="Building your Home card… Follow the progress in the chat." />)}
           {(cards.data as CardRow[] | null)?.map(card => {

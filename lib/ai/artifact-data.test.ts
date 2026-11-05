@@ -2,24 +2,26 @@ import { describe, expect, it } from "vitest";
 import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, checkQueries, resolveQueryInput, resolveToken } from "./artifact-data";
 
 describe("artifact data", () => {
-  it("puts the CSP and escaped data before the generated page", () => {
-    const doc = artifactDocument("<html><head><title>x</title></head><body></body></html>", { note: "</script><b>" });
-    expect(doc.indexOf("Content-Security-Policy")).toBeLessThan(doc.indexOf("<title>"));
-    expect(doc).not.toContain("</script><b>");
-    expect(doc).toContain("\\u003c/script>");
-    expect(artifactDocument("<p>hi</p>", {})).toMatch(/^<meta[^>]+Content-Security-Policy/);
+  it("keeps legacy HTML scripts disabled and never injects current data", () => {
+    const doc = artifactDocument("<html><head><title>x</title></head><body></body></html>");
+    expect(doc).toContain('inert sandbox="" srcdoc="');
+    expect(doc).toContain("&lt;title&gt;x&lt;/title&gt;");
+    expect(doc).toContain("script-src 'none'");
+    expect(doc).not.toContain("MONEO_DATA");
+    expect(artifactDocument('" onload="bad()')).toContain("&quot; onload=&quot;bad()");
   });
 
   it("loads the app theme and the Moneo kit, defaulting to a page that follows the OS", () => {
-    const dark = artifactDocument("<p>hi</p>", {}, { theme: "dark" });
+    const dark = artifactDocument("<p>hi</p>", { theme: "dark" });
     expect(dark).toContain("color-scheme:dark");
     expect(dark).toContain("--moneo-accent:");
     expect(dark).toContain(".m-card{");
-    expect(artifactDocument("<p>hi</p>", {})).toContain("color-scheme:light dark");
+    expect(artifactDocument("<p>hi</p>")).toContain("color-scheme:light dark");
   });
 
   it("keeps a directly opened frame sandboxed and frameable only by the app", () => {
-    expect(ARTIFACT_FRAME_CSP).toContain("sandbox allow-scripts");
+    expect(ARTIFACT_FRAME_CSP).toContain("sandbox;");
+    expect(ARTIFACT_FRAME_CSP).not.toContain("allow-scripts");
     expect(ARTIFACT_FRAME_CSP).not.toContain("allow-same-origin");
     expect(ARTIFACT_FRAME_CSP).toContain("frame-ancestors 'self'");
   });
