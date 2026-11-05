@@ -61,6 +61,15 @@ it("counts open decisions, filters by agent and previews a bulk accept instead o
   expect(html).toContain("All runs");
 });
 
+it("offers bulk decisions only within the 100 the action accepts", () => {
+  const initial = run("completed");
+  const limits = Array.from({ length: 101 }, (_, index) => ({ ...initial.proposals[1], id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, title: `Limit ${index}`, status: "proposed", result: null, notes: [], confidence: 75 }));
+  const html = renderToStaticMarkup(<MissionControl initial={{ ...initial, proposals: limits }} locale="en-GB" />);
+  expect(html).toContain("Accept 100 high confidence…");
+  expect(html).toContain("Accept first 100…");
+  expect(html).toContain("Reject first 100");
+});
+
 it("lights up the flowchart with each agent's live status", () => {
   const html = renderToStaticMarkup(<MissionControl initial={run("running")} locale="en-GB" />);
   expect(html).toContain("Live run");

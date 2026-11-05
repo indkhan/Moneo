@@ -15,6 +15,8 @@ import { PhoneCollapse } from "./phone-collapse";
 const ACTIVE = new Set(["queued", "running"]);
 // Category limits score 75 when all three months have spending and 55 when one is empty.
 const HIGH_CONFIDENCE = 75;
+// decideAgentProposals accepts at most this many ids per call.
+const BULK_LIMIT = 100;
 // Long runs stay readable: the rest of a group is one press away.
 const GROUP_PREVIEW = 5;
 const WAVE_LABELS = ["Analysts · in parallel", "Builders · read the analysts' results", "Writer · after the lead merges"];
@@ -145,7 +147,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const kinds = (Object.keys(KIND_LABELS) as ProposalKind[]).filter(kind => shown.some(item => item.kind === kind));
   const openHere = open.filter(item => item.kind === "budget");
   const openOnHome = open.length - openHere.length;
-  const sureThings = reviewable ? openHere.filter(item => item.status === "proposed" && item.confidence >= HIGH_CONFIDENCE) : [];
+  const sureThings = reviewable ? openHere.filter(item => item.status === "proposed" && item.confidence >= HIGH_CONFIDENCE).slice(0, BULK_LIMIT) : [];
   const finishedTasks = run.tasks.filter(task => ["done", "failed", "skipped", "canceled"].includes(task.status)).length;
   // Only category limits are decided here; everything else waits on Home, so a decision has one place.
   const openIds = (kind: ProposalKind) => open.filter(item => item.kind === kind && kind === "budget").map(item => item.id);
@@ -218,8 +220,8 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       })}</div>}
       {kinds.map((kind, index) => <details key={kind} open={index === 0 || openIds(kind).length > 0} className="space-y-2 group">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" /><h3 className="eyebrow">{KIND_LABELS[kind]} ({shown.filter(item => item.kind === kind).length})</h3>{reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
-          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "reject"); }} className="h-8 rounded-[10px] border border-input px-3 text-xs hover:bg-muted disabled:opacity-50">Reject all</button>
-          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); setBulk({ ids: openIds(kind).slice(0, 100), label: KIND_LABELS[kind].toLowerCase() }); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Accept all…</button>
+          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind).slice(0, BULK_LIMIT), "reject"); }} className="h-8 rounded-[10px] border border-input px-3 text-xs hover:bg-muted disabled:opacity-50">Reject {openIds(kind).length > BULK_LIMIT ? `first ${BULK_LIMIT}` : "all"}</button>
+          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); setBulk({ ids: openIds(kind).slice(0, BULK_LIMIT), label: KIND_LABELS[kind].toLowerCase() }); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Accept {openIds(kind).length > BULK_LIMIT ? `first ${BULK_LIMIT}` : "all"}…</button>
         </span>}</summary>
         <ul className="space-y-2">{shown.filter(item => item.kind === kind).sort((a, b) => Number(openIds(kind).includes(b.id)) - Number(openIds(kind).includes(a.id))).slice(0, expanded.includes(kind) ? undefined : GROUP_PREVIEW).map(item => {
           const decidable = reviewable && kind === "budget" && (item.status === "proposed" || item.status === "failed");
