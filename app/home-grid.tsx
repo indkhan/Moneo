@@ -248,7 +248,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
           return <Fragment key={key}><Widget id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key || customizing} resizing={resizing?.key === key}
             onHide={() => hide(key)} onMoveKey={event => moveKey(key, event)} onResizeStart={event => startResize(key, event)} onResizeKey={event => resizeKey(key, event)}>
             <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <SectionFallback title={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
-          </Widget>{index === 0 && afterFirst && <div className="min-w-0 lg:col-span-6">{afterFirst}</div>}</Fragment>;
+          </Widget>{index === 0 && afterFirst && <div className="min-w-0 empty:hidden lg:col-span-6">{afterFirst}</div>}</Fragment>;
         })}
         {hidden.length > 0 && <div className="relative lg:col-span-2">
           <button type="button" aria-expanded={menu} onClick={() => setMenu(open => !open)}
