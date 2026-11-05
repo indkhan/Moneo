@@ -76,6 +76,17 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
       rects.current.set(key, at);
     }
   }, [layout, resizing]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Masonry on wide screens: each widget is only as tall as its content, and the grid packs the next ones into the gaps.
+  // The grid runs in 4px rows; a widget spans enough of them for its height plus the 16px gap below it.
+  useLayoutEffect(() => {
+    const node = grid.current;
+    if (!node) return;
+    const rows = new ResizeObserver(entries => {
+      for (const entry of entries) (entry.target as HTMLElement).style.setProperty("--rows", String(Math.ceil((entry.borderBoxSize[0].blockSize + 16) / 4)));
+    });
+    for (const child of node.children) rows.observe(child);
+    return () => rows.disconnect();
+  }, [layout.items, adding]);
   /** Content streams in after the last measure, so take positions again just before a change. */
   const remember = () => { for (const [node, at] of measure()) rects.current.set(node.dataset.widget!, at); };
 
@@ -250,7 +261,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
       <button type="button" aria-pressed={customizing} onClick={() => { setCustomizing(on => !on); setMenu(false); }} className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">{customizing ? "Done" : "Customize"}</button>
     </div>
     <SortableContext items={shown} strategy={stay}>
-      <div ref={grid} className="grid gap-4 lg:grid-cols-6">
+      <div ref={grid} className="grid items-start gap-4 lg:auto-rows-[4px] lg:grid-flow-row-dense lg:grid-cols-6 lg:gap-y-0 lg:[&>*]:[grid-row-end:span_var(--rows,1)]">
         {shown.map((key, index) => {
           const size = resizing?.key === key ? resizing.size : layout.sizes[key] ?? "M";
           return <Fragment key={key}><Widget id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key || customizing} resizing={resizing?.key === key}
