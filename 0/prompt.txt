@@ -1,0 +1,42 @@
+i want to have scalable capital account and i ressearched and think this is the best way to do it
+**1. Official Scalable MCP — my first choice**Pros:
+
+- Scalable charges **no separate MCP fee**.
+- Login happens through Scalable with 2FA.
+- Published tools include holdings, portfolio values, cash, transactions and Overnight Savings summaries.
+- A hosted connection fits Moneo’s deployment better than running a separate program. No AI model is needed to import structured data. [Fees](https://help.scalable.capital/en/agentic-investing-aac939f8/is-scalable-mcp-free-12907693), [Available data](https://help.scalable.capital/en/agentic-investing-aac939f8/what-can-my-ai-assistant-do-with-the-scalable-mcp-28d8129c)
+
+
+I wanted to have a Scalable Capital account as well in my account. Right now the problem is that it shows my main accounts. When I send money for investing and all, it shows it as my expenditure, which is completely wrong.
+
+How the other in-between transaction works, it should work the same way. It should also see all the things I have and which company and all, and it could show me that as well. I want to have it working with my thing so that I can connect it to my Scalable account or a user can connect the Scalable account. Then they can have that as well with their other accounts or Scalable account so that it works for them.
+
+If you have any questions ask me and we have to build this feature. Make a basic plan for how we are going to go ahead and build this feature so that this account is shown as well. It uses the Scalable Capital MCP server. It shows the transactions or how much money is there, how much money is in your portfolio in the last month, and how much it grew or went down. That way the net worth it shows is accurate as per the timing and all of that should work.
+
+Right now you just need to plan and research about it and all of that and then give me what the thing is.
+
+---
+
+firstly check if there is otehr way to do the thing if not then i will see maybe mcp is the only for local devs not for an application 
+1. yes i can contact them 
+2. yes only thing is the current value should be there in networth
+3. what do you mean
+4. what
+
+---
+
+Okay sure, then let's do it that way. I will email them that: "Yo, I am building this and all of that."
+
+For your second point I agree. Let's go with that. For your third point I would say as part of the Scalable account as well. That's when I will do it. No worries about that.
+
+Start building against localhost now and let me know what you want and when you want me to connect. I will connect it for you and then let's go ahead with it and start building it.
+
+---
+
+<task-notification>
+<task-id>b16acgpox</task-id>
+<tool-use-id>toolu_01NncUV8fjMRwNEXvD45ZtkH</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\03796d7f3475c520\c2107c85-bf35-4d02-aae3-4f1491f80bb7\tasks\b16acgpox.output</output-file>
+<status>completed</status>
+<summary>Background command "Copy env and install dependencies" completed (exit code 0)</summary>
+</task-notification>

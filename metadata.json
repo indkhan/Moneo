@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6PHYXF953DE4TDQ3VK38X4T",
+  "strategy": "manual-commit",
+  "branch": "t3/scalable-capital-account-plan",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "lib/scalable/client.test.ts",
+    "lib/scalable/client.ts",
+    "lib/scalable/server.ts",
+    "lib/schema.ts",
+    "supabase/migrations/202611050001_scalable_connections.sql"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 78,
+    "cache_creation_tokens": 115155,
+    "cache_read_tokens": 4049038,
+    "output_tokens": 34620,
+    "api_call_count": 39
+  },
+  "redaction": {
+    "replacements": 3,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 3,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
