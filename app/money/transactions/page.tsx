@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
 import { calendarDate } from "@/lib/finance/calendar";
-import { EditingHistory } from "./editing-history";
+import { EditingHistory, RestoreManualEntry } from "./editing-history";
 import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, toggleSort, type ParsedTransactionParams, type TransactionGroup } from "./filters";
 import { invalidStoredViewScope, parseStoredFilters, parseViewId, savedViewToParams } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
@@ -138,6 +138,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-4 text-foreground max-md:flex max-md:flex-col sm:px-8 md:py-6 lg:py-8">
     {header(filters.cursor ? null : count)}
+    {/^[0-9a-f-]{36}$/i.test(params.undone ?? "") ? <Suspense fallback={null}><RestoreManualEntry entryId={params.undone!} /></Suspense> : null}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
     {/^\d+$/.test(params.applied ?? "") ? <p role="status" className="rounded-xl border border-border bg-card px-4 py-3 text-sm">Updated {params.applied} {params.applied === "1" ? "transaction" : "transactions"}. Showing that category. Undo the batch under <a className="underline" href="#editing-history">Editing history</a>, or <Link className="underline" href="/ai">return to the conversation</Link>.</p> : null}
     <div className="max-md:order-last"><PhoneCollapse label="Saved views" open={!!activeView}><SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} /></PhoneCollapse></div>
