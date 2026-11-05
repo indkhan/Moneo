@@ -7,6 +7,14 @@ export async function replayMigrations(tx, migrations, path) {
   }
 }
 
+// Fixtures share one rollback-only transaction. A savepoint per fixture keeps
+// their data, role and transaction-local settings from reaching the next one.
+export async function runIsolatedFixture(tx, label, sql) {
+  const done = new Error("Fixture rolled back");
+  try { await tx.savepoint(async savepoint => { await savepoint.unsafe(sql); throw done; }); }
+  catch (cause) { if (cause !== done) throw new Error(`${label}: ${cause.message}`, { cause }); }
+}
+
 // Historical pg_get_functiondef bodies retain checkout newlines. Only code
 // whitespace is equivalent; quoted data and the generated header stay exact.
 export function canonicalFunctionDefinition(definition) {

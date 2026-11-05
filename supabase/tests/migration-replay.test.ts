@@ -1,5 +1,5 @@
-import { expect, it } from "vitest";
-import { applicationMigrationSql, canonicalFunctionDefinition, replayMigrations } from "./migration-replay.mjs";
+import { expect, it, vi } from "vitest";
+import { applicationMigrationSql, canonicalFunctionDefinition, replayMigrations, runIsolatedFixture } from "./migration-replay.mjs";
 import { readFileSync, readdirSync } from "node:fs";
 
 it("keeps application changes while excluding Supabase storage from fresh replay", () => {
@@ -26,6 +26,16 @@ it("identifies a missing upgrade constraint without treating unrecorded SQL as a
   const tx = { unsafe: async () => { throw cause; } };
   await expect(replayMigrations(tx, [{ file: "202610040001_reimport_undone_files.sql", sql: "alter table public.imports drop constraint imports_workspace_hash_unique" }], "upgrade"))
     .rejects.toThrow(/upgrade.*202610040001.*42704.*migration history/);
+});
+
+it("rolls each SQL fixture back to its savepoint and names a failing fixture", async () => {
+  const savepoint = (unsafe: () => Promise<void>) => vi.fn(async (work: (sp: { unsafe: () => Promise<void> }) => Promise<void>) => work({ unsafe }));
+  const passing = savepoint(async () => {});
+  await expect(runIsolatedFixture({ savepoint: passing }, "Fresh SQL regression ok.sql", "select 1")).resolves.toBeUndefined();
+  expect(passing).toHaveBeenCalledOnce();
+  const cause = Object.assign(new Error("boom"), { code: "P0002" });
+  await expect(runIsolatedFixture({ savepoint: savepoint(async () => { throw cause; }) }, "Fresh SQL regression bad.sql", "select 1"))
+    .rejects.toMatchObject({ message: "Fresh SQL regression bad.sql: boom", cause });
 });
 
 const definition = (body: string) => `CREATE OR REPLACE FUNCTION public.example()\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$${body}$function$\n`;
