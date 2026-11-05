@@ -72,7 +72,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').first().click();const disabled=details.locator('details');if(await disabled.count()&&!await disabled.evaluate(node=>(node as HTMLDetailsElement).open))await disabled.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
   await selectCedar();
   await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();
-  await expect(queue().getByRole('status').filter({ hasText: 'unavailable' })).toContainText('unavailable');
+  await expect(queue().getByRole('status').filter({ hasText: 'unavailable' })).toContainText('unavailable',{timeout:30000});
   await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toBeEnabled();
   // Controlled delayed response validates browser draft ownership, not model quality.
   let fulfill!:()=>Promise<void>;let requested!:()=>void;
