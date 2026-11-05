@@ -6,7 +6,6 @@ import { formatInputAmount } from "@/lib/finance/format";
 import { amountBounds, shownBounds } from "./input";
 import { compileFilterQuery } from "./nl-filter";
 import { calendarDate } from "@/lib/finance/calendar";
-import { PhoneCollapse } from "@/components/phone-collapse";
 
 type Named = { id: string; name: string };
 export type FilterValues = Partial<Record<"q" | "from" | "to" | "account" | "category" | "merchant" | "status" | "kind" | "direction" | "tag" | "event" | "minAmount" | "maxAmount" | "sort" | "group", string>>;
@@ -28,6 +27,7 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
   const decimal = (minor?: string) => minor === undefined ? "" : formatInputAmount(minor, currency);
   const [direction, setDirection] = useState(values.direction ?? "");
   const shown = shownBounds(values.direction, values.minAmount, values.maxAmount);
+  const [open, setOpen] = useState(false);
   const [more, setMore] = useState(Boolean(values.minAmount || values.maxAmount || values.status || values.kind || values.direction || values.tag || values.event));
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -57,17 +57,18 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
     router.push(`/money/transactions${query.size ? `?${query}` : ""}`);
   }
 
-  const filtering = Object.entries(values).some(([key, value]) => value && key !== "q" && key !== "sort" && key !== "group");
+  const active = Object.entries(values).filter(([key, value]) => value && key !== "sort" && key !== "group").length;
+  // One plain box by default; the detailed filters open only when asked for.
   return <div className="space-y-2">
-  <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex flex-wrap gap-2 max-md:hidden">
-    <input name="ask" maxLength={200} placeholder="Ask, e.g. coffee over 5 last month" aria-label="Describe what to find" className={`${control} flex-1`} />
-    <button className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Find</button>
-    <p className="basis-full text-xs text-muted-foreground">Find turns plain words into the filters shown below; words it doesn’t recognise search descriptions.</p>
-  </form>
-  <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2">
-      <input id="ledger-search" name="q" defaultValue={values.q} placeholder="Search descriptions  ( / )" aria-label="Search descriptions" maxLength={200} className={control} />
-    <PhoneCollapse label="Filters" open={filtering}>
-<div className="space-y-2">
+  <div className="flex gap-2">
+    <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex min-w-0 flex-1 gap-2">
+      <input id="ledger-search" name="ask" maxLength={200} placeholder="Find transactions, e.g. coffee over 5 last month  ( / )" aria-label="Describe what to find" className={`${control} flex-1`} />
+      <button className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Find</button>
+    </form>
+    <button type="button" aria-expanded={open} aria-controls="ledger-filters" onClick={() => setOpen(!open)} className={`min-h-10 whitespace-nowrap rounded-[10px] border px-3 text-[13px] hover:bg-muted ${open ? "border-foreground" : "border-input"}`}>Filters{active ? ` (${active})` : ""}</button>
+  </div>
+  <form id="ledger-filters" hidden={!open} onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2 rounded-xl border border-border bg-card p-3">
+      <input name="q" defaultValue={values.q} placeholder="Search descriptions" aria-label="Search descriptions" maxLength={200} className={control} />
     <div className="grid items-end gap-2 sm:grid-cols-2 lg:grid-cols-4">
       <label className="grid gap-1 text-xs text-muted-foreground">From<input name="from" type="date" defaultValue={values.from} aria-label="From date" className={`${control} text-foreground`} /></label>
       <label className="grid gap-1 text-xs text-muted-foreground">To<input name="to" type="date" defaultValue={values.to} aria-label="To date" className={`${control} text-foreground`} /></label>
@@ -90,8 +91,6 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       <input name="tag" defaultValue={values.tag} placeholder="Tag" aria-label="Filter by tag" maxLength={40} className={control} />
       <input name="event" defaultValue={values.event} placeholder="Trip / event group" aria-label="Filter by spending group" maxLength={120} className={control} />
     </div>
-</div>
-    </PhoneCollapse>
     {more && <p className="text-xs text-muted-foreground">{direction ? `Type plain amounts: 10 to 50 finds ${direction === "income" ? "money in" : "purchases"} of 10 to 50.` : "Choose Money out or Money in to search by plain amounts. Without one, amounts are signed: -50 to -10 finds purchases of 10 to 50."}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </form>
