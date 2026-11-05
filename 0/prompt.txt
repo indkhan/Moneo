@@ -1,0 +1,108 @@
+this is what i thought going through the applicaiton i want to fix all of it first of all can you give me list of what all will be done to work on them and then also ask me questions if soemthing needs decision so that we can be done with these changes so i dont have these problems with it anymore
+Home / Overview Page
+
+Layout & Styling:
+
+The general update feels much better overall.
+
+Net Worth & Cash Flow: The monthly cash flow ("in and out left this month") should not be grouped inside the Net Worth widget. Either split it into its own widget or remove it entirely.
+
+Widget Customization: Widgets should be freely movable to any position. Widget heights/sizes should shrinkwrap to fit their content dynamically.
+
+"Coming Up" Section: Remove excess whitespace. It should only take up as much space as required (matching how artifacts scale).
+
+Add Widget Action: Move the "Add Widget" button next to "Customize" or include it inside the customization bar next to the "Done" button.
+
+Status: Cash Flow clicking interactions, Agent Team, and History sections look good.
+
+Transaction Page & Ledger
+
+Filters:
+
+Hide detailed filters (From, To, All Accounts) by default.
+
+Display filters only when the user explicitly clicks a "Filters" button (positioned next to "Saved View").
+
+Search / Chat Interface:
+
+Remove the search description box.
+
+Keep a clean, normal chat input by default, with an optional toggle button to expand detailed options.
+
+Pagination & Table:
+
+Replace the current pagination UI with standard page numbers (e.g., 1, 2, 3, 4, 5) displaying the next 3–4 pages, along with standard "First", "Last", "Next", and "Previous" buttons.
+
+Remove visible scrollbars; make table/page scrolling feel natural.
+
+Batch History & Manual Entries:
+
+Keep "Add manual transaction".
+
+Remove manual entries from the Batch History section on this ledger page.
+
+Accounts & Recurring
+
+Accounts: Looks good.
+
+Recurring: Change "Remove from recurring" into an explicit, dedicated button.
+
+Wealth Page
+
+Looks good as is.
+
+AI & Agent Page
+
+Page Scrolling: Fix scrolling behavior—the main page body should remain fixed while individual sub-containers (e.g., chat thread, sidebar) handle scrolling independently.
+
+Header & Alignment:
+
+Move "How a run works" to the top of the agent section.
+
+Move "Review Current Data" to the top right corner (instead of left-middle/center).
+
+Token Counter:
+
+Review and fix the AI chat token tracking—it currently appears inaccurate (may not be counting API tool/function calls properly).
+
+Global UI Standard
+
+Hide visible scrollbar tracks/thumbs across all pages while preserving native scroll functionality.
+
+2. Verbatim Transcript
+
+"Okay, uh, so first of all, on the home page itself...
+
+Firstly, I would like to say, now this feels much better, so that's nice.
+
+Secondly, uh, um, the month net worth, the layout control is nice, but the thing next to it, the month cash flow, the in and out left this month, it should not be part of the net worth. Uh, make it its own thing or honestly, just remove it. I don't think so there's a need to look at that.
+
+Um, another problem then after that is that, for example, my net worth is there on line 9 and my budget is there on another line, I cannot move it. It should be that I can move anything to any place and the amount of space a widget takes is as per the amount of things it has. Uh, that's the second thing.
+
+Uh, cash flow looks good. You know, clicking on one thing, it works fine. That is good.
+
+The coming up is nice. Everything is coming up and has extra space, money, uh, it has extra space. It should only take as much space as it needs, the way the artifact is taking right now.
+
+The Agent Team is fine. History is fine. Okay, so that's for overview.
+
+Remove the... um, okay, no, it's fine. Have the Add Widget next to Customize or something, or it could be that when you click on Customize, the way other things pop up, just next to Done, you also have like Add Widget as well.
+
+Now we are on transaction page. (cough) Um, in transaction page, the upper thing is fine, the fine is fine, but the filters and all should only be if the user wants those filters. The From, To, All Accounts, these things should be when, uh, the user clicks on Filters and the filters are there next to, uh, the Saved View and all of those things. Uh, yeah.
+
+Also remove the search description, add it as like a... uh, only have the normal chat thing and if the user wants, just by clicking one button, they can then have that view to have that. And in this transaction page, the scroll bar, remove the scroll bar, make it like naturally scrollable, but no need of scroll bar itself. I hope you get what I mean. The next page should not be like this, but it should be a normal next page where you can directly, uh, it shows like 1, 2, 3, 4, 5, or as many pages there are, and you can go to that one, and it only shows like the next 3, 4, with the button to go to the last one or go back to the first one, and move in 1 ahead, 1 back.
+
+Add a manual transaction is fine. Remove the manual entries in batch history. Uh, there is no need of it on this page of the ledger. The other things are fine.
+
+Now let's go to Account. Account is fine as well. Recurring is fine as well. The remove from recurring should be an exact button. Other than that, it's good. The wealth is a nice page, it's fine.
+
+The AI page itself is scrollable, you have to fix that. Uh, the page itself is not scrollable, only the chat is scrollable, the page itself is not scrollable. Uh, the chat itself is scrollable, or the side bar where all the things are there, that is scrollable. And from both the places, remove these scroll bars so that it is naturally scrollable. Um, they don't need to see the scrolling thing itself.
+
+Another thing is I think there should be something that means the chat itself directly, because right now it looks a bit weird. Agent Team, the agent, how Arun works, that should be at the top when you open the Agent thing, because right now it looks really weird. It shows Agent Team and then the Review Current Data in between. That should be at the right corner, not in the left middle, not even left fully, but middle. And the how the team, how the run works should be at the top because that is the main thing, so that should be at the top.
+
+And then the Artifact page is fine. The Activity Log is fine as well. Uh, the only thing is, uh, in general, from each page of the application, just remove this scroll thing. Like, even if that thing has a scroll thing which is needed, it should be in such a way that it isn't needed for... um, like you don't need to show the scrolling thing itself.
+
+The AI chat token isn't correct because I don't think so it's, uh, writing the calls and all, so check into that as well. And yeah, that's all the points I wanted to mention."
+
+
+
+this is what i thought while going through the application
