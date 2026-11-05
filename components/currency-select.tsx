@@ -36,6 +36,9 @@ export function CurrencySelect({ name, label, defaultValue = "", locale, onChang
   const [options] = useState(() => currencyOptions(locale));
   const known = (code: string) => options.find(option => option.code === code);
   const [text, setText] = useState(known(defaultValue)?.label ?? defaultValue);
+  // Undo elsewhere can change the saved currency while this stays mounted; never submit the stale one.
+  const [saved, setSaved] = useState(defaultValue);
+  if (defaultValue !== saved) { setSaved(defaultValue); setText(known(defaultValue)?.label ?? defaultValue); }
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const code = currencyCode(options, text);
