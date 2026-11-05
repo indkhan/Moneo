@@ -5,6 +5,7 @@ import { serviceDb } from "@/lib/bank/server";
 import { decryptToken } from "@/lib/bank/token-crypto";
 import { exchangeCode } from "@/lib/scalable/client";
 import { sealTokens } from "@/lib/scalable/server";
+import { syncScalable } from "@/lib/scalable/sync";
 
 const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1).max(2000).optional(), error: z.string().max(200).optional() });
 
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
     // One Scalable login per workspace: a reconnect supersedes the older ones.
     await db.from("scalable_connections").update({ status: "revoked", tokens_encrypted: null }).eq("workspace_id", workspaceId)
       .in("status", ["active", "expired", "error"]).neq("id", connectionId);
+    // First sync right away; a failure is kept on the connection and the daily sync retries.
+    await syncScalable(connectionId, workspaceId).catch(() => undefined);
     return back("connected");
   } catch {
     return fail("The Scalable login could not be completed");

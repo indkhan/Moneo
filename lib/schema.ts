@@ -197,6 +197,7 @@ export const scalableConnections = pgTable("scalable_connections", {
   status: text("status").notNull().default("pending"),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   lastError: text("last_error"),
+  portfolio: jsonb("portfolio"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("scalable_connections_workspace_idx").on(table.workspaceId),
@@ -205,6 +206,7 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_status_check", sql`${table.status} in ('pending','active','expired','revoked','error')`),
   check("scalable_connections_last_error_check", sql`char_length(${table.lastError}) <= 1000`),
   check("scalable_connections_check", sql`${table.status} <> 'active' or ${table.tokensEncrypted} is not null`),
+  check("scalable_connections_portfolio_check", sql`${table.portfolio} is null or jsonb_typeof(${table.portfolio}) = 'object'`),
 ]);
 
 // IBANs of the owner's own accounts (202610260001): money moved between them is a transfer.
