@@ -152,7 +152,9 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     onSearch: (text: string) => router.push(`/money/transactions?q=${encodeURIComponent(text)}`) };
 
   const artifactEditor = /^\/ai\/artifacts\/[^/]+$/.test(pathname);
-  return <div className={cn("min-h-screen bg-background", artifactEditor && "h-dvh overflow-hidden")}>
+  // These pages fill the window and scroll inside their own panes; the page itself stays put.
+  const fullHeight = artifactEditor || pathname === "/ai";
+  return <div className={cn("min-h-screen bg-background", fullHeight && "h-dvh overflow-hidden")}>
     <a href="#main-content" className="sr-only z-50 rounded bg-card p-3 text-sm underline focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
     <nav aria-label="Main" className="fixed inset-y-0 left-0 z-30 hidden w-22 flex-col items-center gap-5 overflow-y-auto border-r border-border bg-sidebar px-3 py-5 lg:flex">
       <Link href="/" aria-label="Moneo home" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-lime font-display text-[22px] font-bold tracking-tighter text-[#0f1011]">m</Link>
@@ -164,7 +166,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
         <RailLink item={settingsItem} active={current === settingsItem} shell={shell} />
       </div>
     </nav>
-    <div className={cn("min-w-0 pb-16 lg:pb-0 lg:pl-22 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112", artifactEditor && "flex h-full flex-col")}>
+    <div className={cn("min-w-0 pb-16 lg:pb-0 lg:pl-22 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112", fullHeight && "flex h-full flex-col")}>
       <header className="shrink-0 border-b border-border bg-background/90 backdrop-blur lg:sticky lg:top-0 lg:z-20">
         <div className="flex h-19 items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex h-11 min-w-0 max-w-[620px] flex-1 items-center gap-2.5 rounded-xl border border-input bg-card px-3.5 text-left text-sm text-muted-foreground hover:text-foreground">
@@ -185,7 +187,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           </IntentLink>)}
         </nav>}
       </header>
-      <div id="main-content" tabIndex={-1} className={artifactEditor ? "min-h-0 flex-1 overflow-hidden" : undefined}>{children}</div>
+      <div id="main-content" tabIndex={-1} className={fullHeight ? "min-h-0 flex-1 overflow-hidden" : undefined}>{children}</div>
     </div>
     <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
       {mobileTabs.map(item => <IntentLink key={item.href} href={item.href} aria-current={section === item ? "page" : undefined}
