@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6SMEA0S5WRBBXVB6PKNNQ9P",
+  "strategy": "manual-commit",
+  "branch": "t3/self-hosted",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "BACKLOG.md",
+    "README.md",
+    "scripts/e2e-auth.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 28,
+    "cache_creation_tokens": 20396,
+    "cache_read_tokens": 3630468,
+    "output_tokens": 9700,
+    "api_call_count": 14
+  },
+  "redaction": {
+    "replacements": 203,
+    "layers": {
+      "betterleaks": 175,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 26,
+      "credentialed_uri": 8,
+      "entropy": 54,
+      "key_context": 6,
+      "provider_token": 2,
+      "shell_stdin": 0
+    }
+  }
+}
