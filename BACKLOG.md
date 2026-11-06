@@ -1,5 +1,14 @@
 # Backlog
 
+## Self-hosted: phone access from anywhere
+Open Moneo on your phone from any network, like T3 Code, with nothing to install on the phone. Moneo only listens on 127.0.0.1 today, and it signs its owner in automatically, so any remote access must add a login first (an `APP_PASSWORD` sign-in, or Cloudflare Access).
+- Options weighed: Tailscale Funnel (free, fixed `*.ts.net` URL, nothing on the phone), Cloudflare Tunnel (free tunnel; a fixed URL needs your own domain, about $10/yr), or Tailscale with its phone app (private, no password needed).
+- HTTPS is required for voice: browsers only give web pages the microphone over a secure connection.
+- Callbacks: ChatGPT sign-in only accepts a 127.0.0.1 callback and Scalable's login accepts localhost freely, so both are connected from the computer Moneo runs on; their syncs then work from anywhere.
+
+## Self-hosted: real banks need an HTTPS callback
+Enable Banking production apps accept only `https://` redirect URLs, and Moneo runs on `http://localhost`. Sandbox apps (mock banks) work today. Options: a static HTTPS page (for example on GitHub Pages) that forwards `code` and `state` to `http://localhost:3000/api/bank/callback` in the owner's own browser, or serving Moneo on `https://localhost` if Enable Banking accepts it. The phone-access tunnel above would also provide an HTTPS address.
+
 ## Durable chat and artifact generation
 Chat replies and artifact builds currently run inside the browser's API request, so navigating away or reloading can interrupt work before it is saved. Move generation into durable workflows, persist running/completed/failed state and results, and let the UI reconnect to progress and display finished results when the user returns. Preserve chat tool side effects and approval behavior; decide how to reconnect or replace live chat streaming.
 

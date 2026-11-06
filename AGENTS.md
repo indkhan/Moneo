@@ -1,12 +1,13 @@
 # AGENTS.md
 
-Moneo is a Next.js 16 + React 19 + TypeScript personal-finance app using Supabase/Postgres, Drizzle, Vercel Workflow, Vitest/Playwright, and the Vercel AI SDK via OpenRouter.
+Moneo is an open-source, self-hosted Next.js 16 + React 19 + TypeScript personal-finance app. Its backend is Postgres plus the open-source Supabase Auth/PostgREST/Storage services in Docker (`docker-compose.yml`, bound to 127.0.0.1), with Drizzle, Workflow (local world), Vitest/Playwright, and the Vercel AI SDK (ChatGPT plan or API key; OpenRouter for vendor/model IDs). One owner is signed in automatically; there is no sign-in screen.
 
 ## Commands
 
 Use npm (`package-lock.json` is authoritative).
 
 - Install: `npm ci`
+- Backend: `npm run setup` (writes .env secrets, starts Docker, applies migrations, creates the owner; safe to rerun)
 - Dev: `npm run dev`
 - Unit: `npm test`
 - Lint: `npm run lint`
@@ -29,16 +30,16 @@ Use npm (`package-lock.json` is authoritative).
 - Financial truth comes from application code/data, not AI guesses. Keep money in integer minor units/`bigint` and currencies explicit.
 - Preserve source records, correction/history, and undo semantics when changing financial data flows.
 - For schema changes, add a new ordered migration and keep `lib/schema.ts` aligned. Do not rewrite applied migrations.
-- Supabase CLI isn't linked: run it via `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`), e.g. `npx supabase migration repair --db-url "$SUPABASE_DB_URL" --status reverted <versions>`.
+- Migrations are applied by `npm run setup` (history in `supabase_migrations.schema_migrations`). For other Supabase CLI commands use `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`).
 - for each thing break it down and for each thing make a commit directly if a big task make multiple commits
 
 ## Validation
 
 Run the smallest relevant test while iterating. Before finishing, run `npm test` and `npm run lint`; add `npm run build` for app/config/build changes and Playwright for changed user flows. Gated E2E requires configured Supabase/auth; see `e2e/README.md`.
 
-Signed-in E2E uses one persistent QA user (login in the git-ignored `.env` as `E2E_USER_EMAIL`/`E2E_USER_PASSWORD`). With the app on localhost:3000:
+Signed-in E2E uses one persistent QA user, separate from the owner (login in the git-ignored `.env` as `E2E_USER_EMAIL`/`E2E_USER_PASSWORD`). With the backend running:
 
-- `node --env-file=.env scripts/e2e-auth.mjs` signs it in and writes `e2e/.auth.json` (creates the user on first run).
+- `node --env-file=.env scripts/e2e-auth.mjs` signs it in and writes its session to `e2e/.auth.json` (creates the user on first run).
 - `node --env-file=.env scripts/e2e-auth.mjs --reset` empties its workspace; do this before a full suite run. Never delete the user.
 
 ## Context

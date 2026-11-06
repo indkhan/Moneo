@@ -1,12 +1,12 @@
-// Signs the persistent QA user in through the local /login page and saves e2e/.auth.json
-// for the authenticated Playwright specs. The first run creates the user and stores its
-// login as E2E_USER_EMAIL / E2E_USER_PASSWORD in the git-ignored .env.
-// Run with the app on http://localhost:3000 (or E2E_BASE_URL):  node --env-file=.env scripts/e2e-auth.mjs
+// Signs the persistent QA user in and saves e2e/.auth.json for the authenticated Playwright
+// specs, so tests never touch the owner's workspace. The first run creates the user and stores
+// its login as E2E_USER_EMAIL / E2E_USER_PASSWORD in the git-ignored .env.
+// Sign in (E2E_BASE_URL defaults to http://localhost:3000):  node --env-file=.env scripts/e2e-auth.mjs
 // Empty its workspace (specs expect one):      node --env-file=.env scripts/e2e-auth.mjs --reset
 import { randomBytes } from "node:crypto";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { chromium } from "@playwright/test";
+import { createServerClient } from "@supabase/ssr";
 import postgres from "postgres";
 
 const statePath = "e2e/.auth.json";
@@ -44,16 +44,15 @@ if (!email) {
   appendFileSync(".env", `\nE2E_USER_EMAIL=${email}\nE2E_USER_PASSWORD=${password}\n`);
 }
 
-const browser = await chromium.launch();
-try {
-  const page = await browser.newPage({ baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.waitForURL(url => !url.pathname.startsWith("/login"), { timeout: 60_000 });
-  await page.context().storageState({ path: statePath });
-  console.log(`Saved ${statePath} for ${email}`);
-} finally {
-  await browser.close();
-}
+// There is no sign-in page (the app signs its owner in automatically), so sign the QA user in
+// here and save its session cookie: with it, the app serves the QA user's workspace instead.
+const cookies = [];
+const auth = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
+  cookies: { getAll: () => [], setAll: list => cookies.push(...list) },
+});
+const { error } = await auth.auth.signInWithPassword({ email, password });
+if (error) throw error;
+const { hostname } = new URL(process.env.E2E_BASE_URL ?? "http://localhost:3000");
+const expires = Math.floor(Date.now() / 1000) + 400 * 86_400;
+writeFileSync(statePath, JSON.stringify({ cookies: cookies.map(({ name, value }) => ({ name, value, domain: hostname, path: "/", expires, httpOnly: false, secure: false, sameSite: "Lax" })), origins: [] }, null, 2));
+console.log(`Saved ${statePath} for ${email}`);
