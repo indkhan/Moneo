@@ -1,0 +1,28 @@
+Okay as you can see in the application, I love how it works. I love the artifact feature and I love the voice call feature. The thing is, Claude just launched a finance application so I don't see a point in it anymore to go and do the startup and all. My only idea is that I will launch it just as a simple open-source application that users can get.
+
+Now instead of planning to do that, before it was simple: it would be a Vercel-deployed website where a user can come and then connect with their banks. If I'm going to make it, it is simply not that: you can connect it to your bank but locally. I don't think the website is a good idea.
+
+What is the best way to have it now? What do you suggest? Should it be an application? Should it be the website as it is? The problem with an application is that then I need to change it. Another thing is that if it is an application then it cannot be on Android or iOS directly. The download is through that. What do you suggest? What should I do? 
+
+
+let have a talk about it
+
+---
+
+but if I do do the thing of making it self-hosted with Docker and all, then I will not even have Supabase. Then I will have SQLite or Postgres or something. Another thing is I will also not have Vercel because there's no need for Vercel anymore because it is a self-hosted website another thing is, if it is self-hosted itself then why is there a need for a single user login? Yeah in a place other than Vercel workflow, you can just use background jobs or something. For using the AI I will make it so that you can sign in with your ChatGPT subscription or something like that. For the bank connection I do agree that sounds fine but should we have it like that? Is there a better way? I don't think so. CSV statement import is there as it is but is there a better easier way for users to do it because they do need the sync and all, right? Otherwise it's chop. We also have Tailscale but I think Tailscale is fine because it's localhost. It is a portfolio piece that I would also like to show to other people. It is for very technical people. No need for a hosted demo. It's fine. Mainly use it for myself and make it fully open source so that others can use it as well. ChatGPT has a new "Sign in with ChatGPT" where you can use the usage tiers. I will have something like that and they make it okay for direct use in an open source application.
+
+---
+
+Go ahead and build it like this. The only thing is that "Sign in with ChatGPT" and "API key" are both on the same level. One is not the default behind the others. Both are available features and both can work. Go and work like this, step by step. Another thing is, if you connect it and have it on your local host service, it should be possible for you to directly see it on your phone wherever you are. No matter where you are, from your phone you can directly watch what is there and all of that. You know what I mean? Like the way T3 code and all works: it is running on my own laptop but I can use it as well even if the Wi-Fi is different. That should work as well.
+
+---
+
+Option A. Can you give me the second question again about working on my phone even when I'm not on the same Wi-Fi?
+
+---
+
+We also have to look at the scaleable capital MCP server.
+
+---
+
+You know what honestly, let's not have the Tailscale now. We will think about the phone access for later. Right now let's just build the application so that the basic thing works, phone acce get  added to the backlog file.
