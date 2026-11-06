@@ -8,6 +8,7 @@ import { ResetData } from "./reset";
 import { ConnectedBanks } from "@/components/connected-banks";
 import { ScalableConnection } from "@/components/scalable-connection";
 import { AiUsage } from "./ai-usage";
+import { AiAccess } from "./ai-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
 
 export const metadata = { title: "Settings" };
@@ -15,7 +16,7 @@ export const metadata = { title: "Settings" };
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
-  ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
+  ["ai-access", "AI access"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
   ["banks", "Connected banks"], ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
 ] as const;
 
@@ -30,9 +31,10 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
   });
 }
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ usage?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ usage?: string; chatgpt?: string }> }) {
   const context = await requireWorkspace();
-  const usageWindow = parseUsageWindow((await searchParams).usage);
+  const query = await searchParams;
+  const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
   const runs = await loadRuns(context);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
@@ -44,6 +46,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
+        <AiAccess message={query.chatgpt} />
         <SettingsForm settings={settings} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>

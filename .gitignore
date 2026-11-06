@@ -54,3 +54,6 @@ next-env.d.ts
 *.qfx
 *.qif
 *.mt940
+
+# Local app state (ChatGPT sign-in, sealed with BANK_TOKEN_ENCRYPTION_KEY)
+.data/

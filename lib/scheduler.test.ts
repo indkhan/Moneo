@@ -5,7 +5,7 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 it("calls every job in order with the cron secret and keeps going after a failure", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
-  const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+  const fetcher = vi.fn(async (url: URL | RequestInfo, _init?: RequestInit) => {
     if (String(url).endsWith("/api/cron/reviews")) throw new Error("down");
     return new Response("{}", { status: String(url).endsWith("bank-sync") ? 503 : 200 });
   });
@@ -17,13 +17,13 @@ it("calls every job in order with the cron secret and keeps going after a failur
 });
 
 it("does not schedule anything without a cron secret", () => {
-  expect(startScheduler({})).toBeNull();
+  expect(startScheduler({} as NodeJS.ProcessEnv)).toBeNull();
 });
 
 it("runs a minute after start and then hourly against this server", async () => {
   vi.useFakeTimers();
   const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
-  const stop = startScheduler({ CRON_SECRET: "secret", PORT: "4000" })!;
+  const stop = startScheduler({ CRON_SECRET: "secret", PORT: "4000" } as unknown as NodeJS.ProcessEnv)!;
   await vi.advanceTimersByTimeAsync(60_000);
   expect(fetcher).toHaveBeenCalledTimes(CRON_JOBS.length);
   expect(String(fetcher.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/cron/summaries");

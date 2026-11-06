@@ -2,6 +2,7 @@ import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions 
 import { after } from "next/server";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
+import { aiConfigured } from "@/lib/ai/configured";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { calendarDate } from "@/lib/finance/calendar";
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
   // A call turn carries a brief of the call so far, so it gets more room.
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
-  if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY)) return Response.json({ error: "AI is not configured" }, { status: 503 });
+  if (!(await aiConfigured())) return Response.json({ error: "AI is not configured" }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
