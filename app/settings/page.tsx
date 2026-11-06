@@ -1,12 +1,10 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
 import { SkeletonCard } from "@/components/skeleton";
 import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
-import { signOut } from "./actions";
-import { DeleteAccount, ResetData } from "./reset";
+import { ResetData } from "./reset";
 import { ConnectedBanks } from "@/components/connected-banks";
 import { ScalableConnection } from "@/components/scalable-connection";
 import { AiUsage } from "./ai-usage";
@@ -17,7 +15,6 @@ export const metadata = { title: "Settings" };
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
-  ["account", "Account"],
   ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
   ["banks", "Connected banks"], ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
 ] as const;
@@ -36,10 +33,10 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ usage?: string }> }) {
   const context = await requireWorkspace();
   const usageWindow = parseUsageWindow((await searchParams).usage);
-  const { user, workspace, settings } = context;
+  const { workspace, settings } = context;
   const runs = await loadRuns(context);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
-    <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
+    <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
     <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="lg:sticky lg:top-24 lg:self-start">
         <ul className="flex flex-wrap gap-1 lg:flex-col">{sectionNav.map(([id, label]) => <li key={id}>
@@ -47,11 +44,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
-        <section id="account" className={card}><h2 className="text-sm font-medium">Account</h2>
-          <p className="mt-1 break-words text-sm text-muted-foreground">Signed in as {user.email}</p>
-          <div className="mt-4 flex flex-wrap gap-3"><Link href="/reset-password" className="inline-flex min-h-10 items-center rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Change password</Link>
-            <form action={signOut}><button className="min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Sign out</button></form></div>
-        </section>
         <SettingsForm settings={settings} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
@@ -64,7 +56,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <p className="mt-4 text-sm text-muted-foreground">Finished summaries appear in the Activity log. If one fails, run a new review from AI.</p>
         </section>
         <section id="usage" className={card}><h2 className="text-sm font-medium">AI chat token usage</h2><p className="mt-1 text-sm text-muted-foreground">Tokens used by AI chat, per model; other AI tasks are not included. Requests the provider did not report are left out, not counted as zero. Moneo does not record costs: see actual charges with your provider, at <a href="https://platform.openai.com/usage" target="_blank" rel="noreferrer" className="underline hover:text-foreground">OpenAI</a> or <a href="https://openrouter.ai/activity" target="_blank" rel="noreferrer" className="underline hover:text-foreground">OpenRouter</a>.</p><Suspense fallback={<SkeletonCard lines={4} />}><AiUsage window={usageWindow} /></Suspense></section>
-        <div id="danger" className="scroll-mt-20 space-y-8"><ResetData /><DeleteAccount email={user.email ?? "this account"} /></div>
+        <div id="danger" className="scroll-mt-20 space-y-8"><ResetData /></div>
       </div>
     </div>
   </main>;

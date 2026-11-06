@@ -7,7 +7,6 @@ import {
   ArrowLeftRight, Bell, ChartLine, ChartPie, Coins, CreditCard, LayoutGrid, Layers, ListChecks, Menu, MessageSquare,
   Network, Repeat, Search, SearchCheck, SlidersHorizontal, Sparkles, Tags, Target, TrendingUp, Upload, type LucideIcon,
 } from "lucide-react";
-import { signOut } from "@/app/settings/actions";
 import { AiPanel } from "@/components/ai-panel";
 import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
 import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
@@ -144,7 +143,6 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     { id: "set-limit", label: "Set a spending limit", group: "Actions", keywords: "budget plan", run: () => router.push("/plan/spending") },
     { id: "import", label: "Import a statement", group: "Actions", keywords: "upload csv xlsx file", run: () => router.push("/import") },
     { id: "shortcuts", label: "Keyboard shortcuts", group: "Actions", hint: "?", run: () => setHelp(true) },
-    { id: "sign-out", label: "Sign out", group: "Actions", keywords: "log out logout account", run: () => void signOut() },
     ...allItems.map(item => ({ id: item.href, label: item.label, group: "Pages", keywords: [railFor(item)?.label, item.about, item === notificationsItem && "notifications"].filter(Boolean).join(" "),
       hint: item.go && `G ${item.go.toUpperCase()}`, run: () => router.push(item.href) })),
   ];
@@ -203,8 +201,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           {item.items && <p className="eyebrow px-3 pb-1">{item.label}</p>}
           {(item.items ?? [item]).map(child => <MenuLink key={child.href} item={child} current={current} shell={shell} onNavigate={() => setMenu(false)} />)}
         </div>)}
-        <div className="border-t border-border pt-3">{[notificationsItem, settingsItem].map(item => <MenuLink key={item.href} item={item} current={current} shell={shell} onNavigate={() => setMenu(false)} />)}
-          <form action={signOut}><button className="flex min-h-11 w-full items-center rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">Sign out</button></form></div>
+        <div className="border-t border-border pt-3">{[notificationsItem, settingsItem].map(item => <MenuLink key={item.href} item={item} current={current} shell={shell} onNavigate={() => setMenu(false)} />)}</div>
       </nav>
     </Modal>
     {palette && <Suspense fallback={<CommandPalette commands={commands} {...paletteProps} />}><AccountCommands shell={shell} base={commands} {...paletteProps} /></Suspense>}

@@ -36,26 +36,31 @@ it("forwards refreshed cookies to rendering and the browser without caching sess
 });
 
 function withClaims(result: { data: unknown; error: unknown }) {
-  vi.mocked(createServerClient).mockReturnValue({ auth: { getClaims: vi.fn(async () => result) } } as unknown as ReturnType<typeof createServerClient>);
+  const signInWithPassword = vi.fn(async () => ({ data: {}, error: null }));
+  vi.mocked(createServerClient).mockReturnValue({ auth: { getClaims: vi.fn(async () => result), signInWithPassword } } as unknown as ReturnType<typeof createServerClient>);
+  return signInWithPassword;
 }
 
-it("sends a signed-out page request to login and remembers where it was going", async () => {
-  withClaims({ data: null, error: null });
-  const response = await proxy(new NextRequest("http://localhost:3000/money/accounts?account=1"));
-  expect(response.status).toBe(307);
-  expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
-  expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe("/money/accounts?account=1");
+it("signs the owner in from .env when there is no session, without redirecting", async () => {
+  process.env.MONEO_OWNER_EMAIL = "owner@moneo.local";
+  process.env.MONEO_OWNER_PASSWORD = "secret";
+  const signIn = withClaims({ data: null, error: null });
+  const response = await proxy(new NextRequest("http://localhost:3000/money/accounts"));
+  expect(signIn).toHaveBeenCalledWith({ email: "owner@moneo.local", password: "secret" });
+  expect(response.headers.get("location")).toBeNull();
 });
 
-it("leaves public pages and API routes to answer for themselves", async () => {
-  withClaims({ data: null, error: null });
-  for (const path of ["/login", "/reset-password", "/privacy", "/terms", "/auth/callback", "/api/chat"]) {
-    expect((await proxy(new NextRequest(`http://localhost:3000${path}`))).headers.get("location")).toBeNull();
-  }
+it("keeps an existing session without signing in again", async () => {
+  const signIn = withClaims({ data: { claims: { sub: "owner" } }, error: null });
+  await proxy(new NextRequest("http://localhost:3000/plan"));
+  expect(signIn).not.toHaveBeenCalled();
 });
 
 it("does not sign anyone out during an auth outage", async () => {
   const { AuthRetryableFetchError } = await import("@supabase/supabase-js");
-  withClaims({ data: null, error: new AuthRetryableFetchError("down", 503) });
+  process.env.MONEO_OWNER_EMAIL = "owner@moneo.local";
+  process.env.MONEO_OWNER_PASSWORD = "secret";
+  const signIn = withClaims({ data: null, error: new AuthRetryableFetchError("down", 503) });
   expect((await proxy(new NextRequest("http://localhost:3000/plan"))).headers.get("location")).toBeNull();
+  expect(signIn).not.toHaveBeenCalled();
 });
