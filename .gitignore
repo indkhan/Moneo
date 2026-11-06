@@ -21,7 +21,7 @@ yarn-error.log*
 
 # local env files — your real keys live here, never commit them
 .env
-.env*.local
+.env*
 !.env.example
 
 # vercel

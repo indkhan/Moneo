@@ -1,0 +1,106 @@
+# Moneo's self-hosted backend: Postgres plus the open-source Supabase services the app talks to
+# (Auth, PostgREST, Storage), behind one gateway. Every port binds to 127.0.0.1 only, and
+# `npm run setup` writes fresh secrets to .env, which Compose reads for the ${...} values.
+# Image versions match Supabase CLI 3.0.0.
+name: moneo
+
+services:
+  db:
+    image: public.ecr.aws/supabase/postgres:17.11.0.011
+    restart: unless-stopped
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      POSTGRES_USER: supabase_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run npm run setup}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?run npm run setup}
+      JWT_EXP: 3600
+    ports: ["127.0.0.1:${DB_PORT:-54322}:5432"]
+    volumes:
+      - ./docker/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  auth:
+    image: public.ecr.aws/supabase/gotrue:v2.197.0
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      API_EXTERNAL_URL: ${NEXT_PUBLIC_SUPABASE_URL}/auth/v1
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgresql://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${NEXT_PUBLIC_APP_URL}
+      GOTRUE_URI_ALLOW_LIST: ${NEXT_PUBLIC_APP_URL}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      # The one owner account is created by setup; nobody can sign up.
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: "true"
+      GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: 10
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  rest:
+    image: public.ecr.aws/supabase/postgrest:v16.5
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      PGRST_DB_URI: postgresql://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,graphql_public
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+      PGRST_DB_MAX_ROWS: 1000
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+
+  storage:
+    image: public.ecr.aws/supabase/storage-api:v1.88.0
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgresql://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      ANON_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+      SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      FILE_SIZE_LIMIT: 52428800
+      TENANT_ID: stub
+      GLOBAL_S3_BUCKET: stub
+      STORAGE_S3_REGION: local
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+    volumes: ["storage-data:/var/lib/storage"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5000/status"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  # One URL for the app's Supabase client: /auth/v1, /rest/v1 and /storage/v1.
+  gateway:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on: { auth: { condition: service_healthy }, rest: { condition: service_started }, storage: { condition: service_healthy } }
+    ports: ["127.0.0.1:${API_PORT:-54321}:8000"]
+    volumes: ["./docker/Caddyfile:/etc/caddy/Caddyfile:ro"]
+
+volumes:
+  db-data:
+  storage-data:
