@@ -4,6 +4,7 @@ import { useEffect, useReducer, useState } from "react";
 import { readResponse, type ChatAnswer } from "./use-chat-request";
 import { VoiceCallController, type CallAsk } from "./voice-call-controller";
 import { boundTranscript } from "./voice-call-record";
+import { VoicePlayback } from "./voice-playback";
 
 export type CallStatus = "connecting" | "live" | "ended" | "error";
 
@@ -74,6 +75,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     const pc = typeof RTCPeerConnection === "undefined" ? null : new RTCPeerConnection();
     const audio = new Audio();
     audio.autoplay = true;
+    const playback = new VoicePlayback();
     let context: AudioContext | null = null, wakeLock: WakeLockSentinel | null = null;
     const lock = () => { if (document.visibilityState === "visible") navigator.wakeLock?.request("screen").then(sentinel => { if (closed) void sentinel.release(); else wakeLock = sentinel; }, () => {}); };
     async function connect() {
@@ -85,6 +87,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       live.set({ channel: dc });
       dc.onmessage = message => {
         const event = JSON.parse(message.data);
+        if (event.type === "session.input_transcript.delta") playback.transcript(event.delta ?? "");
         if (event.type === "session.started") { setStatus("live"); live.startedAt ??= Date.now(); lock(); }
         else if (event.type === "session.closed") setStatus("ended");
         if (trace && event.type !== "session.output_audio.delta") trace(`${event.type}${event.delta !== undefined ? ` ${JSON.stringify(event.delta)}` : ""}${event.start_ms !== undefined ? ` ${event.start_ms}-${event.end_ms}ms` : ""}${event.offset_ms != null ? ` offset ${event.offset_ms}ms` : ""}`);
@@ -126,7 +129,8 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     let moneoOn = false, micOn = false, talking = false;
     const meter = setInterval(() => {
       const moneo = level(live.moneoLevel, buffer) > 0.02, mic = level(live.micLevel, buffer) > 0.08;
-      if (moneo) controller.heardMoneo();
+      audio.volume = playback.volume(Date.now(), mic, moneo);
+      if (moneo && audio.volume > 0) controller.heardMoneo();
       if (mic) controller.heardUser();
       if (trace && moneo !== moneoOn) trace(moneo ? "Moneo audible" : "Moneo quiet");
       if (trace && mic !== micOn) trace(mic ? "mic loud" : "mic quiet");
