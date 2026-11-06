@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, runArtifactQueries } from "@/lib/ai/artifact-data";
-import { calendarDate } from "@/lib/finance/calendar";
+import { ARTIFACT_FRAME_CSP, artifactDocument } from "@/lib/ai/artifact-data";
 
 const querySchema = z.object({
   v: z.coerce.number().int().min(1).optional(),
@@ -10,7 +9,7 @@ const querySchema = z.object({
 
 /**
  * The artifact page on its own URL, so pages that show it (gallery previews, the viewer) render at once and
- * each frame reruns its saved queries for today.
+ * old designs remain viewable, but their generated scripts never receive current data or execute.
  */
 // Shown inside the sandboxed frame, so it is plain and needs nothing from the app.
 const problem = (message: string, status: number) => new Response(`<!doctype html><meta charset="utf-8"><body style="font:14px system-ui;padding:24px;color:#555">${message}</body>`, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
@@ -23,16 +22,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!id.success || !query.success) return problem("This page could not be found.", 404);
   const { supabase, workspace } = context;
   const { v, theme } = query.data;
-  const versions = supabase.from("artifact_versions").select("html, queries").eq("workspace_id", workspace.id).eq("artifact_id", id.data);
+  const versions = supabase.from("artifact_versions").select("html").eq("workspace_id", workspace.id).eq("artifact_id", id.data);
   const [artifact, version] = await Promise.all([
     supabase.from("artifacts").select("id").eq("workspace_id", workspace.id).eq("id", id.data).is("deleted_at", null).maybeSingle(),
     (v ? versions.eq("version", v) : versions.order("version", { ascending: false }).limit(1)).maybeSingle(),
   ]);
   if (artifact.error || version.error) return problem("This page could not load. Reload to try again.", 500);
   if (!artifact.data || !version.data) return problem("This page could not be found.", 404);
-  const queries = artifactQueriesSchema.safeParse(version.data.queries);
-  const data = await runArtifactQueries(queries.success ? queries.data : [], context, calendarDate(new Date(), context.settings.timezone));
-  return new Response(artifactDocument(version.data.html, data, { theme }), {
+  if (!version.data.html) return problem("Open this artifact to view its interactive Page.", 404);
+  return new Response(artifactDocument(version.data.html, { theme }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": ARTIFACT_FRAME_CSP, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
   });
 }

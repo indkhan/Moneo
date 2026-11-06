@@ -73,13 +73,13 @@ function render(node: CardNode, scope: string, key?: number): ReactNode {
   }
 }
 
-export type CardViewProps = { cardId: string; title: string; size: CardSize; tree: CardNode | null; error?: string | null; params: ParamState[]; scope: string; version?: number; open?: string; locale?: string };
+export type CardViewProps = { cardId: string; title: string; size: CardSize; tree: CardNode | null; error?: string | null; params: ParamState[]; scope: string; version?: number; open?: string; locale?: string; page?: boolean };
 
 /**
  * A Home card: the app's own title row, then the card's checked tree in a fixed-height, clipped, isolated box.
  * Nothing in the tree can paint outside the box or cover the rest of Home. Changing a param re-renders it on the server.
  */
-export function CardView({ cardId, title, size: renderedSize, tree: initialTree, error: initialError, params: initialParams, scope, version, open, locale }: CardViewProps) {
+export function CardView({ cardId, title, size: renderedSize, tree: initialTree, error: initialError, params: initialParams, scope, version, open, locale, page = false }: CardViewProps) {
   const size = useContext(HomeCardSize) ?? renderedSize;
   const [view, setView] = useState({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize });
   const [busy, start] = useTransition();
@@ -93,7 +93,7 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
     const query = new URLSearchParams({ size, ...(version ? { v: String(version) } : {}) });
     for (const param of values) query.set(`p.${param.name}`, param.value);
     start(async () => {
-      const response = await fetch(`/api/cards/${cardId}?${query}`, { cache: "no-store" });
+      const response = await fetch(`/api/${page ? "artifacts" : "cards"}/${cardId}?${query}`, { cache: "no-store" });
       const body = await response.json().catch(() => ({ error: "Could not load the card" }));
       if (ticket !== request.current) return;
       setView(current => response.ok ? { tree: body.tree, error: body.error ?? null, params: body.params, size } : { ...current, error: body.error ?? "Could not load the card" });
@@ -102,9 +102,9 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
   const setParam = (name: string, value: string) => load(view.params.map(param => param.name === name ? { ...param, value } : param));
   // Resized on Home: the body was laid out for the old width.
   useEffect(() => { request.current++; if (size !== view.size) load(view.params); }, [size]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <section aria-label={title} className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card" style={{ height: CARD_HEIGHT }}>
-    <div className="flex items-baseline justify-between gap-2 px-5 pt-4 pb-2"><h2 className="truncate text-sm font-medium">{title}</h2>{open && <Link href={open} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link>}</div>
-    <div data-card={scope} className={`relative isolate min-h-0 flex-1 overflow-clip px-5 pb-4 transition-opacity [contain:layout_paint_style] ${busy ? "opacity-60" : ""}`}>
+  return <section aria-label={title} className={page ? "min-h-full bg-background" : "flex flex-col overflow-hidden rounded-2xl border border-border bg-card"} style={page ? undefined : { height: CARD_HEIGHT }}>
+    {!page && <div className="flex items-baseline justify-between gap-2 px-5 pt-4 pb-2"><h2 className="truncate text-sm font-medium">{title}</h2>{open && <Link href={open} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link>}</div>}
+    <div data-card={scope} className={`relative isolate min-h-0 overflow-clip transition-opacity [contain:layout_paint_style] ${page ? "p-6" : "flex-1 px-5 pb-4"} ${busy ? "opacity-60" : ""}`}>
       <LiveCard.Provider value={{ params: view.params, setParam, busy, locale }}>
         {view.tree ? render(view.tree, scope) : null}
       </LiveCard.Provider>

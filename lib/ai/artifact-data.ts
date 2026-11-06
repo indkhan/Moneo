@@ -152,9 +152,9 @@ export async function runArtifactQueries(queries: ArtifactQuery[], context: Cont
   })));
 }
 
-const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data: blob:; font-src data:";
-/** Sent as a header too: sandbox keeps the page in an opaque origin even if the frame URL is opened directly. */
-export const ARTIFACT_FRAME_CSP = `${CSP}; sandbox allow-scripts; frame-ancestors 'self'`;
+const CSP = "default-src 'none'; frame-src 'self'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'";
+/** Legacy HTML is view-only. Disallowing scripts also blocks automatic frame navigation (including meta refresh). */
+export const ARTIFACT_FRAME_CSP = `${CSP}; sandbox; frame-ancestors 'self'`;
 
 export type ArtifactTheme = "light" | "dark";
 
@@ -173,11 +173,9 @@ const KIT = "*{box-sizing:border-box}body{margin:0;background:var(--moneo-bg);co
   + ".m-pill{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--moneo-border);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}.m-pill[aria-pressed=true]{background:var(--moneo-fg);color:var(--moneo-bg)}"
   + "input[type=range]{accent-color:var(--moneo-accent);width:100%}";
 
-/** The sandboxed document: a strict CSP, the fresh data, the app theme and the kit come before any generated markup. */
-export function artifactDocument(html: string, data: Record<string, unknown>, { theme }: { theme?: ArtifactTheme } = {}) {
-  // Escaping "<" keeps data like "</script>" inside the JSON literal.
-  const json = JSON.stringify(data).replace(/</g, "\\u003c");
-  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><script>window.MONEO_DATA=${json};</script>`
-    + `<style>${TOKENS}${KIT}:root{color-scheme:${theme ?? "light dark"}}</style>`;
-  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => match + head) : head + html;
+/** Old HTML is escaped into an inert inner document, so even a directly opened URL cannot activate its links. */
+export function artifactDocument(html: string, { theme }: { theme?: ArtifactTheme } = {}) {
+  const design = `<style>${TOKENS}${KIT}:root{color-scheme:${theme ?? "light dark"}}</style>${html}`;
+  const escaped = design.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${CSP}"><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block}</style></head><body><iframe title="Saved artifact design" inert sandbox="" srcdoc="${escaped}"></iframe></body></html>`;
 }

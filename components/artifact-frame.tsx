@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +28,7 @@ export function ArtifactFrame({ src, title, loading, className, style }: { src: 
   const [loaded, setLoaded] = useState<string | null>(null);
   const ready = !!url && loaded === url;
   return <div className={cn("relative", className)} style={style}>
-    <iframe title={title} sandbox="allow-scripts" loading={loading} src={url ?? undefined} onLoad={() => { if (url) setLoaded(url); }}
+    <iframe title={title} inert sandbox="" loading={loading} src={url ?? undefined} onLoad={() => { if (url) setLoaded(url); }}
       className="size-full border-0" style={{ colorScheme: !theme || theme === "system" ? "light dark" : theme }} />
     {!ready && <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex flex-col gap-4 overflow-hidden bg-background p-6">
       <Skeleton className="h-3 w-32" /><Skeleton className="h-8 w-56 max-w-full" />
@@ -42,7 +42,7 @@ export function ArtifactFrame({ src, title, loading, className, style }: { src: 
 const THUMB_WIDTH = 800, THUMB_HEIGHT = 500;
 
 /** A scaled-down, non-interactive live preview; it only loads once scrolled near the viewport. */
-export function ArtifactThumbnail({ src, title }: { src: string; title: string }) {
+export function ArtifactThumbnail({ src, title, children }: { src: string; title: string; children?: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
   useEffect(() => {
@@ -52,7 +52,8 @@ export function ArtifactThumbnail({ src, title }: { src: string; title: string }
     return () => observer.disconnect();
   }, []);
   return <div ref={box} inert className="pointer-events-none relative aspect-[8/5] overflow-hidden bg-background">
-    {scale > 0 && <ArtifactFrame src={src} title={`Preview of ${title}`} loading="lazy" className="absolute left-0 top-0 origin-top-left"
-      style={{ width: THUMB_WIDTH, height: THUMB_HEIGHT, transform: `scale(${scale})` }} />}
+    {scale > 0 && (children ? <div className="absolute left-0 top-0 origin-top-left" style={{ width: THUMB_WIDTH, height: THUMB_HEIGHT, transform: `scale(${scale})` }}>{children}</div>
+      : <ArtifactFrame src={src} title={`Preview of ${title}`} loading="lazy" className="absolute left-0 top-0 origin-top-left"
+        style={{ width: THUMB_WIDTH, height: THUMB_HEIGHT, transform: `scale(${scale})` }} />)}
   </div>;
 }
