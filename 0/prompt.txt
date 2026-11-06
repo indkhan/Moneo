@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bttifzrsm</task-id>
+<tool-use-id>toolu_018XDm9yCuU7vZpubsgEp774</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\3de23844519d7b87\4ce47a12-474c-497a-87cc-770ace971903\tasks\bttifzrsm.output</output-file>
+<status>failed</status>
+<summary>Background command "Restart dev server" failed with exit code 1</summary>
+</task-notification>
