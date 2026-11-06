@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6SMAB63ASFTC53F3GRRAB6H",
+  "strategy": "manual-commit",
+  "branch": "t3/self-hosted",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "app/api/ai/chatgpt/callback/route.ts",
+    "app/settings/ai-access.tsx",
+    "lib/ai/chatgpt.test.ts",
+    "lib/ai/chatgpt.ts",
+    "lib/ai/provider.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 61866,
+    "cache_read_tokens": 8751544,
+    "output_tokens": 33080,
+    "api_call_count": 40
+  },
+  "redaction": {
+    "replacements": 203,
+    "layers": {
+      "betterleaks": 175,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 26,
+      "credentialed_uri": 8,
+      "entropy": 54,
+      "key_context": 6,
+      "provider_token": 2,
+      "shell_stdin": 0
+    }
+  }
+}
