@@ -50,6 +50,12 @@ it("signs the owner in from .env when there is no session, without redirecting",
   expect(response.headers.get("location")).toBeNull();
 });
 
+it("leaves bearer-authorized scheduled jobs alone", async () => {
+  withClaims({ data: null, error: null });
+  await proxy(new NextRequest("http://localhost:3000/api/cron/summaries", { headers: { authorization: "Bearer secret" } }));
+  expect(createServerClient).not.toHaveBeenCalled();
+});
+
 it("keeps an existing session without signing in again", async () => {
   const signIn = withClaims({ data: { claims: { sub: "owner" } }, error: null });
   await proxy(new NextRequest("http://localhost:3000/plan"));

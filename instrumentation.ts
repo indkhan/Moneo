@@ -12,5 +12,8 @@ export async function register() {
     // Next awaits this once per server instance. Vercel owns its durable queue.
     const { getWorld } = await import("workflow/runtime");
     await getWorld().start?.();
+    // Background jobs: summaries, review recovery and bank/Scalable syncs.
+    const { startScheduler } = await import("@/lib/scheduler");
+    startScheduler();
   }
 }

@@ -9,7 +9,8 @@ export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   // Unconfigured checkouts have no backend to refresh against; let the Home
   // setup state and health endpoint describe the missing configuration.
-  if (!hasSupabase()) return response;
+  // Scheduled jobs authorize with a bearer secret and need no owner session.
+  if (!hasSupabase() || request.headers.has("authorization")) return response;
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
