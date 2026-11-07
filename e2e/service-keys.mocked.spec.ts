@@ -43,3 +43,16 @@ test("Ask explains missing AI and voice access instead of failing", async ({ pag
   await page.getByRole("button", { name: "Talk: record a voice message" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Add one in Settings" }).last()).toBeVisible();
 });
+
+test("Settings keeps every key and connection in one section", async ({ page }) => {
+  await page.route("**/api/bank/connections", route => route.fulfill({ json: {
+    configured: false, credentials: { source: null, hint: null }, redirectUrl: "https://localhost:3443/api/bank/callback", connections: [] } }));
+  await page.goto("/settings");
+  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Keys and connections" }).click();
+  await expect(page).toHaveURL(/#connections$/);
+  const section = page.getByRole("region", { name: "Keys and connections" });
+  for (const name of ["AI access", "Connected banks", "Scalable Capital", "Set up automatically"])
+    await expect(section.getByRole("heading", { name, exact: true }).first()).toBeVisible();
+  await expect(section.getByText("Encryption for saved keys and bank sessions")).toBeVisible();
+  await expect(section.getByText("Missing: run npm run setup")).toHaveCount(0);
+});

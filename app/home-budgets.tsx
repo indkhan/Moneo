@@ -4,7 +4,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { budgetsThisMonth, loadInsightEvidence } from "./insights/panel";
 import { card } from "./section-fallback";
 
-/** This month's budgets in the display currency: spent of allowance, with what is left or over (see BACKLOG.md for other currencies). */
+/** This month's budgets in the display currency: spent of allowance, with what is left or over (other currencies: issue #158). */
 export async function HomeBudgets({ db, workspaceId, currency, today, locale }: { db: SupabaseClient; workspaceId: string; currency: string; today: string; locale: string }) {
   let rows;
   try { rows = budgetsThisMonth(await loadInsightEvidence(db, workspaceId, currency, today), today).filter(row => row.budget.currency_code === currency); } catch { rows = null; }

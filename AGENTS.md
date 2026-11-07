@@ -39,7 +39,7 @@ Before calling a feature done, check where else it shows up:
 - Home widgets and the command palette.
 - Background jobs (`lib/scheduler.ts`, `workflows/`) and imports from files, banks and Scalable.
 - The reverse path: undo, reset all data, reconnect, disconnect.
-- Docs: `README.md` for anything the owner sets up or runs, `.env.example` for new variables, `BACKLOG.md` for deferred work.
+- Docs: `README.md` for anything the owner sets up or runs, `.env.example` for new variables. Deferred work goes in GitHub issues.
 
 ## Commands
 
