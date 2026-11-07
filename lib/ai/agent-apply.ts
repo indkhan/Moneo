@@ -9,11 +9,12 @@ import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recur
 import type { ScheduleFields } from "@/app/money/recurring/schedules";
 import { applyScalableProposal, OrderOutcomeUnknown, TRADE_KINDS } from "@/lib/scalable/orders";
 import { withScalable } from "@/lib/scalable/server";
+import { ownTransferPayloadSchema } from "@/lib/finance/own-transfers";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel"; payload: unknown };
+export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel" | "own_transfer"; payload: unknown };
 /** Choices made on the card itself: the account a chat expense is paid from, or what the person set when confirming a recurring payment. */
 export type DecideOptions = { accountId?: string; recurring?: Partial<ScheduleFields> };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
@@ -87,6 +88,14 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
     case "scalable_order":
     case "scalable_cancel":
       return applyScalableProposal(proposal.kind, proposal.payload, connectionId => work => withScalable(connectionId, workspace.id, work));
+    case "own_transfer": {
+      const payload = ownTransferPayloadSchema.parse(proposal.payload);
+      const row = await supabase.from("transactions").select("version").eq("workspace_id", workspace.id).eq("id", payload.transactionId).maybeSingle();
+      if (row.error || !row.data) throw new Error("This transaction was removed");
+      const { error } = await supabase.rpc("mark_own_named_transfer", { p_transaction_id: payload.transactionId, p_expected_version: row.data.version, p_kind: "owner", p_label: payload.name });
+      if (error) throw new Error(error.message);
+      return { href: `/money/transactions?transaction=${payload.transactionId}`, undo: "Undo from the transaction" };
+    }
     case "finding":
       payloadSchemas.finding.parse(proposal.payload);
       return { href: "/money/transactions", acknowledged: true };

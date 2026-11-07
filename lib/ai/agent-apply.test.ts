@@ -58,6 +58,14 @@ it("confirms a recurring schedule with the versioned evidence the user reviewed"
   expect(calls[0]).toMatchObject({ name: "review_recurring_series_versions", args: { p_decision: "confirmed", p_evidence: payload.evidence, p_run_anchor_id: id(31) } });
 });
 
+it("moves a payment under the owner's name to transfers only through the owner-only RPC", async () => {
+  const { calls, context } = fakeContext({ rejected: { version: 4 } });
+  const result = await applyProposal(context, { id: id(5), kind: "own_transfer", payload: { transactionId: id(30), name: "Usman Khan" } });
+  expect(calls).toEqual([{ kind: "rpc", name: "mark_own_named_transfer", args: { p_transaction_id: id(30), p_expected_version: 4, p_kind: "owner", p_label: "Usman Khan" }, filters: [] }]);
+  expect(result.href).toBe(`/money/transactions?transaction=${id(30)}`);
+  await expect(applyProposal(context, { id: id(5), kind: "own_transfer", payload: { transactionId: "not-a-row", name: "Usman Khan" } })).rejects.toThrow();
+});
+
 it("creates a category limit in exact minor units and rejects invalid payloads", async () => {
   const { calls, context } = fakeContext();
   await applyProposal(context, { id: id(5), kind: "budget", payload: { categoryId: id(60), currencyCode: "EUR", limitMinor: "21000" } });

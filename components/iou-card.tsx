@@ -28,6 +28,7 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
   const transaction = proposal.kind === "transaction_create";
   const balance = proposal.kind === "balance_set";
   const recurring = proposal.kind === "recurring_edit";
+  const own = proposal.kind === "own_transfer";
   const chosen = account ?? proposal.selected ?? "";
   // Stated cash with no cash account yet: accepting creates one, and the button says so.
   const createsCash = transaction && !chosen && !!proposal.createsCash;
@@ -52,8 +53,9 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
     {proposal.result?.createdAccount && <> A Cash account was created; <Link href="/money/accounts" className="underline">set its balance</Link> to count it in net worth.</>}</>
     : balance ? <>Saved. <Link href="/money/accounts" className="underline">See it on Accounts</Link></>
     : recurring ? <>Saved. <Link href="/money/recurring" className="underline">See it on Recurring</Link></>
+    : own ? <>Moved to transfers. {proposal.result?.href && <Link href={proposal.result.href} className="underline">Open transaction</Link>}</>
     : <>Added. <Link href="/money/wealth" className="underline">See it in Wealth</Link></>;
-  return <section aria-label={transaction ? "Transaction proposal" : balance ? "Balance proposal" : recurring ? "Recurring proposal" : "Loan proposal"} className="my-3 rounded-xl border border-ai-border bg-ai-soft p-4">
+  return <section aria-label={transaction ? "Transaction proposal" : balance ? "Balance proposal" : recurring ? "Recurring proposal" : own ? "Own account proposal" : "Loan proposal"} className="my-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <p className="font-medium">{proposal.title}</p>
     {proposal.detail && <p className="mt-1 text-sm text-muted-foreground">{proposal.detail}</p>}
     {open && !!proposal.transactions?.length && <details className="mt-2 text-sm">
@@ -70,8 +72,8 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
           {!chosen && <option value="">{createsCash ? "New Cash account" : "Choose an account"}</option>}
           {proposal.accounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
-      <button type="button" aria-label={named(balance ? "Save" : createsCash ? "Create Cash account and add" : "Add")} disabled={pending || needsChoice} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Yes, recurring" : recurring ? "Confirm" : balance ? "Save" : createsCash ? "Create Cash account and add" : "Add"}</button>
-      <button type="button" aria-label={named("Dismiss")} disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Not recurring" : proposal.conflict_key?.startsWith("recurring_price:") ? "Keep old amount" : "Dismiss"}</button>
+      <button type="button" aria-label={named(own ? "Yes, it’s mine" : balance ? "Save" : createsCash ? "Create Cash account and add" : "Add")} disabled={pending || needsChoice} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Yes, recurring" : recurring ? "Confirm" : own ? "Yes, it’s mine" : balance ? "Save" : createsCash ? "Create Cash account and add" : "Add"}</button>
+      <button type="button" aria-label={named(own ? "Not mine" : "Dismiss")} disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Not recurring" : proposal.conflict_key?.startsWith("recurring_price:") ? "Keep old amount" : own ? "Not mine" : "Dismiss"}</button>
     </div> : <p role="status" className="mt-2 text-sm">{proposal.status === "accepted" ? done : recurring ? "Dismissed. It won’t be suggested again." : "Dismissed. Nothing was changed."}</p>}
   </section>;
 }
