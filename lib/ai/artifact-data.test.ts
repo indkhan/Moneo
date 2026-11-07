@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, checkQueries, resolveQueryInput, resolveToken } from "./artifact-data";
+import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, checkQueries, offeredQueriesSchema, offeredSources, resolveQueryInput, resolveToken } from "./artifact-data";
 
 describe("artifact data", () => {
+  it("offers Scalable sources only with a connection, and live-only ones only with live data on", () => {
+    const scalable = (access: "snapshot" | "live" | null) => offeredSources(access).filter(source => source.startsWith("scalable_"));
+    expect(scalable(null)).toEqual([]);
+    expect(scalable("snapshot")).toEqual(["scalable_portfolio", "scalable_activity", "scalable_watchlist"]);
+    expect(scalable("live")).toEqual(["scalable_portfolio", "scalable_activity", "scalable_watchlist", "scalable_security"]);
+    expect(offeredQueriesSchema(null).safeParse([{ name: "p", source: "scalable_portfolio" }]).success).toBe(false);
+    // A saved card keeps loading after Scalable is disconnected; its query then reports an error.
+    expect(artifactQueriesSchema.safeParse([{ name: "p", source: "scalable_portfolio" }]).success).toBe(true);
+  });
+
   it("puts the CSP and escaped data before the generated page", () => {
     const doc = artifactDocument("<html><head><title>x</title></head><body></body></html>", { note: "</script><b>" });
     expect(doc.indexOf("Content-Security-Policy")).toBeLessThan(doc.indexOf("<title>"));

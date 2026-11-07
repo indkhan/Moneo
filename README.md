@@ -41,6 +41,8 @@ While Moneo runs, it checks hourly for scheduled summaries, review recovery, ban
 
 First turn on access in Scalable on the web under Profile → Security → Agentic Investing (read-only is enough). Then **Connect Scalable Capital** (on Import or in Settings) opens Scalable's login (with 2FA in the Scalable app). Moneo then reads your holdings, totals and cash daily as wealth records, and shows the portfolio on Accounts. It uses Scalable's official read-only MCP server and needs no keys.
 
+Artifact Pages and Home cards can show your Scalable portfolio, recent activity and watchlist. By default they use the last sync, the same figures as Wealth. Turn on **Live Scalable data in artifacts** in Settings → AI and your data to read Scalable each time one opens; that also allows quotes, charts and news for any security, but loads slower and needs Scalable to be reachable.
+
 ## Connect your bank (optional)
 
 Moneo can sync booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). Its restricted mode is free for personal use and covers the accounts you link yourself. Each sync is written as an ordinary import, so it shows in import history and can be reviewed and undone.

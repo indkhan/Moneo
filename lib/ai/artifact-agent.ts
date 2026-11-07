@@ -4,30 +4,36 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { requireWorkspace } from "@/lib/auth";
 import { modelForSettings } from "@/lib/ai/provider";
 import { calendarDate } from "@/lib/finance/calendar";
-import { SOURCE_GUIDE, artifactQueriesSchema, checkQueries, resolveToken, runArtifactQueries, type ArtifactQuery } from "@/lib/ai/artifact-data";
+import { offeredQueriesSchema, offeredSources, sourceGuide, checkQueries, type ScalableArtifactAccess, resolveToken, runArtifactQueries, type ArtifactQuery } from "@/lib/ai/artifact-data";
 import { cardParamsSchema, resolveParams, type CardParam } from "@/lib/cards/params";
 import { PRESETS, PRESET_GUIDE, PRESET_NAMES, checkPresetBindings, presetSource, type PresetName } from "@/lib/cards/presets";
 import { checkCard } from "@/lib/cards/render";
 import { CARD_BODY_HEIGHT, CARD_SIZES } from "@/lib/cards/sizes";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-type Run = { context: Context; artifactId: string; signal: AbortSignal; ensureActive: () => Promise<void> };
+type Run = { context: Context; artifactId: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess };
 
-const QUERY_HELP = `Queries: [{ name, source, input }], one per data set the page or card reads; name is how it appears in the data.
+const SCALABLE_HELP: Record<"snapshot" | "live", string> = {
+  snapshot: "Scalable sources show the portfolio as of the last sync (dataFrom last_sync, syncedAt), the same figures as Wealth: say \"as of\" with that date. Your investments_ tools read Scalable live and their fields differ, so take field paths for a brief from the sample the designer gets, not from them. Quotes, charts and news for other securities need live Scalable data, which the owner can turn on in Settings.",
+  live: "Scalable sources read Scalable live each time the page or card opens (dataFrom live). If one returns { error }, show that message.",
+};
+
+const queryHelp = (scalable: ScalableArtifactAccess) => `Queries: [{ name, source, input }], one per data set the page or card reads; name is how it appears in the data.
 Sources (the same read-only reads you have as tools):
-${SOURCE_GUIDE}
-Dates must keep their meaning over time, so write them as tokens: "@today", "@days_ago:N", "@week_start", "@month_start" / "@month_end" (":-1" for last month, ":-5" five months ago), "@year_start" / "@year_end". A literal date never moves; use one only when the user asked for a fixed past period, and then set fixedDates: true.
+${sourceGuide(offeredSources(scalable))}
+${scalable ? `${SCALABLE_HELP[scalable]}
+` : ""}Dates must keep their meaning over time, so write them as tokens: "@today", "@days_ago:N", "@week_start", "@month_start" / "@month_end" (":-1" for last month, ":-5" five months ago), "@year_start" / "@year_end". A literal date never moves; use one only when the user asked for a fixed past period, and then set fixedDates: true.
 Card params: a month switch is ONE query with params [{ kind: "month", name: "month", default?: "current" | "previous" }] and period { from: "@param:month.from", to: "@param:month.to" } — never one query per option. Also { kind: "period", name, options: ["30d","90d","6m","12m","mtd","ytd"], default } (same .from/.to) and { kind: "choice", name, options: [{ value, label }], default } used as "@param:name".
 Pages and cards may calculate from their query results as the user requests: totals, averages, ratios, cadence conversions and what-ifs belong in the generated code. Prefer an existing query total when it matches. Use exact integer minor units (BigInt) for money, keep currencies separate, round explicitly, and label projections and cadence equivalents as estimates. Never invent missing inputs or parse formatted money strings.`;
 
-export const ARTIFACT_MODE_PROMPT = `This chat builds one artifact for the user: a full interactive Page, plus any number of Home cards made from it.
+export const artifactModePrompt = (scalable: ScalableArtifactAccess) => `This chat builds one artifact for the user: a full interactive Page, plus any number of Home cards made from it.
 - Read the data you need with the finance tools first; never invent amounts.
 - write_page builds or changes the Page (a designer model writes the HTML from your brief).
 - For a Home card, use a card_preset when one of its shapes fits exactly; otherwise write_card for custom design or calculations. When the user asks for a derived value that is not already a query field, use write_card and describe the calculation to implement. A preset card the user wants to look different becomes a write_card.
 - Changing a card ("also show the yearly total", "drop the chart") passes its cardId and makes a new draft version; the user previews it in the Home card tab and adds or updates it on Home themselves.
 - Briefs say what to show, the exact field paths that hold it (as you saw them in tool results, e.g. groups[].dimensions.categoryName), and any look the user asked for. Default to Moneo's own look.
 - After a tool saves, answer in one or two sentences; never paste HTML or code into the chat.
-${QUERY_HELP}`;
+${queryHelp(scalable)}`;
 
 const PAGE_DESIGNER = `You write one self-contained interactive HTML page about the user's own finances, from a brief.
 - Read data only from window.MONEO_DATA, an object keyed by each query's name holding that query's result. It is refreshed every time the page opens: never hard-code amounts.
@@ -137,14 +143,14 @@ async function saveCard(run: Run, card: { cardId?: string; title: string; kind: 
   return { saved: true, cardId, version, note: "It shows as a draft in the Home card tab; the user adds it to Home (or updates Home) from there." };
 }
 
-const cardBase = { cardId: z.uuid().optional().describe("Set to change an existing card; leave out for a new card."), title: z.string().trim().min(1).max(80), queries: artifactQueriesSchema, params: cardParamsSchema.default([]), fixedDates };
-
 /** The tools an artifact's chat gets on top of chat's own read tools. */
 export function artifactTools(run: Run) {
+  const queries = offeredQueriesSchema(run.scalable);
+  const cardBase = { cardId: z.uuid().optional().describe("Set to change an existing card; leave out for a new card."), title: z.string().trim().min(1).max(80), queries, params: cardParamsSchema.default([]), fixedDates };
   return {
     write_page: tool({
       description: "Build or change the artifact's full interactive Page. A designer model writes the HTML from your brief and the queries' live data.",
-      inputSchema: z.object({ title: z.string().trim().min(1).max(120), brief: z.string().trim().min(1).max(4000), queries: artifactQueriesSchema, fixedDates }).strict(),
+      inputSchema: z.object({ title: z.string().trim().min(1).max(120), brief: z.string().trim().min(1).max(4000), queries, fixedDates }).strict(),
       execute: input => writePage(run, input),
     }),
     card_preset: tool({

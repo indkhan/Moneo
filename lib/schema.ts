@@ -997,6 +997,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   mutedInsightTypes: text("muted_insight_types").array().notNull().default(sql`'{}'::text[]`),
   summaryCadence: text("summary_cadence").notNull().default("none"),
   summaryTime: text("summary_time").notNull().default("09:00"),
+  artifactScalableData: text("artifact_scalable_data").notNull().default("snapshot"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),
@@ -1008,6 +1009,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   check("workspace_settings_muted_insight_types_check", sql`${table.mutedInsightTypes} <@ array['spending_changes','budget_pressure','unusual_activity','recurring_changes','upcoming_obligations','cash_shortfall','goal_progress','asset_debt','data_quality']::text[]`),
   check("workspace_settings_summary_cadence_check", sql`${table.summaryCadence} in ('none','weekly','monthly')`),
   check("workspace_settings_summary_time_check", sql`${table.summaryTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  check("workspace_settings_artifact_scalable_data_check", sql`${table.artifactScalableData} in ('snapshot','live')`),
 ]);
 
 export const voiceCalls = pgTable("voice_calls", {

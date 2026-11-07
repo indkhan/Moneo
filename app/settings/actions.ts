@@ -22,6 +22,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
       ai_models: Object.fromEntries(AI_AGENT_KEYS.map(agent => [agent, String(form.get(`model:${agent}`) ?? "").trim()]).filter(([, model]) => model)),
       ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
+      artifact_scalable_data: form.get("artifact_scalable_data") === "live" ? "live" : "snapshot",
     });
     field = "display_currency";
     const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Use a three-letter currency code, such as EUR").parse(form.get("display_currency"));

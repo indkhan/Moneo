@@ -8,6 +8,8 @@ import type { InvestigationEntities } from "@/lib/finance/investigation";
 import { listRecurring } from "@/lib/ai/recurring-proposals";
 import { agentFindings } from "@/lib/ai/agent-findings";
 import { readableToolOutput, type EntityNames } from "@/lib/ai/tool-output";
+import { securityInput } from "@/lib/scalable/live";
+import { scalableActivity, scalablePortfolio, scalableSecurity, scalableWatchlist } from "@/lib/scalable/artifact";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 const empty = z.object({}).strict();
@@ -44,21 +46,42 @@ export const ARTIFACT_SOURCES = {
     run: (input: unknown, context: Context) => evaluateForecast(input, context) },
   agent_findings: { description: "What the agent team found in its recent runs: open proposals and each run's briefing.", input: z.object({ includeDecided: z.boolean().optional() }).strict(), scopes: ["transactions"],
     run: (input: unknown, context: Context) => agentFindings(context.supabase, context.workspace.id, input as { includeDecided?: boolean }) },
+  scalable_portfolio: { description: "Scalable Capital portfolio: total, securities, crypto and cash, Scalable's gain per period (returns), and each position (name, shares, price, value, cost, gain). dataFrom says last_sync (with syncedAt) or live.", input: empty, scopes: ["accounts"],
+    run: (_: unknown, context: Context) => scalablePortfolio(context) },
+  scalable_activity: { description: "Recent Scalable buys, sells, deposits, withdrawals and dividends, newest first (the latest 8 at the last sync, or 20 live).", input: empty, scopes: ["accounts"],
+    run: (_: unknown, context: Context) => scalableActivity(context) },
+  scalable_watchlist: { description: "The Scalable watchlist with prices and the day's move in %.", input: empty, scopes: ["accounts"],
+    run: (_: unknown, context: Context) => scalableWatchlist(context) },
+  scalable_security: { description: "Any security on Scalable, live: search by name/ticker/ISIN, its quote, its price chart over a timeframe, or a news summary.", input: securityInput, scopes: ["accounts"],
+    run: (input: unknown, context: Context) => scalableSecurity(input as Parameters<typeof scalableSecurity>[0], context) },
 } satisfies Record<string, { description: string; input: z.ZodType; scopes: AiDataScope[]; run: (input: unknown, context: Context, shared: QueryShared) => Promise<unknown> }>;
 export type ArtifactSource = keyof typeof ARTIFACT_SOURCES;
 const SOURCE_KEYS = Object.keys(ARTIFACT_SOURCES) as [ArtifactSource, ...ArtifactSource[]];
 
-/** The sources and their inputs, for the designer's instructions. */
-export const SOURCE_GUIDE = SOURCE_KEYS.map(key => `- ${key}: ${ARTIFACT_SOURCES[key].description}`).join("\n");
+/** How artifacts read Scalable now: null when it is not connected, else the Settings choice. */
+export type ScalableArtifactAccess = "snapshot" | "live" | null;
 
-export const artifactQuerySchema = z.object({
+/**
+ * The sources the builder is offered. Scalable ones only with a connection, and its live-only security source only
+ * when Settings allows live data, so the model never sees a source it cannot use.
+ */
+export function offeredSources(scalable: ScalableArtifactAccess) {
+  return SOURCE_KEYS.filter(key => !key.startsWith("scalable_") || (scalable && (key !== "scalable_security" || scalable === "live"))) as [ArtifactSource, ...ArtifactSource[]];
+}
+
+/** The sources and their inputs, for the designer's instructions. */
+export const sourceGuide = (sources: ArtifactSource[]) => sources.map(key => `- ${key}: ${ARTIFACT_SOURCES[key].description}`).join("\n");
+
+const queriesSchema = (sources: [ArtifactSource, ...ArtifactSource[]]) => z.array(z.object({
   name: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]{0,39}$/),
-  source: z.enum(SOURCE_KEYS),
+  source: z.enum(sources),
   input: z.record(z.string(), z.unknown()).default({}),
-}).strict();
-export const artifactQueriesSchema = z.array(artifactQuerySchema).max(12)
-  .refine(queries => new Set(queries.map(query => query.name)).size === queries.length, "Query names must be unique");
-export type ArtifactQuery = z.infer<typeof artifactQuerySchema>;
+}).strict()).max(12).refine(queries => new Set(queries.map(query => query.name)).size === queries.length, "Query names must be unique");
+/** Saved queries, any source; a view still fails a Scalable one when Scalable is gone. */
+export const artifactQueriesSchema = queriesSchema(SOURCE_KEYS);
+/** What the builder may save now. */
+export const offeredQueriesSchema = (scalable: ScalableArtifactAccess) => queriesSchema(offeredSources(scalable));
+export type ArtifactQuery = z.infer<typeof artifactQueriesSchema>[number];
 
 const shift = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 function monthStart(date: string, offset = 0) {
