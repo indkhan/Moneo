@@ -147,7 +147,8 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
           missing += occurrence.index - previous - 1; previous = occurrence.index;
           difference += occurrence.difference; rows.push(sorted[next]);
         }
-        if (rows.length >= cadence.minimum) {
+        // Each payment beyond the minimum may cover for one missed period; at the minimum, none may be missing.
+        if (rows.length >= cadence.minimum && missing <= rows.length - cadence.minimum) {
           rows.forEach(row => used.add(row.id));
           candidates.push({rows, cadence: cadence.cadence, minimum: cadence.minimum, missing, difference});
         }

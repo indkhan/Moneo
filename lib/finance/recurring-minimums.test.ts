@@ -36,4 +36,10 @@ describe("recurring minimum evidence", () => {
     expect(cadences(monthly("x", ["2026-01-02", "2026-02-02"], "Shop"))).toEqual([]);
     expect(cadences(monthly("z", ["2025-03-01", "2026-03-01"], "Domain"))).toEqual([]);
   });
+
+  it("allows one missed period per payment beyond the minimum", () => {
+    expect(cadences(monthly("g", ["2026-01-02", "2026-02-02", "2026-04-02"], "Gym"))).toEqual([]);
+    expect(cadences(monthly("g", ["2026-01-02", "2026-02-02", "2026-04-02", "2026-05-02"], "Gym"))).toEqual(["monthly"]);
+    expect(cadences(monthly("s", ["2025-01-02", "2025-03-02", "2025-05-02", "2025-07-02"], "Shop"))).toEqual([]);
+  });
 });
