@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { loadVoiceVocabulary } from "@/lib/ai/voice-vocabulary";
+import { voiceApiKey } from "@/lib/ai/configured";
+import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 
 // The live model streams words while the user speaks and accepts a prompt and keywords; it has no server VAD,
 // so the browser commits the audio when the user stops.
@@ -14,8 +16,8 @@ export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!inputSchema.safeParse(await request.json().catch(() => null)).success) return Response.json({ error: "Invalid request" }, { status: 400 });
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return Response.json({ error: "Voice isn't set up on this server: OPENAI_API_KEY is missing" }, { status: 503 });
+  const apiKey = await voiceApiKey();
+  if (!apiKey) return Response.json({ error: VOICE_NEEDS_OPENAI_KEY }, { status: 503 });
   const { supabase, workspace, settings } = context;
   // Spelling hints only: a failed lookup still lets the user talk.
   const keywords = await loadVoiceVocabulary(supabase, workspace.id, settings.ai_data_scopes).catch(() => []);

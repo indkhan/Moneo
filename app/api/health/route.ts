@@ -1,4 +1,5 @@
-import { getSupabaseConfig, hasOpenAI, hasOpenRouter, hasSupabase } from "@/lib/env";
+import { getSupabaseConfig, hasSupabase } from "@/lib/env";
+import { serviceKey } from "@/lib/service-keys";
 
 export async function GET() {
   const supabaseConfig = getSupabaseConfig();
@@ -7,7 +8,8 @@ export async function GET() {
     supabase: hasSupabase(),
     supabaseStatus: supabaseConfig.status,
     detail: supabaseConfig.detail,
-    openai: hasOpenAI(),
-    openrouter: hasOpenRouter(),
+    // Saved in the app or still in .env.
+    openai: Boolean(await serviceKey("openai_api_key")),
+    openrouter: Boolean(await serviceKey("openrouter_api_key")),
   });
 }

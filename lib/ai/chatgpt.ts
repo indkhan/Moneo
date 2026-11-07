@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
+import { serviceKey } from "@/lib/service-keys";
 
 // "Sign in with ChatGPT" for open-source, locally hosted apps: the owner's ChatGPT plan pays for
 // AI requests instead of an API key. Dynamic client registration with PKCE, no client secret.
@@ -137,7 +138,7 @@ export async function chatgptAccessToken(): Promise<string> {
 /** True when AI requests for plain OpenAI model ids should use the ChatGPT plan. */
 export async function usesChatGPT() {
   const status = await chatgptStatus();
-  return status.signedIn && (status.source === "chatgpt" || !process.env.OPENAI_API_KEY);
+  return status.signedIn && (status.source === "chatgpt" || !(await serviceKey("openai_api_key")));
 }
 
 // Plan usage accepts only streaming Responses calls with store: false and without sampling limits.
