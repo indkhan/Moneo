@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, checkQueries, offeredQueriesSchema, offeredSources, resolveQueryInput, resolveToken } from "./artifact-data";
+import { artifactDocument, artifactFrameCsp, artifactQueriesSchema, checkQueries, offeredQueriesSchema, offeredSources, resolveQueryInput, resolveToken } from "./artifact-data";
 
 describe("artifact data", () => {
   it("offers Scalable sources only with a connection, and live-only ones only with live data on", () => {
@@ -12,26 +12,41 @@ describe("artifact data", () => {
     expect(artifactQueriesSchema.safeParse([{ name: "p", source: "scalable_portfolio" }]).success).toBe(true);
   });
 
-  it("puts the CSP and escaped data before the generated page", () => {
-    const doc = artifactDocument("<html><head><title>x</title></head><body></body></html>", { note: "</script><b>" });
-    expect(doc.indexOf("Content-Security-Policy")).toBeLessThan(doc.indexOf("<title>"));
-    expect(doc).not.toContain("</script><b>");
-    expect(doc).toContain("\\u003c/script>");
-    expect(artifactDocument("<p>hi</p>", {})).toMatch(/^<meta[^>]+Content-Security-Policy/);
+  const origin = "http://localhost:3000";
+  // The generated page is the inner frame's srcdoc; this reads it back as the browser would.
+  const inner = (doc: string) => /srcdoc="([^"]*)"/.exec(doc)![1].replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+
+  it("puts the CSP and escaped data before the generated page, inside a sandboxed inner frame", () => {
+    const doc = artifactDocument("<html><head><title>x</title></head><body></body></html>", { note: "</script><b>" }, { origin });
+    expect(doc).toContain('<iframe title="Artifact page" sandbox="allow-scripts" srcdoc="');
+    const page = inner(doc);
+    expect(page.indexOf("Content-Security-Policy")).toBeLessThan(page.indexOf("<title>"));
+    expect(page).not.toContain("</script><b>");
+    expect(page).toContain("\\u003c/script>");
+    expect(inner(artifactDocument("<p>hi</p>", {}, { origin }))).toMatch(/^<meta[^>]+Content-Security-Policy/);
   });
 
   it("loads the app theme and the Moneo kit, defaulting to a page that follows the OS", () => {
-    const dark = artifactDocument("<p>hi</p>", {}, { theme: "dark" });
+    const dark = inner(artifactDocument("<p>hi</p>", {}, { theme: "dark", origin }));
     expect(dark).toContain("color-scheme:dark");
-    expect(dark).toContain("--moneo-accent:");
+    // Plain colours, so chart libraries can read them.
+    expect(dark).toContain("--moneo-accent:#cbf26b");
+    expect(dark).not.toContain("light-dark(");
     expect(dark).toContain(".m-card{");
-    expect(artifactDocument("<p>hi</p>", {})).toContain("color-scheme:light dark");
+    expect(inner(artifactDocument("<p>hi</p>", {}, { origin }))).toContain("color-scheme:light dark");
   });
 
-  it("keeps a directly opened frame sandboxed and frameable only by the app", () => {
-    expect(ARTIFACT_FRAME_CSP).toContain("sandbox allow-scripts");
-    expect(ARTIFACT_FRAME_CSP).not.toContain("allow-same-origin");
-    expect(ARTIFACT_FRAME_CSP).toContain("frame-ancestors 'self'");
+  it("loads chart libraries from Moneo, never a CDN, and blocks every navigation of the page", () => {
+    const page = inner(artifactDocument('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>', {}, { origin }));
+    expect(page).toContain(`<script src="${origin}/artifact-lib/echarts.min.js">`);
+    expect(page).not.toContain("jsdelivr");
+    const csp = artifactFrameCsp(origin);
+    expect(csp).toContain(`script-src 'unsafe-inline' ${origin}/artifact-lib/;`);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("frame-src 'none'");
+    expect(csp).toContain("sandbox allow-scripts;");
+    expect(csp).not.toContain("allow-same-origin");
+    expect(csp).toContain("frame-ancestors 'self'");
   });
 
   it("accepts only known sources and unique names, and checks each input once its dates are resolved", () => {

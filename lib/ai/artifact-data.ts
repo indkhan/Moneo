@@ -175,17 +175,34 @@ export async function runArtifactQueries(queries: ArtifactQuery[], context: Cont
   })));
 }
 
-const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data: blob:; font-src data:";
-/** Sent as a header too: sandbox keeps the page in an opaque origin even if the frame URL is opened directly. */
-export const ARTIFACT_FRAME_CSP = `${CSP}; sandbox allow-scripts; frame-ancestors 'self'`;
+/** Script libraries a page may load, served by Moneo itself (app/artifact-lib), so pages need no internet. */
+export const ARTIFACT_LIBRARIES = { "echarts.min.js": "ECharts 6" } as const;
+// Pages written before the libraries were local loaded ECharts from jsdelivr; they get the local copy instead.
+const CDN_ECHARTS = /https:\/\/cdn\.jsdelivr\.net\/npm\/echarts@[\w.-]+\/dist\/echarts(?:\.min)?\.js/g;
+
+/**
+ * The page's own policy: inline code and Moneo's libraries only, no requests of any kind, so nothing in it can send
+ * the data it holds anywhere. `origin` is Moneo's (the page itself runs in an opaque, sandboxed origin).
+ */
+const pageCsp = (origin: string) => `default-src 'none'; script-src 'unsafe-inline' ${origin}/artifact-lib/; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'`;
+
+/**
+ * The frame route's header. The page runs inside a second, sandboxed frame of this document, and frame-src 'none'
+ * here blocks every navigation of that inner frame: a script, link, form or meta refresh can't load another URL
+ * with data in it. Popups and navigating the app itself are blocked by the sandbox (no allow-popups or top navigation).
+ */
+export const artifactFrameCsp = (origin: string) => `${pageCsp(origin)}; frame-src 'none'; sandbox allow-scripts; frame-ancestors 'self'`;
 
 export type ArtifactTheme = "light" | "dark";
 
-// The app's palette, so a page matches Moneo; light-dark() follows the color-scheme set below.
-const TOKENS = ":root{--moneo-bg:light-dark(#f4f3ee,#0f1011);--moneo-card:light-dark(#fff,#16171a);--moneo-fg:light-dark(#141413,#eeece6);--moneo-muted:light-dark(#5c5d58,#a3a39e);"
-  + "--moneo-border:light-dark(#e2e0d8,#24262a);--moneo-accent:light-dark(#4a6400,#cbf26b);--moneo-positive:light-dark(#3f6b00,#cbf26b);--moneo-negative:light-dark(#b42318,#ff7a6b);"
-  + "--moneo-chart-1:light-dark(#4a6400,#cbf26b);--moneo-chart-2:light-dark(#6d5bd0,#a99bff);--moneo-chart-3:light-dark(#0e7490,#67d4e8);--moneo-chart-4:light-dark(#b45309,#fbbf6b);--moneo-chart-5:light-dark(#9d174d,#f9a8c9);"
-  + "--moneo-font:ui-sans-serif,system-ui,sans-serif;--moneo-mono:ui-monospace,Consolas,monospace}";
+// The app's palette, so a page matches Moneo. Each variable holds a plain colour for the page's theme (not light-dark()),
+// so a chart library that reads it with getComputedStyle gets a colour it understands.
+const PALETTE: Record<string, [light: string, dark: string]> = { bg: ["#f4f3ee", "#0f1011"], card: ["#fff", "#16171a"], fg: ["#141413", "#eeece6"], muted: ["#5c5d58", "#a3a39e"],
+  border: ["#e2e0d8", "#24262a"], accent: ["#4a6400", "#cbf26b"], positive: ["#3f6b00", "#cbf26b"], negative: ["#b42318", "#ff7a6b"],
+  "chart-1": ["#4a6400", "#cbf26b"], "chart-2": ["#6d5bd0", "#a99bff"], "chart-3": ["#0e7490", "#67d4e8"], "chart-4": ["#b45309", "#fbbf6b"], "chart-5": ["#9d174d", "#f9a8c9"] };
+const palette = (side: 0 | 1) => Object.entries(PALETTE).map(([name, colours]) => `--moneo-${name}:${colours[side]}`).join(";");
+const tokens = (theme?: ArtifactTheme) => `:root{--moneo-font:ui-sans-serif,system-ui,sans-serif;--moneo-mono:ui-monospace,Consolas,monospace;${palette(theme === "dark" ? 1 : 0)}}`
+  + (theme ? "" : `@media (prefers-color-scheme:dark){:root{${palette(1)}}}`);
 // The Moneo kit: a page built from these classes looks like the app without any design work.
 const KIT = "*{box-sizing:border-box}body{margin:0;background:var(--moneo-bg);color:var(--moneo-fg);font:15px/1.5 var(--moneo-font)}"
   + ".m-page{max-width:1100px;margin:0 auto;padding:32px 24px;display:grid;gap:20px}.m-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}"
@@ -196,11 +213,20 @@ const KIT = "*{box-sizing:border-box}body{margin:0;background:var(--moneo-bg);co
   + ".m-pill{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--moneo-border);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}.m-pill[aria-pressed=true]{background:var(--moneo-fg);color:var(--moneo-bg)}"
   + "input[type=range]{accent-color:var(--moneo-accent);width:100%}";
 
-/** The sandboxed document: a strict CSP, the fresh data, the app theme and the kit come before any generated markup. */
-export function artifactDocument(html: string, data: Record<string, unknown>, { theme }: { theme?: ArtifactTheme } = {}) {
+/**
+ * The frame document: an empty outer page whose only content is the generated page in a sandboxed inner frame. The
+ * inner page gets a strict CSP, the fresh data, the app theme and the kit before any generated markup.
+ */
+export function artifactDocument(html: string, data: Record<string, unknown>, { theme, origin }: { theme?: ArtifactTheme; origin: string }) {
   // Escaping "<" keeps data like "</script>" inside the JSON literal.
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
-  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><script>window.MONEO_DATA=${json};</script>`
-    + `<style>${TOKENS}${KIT}:root{color-scheme:${theme ?? "light dark"}}</style>`;
-  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => match + head) : head + html;
+  const scheme = theme ?? "light dark";
+  // A link the designer left in can't go anywhere (navigation is blocked, which would leave an error page), so clicks on links do nothing.
+  const head = `<meta http-equiv="Content-Security-Policy" content="${pageCsp(origin)}"><script>window.MONEO_DATA=${json};`
+    + `addEventListener("click",e=>{if(e.target instanceof Element&&e.target.closest("a[href]"))e.preventDefault()},true);</script>`
+    + `<style>${tokens(theme)}${KIT}:root{color-scheme:${scheme}}</style>`;
+  const page = (/<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => match + head) : head + html).replace(CDN_ECHARTS, `${origin}/artifact-lib/echarts.min.js`);
+  const srcdoc = page.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return `<!doctype html><html><head><meta charset="utf-8"><style>:root{color-scheme:${scheme}}html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;background:transparent}</style></head>`
+    + `<body><iframe title="Artifact page" sandbox="allow-scripts" srcdoc="${srcdoc}"></iframe></body></html>`;
 }
