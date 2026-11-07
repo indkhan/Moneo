@@ -61,7 +61,7 @@ it("marks a cancelled consent as an error", async () => {
 it("stores the session encrypted, links accounts and starts the first sync", async () => {
   const createSession = vi.fn().mockResolvedValue({ session_id: "secret-session", aspsp: { name: "Revolut", country: "DE" },
     access: { valid_until: "2027-04-14T00:00:00+00:00" }, accounts: [{ uid: "u1", currency: "EUR", account_id: { iban: "DE89 3704 0044 0532 0130 00" } }] });
-  vi.mocked(enableBankingClient).mockReturnValue({ createSession } as never);
+  vi.mocked(enableBankingClient).mockResolvedValue({ createSession } as never);
   expect((await callback(`code=abc&state=${state}`)).headers.get("location")).toContain("bank=connected");
   expect(createSession).toHaveBeenCalledWith("abc", expect.objectContaining({ ip: "127.0.0.1" }));
   expect(inserts).toEqual([[{ connection_id: connectionId, workspace_id: "ws-1", provider_account_uid: "u1", iban: "DE89370400440532013000", currency_code: "EUR", account_name: "Revolut ••3000" }]]);

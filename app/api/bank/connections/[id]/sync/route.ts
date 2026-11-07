@@ -11,7 +11,7 @@ import { syncBankConnection } from "@/workflows/bank-sync";
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
-  if (!enableBankingConfigured() || !process.env.SUPABASE_SERVICE_ROLE_KEY) return NextResponse.json({ error: "Bank sync is not configured" }, { status: 503 });
+  if (!(await enableBankingConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY) return NextResponse.json({ error: "Bank sync is not configured" }, { status: 503 });
   const id = z.string().uuid().safeParse((await params).id);
   if (!id.success) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const connection = await context.supabase.from("bank_connections").select("status, last_synced_at, sync_started_at").eq("id", id.data).eq("workspace_id", context.workspace.id).maybeSingle();

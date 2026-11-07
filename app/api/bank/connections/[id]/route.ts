@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { enableBankingClient, EnableBankingError } from "@/lib/bank/enable-banking";
+import { enableBankingClient, enableBankingConfigured, EnableBankingError } from "@/lib/bank/enable-banking";
 import { psuFrom, serviceDb } from "@/lib/bank/server";
 import { decryptToken } from "@/lib/bank/token-crypto";
 
@@ -14,9 +14,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const db = serviceDb();
   const connection = await db.from("bank_connections").select("session_id_encrypted").eq("id", id.data).eq("workspace_id", context.workspace.id).maybeSingle();
   if (connection.error || !connection.data) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (connection.data.session_id_encrypted) {
+  // Without saved credentials the session can't be ended here; it still expires at its valid_until.
+  if (connection.data.session_id_encrypted && await enableBankingConfigured()) {
     try {
-      await enableBankingClient().deleteSession(decryptToken(connection.data.session_id_encrypted, id.data), psuFrom(request));
+      await (await enableBankingClient()).deleteSession(decryptToken(connection.data.session_id_encrypted, id.data), psuFrom(request));
     } catch (error) {
       // An already-ended session is fine to forget; anything else keeps the handle so the user can retry.
       if (!(error instanceof EnableBankingError && (error.expired || error.status === 404)))

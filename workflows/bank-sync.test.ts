@@ -49,7 +49,7 @@ beforeEach(() => {
   };
   vi.mocked(serviceDb).mockReturnValue({ from: table, storage: { from: () => ({ upload: async () => ({ error: null }) }) } } as never);
   bank = { balances: vi.fn().mockResolvedValue([]), bookedTransactions: vi.fn().mockResolvedValue([tx("a", "2026-10-01", "5.00"), tx("b", "2026-10-02", "7.25")]) };
-  vi.mocked(enableBankingClient).mockReturnValue(bank as never);
+  vi.mocked(enableBankingClient).mockResolvedValue(bank as never);
   vi.mocked(importFile).mockImplementation(async importId => { tables.imports.find(row => row.id === importId)!.status = "completed"; });
 });
 afterEach(() => vi.clearAllMocks());

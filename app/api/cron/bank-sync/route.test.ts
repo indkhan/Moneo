@@ -5,7 +5,7 @@ import { GET } from "./route";
 
 vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/bank-sync", () => ({ syncBankConnection: vi.fn() }));
-vi.mock("@/lib/bank/enable-banking", () => ({ enableBankingConfigured: () => true }));
+vi.mock("@/lib/bank/enable-banking", () => ({ enableBankingConfigured: async () => true }));
 vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 

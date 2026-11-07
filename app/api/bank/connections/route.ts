@@ -28,5 +28,5 @@ export async function GET() {
     const own = imports.filter(item => Date.parse(item.created_at) >= started && names.has(item.mapping?.accountName ?? ""));
     return { ...connection, sync: { running: syncRunning(connection), imports: own.map(item => ({ id: item.id, status: item.status, total_rows: item.total_rows, new_rows: item.new_rows, matched_rows: item.matched_rows, review_rows: item.review_rows, rejected_rows: item.rejected_rows })) } };
   });
-  return NextResponse.json({ configured: enableBankingConfigured(), connections });
+  return NextResponse.json({ configured: await enableBankingConfigured(), connections });
 }
