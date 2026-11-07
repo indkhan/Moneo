@@ -4,7 +4,8 @@ import { z } from "zod";
 // Scalable Capital's official MCP server. OAuth 2.1 with dynamic client registration and PKCE
 // (public client, no secret); the bearer token then calls MCP tools over Streamable HTTP.
 // Hosted redirect URIs must be on Scalable's SaaS allowlist; localhost registers freely.
-const ISSUER = "https://mcp.scalable.capital";
+// SCALABLE_MCP_ORIGIN points browser tests at a local stand-in (e2e/mocks/scalable-mcp.mjs); unset in real use.
+const ISSUER = process.env.SCALABLE_MCP_ORIGIN || "https://mcp.scalable.capital";
 export const SCALABLE_MCP_URL = `${ISSUER}/mcp`;
 const SCOPE = "openid profile offline_access";
 const PROTOCOL_VERSION = "2025-06-18";

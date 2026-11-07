@@ -35,7 +35,7 @@ export function investmentTools({ connectionId, message, priorUserText, evidence
       inputSchema: securityInput, execute: input => live(mcp => investmentsSecurity(mcp, input)) }),
     investments_watchlist: tool({ description: "The user's Scalable watchlist with live prices.", inputSchema: z.object({}).strict(), execute: () => live(mcp => investmentsWatchlist(mcp)) }),
     ...(trading ? {
-      investments_order: tool({ description: "The user asked to buy or sell a security on Scalable. Gets Scalable's preview and shows it as a card the user taps to place; nothing is placed by this tool. Market or limit orders. Buy by amount or shares; sell by shares. Find the ISIN first. If it returns readOnly or a message instead of a card, tell the user exactly that.",
+      investments_order: tool({ description: "The user asked to buy or sell a security on Scalable. Gets Scalable's preview and shows it as a card the user taps to place; nothing is placed by this tool. Market or limit orders. Buy by amount or shares; sell by shares. Find the ISIN first: for something the user already holds, use the ISIN from investments_portfolio, since share classes (Acc/Dist) differ. If it returns readOnly or a message instead of a card, tell the user exactly that.",
         inputSchema: orderInputSchema, execute: input => evidence(async () => {
           const latest = await context();
           const shown = await proposeScalableOrder(latest, connectionId, run(latest.workspace.id), input);
