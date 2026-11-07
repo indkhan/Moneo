@@ -13,4 +13,7 @@ export async function register() {
   // Background jobs: summaries, review recovery and bank/Scalable syncs.
   const { startScheduler } = await import("@/lib/scheduler");
   startScheduler();
+  // https://localhost:3443, which Enable Banking accepts as the return address for real banks.
+  const { startBankReturnListener } = await import("@/lib/bank/return-listener");
+  startBankReturnListener();
 }

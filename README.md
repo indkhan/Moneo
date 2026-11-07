@@ -41,15 +41,21 @@ First turn on access in Scalable on the web under Profile → Security → Agent
 
 Moneo can sync booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). Its restricted mode is free for personal use and covers the accounts you link yourself. Each sync is written as an ordinary import, so it shows in import history and can be reviewed and undone.
 
-1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create an application. A **Sandbox** app reaches mock banks and accepts `http://localhost:3000/api/bank/callback` as its redirect URL. A **Production** app runs in restricted mode (only accounts you link) and accepts only `https://` redirect URLs, so it needs an HTTPS address for Moneo's callback.
-2. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`).
-3. In the control panel, link your own accounts to the application. Only linked accounts can be synced.
-4. Add to `.env`, then restart Moneo:
+1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create an application in the **Production** environment. A new production app runs in restricted mode: free, and limited to the accounts you link yourself.
+2. Fill in the application form:
+   - Redirect URL: `https://localhost:3443/api/bank/callback`
+   - Privacy policy URL: `https://indkhan.github.io/Moneo/privacy.html`
+   - Terms of service URL: `https://indkhan.github.io/Moneo/terms.html`
+3. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`).
+4. In the control panel, link your own accounts to the application. Only linked accounts can be synced.
+5. Add to `.env`, then restart Moneo:
    - `ENABLE_BANKING_APP_ID`: the application ID
    - `ENABLE_BANKING_PRIVATE_KEY`: the PEM contents (one line with literal `\n` is fine)
-5. Use **Import → Connected banks → Choose a bank → Connect bank**.
+6. Use **Import → Connected banks → Choose a bank → Connect bank**.
 
 Consent usually lasts up to 180 days, depending on the bank, and a reconnect banner appears 7 days before it ends. PSD2 allows about 4 background fetches a day per bank; Moneo syncs about once a day, and **Sync now** runs with you present, so it doesn't count. Pending transactions are not synced.
+
+Enable Banking only accepts `https://` return addresses, so after you approve access the bank sends you to `https://localhost:3443`. Moneo answers there with a certificate `npm run setup` made and trusted on this computer only (using [mkcert](https://github.com/FiloSottile/mkcert); the first run may ask you to allow it), and passes you straight back to Moneo.
 
 ## Checks
 

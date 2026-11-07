@@ -3,6 +3,7 @@
 // after every `git pull`; existing secrets and data are kept.
 //   npm run setup
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { createHmac, randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import postgres from "postgres";
@@ -80,4 +81,17 @@ const response = await fetch(`${read("NEXT_PUBLIC_SUPABASE_URL")}/auth/v1/admin/
 const body = await response.json().catch(() => ({}));
 if (!response.ok && body.error_code !== "email_exists") throw new Error(`Could not create the owner account: ${response.status} ${JSON.stringify(body)}`);
 console.log(response.ok ? "Created the owner account." : "Owner account exists.");
+// Enable Banking only accepts https:// return addresses, so the bank sends you back to
+// https://localhost:3443. mkcert (the tool Next.js uses for local HTTPS) makes a certificate that
+// only this computer trusts; the first run may ask you to allow it.
+try {
+  // Browsers only: skip the Java keystore, which needs admin rights and which Moneo does not use.
+  process.env.TRUST_STORES = "system,nss";
+  const { createSelfSignedCertificate } = createRequire(import.meta.url)("next/dist/lib/mkcert.js");
+  if (!(await createSelfSignedCertificate("localhost", ".data"))) throw new Error("mkcert did not create a certificate");
+  console.log("Local HTTPS certificate for bank connections is ready.");
+} catch (error) {
+  console.warn(`Could not create the local HTTPS certificate (${error.message}). Bank connections need it; rerun setup to try again.`);
+}
+
 console.log("\nDone. Start Moneo with: npm run build && npm start");

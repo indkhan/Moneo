@@ -6,6 +6,7 @@ const startWorld = vi.hoisted(() => vi.fn(async () => {}));
 const startScheduler = vi.hoisted(() => vi.fn());
 vi.mock("workflow/runtime", () => ({ getWorld: () => ({ start: startWorld }) }));
 vi.mock("@/lib/scheduler", () => ({ startScheduler }));
+vi.mock("@/lib/bank/return-listener", () => ({ startBankReturnListener: vi.fn() }));
 
 const report = process.report as NodeJS.ProcessReport & { excludeNetwork: boolean };
 const originalExcludeNetwork = report.excludeNetwork;
