@@ -7,11 +7,13 @@ import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
 import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recurring-proposals";
 import type { ScheduleFields } from "@/app/money/recurring/schedules";
+import { applyScalableProposal, OrderOutcomeUnknown, TRADE_KINDS } from "@/lib/scalable/orders";
+import { withScalable } from "@/lib/scalable/server";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit"; payload: unknown };
+export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel"; payload: unknown };
 /** Choices made on the card itself: the account a chat expense is paid from, or what the person set when confirming a recurring payment. */
 export type DecideOptions = { accountId?: string; recurring?: Partial<ScheduleFields> };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
@@ -81,6 +83,10 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       return applyBalanceProposal(context, proposal.id, proposal.payload);
     case "recurring_edit":
       return applyRecurringProposal(context, proposal.id, proposal.payload, options.recurring);
+    // The only path that places or cancels a Scalable order: the owner tapped the card.
+    case "scalable_order":
+    case "scalable_cancel":
+      return applyScalableProposal(proposal.kind, proposal.payload, connectionId => work => withScalable(connectionId, workspace.id, work));
     case "finding":
       payloadSchemas.finding.parse(proposal.payload);
       return { href: "/money/transactions", acknowledged: true };
@@ -114,13 +120,21 @@ export async function decideProposals(context: Context, ids: string[], decision:
       outcomes.push({ id, status: error ? "failed" : data ? "rejected" : "unchanged", ...(error ? { error: readableError(error) } : {}) });
       continue;
     }
-    const claim = await supabase.from("agent_proposals").update({ status: "applying", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"])
-      .select("id, kind, payload").maybeSingle();
+    let claiming = supabase.from("agent_proposals").update({ status: "applying", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]);
+    // Each Scalable order is confirmed on its own card, never by an "accept all".
+    if (ids.length > 1) claiming = claiming.not("kind", "in", `(${TRADE_KINDS.join(",")})`);
+    const claim = await claiming.select("id, kind, payload").maybeSingle();
     if (claim.error || !claim.data) { outcomes.push({ id, status: "unchanged", ...(claim.error ? { error: claim.error.message } : {}) }); continue; }
     let result: Applied;
     try { result = await applyProposal(context, claim.data as StoredProposal, options); }
     catch (cause) {
       const message = readableError(cause);
+      // A trade Scalable may have carried out stays "applying", so the card can never send it twice.
+      if (cause instanceof OrderOutcomeUnknown) {
+        await supabase.from("agent_proposals").update({ result: { error: message, unknown: true } }).eq("id", id).eq("workspace_id", workspace.id).eq("status", "applying");
+        outcomes.push({ id, status: "unknown", error: message });
+        continue;
+      }
       await supabase.from("agent_proposals").update({ status: "failed", result: { error: message } }).eq("id", id).eq("workspace_id", workspace.id).eq("status", "applying");
       outcomes.push({ id, status: "failed", error: message });
       continue;
