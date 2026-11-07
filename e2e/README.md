@@ -30,3 +30,7 @@ A skipped spec is not a pass: it means a prerequisite (backend, QA session, serv
 ## Acceptance
 
 `npm run acceptance:fast` runs unit tests, lint and the build. `npm run acceptance:required` then runs the SQL regressions, live database checks and the browser suite on that build with one worker. Results go to an ignored `.qa/acceptance-*` folder; logs there may contain workspace data, so keep them out of the repo.
+
+## Scalable
+
+`scalable-trading.gated.spec.ts` drives chat against a local stand-in for Scalable's MCP server (`e2e/mocks/scalable-mcp.mjs`, made-up data) with the real AI model. Start the app with `SCALABLE_MCP_ORIGIN=http://127.0.0.1:3043` and run the spec with the same variable; the spec starts the stand-in, adds a Scalable connection to the QA workspace and removes it afterwards. It checks that an order is previewed on a card and sent only when the card is tapped, once, and that read-only access is told it can't trade.

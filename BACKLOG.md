@@ -1,5 +1,13 @@
 # Backlog
 
+## Scalable: follow-ups
+
+- Portfolio value chart before the first sync: rebuild past values from Scalable's trades (`list_portfolio_transactions`, all pages) and each security's price history (`get_security_chart`), including sold securities and cash flows. Today the chart starts at the first sync and fills in daily.
+- Scalable's suitability/appropriateness warnings are not shown on trade cards yet; orders that need one are sent to the Scalable app. Show the warning text with an accept checkbox and pass `acknowledgementIds`.
+- Not offered from chat yet: stop orders, savings plans, watchlist edits, price alerts.
+- Cancelling an order is tested only against the local stand-in; check it once against a real open order.
+- Per-position price charts on Wealth (a small 1-month line from `get_security_chart`) and news headlines when a position is opened.
+
 ## In-app service keys: follow-ups
 Keys for OpenAI, OpenRouter and Enable Banking are entered in the app (Settings → AI access, Import → Connected banks) and sealed in `service_keys`.
 - Optional one-click "Move to the app" that copies a key still in `.env` into the database; today the `.env` value is used until a key is saved in the app, and nothing is removed from `.env`.

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { loadIouProposal, type ChatProposal } from "@/app/ai/iou-actions";
 import { displayFormat } from "@/lib/display-format";
+import { TradeCard } from "@/components/trade-card";
 
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { conflict_key?: string };
 
@@ -22,6 +23,7 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
   if (unavailable) return <p role="alert" className="my-3 text-sm text-danger">Could not load this card. <button type="button" onClick={() => { setUnavailable(false); setAttempt(count => count + 1); }} className="underline">Try again</button></p>;
   if (proposal === undefined) return <p className="my-3 text-sm text-muted-foreground" role="status">Loading…</p>;
   if (!proposal) return null;
+  if (proposal.trade) return <TradeCard id={id} proposal={{ ...proposal, trade: proposal.trade }} locale={locale} onChange={setProposal} />;
   const { date, money } = displayFormat(locale);
   const transaction = proposal.kind === "transaction_create";
   const balance = proposal.kind === "balance_set";

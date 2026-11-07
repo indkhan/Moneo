@@ -1,5 +1,6 @@
 import { CoverageNote } from "@/components/coverage-note";
-import { PhoneCollapse } from "@/components/phone-collapse";
+import { ScalableInvestments } from "@/components/scalable-investments";
+import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
 import { SafeForm } from "@/components/safe-form";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -9,11 +10,10 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { currentOn, debtPayments, loadWealthItems, wealthEvidence, type WealthItem } from "@/lib/finance/wealth";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
-import { SourceCoverageDetails } from "@/app/source-coverage";
 import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
-import { currentNetWorth, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
+import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
 
 export const metadata = { title: "Wealth" };
 
@@ -35,13 +35,15 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const [items, accounts, assumptions, pending, events, evidence] = await Promise.all([
+  const [items, accounts, assumptions, pending, events, evidence, scalable] = await Promise.all([
     loadWealthItems(supabase, workspace.id, true),
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
     supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspace.id).eq("status", "pending").order("posted_on", { ascending: false }).limit(100),
     loadWealthEvents(db, workspace.id),
     loadBalanceEvidence(db, workspace.id),
+    supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
+      .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
   const active = items.filter(item => !item.removed_at);
@@ -63,6 +65,18 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const dated = outdated.length;
   const chartPoints = (currency: string) => series.flatMap(point => { const value = netWorth(point).get(currency); return value === undefined ? [] : [{ date: point.date, value }]; });
   const history = params.history === "all" ? events : events.slice(0, HISTORY);
+  // Scalable's synced positions, cash and crypto get their own panel; they still count in net worth like any valuation.
+  const portfolio = (scalable.data?.portfolio ?? null) as ScalablePortfolio | null;
+  const scalableIds = new Set(portfolio?.itemIds ?? []), knownIds = new Set([...(portfolio?.knownItemIds ?? []), ...scalableIds]);
+  const scalableHistory = (() => {
+    if (!portfolio) return [];
+    const valuations = valuationHistory(events, items).filter(row => knownIds.has(row.item_id));
+    // Daily from the first synced value, at most a year back.
+    const yearAgo = new Date(Date.parse(today) - 365 * 86400000).toISOString().slice(0, 10);
+    const from = valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today) < yearAgo ? yearAgo : valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today);
+    return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations, removedOn: removedOn(items, workspace.timezone) })
+      .flatMap(point => { const value = point.assets.get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value }]; });
+  })();
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
@@ -79,7 +93,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
         <div className="mt-5"><NetWorthChart label={`Recorded net worth in ${currency} at each month end`}
           points={recorded.map(point => ({ date: point.date, label: point.date === today ? "Today" : point.date, amount: formatMoney(point.value, currency), y: Number(point.value) }))} /></div>
         <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{recorded[0].date}</span><span>Today</span></p>
-        <p className="mt-1 text-xs text-muted-foreground">Lowest {formatMoney(low, currency)} · highest {formatMoney(high, currency)}. Months with nothing recorded in {currency} are left out of the line.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Lowest {formatMoney(low, currency)} · highest {formatMoney(high, currency)}</p>
         <details className="mt-2"><summary className="min-h-11 cursor-pointer content-center text-sm underline">Net worth by month</summary>
           <table className="mt-2 w-full text-sm"><caption className="sr-only">Recorded net worth in {currency} at each month end</caption><thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th scope="col" className="py-1.5 font-medium">Date</th><th scope="col" className="py-1.5 text-right font-medium">Net worth</th></tr></thead>
             <tbody>{series.map(point => { const value = netWorth(point).get(currency); return <tr key={point.date} className="border-b border-border last:border-0"><th scope="row" className="py-1.5 text-left font-normal">{point.date === today ? "Today" : point.date}</th><td className="py-1.5 text-right font-mono tabular-nums">{value === undefined ? "Nothing recorded" : formatMoney(value, currency)}</td></tr>; })}</tbody></table>
@@ -89,13 +103,15 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
       {unbalanced > 0 && <p className="text-sm">{unbalanced} account{unbalanced === 1 ? " has" : "s have"} no usable balance and {unbalanced === 1 ? "is" : "are"} left out. <Link href="/money/accounts" className="font-medium text-brand underline">Review account balances</Link></p>}
       {!currencies.length && !active.length && <div className="rounded-xl border border-border bg-card p-6 text-sm"><p className="font-medium">Add your first item</p><p className="mt-1 text-muted-foreground">Net worth is your accounts plus investments and assets, minus debts. Start with one below.</p></div>}
       {!currencies.length && active.length > 0 && <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations count today yet.</p>}
-      <PhoneCollapse label="How this is worked out"><p className="text-xs text-muted-foreground">Per currency, no exchange rates. Accounts are the balances shown on Accounts, including activity recorded since each balance was set; earlier months use the balances recorded then. Values inside an account balance aren’t counted twice.{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and left out of current net worth.` : ""}</p></PhoneCollapse>
     </section>
+
+    {portfolio && <ScalableInvestments portfolio={portfolio} positions={active.filter(item => scalableIds.has(item.id) && item.kind === "holding").sort((a, b) => Number(BigInt(b.amount_minor) - BigInt(a.amount_minor)))}
+      history={scalableHistory} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} />}
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>
 
     {sections.map(([kind, title]) => {
-      const rows = active.filter(item => item.kind === kind);
+      const rows = active.filter(item => item.kind === kind && !scalableIds.has(item.id));
       if (!rows.length) return null;
       return <section key={kind} aria-label={title} className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
@@ -106,9 +122,9 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
             <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-medium">{item.name}</h3>
               <p className="font-mono font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
             <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : currentOn(item, today) ? "" : " · Outdated, not in current net worth"}</p>
-            {item.cost_basis_minor !== null && <p className="text-xs text-muted-foreground">Cost basis {formatMoney(item.cost_basis_minor, item.currency_code)} · valuation gain/loss {formatMoney(BigInt(item.amount_minor) - BigInt(item.cost_basis_minor), item.currency_code)} (unrealized)</p>}
+            {item.cost_basis_minor !== null && (() => { const gain = BigInt(item.amount_minor) - BigInt(item.cost_basis_minor); const cost = BigInt(item.cost_basis_minor);
+              return <p className={`text-xs ${gain > 0n ? "text-success" : gain < 0n ? "text-danger" : "text-muted-foreground"}`}>{gain > 0n ? "+" : ""}{formatMoney(gain, item.currency_code)}{cost > 0n ? ` (${gain > 0n ? "+" : ""}${(Number(gain * 10000n / cost) / 100).toFixed(1)}%)` : ""} since bought for {formatMoney(cost, item.currency_code)}</p>; })()}
             {item.kind === "debt" && (payments === null ? <p className="text-xs text-warning">Update the next repayment date and principal to project payments.</p> : payments.length > 0 && <ul className="space-y-0.5 text-xs text-muted-foreground">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} left</li>)}</ul>)}
-            {item.sourceCoverage && <SourceCoverageDetails coverage={item.sourceCoverage} />}
             <div className="flex flex-wrap items-start gap-4">
               <details className="min-w-0 flex-1"><summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">Edit valuation and details</summary><WealthForm kind={item.kind} item={item} {...choices} /></details>
               <SafeForm action={removeWealthItemSafely}><input type="hidden" name="id" value={item.id} /><input type="hidden" name="version" value={item.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><button aria-label={`Remove ${item.name} (keep history)`} className="min-h-11 text-sm text-muted-foreground hover:text-foreground">Remove</button></SafeForm>

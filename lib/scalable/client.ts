@@ -4,13 +4,15 @@ import { z } from "zod";
 // Scalable Capital's official MCP server. OAuth 2.1 with dynamic client registration and PKCE
 // (public client, no secret); the bearer token then calls MCP tools over Streamable HTTP.
 // Hosted redirect URIs must be on Scalable's SaaS allowlist; localhost registers freely.
-const ISSUER = "https://mcp.scalable.capital";
+// SCALABLE_MCP_ORIGIN points browser tests at a local stand-in (e2e/mocks/scalable-mcp.mjs); unset in real use.
+const ISSUER = process.env.SCALABLE_MCP_ORIGIN || "https://mcp.scalable.capital";
 export const SCALABLE_MCP_URL = `${ISSUER}/mcp`;
 const SCOPE = "openid profile offline_access";
 const PROTOCOL_VERSION = "2025-06-18";
 
 export class ScalableError extends Error {
-  constructor(message: string, readonly status: number, readonly expired = false) { super(message); }
+  /** `refused` marks an answer from the tool itself: Scalable decided, so nothing was left half-done. */
+  constructor(message: string, readonly status: number, readonly expired = false, readonly refused = false) { super(message); }
 }
 
 const base64url = (bytes: Buffer) => bytes.toString("base64url");
@@ -108,7 +110,7 @@ export function scalableMcp(accessToken: string, fetcher: typeof fetch = fetch) 
     async callTool(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
       const result = toolResultSchema.parse(await rpc("tools/call", { name, arguments: args }));
       const text = result.content.filter(item => item.type === "text").map(item => item.text ?? "").join("\n");
-      if (result.isError) throw new ScalableError(`Scalable tool ${name} failed: ${text.slice(0, 300)}`, 502);
+      if (result.isError) throw new ScalableError(`Scalable tool ${name} failed: ${text.slice(0, 300)}`, 502, false, true);
       if (result.structuredContent !== undefined) return result.structuredContent;
       try { return JSON.parse(text) as unknown; } catch { return text; }
     },

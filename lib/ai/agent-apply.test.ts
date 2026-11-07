@@ -4,6 +4,8 @@ import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 vi.mock("@/lib/import/organization-loader", () => ({ loadOrganizationSuggestions: vi.fn() }));
+vi.mock("@/lib/scalable/orders", async importOriginal => { const original = await importOriginal<typeof import("@/lib/scalable/orders")>();
+  return { ...original, applyScalableProposal: vi.fn(async () => { throw new original.OrderOutcomeUnknown("Scalable didn't confirm this."); }) }; });
 // Detection reads the ledger; these cases decide the stored series as it is.
 vi.mock("@/app/money/recurring/suggestions", async importOriginal => ({ ...await importOriginal<object>(), loadSuggestions: async () => ({ candidates: [], superseded: [] }) }));
 
@@ -16,7 +18,7 @@ function fakeContext(options: { rpc?: Record<string, { data?: unknown; error?: {
       const filters: unknown[][] = [];
       let write: Call | undefined;
       const query = {
-        select: () => query, eq: (...args: unknown[]) => { filters.push(["eq", ...args]); return query; }, in: (...args: unknown[]) => { filters.push(["in", ...args]); return query; },
+        select: () => query, eq: (...args: unknown[]) => { filters.push(["eq", ...args]); return query; }, in: (...args: unknown[]) => { filters.push(["in", ...args]); return query; }, not: (...args: unknown[]) => { filters.push(["not", ...args]); return query; },
         update: (args: unknown) => { write = { kind: "update", name: table, args, filters }; calls.push(write); return query; },
         insert: async (args: unknown) => { calls.push({ kind: "insert", name: table, args, filters }); return { error: options.insertError ?? null }; },
         maybeSingle: async () => ({ data: table === "categories" ? { id: id(60) } : write && (write.args as { status: string }).status === "applying" ? options.claim ?? null : options.rejected ?? { id: "x" }, error: null }),
@@ -85,4 +87,14 @@ it("remembers “Not recurring” on the series, but dismissing a price change k
   const price = fakeContext({ rejected: { id: id(9), conflict_key: `recurring_price:${id(32)}`, payload: { action: "confirm", series, changes: { amountMinor: "-1299" } } } });
   await decideProposals(price.context, [id(9)], "reject");
   expect(price.calls.some(call => call.kind === "rpc")).toBe(false);
+});
+
+it("never accepts Scalable orders in bulk, and never reopens one Scalable may have placed", async () => {
+  const bulk = fakeContext();
+  await decideProposals(bulk.context, [id(40), id(41)], "accept");
+  expect(bulk.calls.filter(call => call.kind === "update").every(call => call.filters.some(filter => filter[0] === "not" && filter[1] === "kind" && String(filter[3]).includes("scalable_order")))).toBe(true);
+  const lost = fakeContext({ claim: { id: id(42), kind: "scalable_order", payload: {} } });
+  expect(await decideProposals(lost.context, [id(42)], "accept")).toEqual([{ id: id(42), status: "unknown", error: "Scalable didn't confirm this." }]);
+  // Still "applying": the card can't be pressed again.
+  expect(lost.calls.filter(call => call.kind === "update").map(call => (call.args as { status?: string }).status)).toEqual(["applying", undefined]);
 });

@@ -28,6 +28,8 @@ import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 import { ADDS_TO_RUNNING, CALL_MODE_PROMPT, callContextSchema, replaceCallTask, withoutCallBrief } from "@/lib/ai/voice-call";
 import { ARTIFACT_MODE_PROMPT, artifactBriefing, artifactTools } from "@/lib/ai/artifact-agent";
+import { investmentTools } from "@/lib/ai/investment-tools";
+import { activeScalableConnection } from "@/lib/scalable/live";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -90,6 +92,8 @@ export async function POST(request: Request) {
   const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
   const briefingPromise = artifactId ? artifactBriefing(supabase, workspace.id, artifactId) : null;
   briefingPromise?.catch(() => {});
+  // Scalable tools exist only with a live connection and the accounts scope; they read Scalable at call time.
+  const scalablePromise = settings.ai_data_scopes.includes("accounts") ? activeScalableConnection(workspace.id).catch(() => null) : Promise.resolve(null);
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
   // The run belongs to its saved request, not this connection: only an explicit cancel stops it, noticed before each model step.
   const stop = new AbortController();
@@ -229,6 +233,12 @@ export async function POST(request: Request) {
       // Artifacts are built in their own chat; this chat only hands the request over.
       ...(artifactId ? {} : { suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
         inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) }) };
+    // Trade cards are confirmed one by one, so they are never grouped under an "add all".
+    const tradeCards: string[] = [];
+    const scalableConnection = await scalablePromise;
+    const priorUserText = (history ?? []).filter(item => item.role === "user").slice(0, 2).map(item => String(item.content));
+    const scalableTools = scalableConnection ? investmentTools({ connectionId: scalableConnection, message, priorUserText, onCard: id => tradeCards.push(id),
+      evidence: read => aiEvidence(["accounts"], read), context: async () => ({ ...await requireWorkspace(), chatRequestId: requestId }) }) : {};
     const artifactBrief = briefingPromise ? await briefingPromise : null;
     const result = streamText({
       model,
@@ -295,6 +305,7 @@ ${artifactBrief}` : ""}`,
           if (specification.includePlanning) requireAiScope(latest.settings, "planning");
           return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId, specification), href: "/ai" };
         }) }) } : {}),
+        ...scalableTools,
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
@@ -342,7 +353,7 @@ ${artifactBrief}` : ""}`,
     // Several cards from one answer are grouped so they can also be added all at once.
     const cards = [...new Set(proposalCards)];
     const cardBlocks = cards.length > 1 ? ["```moneo-proposals\n" + JSON.stringify(cards) + "\n```"] : cards.map(id => "```moneo-proposal\n" + id + "\n```");
-    const answer = [text.trim(), ...cardBlocks, ...new Set(decisionCards)].join("\n\n");
+    const answer = [text.trim(), ...cardBlocks, ...[...new Set(tradeCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (stop.signal.aborted) throw new Error("Request canceled");

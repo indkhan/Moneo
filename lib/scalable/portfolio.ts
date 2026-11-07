@@ -61,4 +61,11 @@ export function scalableWealth({ holdings, overview, cash }: ScalableSnapshot, w
   };
   return { items, portfolio };
 }
-export type ScalablePortfolio = ReturnType<typeof scalableWealth>["portfolio"];
+/** What the Wealth page shows beside the totals: recent trades and cash moves, and the watchlist, as of the last sync. */
+export type ScalableExtras = {
+  activity?: { id: string; date: string; status: string; type: string; description: string | null; shares: string | null; amountMinor: string | null; currencyCode: string }[];
+  watchlist?: { isin: string; name: string; priceMinor: string | null; currencyCode: string; dayPercent: number | null }[];
+  /** Every item id a sync ever wrote, so the value chart keeps positions that were sold since. */
+  knownItemIds?: string[]; itemIds?: string[];
+};
+export type ScalablePortfolio = ReturnType<typeof scalableWealth>["portfolio"] & ScalableExtras;
