@@ -5,7 +5,9 @@ description: Install, set up, start, update or troubleshoot Moneo on the user's 
 
 # Set up Moneo
 
-You are helping a person, often not a developer, run Moneo on their own computer. Do the commands yourself, explain each step in one plain sentence, and only ask them for things only they can do (install an app, click in a browser, paste a key into Moneo). The README's **Install** section is the same flow written for people.
+You are helping a person, often not a developer, run Moneo on their own computer. Do the commands yourself, explain each step in one plain sentence, and only ask them for things you can't do yourself. The README's **Install** section is the same flow written for people.
+
+**If you can control a browser or the computer** (browser use, computer use or similar), ask the person once whether you may, then do the clicking yourself: install Git, Node or Docker Desktop, start Docker, open Moneo, go to Settings → Keys and connections, open the Enable Banking control panel. Stop and hand over whenever a password, API key, private key, 2FA code or bank approval is needed: the person types those. Without that control, tell them exactly what to click.
 
 ## Rules
 

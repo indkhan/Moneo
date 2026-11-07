@@ -6,9 +6,17 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 
 ## Install
 
-**Prefer help?** Open this folder in an AI coding agent such as Claude Code or Codex and say "set up Moneo". It follows the `moneo-setup` skill in this repository and walks you through every step below.
+### Easiest: let an AI agent install it
 
-### 1. Install the tools
+If you use an AI coding agent such as Claude Code or Codex, it can do the install for you with the `moneo-setup` skill that comes with Moneo. Open the agent in an empty folder and paste:
+
+> Clone https://github.com/indkhan/Moneo, then set it up by following .agents/skills/moneo-setup/SKILL.md in that repository.
+
+If you already downloaded Moneo, open the agent in the Moneo folder and say **"set up Moneo"**. The agent runs the commands, tells you what each step does, and asks you only for what it can't do itself, like installing Docker or entering your keys in Moneo. If it can control your browser or computer, it asks first and then does the clicking too. You type passwords and keys yourself.
+
+### Or install it yourself
+
+#### 1. Install the tools
 
 - [Git](https://git-scm.com/downloads)
 - [Node.js](https://nodejs.org) version 22 or newer
@@ -16,7 +24,7 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 
 Start Docker Desktop and wait until it says it is running.
 
-### 2. Download Moneo
+#### 2. Download Moneo
 
 ```sh
 git clone https://github.com/indkhan/Moneo.git
@@ -24,7 +32,7 @@ cd Moneo
 npm ci
 ```
 
-### 3. Run the setup
+#### 3. Run the setup
 
 ```sh
 npm run setup
@@ -34,7 +42,7 @@ This creates the database in Docker, makes all the passwords and secrets Moneo n
 
 You never need to open or edit `.env`. Keep it private and don't delete it.
 
-### 4. Start Moneo
+#### 4. Start Moneo
 
 ```sh
 npm run build
@@ -43,7 +51,7 @@ npm start
 
 The build takes a few minutes the first time. Then open **http://localhost:3000**.
 
-### 5. Turn on the AI
+#### 5. Turn on the AI
 
 Go to **Settings → Keys and connections → AI access** and choose one:
 
@@ -52,7 +60,7 @@ Go to **Settings → Keys and connections → AI access** and choose one:
 
 Voice calls and dictation need the OpenAI API key. An OpenRouter key is optional (for other models).
 
-### 6. Add your money
+#### 6. Add your money
 
 - **Import** a CSV or Excel export from your bank, or
 - connect your bank or Scalable Capital (optional, see below).
