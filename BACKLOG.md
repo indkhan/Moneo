@@ -1,5 +1,12 @@
 # Backlog
 
+## In-app service keys: follow-ups
+Keys for OpenAI, OpenRouter and Enable Banking are entered in the app (Settings → AI access, Import → Connected banks) and sealed in `service_keys`.
+- Optional one-click "Move to the app" that copies a key still in `.env` into the database; today the `.env` value is used until a key is saved in the app, and nothing is removed from `.env`.
+- Enable Banking's `GET /application` response may list the registered redirect URLs; warn on save when `https://localhost:3443/api/bank/callback` is missing instead of waiting for `REDIRECT_URI_NOT_ALLOWED`.
+- `scripts/voice-call-check.mjs` still reads `OPENAI_API_KEY` from the environment.
+- Keys are cached for 5 seconds per process; a second server process sees a change within that time.
+
 ## Self-hosted: phone access from anywhere
 Open Moneo on your phone from any network, like T3 Code, with nothing to install on the phone. Moneo only listens on 127.0.0.1 today, and it signs its owner in automatically, so any remote access must add a login first (an `APP_PASSWORD` sign-in, or Cloudflare Access).
 - Options weighed: Tailscale Funnel (free, fixed `*.ts.net` URL, nothing on the phone), Cloudflare Tunnel (free tunnel; a fixed URL needs your own domain, about $10/yr), or Tailscale with its phone app (private, no password needed).
