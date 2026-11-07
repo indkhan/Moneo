@@ -209,6 +209,16 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_portfolio_check", sql`${table.portfolio} is null or jsonb_typeof(${table.portfolio}) = 'object'`),
 ]);
 
+// The owner's service keys entered in the app (202611070002). Sealed, service_role only, kept on reset.
+export const serviceKeys = pgTable("service_keys", {
+  name: text("name").primaryKey(),
+  valueEncrypted: text("value_encrypted").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check("service_keys_name_check", sql`${table.name} in ('openai_api_key','openrouter_api_key','enable_banking_app_id','enable_banking_private_key')`),
+  check("service_keys_value_encrypted_check", sql`char_length(${table.valueEncrypted}) between 1 and 20000`),
+]);
+
 // IBANs of the owner's own accounts (202610260001): money moved between them is a transfer.
 // account_id null names an own account that Moneo does not track.
 export const ownAccountIdentifiers = pgTable("own_account_identifiers", {
