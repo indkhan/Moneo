@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/auth";
 import { enableBankingConfigured } from "@/lib/bank/enable-banking";
+import { BANK_REDIRECT_URL } from "@/lib/bank/return-listener";
 import { syncRunning } from "@/lib/bank/sync-state";
+import { serviceKeyStatus } from "@/lib/service-keys";
 
 type SyncImport = { id: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; created_at: string; mapping: { accountName?: string } | null };
 
@@ -28,5 +30,7 @@ export async function GET() {
     const own = imports.filter(item => Date.parse(item.created_at) >= started && names.has(item.mapping?.accountName ?? ""));
     return { ...connection, sync: { running: syncRunning(connection), imports: own.map(item => ({ id: item.id, status: item.status, total_rows: item.total_rows, new_rows: item.new_rows, matched_rows: item.matched_rows, review_rows: item.review_rows, rejected_rows: item.rejected_rows })) } };
   });
-  return NextResponse.json({ configured: await enableBankingConfigured(), connections });
+  // Where the saved App ID comes from and its last characters; never the private key.
+  const [configured, keys] = await Promise.all([enableBankingConfigured(), serviceKeyStatus()]);
+  return NextResponse.json({ configured, credentials: keys.enable_banking_app_id, redirectUrl: BANK_REDIRECT_URL, connections });
 }

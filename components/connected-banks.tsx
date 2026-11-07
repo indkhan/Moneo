@@ -4,6 +4,7 @@ import { Check, Circle, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { BankCredentialsForm, type BankCredentials } from "@/components/bank-credentials";
 
 type SyncImport = { id: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number };
 type Connection = {
@@ -81,7 +82,8 @@ export function syncSummary(connection: Pick<Connection, "sync" | "sync_started_
   return { text: `Last sync: ${sum("new_rows")} new · ${sum("matched_rows")} already imported${review ? ` · ${review} need review` : ""}.`, href: `/import/${imports[imports.length - 1].id}/review` };
 }
 
-async function fetchConnections(): Promise<{ configured: boolean; connections: Connection[] }> {
+type ConnectionsData = { configured: boolean; credentials: BankCredentials; redirectUrl: string; connections: Connection[] };
+async function fetchConnections(): Promise<ConnectionsData> {
   const response = await fetch("/api/bank/connections", { cache: "no-store" });
   if (!response.ok) throw new Error("Connected banks are unavailable");
   return response.json();
@@ -90,7 +92,8 @@ async function fetchConnections(): Promise<{ configured: boolean; connections: C
 const date = (value: string | null) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "never";
 
 export function ConnectedBanks() {
-  const [data, setData] = useState<{ configured: boolean; connections: Connection[] } | null>(null);
+  const [data, setData] = useState<ConnectionsData | null>(null);
+  const [replacing, setReplacing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -198,7 +201,9 @@ export function ConnectedBanks() {
           </li>)}</ul>
         </li>;
       })}</ul>}
-      {data.configured ? <div className="flex flex-wrap items-end gap-3">
+      {!data.configured || replacing ? <BankCredentialsForm redirectUrl={data.redirectUrl} onCancel={replacing ? () => setReplacing(false) : undefined}
+        onSaved={() => { setReplacing(false); setMessage("Enable Banking is set up. Choose your bank to connect it."); void load(); }} /> : <>
+      <div className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1.5 text-sm font-medium">Country
           <select value={country} onChange={event => { setCountry(event.target.value); setBanks(null); }} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal">
             {COUNTRIES.map(code => <option key={code}>{code}</option>)}</select></label>
@@ -208,7 +213,14 @@ export function ConnectedBanks() {
               <option value="">Choose your bank</option>{banks.map(item => <option key={item.name}>{item.name}</option>)}</select></label>
           <Button className="min-h-10" disabled={!bank || !!busy} onClick={() => void connect(bank, country)}>{busy?.startsWith("connect:") ? "Opening bank…" : "Connect bank"}</Button>
         </> : <Button variant="outline" className="min-h-10" disabled={!!busy} onClick={() => void loadBanks()}>{busy === "banks" ? "Loading banks…" : "Choose a bank"}</Button>}
-      </div> : <p className="text-sm text-muted-foreground">Bank sync is not configured on this deployment. See the README for Enable Banking setup.</p>}
+      </div>
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>Enable Banking app{data.credentials.hint ? ` ending in ${data.credentials.hint}` : ""}{data.credentials.source === "env" ? ", read from .env" : ""}</span>
+        <button type="button" disabled={!!busy} className="underline-offset-4 hover:text-foreground hover:underline" onClick={() => setReplacing(true)}>Replace</button>
+        {data.credentials.source === "app" && <button type="button" disabled={!!busy} className="underline-offset-4 hover:text-foreground hover:underline"
+          onClick={() => { if (window.confirm("Remove the Enable Banking App ID and key? Connected banks and imported transactions stay, but syncing stops until you add them again."))
+            void act("credentials", () => fetch("/api/bank/credentials", { method: "DELETE" }), "Enable Banking App ID and key removed."); }}>Remove</button>}
+      </p></>}
     </>}
   </section>;
 }
