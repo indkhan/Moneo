@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import { formatMoney } from "@/lib/finance/format";
+import { loadWorkspaceSettings } from "@/lib/settings";
 
 // Money moved between the owner's own accounts is a transfer, never income or spending.
 // Detection is deterministic and IBAN-only: a row's counterparty IBAN is one of the owner's
@@ -21,8 +24,15 @@ export function sourceIbans(row: unknown) {
 
 export type TransferCandidate = {
   id: string; version: number; accountId: string; postedOn: string; amountMinor: bigint; currencyCode: string;
-  reviewReasons: string[]; ibans: string[];
+  reviewReasons: string[]; ibans: string[]; text?: string; counterparty?: string;
 };
+
+// Without an IBAN, only the bank's own wording proves own money: a cash machine, or Scalable Capital
+// once the owner connected Scalable (their withdrawals arrive without the broker's IBAN).
+const CASH = /\b(bargeldauszahlung|bargeldeinzahlung|geldautomat|cash withdrawal|atm withdrawal|cash deposit)\b/i;
+const SCALABLE = /\bscalable capital\b/i;
+export type NamedAccount = "cash" | "scalable";
+export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital" };
 export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string, string> }; // IBAN → account id / identifier id
 
 const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
@@ -30,7 +40,7 @@ const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) /
 /** Every posted leg in the workspace, so a lone leg can tell whether its other side exists. */
 export type Leg = Pick<TransferCandidate, "id" | "accountId" | "postedOn" | "amountMinor" | "currencyCode">;
 
-export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, legs: Leg[] = rows) {
+export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, legs: Leg[] = rows, options: { scalable?: boolean } = {}) {
   // The posting account's own IBAN often appears in its row too; only the other side counts.
   const counterparts = (row: TransferCandidate) => row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
   const points = (row: TransferCandidate, accountId: string) => counterparts(row).some(iban => own.tracked.get(iban) === accountId);
@@ -60,7 +70,33 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
     const accountId = iban ? own.tracked.get(iban) : undefined;
     return iban && accountId && unpaired(row, accountId) ? [{ transactionId: row.id, iban }] : [];
   });
-  return { pairs, single };
+  const marked = new Set(single.map(item => item.transactionId));
+  const named = rows.flatMap((row): { transactionId: string; account: NamedAccount }[] => {
+    if (used.has(row.id) || marked.has(row.id) || counterparts(row).some(iban => own.tracked.has(iban) || own.untracked.has(iban))) return [];
+    if (CASH.test(row.text ?? "")) return [{ transactionId: row.id, account: "cash" }];
+    if (options.scalable && SCALABLE.test(`${row.counterparty ?? ""} ${row.text ?? ""}`)) return [{ transactionId: row.id, account: "scalable" }];
+    return [];
+  });
+  return { pairs, single, named };
+}
+
+const nameKey = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * Rows from a name the owner already sent money under to one of their own IBANs (their name on an old or
+ * untracked account). A name alone is weak evidence, so these are only ever suggestions for the owner to accept.
+ * `seen` are rows that already prove an own account (including linked transfers); `answered` already have a card.
+ */
+export function ownNameSuggestions(rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts, answered = new Set<string>()) {
+  const names = new Map<string, string>();
+  for (const row of seen) {
+    const other = row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
+    if (row.counterparty?.trim() && other.some(iban => own.tracked.has(iban) || own.untracked.has(iban))) names.set(nameKey(row.counterparty), row.counterparty.trim());
+  }
+  return rows.flatMap(row => {
+    const name = row.counterparty ? names.get(nameKey(row.counterparty)) : undefined;
+    return name && !answered.has(row.id) ? [{ transactionId: row.id, name }] : [];
+  });
 }
 
 const PAGE = 1000, MAX_ROWS = 5000;
@@ -85,27 +121,37 @@ export async function loadOwnAccounts(db: SupabaseClient, workspaceId: string): 
   return { tracked, untracked };
 }
 
-type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null;
+type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null; description: string;
   transaction_sources: { source_transactions: { original_row: unknown } | null }[] | null };
 
-export async function loadTransferCandidates(db: SupabaseClient, workspaceId: string) {
+/** The counterparty name a bank sync stores on its original row; other imports leave it out. */
+const counterpartyOf = (row: unknown) => {
+  const value = row && typeof row === "object" ? (row as { counterparty?: unknown }).counterparty : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+};
+
+async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary" | "transfer") {
   const rows: TransferCandidate[] = [];
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
-    const { data, error } = await db.from("transactions")
-      .select("id, version, account_id, posted_on, amount_minor::text, currency_code, review_reasons, transaction_sources(source_transactions(original_row))")
-      .eq("workspace_id", workspaceId).eq("status", "posted").eq("kind", "ordinary").is("transfer_id", null).is("refund_of_id", null)
-      .order("posted_on", { ascending: false }).order("id").range(from, from + PAGE - 1);
+    let query = db.from("transactions")
+      .select("id, version, account_id, posted_on, amount_minor::text, currency_code, review_reasons, description, transaction_sources(source_transactions(original_row))")
+      .eq("workspace_id", workspaceId).eq("status", "posted").eq("kind", kind);
+    if (kind === "ordinary") query = query.is("transfer_id", null).is("refund_of_id", null);
+    const { data, error } = await query.order("posted_on", { ascending: false }).order("id").range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     for (const row of (data ?? []) as unknown as Row[]) {
       const reviewReasons = row.review_reasons ?? [];
-      if (reviewReasons.some(reason => reason !== "source_transfer")) continue;
+      if (kind === "ordinary" && reviewReasons.some(reason => reason !== "source_transfer")) continue;
+      const originals = (row.transaction_sources ?? []).map(source => source.source_transactions?.original_row);
       rows.push({ id: row.id, version: row.version, accountId: row.account_id, postedOn: row.posted_on, amountMinor: BigInt(row.amount_minor),
-        currencyCode: row.currency_code, reviewReasons, ibans: [...new Set((row.transaction_sources ?? []).flatMap(source => sourceIbans(source.source_transactions?.original_row)))] });
+        currencyCode: row.currency_code, reviewReasons, ibans: [...new Set(originals.flatMap(sourceIbans))], text: row.description, counterparty: originals.map(counterpartyOf).find(Boolean) });
     }
     if ((data ?? []).length < PAGE) break;
   }
   return rows;
 }
+
+export const loadTransferCandidates = (db: SupabaseClient, workspaceId: string) => loadRows(db, workspaceId, "ordinary");
 
 /** Every posted leg, whatever its review state, so a lone leg can see whether its other side exists. */
 async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]> {
@@ -121,10 +167,37 @@ async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]>
   return legs;
 }
 
+export const ownTransferPayloadSchema = z.object({ transactionId: z.uuid(), name: z.string().trim().min(1).max(120) }).strict();
+
+/** Raises one "your own money?" card per row, once: a declined card is never raised again. */
+async function proposeOwnNames(db: SupabaseClient, workspaceId: string, rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts) {
+  const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").limit(5000);
+  if (known.error) throw new Error(known.error.message);
+  const answered = new Set((known.data ?? []).map(row => String(row.conflict_key).replace(/^own_transfer:/, "")));
+  const found = ownNameSuggestions(rows, seen, own, answered);
+  if (!found.length) return 0;
+  const { locale } = await loadWorkspaceSettings(db, workspaceId);
+  const byId = new Map(rows.map(row => [row.id, row]));
+  const cards = found.map(({ transactionId, name }) => {
+    const row = byId.get(transactionId)!, money = formatMoney(row.amountMinor < 0n ? -row.amountMinor : row.amountMinor, row.currencyCode, locale);
+    return { workspace_id: workspaceId, agent: "chat", kind: "own_transfer", conflict_key: `own_transfer:${transactionId}`, confidence: 70,
+      title: (row.amountMinor < 0n ? `${money} to ${name}: your own account?` : `${money} from ${name}: your own account?`).slice(0, 200),
+      detail: `You sent money under the name ${name} to one of your own accounts before. If this is yours too, it moves to transfers and stops counting as ${row.amountMinor < 0n ? "spending" : "income"}.`,
+      evidence: { facts: [], transactions: [{ id: row.id, date: row.postedOn, description: row.text ?? "", amountMinor: row.amountMinor.toString(), currency: row.currencyCode }], links: [] },
+      payload: ownTransferPayloadSchema.parse({ transactionId, name }) };
+  });
+  const { data, error } = await db.from("agent_proposals").insert(cards).select("id");
+  // A concurrent sync raised the same card first.
+  if (error && error.code !== "23505") throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
 /** Find and link transfers between the owner's accounts. The service role acts for the owner. */
 export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) {
-  const [own, rows, legs] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId)]);
-  const { pairs, single } = findOwnTransfers(rows, own, legs);
+  const [own, rows, legs, transfers, scalable] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId),
+    loadRows(db, workspaceId, "transfer"), db.from("scalable_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "active")]);
+  if (scalable.error) throw new Error(scalable.error.message);
+  const { pairs, single, named } = findOwnTransfers(rows, own, legs, { scalable: (scalable.count ?? 0) > 0 });
   const byId = new Map(rows.map(row => [row.id, row]));
   let linked = 0, marked = 0, skipped = 0;
   for (const pair of pairs) {
@@ -141,5 +214,11 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
       : await db.rpc("mark_own_iban_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_iban: item.iban });
     if (error) skipped++; else marked++;
   }
-  return { linked, marked, skipped };
+  for (const item of named) {
+    const { error } = await db.rpc("mark_own_named_transfer", { p_transaction_id: item.transactionId, p_expected_version: byId.get(item.transactionId)!.version, p_kind: item.account });
+    if (error) skipped++; else marked++;
+  }
+  const handled = new Set([...pairs.flatMap(pair => [pair.outId, pair.inId]), ...single.map(item => item.transactionId), ...named.map(item => item.transactionId)]);
+  const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own);
+  return { linked, marked, skipped, suggested };
 }
