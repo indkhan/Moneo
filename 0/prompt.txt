@@ -1,0 +1,27 @@
+The thing is I want to make a YouTube video about the 
+artifact feature.
+
+First of all I myself need a script for it: what to say, how to say it. The audience of the video are technical people.
+
+The way I'm planning to have it is that I show them a few artifacts, maybe while it is generating or while it is on the home screen, and end like, "Okay this thing was not in the application itself but a user can generate this, this, this, this, and then this looks like the normal application itself, right?" and all of that.
+
+Give me 
+Script, or what should I say? Create a really nice artifact as well. Because this is for technical people I also need to show them how the architecture of it works, or show a diagram of how it works.
+
+Think about it: it is supposed to be an 8- to 10-minute deep dive video. The first 1 minute would be about showing the feature, showing things about it, and then the rest would be me explaining what is there. In some places just me talking, in other places me explaining the diagram or the architecture. Not that.
+
+If you have any questions ask me the questions so that we can make a really engaging deep dive video. The goal of this video is that later I can share this video with people or recruiters and all. Another reason for the video could also be that others can see it and learn from it and all of that because I think the article feature itself is really nice.
+
+Yeah ask me any questions. Another thing is the architecture: the artifact you make, how it works, and all of that should be really good-looking.
+
+---
+
+in the [docs](docs)
+
+---
+
+Another thing is, I give you the right to go to the artifact on localhost 3000 and make the artifact and make it look good and then add it to the home view about the three artifacts that I said the current one as well if you want
+
+---
+
+if you find somehting broken then fix in the code and then continue
