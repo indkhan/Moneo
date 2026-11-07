@@ -29,14 +29,14 @@ it("saves the rule when asked", async () => {
 });
 
 it("creates a typed new category once and applies it", async () => {
-  const { categoryId: _, ...rest } = group;
+  const rest = { rows: group.rows, key: group.key };
   expect(await categorizeGroups([{ ...rest, newCategory: " Pets " }])).toEqual({ applied: { "coffee shop": 1 }, error: undefined });
   expect(fixture.upsert).toHaveBeenCalledWith("categories", { workspace_id: "owned", name: "Pets" }, { onConflict: "workspace_id,name" });
   expect(fixture.rpc).toHaveBeenCalledWith("create_organization_review", expect.objectContaining({ p_patch: { category_id: "00000000-0000-4000-8000-000000000009" } }));
 });
 
 it("refuses a group with neither a category nor a new name", async () => {
-  const { categoryId: _, ...rest } = group;
-  expect((await categorizeGroups([rest as typeof group])).error).toBeDefined();
+  const rest = { rows: group.rows, key: group.key };
+  expect((await categorizeGroups([rest])).error).toBeDefined();
   expect(fixture.rpc).not.toHaveBeenCalled();
 });
