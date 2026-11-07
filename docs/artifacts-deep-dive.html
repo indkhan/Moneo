@@ -64,7 +64,7 @@ kbd { font: 500 11px var(--mono); border: 1px solid var(--border); border-bottom
 [data-s] { opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s ease; }
 [data-s].shown { opacity: 1; transform: none; }
 svg [data-s] { transform: none; }
-.draw { stroke-dasharray: 600; stroke-dashoffset: 600; transition: stroke-dashoffset .8s ease .1s, opacity .2s; }
+.draw { stroke-dasharray: 600; stroke-dashoffset: 600; transition: stroke-dashoffset .8s ease, opacity .2s; }
 .draw.shown { stroke-dashoffset: 0; }
 
 .eyebrow { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-fg); margin: 0 0 10px; }
@@ -178,7 +178,7 @@ tbody tr { background: var(--card); }
     <header class="top">
       <div class="crumb" id="crumb"></div>
       <div class="progress"><i id="bar"></i></div>
-      <div class="keys"><kbd>←</kbd><kbd>→</kbd> step <kbd>D</kbd> theme <kbd>F</kbd> full screen</div>
+      <div class="keys"><kbd>←</kbd><kbd>→</kbd> page <kbd>D</kbd> theme <kbd>F</kbd> full screen</div>
     </header>
     <div class="scenes">
 
@@ -640,36 +640,36 @@ tbody tr { background: var(--card); }
 <script>
 const scenes = [...document.querySelectorAll(".scene")];
 const rail = document.querySelector(".rail");
-const stepsOf = s => Math.max(0, ...[...s.querySelectorAll("[data-s]")].map(e => +e.dataset.s));
-let index = 0, step = 0;
+let index = 0;
 
 scenes.forEach((s, i) => {
   const b = document.createElement("button");
   b.innerHTML = `<b>${String(i + 1).padStart(2, "0")}</b>${s.dataset.short}`;
-  b.onclick = () => go(i, stepsOf(s));
+  b.onclick = () => go(i);
   rail.append(b);
 });
 
+// One page per scene: everything on it fades in by itself, in its data-s order, so only a scene change needs a key.
 function render() {
   scenes.forEach((s, i) => s.classList.toggle("on", i === index));
   const s = scenes[index];
-  s.querySelectorAll("[data-s]").forEach(e => e.classList.toggle("shown", +e.dataset.s <= step));
+  const parts = [...s.querySelectorAll("[data-s]")];
+  parts.forEach(e => { e.classList.remove("shown"); e.style.transitionDelay = `${(+e.dataset.s - 1) * 90}ms`; });
+  requestAnimationFrame(() => requestAnimationFrame(() => parts.forEach(e => e.classList.add("shown"))));
   [...rail.querySelectorAll("button")].forEach((b, i) => b.setAttribute("aria-current", i === index));
   document.getElementById("crumb").innerHTML = `<strong>${String(index + 1).padStart(2, "0")}</strong> / ${scenes.length} · ${s.dataset.title}`;
-  const total = scenes.reduce((n, sc) => n + stepsOf(sc) + 1, 0);
-  const done = scenes.slice(0, index).reduce((n, sc) => n + stepsOf(sc) + 1, 0) + step + 1;
-  document.getElementById("bar").style.width = `${(done / total) * 100}%`;
-  try { location.hash = `${index + 1}.${step}`; } catch {}
+  document.getElementById("bar").style.width = `${((index + 1) / scenes.length) * 100}%`;
+  try { history.replaceState(null, "", `#${index + 1}`); } catch {}
 }
-function go(i, st = 0) { index = Math.max(0, Math.min(scenes.length - 1, i)); step = st; render(); }
-function next() { step < stepsOf(scenes[index]) ? (step++, render()) : index < scenes.length - 1 && go(index + 1); }
-function prev() { step > 0 ? (step--, render()) : index > 0 && go(index - 1, stepsOf(scenes[index - 1])); }
+function go(i) { index = Math.max(0, Math.min(scenes.length - 1, i)); render(); }
+function next() { if (index < scenes.length - 1) go(index + 1); }
+function prev() { if (index > 0) go(index - 1); }
 
 addEventListener("keydown", e => {
   if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
   else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
   else if (e.key === "Home") go(0);
-  else if (e.key === "End") go(scenes.length - 1, stepsOf(scenes.at(-1)));
+  else if (e.key === "End") go(scenes.length - 1);
   else if (e.key.toLowerCase() === "d") setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
   else if (e.key.toLowerCase() === "f") document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
   else if (e.key.toLowerCase() === "r") document.body.classList.toggle("hide-rail");
@@ -686,8 +686,8 @@ function fit() {
 }
 addEventListener("resize", fit); fit();
 
-const m = /^#(\d+)\.(\d+)$/.exec(location.hash);
-m ? go(+m[1] - 1, +m[2]) : go(0);
+const m = /^#(\d+)/.exec(location.hash);
+go(m ? +m[1] - 1 : 0);
 </script>
 </body>
 </html>
