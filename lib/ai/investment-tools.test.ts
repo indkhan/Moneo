@@ -7,7 +7,7 @@ const mcp = { connect: async () => {}, listTools: async () => [], callTool: vi.f
 vi.mock("@/lib/scalable/server", () => ({ withScalable: (_: string, __: string, work: (client: ScalableMcp) => Promise<unknown>) => work(mcp) }));
 const { investmentTools, TRADE_INTENT } = await import("./investment-tools");
 
-const build = (message: string, priorUserText: string[] = []) => investmentTools({ connectionId: "c", message, priorUserText, onCard: () => {},
+const build = (message: string, priorUserText: string[] = [], tradingAccess: "full" | "read" | null = "full") => investmentTools({ connectionId: "c", tradingAccess, message, priorUserText, onCard: () => {},
   evidence: read => read({ workspace: { id: "ws" } } as never), context: async () => ({ workspace: { id: "ws" } }) as never });
 
 describe("Scalable chat tools", () => {
@@ -21,6 +21,13 @@ describe("Scalable chat tools", () => {
     expect(build("How is my portfolio doing?")).not.toHaveProperty("investments_order");
     expect(build("ok do it, 2 shares", ["Should I buy more silver?"])).toHaveProperty("investments_order");
     expect(TRADE_INTENT.test("Verkaufe meine Alphabet Aktie")).toBe(true);
+  });
+
+  it("leaves out order cards when Scalable is connected read-only", () => {
+    expect(build("buy 2 shares of Alphabet", [], "read")).not.toHaveProperty("investments_order");
+    expect(build("cancel my open order", [], "read")).not.toHaveProperty("investments_cancelOrder");
+    // Not known yet (connected before access was recorded): the order tool checks Scalable live.
+    expect(build("buy 2 shares of Alphabet", [], null)).toHaveProperty("investments_order");
   });
 
   it("reads Scalable without ever calling a write tool", async () => {

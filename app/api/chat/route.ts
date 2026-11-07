@@ -29,7 +29,7 @@ import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/a
 import { ADDS_TO_RUNNING, CALL_MODE_PROMPT, callContextSchema, replaceCallTask, withoutCallBrief } from "@/lib/ai/voice-call";
 import { ARTIFACT_MODE_PROMPT, artifactBriefing, artifactTools } from "@/lib/ai/artifact-agent";
 import { investmentTools } from "@/lib/ai/investment-tools";
-import { activeScalableConnection } from "@/lib/scalable/live";
+import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -237,7 +237,7 @@ export async function POST(request: Request) {
     const tradeCards: string[] = [];
     const scalableConnection = await scalablePromise;
     const priorUserText = (history ?? []).filter(item => item.role === "user").slice(0, 2).map(item => String(item.content));
-    const scalableTools = scalableConnection ? investmentTools({ connectionId: scalableConnection, message, priorUserText, onCard: id => tradeCards.push(id),
+    const scalableTools = scalableConnection ? investmentTools({ connectionId: scalableConnection.id, tradingAccess: scalableConnection.tradingAccess, message, priorUserText, onCard: id => tradeCards.push(id),
       evidence: read => aiEvidence(["accounts"], read), context: async () => ({ ...await requireWorkspace(), chatRequestId: requestId }) }) : {};
     const artifactBrief = briefingPromise ? await briefingPromise : null;
     const result = streamText({
@@ -248,7 +248,9 @@ export async function POST(request: Request) {
       providerOptions: { openai: { reasoningEffort: "low" } },
       instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
 
-${CALL_MODE_PROMPT}` : ""}${artifactBrief ? `
+${CALL_MODE_PROMPT}` : ""}${scalableConnection?.tradingAccess === "read" ? `
+
+Scalable is connected with read-only access, so there are no order tools. For a buy, sell or cancel request, tell the user: "${READ_ONLY_TRADING}" Moneo notices the change at its next Scalable sync (Sync now in Import, /import).` : ""}${artifactBrief ? `
 
 ${ARTIFACT_MODE_PROMPT}
 

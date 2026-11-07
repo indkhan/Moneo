@@ -14,17 +14,18 @@ export const TRADE_INTENT = /\b(buy|sell|kauf\w*|verkauf\w*|orders?|purchase|inv
 /**
  * Scalable tools for chat and calls. Reads go to Scalable live. The order tools only make cards: they ask Scalable
  * for a preview and store it; the model never gets a tool that submits. They exist only when the user asked to trade,
- * so a news article or other tool text cannot start one on its own.
+ * so a news article or other tool text cannot start one on its own, and never on a read-only connection.
  */
-export function investmentTools({ connectionId, message, priorUserText, evidence, context, onCard }: {
-  connectionId: string; message: string; priorUserText: string[];
+export function investmentTools({ connectionId, tradingAccess, message, priorUserText, evidence, context, onCard }: {
+  connectionId: string; tradingAccess: "full" | "read" | null; message: string; priorUserText: string[];
   evidence: <T>(read: (latest: Context) => Promise<T>) => Promise<T>;
   context: () => Promise<Context & { chatRequestId: string }>;
   onCard: (proposalId: string) => void;
 }) {
   const live = <T>(read: (mcp: ScalableMcp) => Promise<T>) => evidence(latest => withScalable(connectionId, latest.workspace.id, read));
   const run = <T>(workspaceId: string) => (work: (mcp: ScalableMcp) => Promise<T>) => withScalable(connectionId, workspaceId, work);
-  const trading = [message, ...priorUserText].some(text => TRADE_INTENT.test(text));
+  // Unknown access (not synced since it was recorded) keeps the tools; they check Scalable live before a card.
+  const trading = tradingAccess !== "read" && [message, ...priorUserText].some(text => TRADE_INTENT.test(text));
   const cardNote = "A card is shown below your answer with Scalable's preview, a countdown and a button the user taps to send it. It is not placed until they tap. Say it is waiting for them; do not repeat every figure.";
   return {
     investments_portfolio: tool({ description: "Live Scalable Capital portfolio: each position (shares, price, value, cost, gain in money and %), uninvested cash and buying power, crypto, and Scalable's own gain or loss per period (today, 1 week … all time). Also says whether trading is allowed (tradingAccess full or read).",

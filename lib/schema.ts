@@ -198,6 +198,7 @@ export const scalableConnections = pgTable("scalable_connections", {
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   lastError: text("last_error"),
   portfolio: jsonb("portfolio"),
+  tradingAccess: text("trading_access"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("scalable_connections_workspace_idx").on(table.workspaceId),
@@ -205,6 +206,7 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_redirect_uri_check", sql`char_length(${table.redirectUri}) between 1 and 500`),
   check("scalable_connections_status_check", sql`${table.status} in ('pending','active','expired','revoked','error')`),
   check("scalable_connections_last_error_check", sql`char_length(${table.lastError}) <= 1000`),
+  check("scalable_connections_trading_access_check", sql`${table.tradingAccess} in ('full','read')`),
   check("scalable_connections_check", sql`${table.status} <> 'active' or ${table.tokensEncrypted} is not null`),
   check("scalable_connections_portfolio_check", sql`${table.portfolio} is null or jsonb_typeof(${table.portfolio}) = 'object'`),
 ]);
