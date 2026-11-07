@@ -23,6 +23,8 @@ import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing } from "./agent-briefing";
+import { FirstSteps } from "./first-steps";
+import { aiConfigured } from "@/lib/ai/configured";
 import { HomeBudgets } from "./home-budgets";
 import { HomeHistory } from "./home-history";
 import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from "./waiting-for-you";
@@ -62,6 +64,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null);
   const waitingPromise = loadWaitingForYou(supabase, workspace);
   const reviewPromise = loadReview(supabase, workspace);
+  // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
+  const aiPromise = aiConfigured().catch(() => true);
   const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
@@ -80,6 +84,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
+  const ai = await aiPromise;
   // A bank sync imports into the account with the bank's name and currency, as on the Accounts page.
   const synced = new Set((bankAccounts.data ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata, { preferLatestRecorded: true }).filter(account => !account.archived_at);
@@ -156,7 +161,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             {convertedCount > 0 && <span className="rounded-md border border-dashed border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">traced · {accounts.length} accounts · {valuations.included.length} valuations</span>}</div>
           <Link href="/plan/currency" className="rounded-lg border border-input px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">{displayCurrency}</Link>
         </div>
-        {!accounts.length && !wealthItems.length ? <div className="space-y-3"><p className="text-sm text-muted-foreground">Three steps to see where you stand:</p><ol className="grid gap-2 text-sm sm:grid-cols-3">{([["Import a statement", "/import"], ["Or add an account by hand", "/money/accounts"], ["Confirm its current balance", "/money/accounts"]] as const).map(([step, href], index) => <li key={step}><Link href={href} className="flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 py-2 hover:bg-muted"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs">{index + 1}</span>{step}</Link></li>)}</ol></div>
+        {!accounts.length && !wealthItems.length ? <FirstSteps ai={ai} />
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
             {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
@@ -205,7 +210,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       <ul className="mt-2 divide-y divide-border">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="py-2 text-sm"><Link href="/plan" className="font-medium hover:underline">{goal.name}</Link><p className="text-xs text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${fullDate(goal.target_date)}` : ""}</p></li>; })}</ul>
       {!goals.data?.length && <p className="mt-3 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
     </section>,
-    agents: <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} timeZone={workspace.timezone} /></Suspense>,
+    agents: <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} timeZone={workspace.timezone} ai={ai} /></Suspense>,
     insights: <Suspense fallback={<SectionFallback title="Weekly briefing" />}>
       <WeeklyBriefing db={supabase} workspaceId={workspace.id} currency={displayCurrency} today={today} settings={context.settings} projection={projection} missingInputs={missingInputs} names={accountNames} wealth={wealthItems} />
     </Suspense>,
