@@ -26,6 +26,14 @@ describe("artifact data", () => {
     expect(inner(artifactDocument("<p>hi</p>", {}, { origin }))).toMatch(/^<meta[^>]+Content-Security-Policy/);
   });
 
+  it("shows a page's script error on the page instead of leaving it blank", () => {
+    const page = inner(artifactDocument("<body><script>broken(</script></body>", {}, { origin }));
+    const guard = page.indexOf('addEventListener("error"');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(page.indexOf("broken("));
+    expect(page).toContain("textContent");
+  });
+
   it("loads the app theme and the Moneo kit, defaulting to a page that follows the OS", () => {
     const dark = inner(artifactDocument("<p>hi</p>", {}, { theme: "dark", origin }));
     expect(dark).toContain("color-scheme:dark");
