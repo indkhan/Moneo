@@ -4,7 +4,8 @@ import { artifactTools } from "./artifact-agent";
 
 vi.mock("ai", async importOriginal => ({ ...await importOriginal<object>(), generateText: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: async () => ({ modelId: "test-model" }) }));
-vi.mock("@/lib/ai/artifact-data", async importOriginal => ({ ...await importOriginal<object>(), runArtifactQueries: async () => ({ recurring: { schedules: [] } }) }));
+const queries = vi.hoisted(() => ({ run: async (): Promise<Record<string, unknown>> => ({ recurring: { schedules: [] } }) }));
+vi.mock("@/lib/ai/artifact-data", async importOriginal => ({ ...await importOriginal<object>(), runArtifactQueries: () => queries.run() }));
 
 const BROKEN = "<html><body><script>const x = list.filter(s => (s.a || (s.b)) : [];</script></body></html>";
 const FIXED = "<html><body><script>const x = [];</script></body></html>";
@@ -41,4 +42,16 @@ it("keeps the current version when the designer can't produce a page that parses
   expect(String((result.errors as string[])[0])).toContain("current version was kept");
   expect(inserts).toEqual([]);
   expect(generateText).toHaveBeenCalledTimes(3);
+});
+
+it("shows the designer every query's shape even when an earlier one is large", async () => {
+  // A 100-row transaction list used to fill the whole sample, so the designer never saw balances and guessed its fields.
+  const rows = Array.from({ length: 100 }, (_, index) => ({ merchant: `Merchant ${index}`, amount_minor: "-1250", note: "x".repeat(200) }));
+  queries.run = async () => ({ history: { groups: rows }, balances: { accounts: [{ name: "Giro", currency: "EUR", balance_minor: "100346" }] } });
+  vi.mocked(generateText).mockResolvedValue({ text: FIXED } as never);
+  await run().write({ ...input, queries: [{ name: "history", source: "transactions", input: {} }, { name: "balances", source: "balances", input: {} }] });
+  const prompt = String(vi.mocked(generateText).mock.calls[0][0].prompt);
+  expect(prompt).toContain("balance_minor");
+  expect(prompt).toContain("Merchant 0");
+  expect(prompt).toMatch(/97 more/);
 });
