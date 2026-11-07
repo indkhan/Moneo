@@ -48,7 +48,15 @@ ensure("MONEO_OWNER_PASSWORD", () => secret(24));
 writeFileSync(ENV, text);
 if (generated.length) console.log(`Generated in .env: ${generated.join(", ")}`);
 
-console.log("Starting the database and services (first run downloads the images)…");
+try {
+  execFileSync("docker", ["info"], { stdio: "ignore" });
+} catch (error) {
+  console.error(error.code === "ENOENT"
+    ? "\nDocker is not installed. Install Docker Desktop from https://docs.docker.com/get-docker/, start it, then run npm run setup again."
+    : "\nDocker is not running. Start Docker Desktop, wait until it says it is running, then run npm run setup again.");
+  process.exit(1);
+}
+console.log("Starting the database and services (the first run downloads a few GB and takes several minutes)…");
 execFileSync("docker", ["compose", "up", "--detach", "--wait"], { stdio: "inherit" });
 
 // Same history table as the Supabase CLI, so `supabase migration` commands keep working.
@@ -94,4 +102,10 @@ try {
   console.warn(`Could not create the local HTTPS certificate (${error.message}). Bank connections need it; rerun setup to try again.`);
 }
 
-console.log("\nDone. Start Moneo with: npm run build && npm start");
+console.log(`
+Setup is done. Next:
+  1. Start Moneo:  npm run build && npm start   (npm run dev while developing)
+  2. Open ${read("NEXT_PUBLIC_APP_URL")}
+  3. In Settings → Keys and connections, sign in with ChatGPT or paste an OpenAI API key.
+     Connecting a bank or Scalable Capital is optional and is done there too.
+You never need to edit .env.`);
