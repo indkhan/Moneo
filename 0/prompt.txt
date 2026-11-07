@@ -1,0 +1,1 @@
+Don’t make the html  slide by slide as that will require a lot of click have it page by page max
