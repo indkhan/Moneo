@@ -1,0 +1,14 @@
+Start the application as per the readme file.
+
+---
+
+how do i set it up now give me step by step
+
+---
+
+make it that you enter the openai api key and it should be allowed to bring also the openrouter key to use with openrouter models there as well and if someone only brings openrouter key we show ok that is fine but you can not use the voice call or dictation feature  and it stays there it should not be dependent on the .env in the codebase it should be that it directly gets from what the users adds on first use call a subagent for this task 
+
+
+i just clicked on bank connection and it gave me this error The bank connection could not be started
+
+there should be no .env file and all
