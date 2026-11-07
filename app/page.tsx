@@ -118,7 +118,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
   const missing = describeMissingInputs(missingInputs);
 
-  // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (see BACKLOG.md).
+  // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (issue #158).
   const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
     snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger });
   // Today's point is the headline's own inputs, so the chart ends on the number above it.
