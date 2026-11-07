@@ -1,0 +1,22 @@
+Okay right now we have the scalable thing but I think the scalable MCP is not set up as nicely as it should be. It should be set up so nicely that when I ask something in the chat, it has a connection to my scalable thing. It knows where I have invested, how much cash I have left, what all other stocks are there on scalable, and all of that. Other than that in wealth page where it shows investments: it should be more user-friendly. Things like "how this was calculated" and all of these are not needed but there being something like a chart itself, or the page itself showing how much it went up or down, would be nice just think about it, come up with good ideas, and then tell me what would be nice to have in it and what would not be nice to have in it. I give you the authority to look at the thing which is right now connected. I have it running on localhost:3000 with my thing connected. You can check on it, check what all things I am getting and what all can be done, and then suggest to me the things that we should do to make it look really good. do deep research and web search and scalable mcp and then suggest
+
+---
+
+get the things u suggesteed 
+i thought the scalalble will allow me to buy stocks as well if that 
+I just went to Scalable and made it so that I have access to the full agent thing (full access). It should give the preview card that I can confirm and then it can buy or sell. Do check that it will do so only by the preview card and not on its own. It is, so yeah there should be trading through chat and call for now with the preview 
+lets first talk about this as well 
+
+Another thing that we should keep in mind is that some users would have full access and some users will have read access only. If a user with read access only asks for a thing like "buy" or "sell," then tell them simply that you only allow read access then.
+
+---
+
+- No safety limit.
+- Card expiry: yes, show it on the card itself.
+- Chat should have that.
+- The preview has this thing. I don't know if that needs to be added or not. Check that.
+- No need to do the Scalable suitability warning for now.
+- Have buy/sell with market or limit, plus canceling.
+- No need to have stop order, saving plan, watchlist, and price alerts for now.
+
+yes go ahead and build this and then make a pr with a video and all using the mocked scalable calls and real account using only the run preview and all
