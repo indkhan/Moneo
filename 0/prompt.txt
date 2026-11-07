@@ -1,0 +1,5 @@
+can you change readme , and agents.md and other docs like that as well
+
+for the agents.md make as per what t3code, andrej karpathy talk about that fits our applciation 
+
+if any quesiton ask em
