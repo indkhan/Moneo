@@ -215,7 +215,7 @@ export function ConnectedBanks() {
         </> : <Button variant="outline" className="min-h-10" disabled={!!busy} onClick={() => void loadBanks()}>{busy === "banks" ? "Loading banks…" : "Choose a bank"}</Button>}
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span>Enable Banking app{data.credentials.hint ? ` ending in ${data.credentials.hint}` : ""}{data.credentials.source === "env" ? ", read from .env" : ""}</span>
+        <span>Enable Banking app{data.credentials.hint ? ` ending in ${data.credentials.hint}` : ""}{data.credentials.source === "env" ? ", read from .env or a system environment variable" : ""}</span>
         <button type="button" disabled={!!busy} className="underline-offset-4 hover:text-foreground hover:underline" onClick={() => setReplacing(true)}>Replace</button>
         {data.credentials.source === "app" && <button type="button" disabled={!!busy} className="underline-offset-4 hover:text-foreground hover:underline"
           onClick={() => { if (window.confirm("Remove the Enable Banking App ID and key? Connected banks and imported transactions stay, but syncing stops until you add them again."))

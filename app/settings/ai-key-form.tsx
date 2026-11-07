@@ -13,7 +13,7 @@ export function AiKeyForm({ name, label, placeholder, status }: { name: AiKeyNam
   return <form action={action} className="mt-3 grid gap-2">
     <input type="hidden" name="name" value={name} />
     <p className="text-sm text-muted-foreground">{status.source === "app" ? `Saved in Moneo, ending in ${status.hint}.`
-      : status.source === "env" ? `Read from .env, ending in ${status.hint}. Save one here to replace it.` : "Not set up."}</p>
+      : status.source === "env" ? `Read from .env or a system environment variable, ending in ${status.hint}. Save one here to replace it.` : "Not set up."}</p>
     <label className="grid gap-1 text-sm font-medium">{status.source ? `Replace ${label}` : label}
       <input name="key" type="password" autoComplete="off" spellCheck={false} placeholder={placeholder} className="min-h-10 min-w-0 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal" /></label>
     <div className="flex flex-wrap gap-2">

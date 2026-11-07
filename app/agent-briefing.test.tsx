@@ -21,3 +21,10 @@ it("links to the live run while the team works and invites a run otherwise", asy
   expect(renderToStaticMarkup(await AgentBriefing({ db: db({ id: "r3", status: "completed", created_at: "2026-10-26T06:00:00Z", finished_at: null }), workspaceId: "w" }))).toContain("Run again");
   expect(renderToStaticMarkup(await AgentBriefing({ db: db(null), workspaceId: "w" }))).toContain("Run agent team");
 });
+
+it("asks for AI before the team can run", async () => {
+  const html = renderToStaticMarkup(await AgentBriefing({ db: db(null), workspaceId: "w", ai: false }));
+  expect(html).toContain("Turn on AI to run the team");
+  expect(html).toContain('href="/settings#ai-access"');
+  expect(html).not.toContain("Run agent team");
+});

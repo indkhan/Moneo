@@ -23,7 +23,8 @@ export const loadAgentBriefing = cache(async (db: SupabaseClient, workspaceId: s
   return { run, tasks, open };
 });
 
-export async function AgentBriefing({ db, workspaceId, timeZone = "UTC" }: { db: SupabaseClient; workspaceId: string; timeZone?: string }) {
+/** `ai` false: nothing can run until AI is turned on, so the button becomes a link to Settings. */
+export async function AgentBriefing({ db, workspaceId, timeZone = "UTC", ai = true }: { db: SupabaseClient; workspaceId: string; timeZone?: string; ai?: boolean }) {
   const briefing = await loadAgentBriefing(db, workspaceId);
   if (!briefing) return null;
   const { run, tasks, open } = briefing;
@@ -42,6 +43,7 @@ export async function AgentBriefing({ db, workspaceId, timeZone = "UTC" }: { db:
     <div className="mt-auto">
       {running ? <Link href={`/ai/agents/${run.id}`} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ai text-[13px] font-medium text-[#0f1011] hover:opacity-90">Watch live<ArrowRight className="size-4" aria-hidden="true" /></Link>
         : proposals > 0 ? <Link href={`/ai/agents/${run!.id}`} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-medium text-primary-foreground hover:opacity-90">Review {proposals} spending limit{proposals === 1 ? "" : "s"}<ArrowRight className="size-4" aria-hidden="true" /></Link>
+        : !ai ? <Link href="/settings#ai-access" className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-input text-[13px] font-medium hover:bg-muted">Turn on AI to run the team<ArrowRight className="size-4" aria-hidden="true" /></Link>
         : <StartAgentRun label={run ? "Run again" : "Run agent team"} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-input text-[13px] font-medium hover:bg-muted disabled:opacity-50" />}
     </div>
   </section>;

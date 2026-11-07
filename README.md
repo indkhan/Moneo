@@ -1,65 +1,124 @@
 # Moneo
 
-Moneo is an open-source personal finance workspace you run on your own computer. Import statements or sync your bank, track accounts and wealth, plan spending, and ask questions about your money in chat or on a voice call. Financial figures always come from your own records; the AI explains them and proposes changes you accept.
+Moneo is an open-source personal finance app that runs on your own computer. Import bank statements or sync your bank, track accounts and wealth, plan spending, and ask questions about your money in chat or on a voice call. Figures always come from your own records; the AI explains them and suggests changes that you accept.
 
-It is a Next.js and TypeScript app. The backend (Postgres plus the open-source Supabase Auth, PostgREST and Storage services) runs in Docker on your machine. There are no accounts and no sign-in screen: one owner, one workspace, and everything stays on `127.0.0.1`.
+Everything stays on your computer. There are no accounts and no sign-in screen: one owner, one workspace. The only data that leaves your computer goes to the services you connect (your AI provider, and optionally your bank or Scalable Capital).
 
-## Run it
+## Install
 
-You need [Node.js](https://nodejs.org) 22+ and [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on Windows and macOS).
+### Easiest: let an AI agent install it
+
+If you use an AI coding agent such as Claude Code or Codex, it can do the install for you with the `moneo-setup` skill that comes with Moneo. Open the agent in an empty folder and paste:
+
+> Clone https://github.com/indkhan/Moneo, then set it up by following .agents/skills/moneo-setup/SKILL.md in that repository.
+
+If you already downloaded Moneo, open the agent in the Moneo folder and say **"set up Moneo"**. The agent runs the commands, tells you what each step does, and asks you only for what it can't do itself, like installing Docker or entering your keys in Moneo. If it can control your browser or computer, it asks first and then does the clicking too. You type passwords and keys yourself.
+
+### Or install it yourself
+
+#### 1. Install the tools
+
+- [Git](https://git-scm.com/downloads)
+- [Node.js](https://nodejs.org) version 22 or newer
+- [Docker Desktop](https://docs.docker.com/get-docker/) (on Linux, Docker Engine with Compose)
+
+Start Docker Desktop and wait until it says it is running.
+
+#### 2. Download Moneo
 
 ```sh
+git clone https://github.com/indkhan/Moneo.git
+cd Moneo
 npm ci
-npm run setup              # creates .env with fresh secrets, starts the database, applies migrations
-npm run build && npm start # then open http://localhost:3000
 ```
 
-`npm run setup` is safe to rerun. Run it again after every `git pull` to apply new migrations; your data and secrets are kept. For development, use `npm run dev` instead of build and start.
+#### 3. Run the setup
 
-The database keeps running in Docker after you stop Moneo (`docker compose stop` stops it, `docker compose up -d` starts it again). Your data lives in Docker volumes `moneo_db-data` and `moneo_storage-data`; `docker compose down` keeps them, `docker compose down -v` deletes them.
+```sh
+npm run setup
+```
 
-Everything listens on `127.0.0.1` only, so other devices on your network cannot open Moneo. Keep `.env` private: it holds the database password and the keys that sign the owner in.
+This creates the database in Docker, makes all the passwords and secrets Moneo needs, and saves them in a file called `.env`. The first run downloads a few GB and takes several minutes; you need about 4 GB of free disk space. On Windows a security prompt may ask to install a local certificate: click **Yes** (it is only used for bank connections and only trusted on this computer).
 
-## AI
+You never need to open or edit `.env`. Keep it private and don't delete it.
 
-Settings → **AI access** offers two equal options, and you choose which one pays:
+#### 4. Start Moneo
 
-- **ChatGPT plan**: click **Sign in with ChatGPT** and allow plan usage. Requests count toward your Go, Plus or Pro plan's limits.
-- **OpenAI API key**: paste it under **OpenAI API key** and click **Save key**. Usage is billed to that key.
+```sh
+npm run build
+npm start
+```
 
-You can also save an **OpenRouter API key** there. Keys are checked with the provider before they are saved, stored encrypted in Moneo's database (they survive restarts and Reset all data), shown only by their last four characters, and can be replaced or removed at any time. You don't need to edit `.env`.
+The build takes a few minutes the first time. Then open **http://localhost:3000**.
 
-Voice calls and dictation need the OpenAI API key, because ChatGPT plan usage and OpenRouter don't support realtime audio. Models are chosen per agent under Settings → AI and your data; IDs with a `/` (for example `vendor/model`) go to OpenRouter. With only an OpenRouter key, the plain default IDs run on OpenRouter as `openai/<id>`.
+#### 5. Turn on the AI
 
-Older installs that set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` in `.env` keep working; a key saved in the app takes precedence.
+Go to **Settings → Keys and connections → AI access** and choose one:
 
-## Background jobs
+- **Sign in with ChatGPT** to use your ChatGPT Go, Plus or Pro plan, or
+- **Paste an OpenAI API key** ([create one here](https://platform.openai.com/api-keys)) and click **Save key**. Usage is billed to that key.
 
-While Moneo runs, it checks hourly for scheduled summaries, review recovery, bank sync and Scalable Capital sync. Each sync runs about once a day, and anything missed while the computer was off runs shortly after Moneo starts.
+Voice calls and dictation need the OpenAI API key. An OpenRouter key is optional (for other models).
 
-## Scalable Capital (optional)
+#### 6. Add your money
 
-First turn on access in Scalable on the web under Profile → Security → Agentic Investing (read-only is enough). Then **Connect Scalable Capital** (on Import or in Settings) opens Scalable's login (with 2FA in the Scalable app). Moneo then reads your holdings, totals and cash daily as wealth records, and shows the portfolio on Accounts. It uses Scalable's official read-only MCP server and needs no keys.
+- **Import** a CSV or Excel export from your bank, or
+- connect your bank or Scalable Capital (optional, see below).
 
-## Connect your bank (optional)
+That's it.
 
-Moneo can sync booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). Its restricted mode is free for personal use and covers the accounts you link yourself. Each sync is written as an ordinary import, so it shows in import history and can be reviewed and undone.
+## Everyday use
 
-1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create an application in the **Production** environment. A new production app runs in restricted mode: free, and limited to the accounts you link yourself.
+- **Start Moneo:** `npm start` in the Moneo folder (Docker Desktop must be running).
+- **Stop Moneo:** press `Ctrl+C`. The database keeps running in Docker; `docker compose stop` stops it.
+- **Update Moneo:**
+  ```sh
+  git pull
+  npm ci
+  npm run setup
+  npm run build
+  npm start
+  ```
+  Your data and secrets are kept.
+
+While Moneo runs it does its background work by itself: scheduled summaries, and syncing your bank and Scalable about once a day. Anything missed while your computer was off runs shortly after you start Moneo.
+
+## Keys and connections
+
+Every key and outside service is set up in the app under **Settings → Keys and connections**. Keys are checked with the provider before they are saved, stored encrypted in your database, shown only by their last four characters, and can be replaced or removed at any time. The same section shows that the secrets made by `npm run setup` are in place.
+
+### Connect your bank (optional)
+
+Moneo syncs booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). It is free for personal use. Each sync is an ordinary import that you can review and undo.
+
+1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create an application in the **Production** environment.
 2. Fill in the application form:
    - Redirect URL: `https://localhost:3443/api/bank/callback`
    - Privacy policy URL: `https://indkhan.github.io/Moneo/privacy.html`
    - Terms of service URL: `https://indkhan.github.io/Moneo/terms.html`
-3. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`).
-4. In the control panel, link your own accounts to the application. Only linked accounts can be synced.
-5. In Moneo, open **Import → Connected banks**, paste the application ID, paste the private key or upload the `.pem` file, and click **Save and check**. Moneo checks them with Enable Banking and stores them encrypted; **Replace** and **Remove** are next to the bank picker. (An existing `ENABLE_BANKING_APP_ID` and `ENABLE_BANKING_PRIVATE_KEY` in `.env` keep working until you save new ones here.)
-6. Use **Import → Connected banks → Choose a bank → Connect bank**. If Enable Banking says it rejected the return address, add the Redirect URL from step 2 to your application and try again.
+3. Let the control panel make the key pair, and keep the downloaded private key file (`<application-id>.pem`).
+4. In the control panel, link your own bank accounts to the application. Only linked accounts can be synced.
+5. In Moneo, go to **Settings → Keys and connections → Connected banks** (also on the Import page). Paste the application ID, paste the private key or upload the `.pem` file, and click **Save and check**.
+6. Click **Choose a bank**, pick yours, click **Connect bank** and approve access at your bank.
 
-Consent usually lasts up to 180 days, depending on the bank, and a reconnect banner appears 7 days before it ends. PSD2 allows about 4 background fetches a day per bank; Moneo syncs about once a day, and **Sync now** runs with you present, so it doesn't count. Pending transactions are not synced.
+Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days before it ends. Pending transactions are not synced. If Enable Banking says it rejected the return address, add the Redirect URL from step 2 to your application and try again.
 
-Enable Banking only accepts `https://` return addresses, so after you approve access the bank sends you to `https://localhost:3443`. Moneo answers there with a certificate `npm run setup` made and trusted on this computer only (using [mkcert](https://github.com/FiloSottile/mkcert); the first run may ask you to allow it), and passes you straight back to Moneo.
+### Connect Scalable Capital (optional)
 
-## Checks
+1. In Scalable on the web, go to **Profile → Security → Agentic Investing** and turn on access (read-only is enough).
+2. In Moneo, click **Connect Scalable Capital** under **Settings → Keys and connections** (also on the Import page) and log in to Scalable (with 2FA in the Scalable app).
+
+Moneo then reads your holdings, totals and cash every day and shows the portfolio on Wealth. No keys are needed.
+
+## Good to know
+
+- Moneo only listens on `127.0.0.1`, so other devices on your network can't open it.
+- Your data lives in the Docker volumes `moneo_db-data` and `moneo_storage-data`. `docker compose down` keeps them; **`docker compose down -v` deletes all your data**.
+- If ports 54321 or 54322 are already in use, add `API_PORT=` and `DB_PORT=` with free ports to `.env` and run `npm run setup` again.
+
+## Development
+
+Use `npm run dev` instead of build and start. See [AGENTS.md](AGENTS.md) for how the project works.
 
 | Command | Purpose |
 | --- | --- |
