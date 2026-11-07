@@ -4,7 +4,7 @@ Run `node supabase/tests/run-recurring-occurrences.mjs` for migration `202610060
 
 Run `node supabase/tests/recurring-occurrence-concurrency.mjs` to check association versus transaction correction on separate authenticated connections. It creates only a disposable application schema with synthetic users, verifies correction/association lock order and stale-version rejection, then drops that exact schema and verifies cleanup. Public migration history and schema privileges remain unchanged; an ignored `.qa` recovery journal records the disposable schema if interrupted.
 
-Run `node supabase/tests/migrations.mjs` with the existing `.env` configuration. The script verifies that `SUPABASE_DB_URL` targets `NEXT_PUBLIC_SUPABASE_URL`, then tests pending migrations against the deployed application schema and replays every migration into a temporary isolated schema. It compares columns, constraints, indexes, RLS, policies, views, triggers and application functions, and runs the synthetic `.sql` regressions on both paths.
+Run `node supabase/tests/migrations.mjs` with the existing `.env` configuration. The script tests pending migrations against the current application schema and replays every migration into a temporary isolated schema. It compares columns, constraints, indexes, RLS, policies, views, triggers and application functions, and runs the synthetic `.sql` regressions on both paths.
 
 All writes run inside rollback-only transactions. Migration history stays unchanged, and the script verifies that its temporary schema was removed. It does not apply migrations permanently. Fresh verification uses an empty `auth.users` surrogate and skips Supabase-owned storage bucket/policy setup; full Supabase platform bootstrap still requires a disposable local Supabase instance.
 
@@ -18,7 +18,7 @@ Run `node supabase/tests/review-concurrency.mjs` after migration 043 is applied 
 
 Run `node supabase/tests/import-concurrency.mjs` after migration 051 is applied to check cancellation and ingestion on separate authenticated/service connections. It observes the specific waiter and holder database process locks, verifies cancellation cannot admit later row effects, retains already committed source evidence, fences old workers after resume and deduplicates simultaneous retries. Its exact large-money synthetic records are removed by ID.
 
-Run `node supabase/tests/summary-live.mjs` with the local app running and its existing `CRON_SECRET` configured to verify actual cron dispatch, free-model review completion, period deduplication, cancellation and disabling. It uses a disposable empty workspace and targeted cleanup. This verifies the local endpoint/workflow; it does not prove that Vercel's external daily cron has been deployed.
+Run `node supabase/tests/summary-live.mjs` with the local app running and its existing `CRON_SECRET` configured to verify actual cron dispatch, free-model review completion, period deduplication, cancellation and disabling. It uses a disposable empty workspace and targeted cleanup. The running server's scheduler calls the same endpoint hourly.
 
 Run `npx playwright test e2e/two-user-isolation.gated.spec.ts --reporter=list` for two real disposable authenticated users. It exercises page/API/file ownership, denied foreign review cancellation, account editing/archive/sequential undo, saved view rename/removal/filter replacement/undo, Home insight dismissal/restore, exact large relevance thresholds and type mute/unmute. It requires the configured admin/auth/database environment, sends no email, uses no saved credentials or mocked backend, and removes its fixtures. Recovery IDs are written to ignored `.qa` files only if interrupted.
 
@@ -28,4 +28,4 @@ For the targeted import review regression only, use `node supabase/tests/run-sql
 
 Run `node supabase/tests/run-goal-reservations.mjs` for the reservation boundary/history fixture. For SQL/application resolver parity, run `RUN_RESERVATION_DB_TESTS=1 npm test -- lib/finance/reservation-balance.live.test.ts` (PowerShell: set `$env:RUN_RESERVATION_DB_TESTS='1'` first). This opt-in test compares six synthetic balance fixtures and rolls everything back.
 
-Deployment is separate: `node supabase/tests/apply-migrations.mjs VERSION...` applies only explicitly listed ordered versions after review and rollback verification. It verifies the configured project, refuses skipped earlier pending files, locks migration history, compares names/content hashes, applies SQL and history atomically, and verifies hashes afterward. Do not run it as a routine test.
+Migrations are applied by `npm run setup`, which records them in `supabase_migrations.schema_migrations`. Do not run it as a routine test.

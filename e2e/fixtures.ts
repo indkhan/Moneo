@@ -107,7 +107,7 @@ export function hasSupabaseEnv(): boolean {
 }
 
 // Full-journey auth uses a pre-authenticated Playwright storageState file
-// (Supabase magic-link OTP has no deterministic inbox in CI). The gated spec
+// (there is no sign-in page to drive). The gated spec
 // skips unless this file exists; see e2e/README.md §2 for creation steps.
 export function e2eStorageStatePath(): string | null {
   const candidate = process.env.E2E_STORAGE_STATE;

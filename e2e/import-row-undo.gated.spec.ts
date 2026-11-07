@@ -11,8 +11,7 @@ test("individual accept and reject undo retain source and decision history and r
   test.setTimeout(180_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-  const db = postgres(connection.toString(), { ssl: "require", max: 1 });
+  const db = postgres(connection.toString(), { max: 1 });
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   const email = `qa-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
   const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });

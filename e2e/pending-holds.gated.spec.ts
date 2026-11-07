@@ -12,8 +12,7 @@ test("reviewed pending settlement releases the obsolete hold and undo preserves 
     expect(process.env[key], `Required pending-hold acceptance prerequisite ${key}`).toBeTruthy();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-  const db = postgres(connection.toString(), { ssl: "require", max: 1 });
+  const db = postgres(connection.toString(), { max: 1 });
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
   let user: string | undefined, workspace: string | undefined;

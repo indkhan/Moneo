@@ -37,10 +37,8 @@ test("explicit Unicode merchants import without splitting a character and retain
   const history = page.getByRole("region", { name: "Import history" }).locator("article").filter({ hasText: filename });
   await expect(history.getByRole("status")).toHaveText("completed", { timeout: 120_000 });
   await expect(history).toContainText("1 new");
-  const endpoint = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!), connection = new URL(process.env.SUPABASE_DB_URL!);
-  const project = endpoint.hostname.split(".")[0];
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-  const db = postgres(connection.toString(), { ssl: "require", max: 1 });
+  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const db = postgres(connection.toString(), { max: 1 });
   try {
     const [source] = await db`select s.original_row, m.name, t.amount_minor from public.imports i
       join public.source_transactions s on s.import_id=i.id

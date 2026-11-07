@@ -6,9 +6,8 @@ import {resolveReviewRequest} from "./review-request";
 
 it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("elects only one synthesis caller when two database transactions overlap", async () => {
   process.loadEnvFile(".env");
-  const endpoint = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!), connection = new URL(process.env.SUPABASE_DB_URL!);
-  expect(connection.hostname === `db.${endpoint.hostname.split(".")[0]}.supabase.co` || connection.username.endsWith(`.${endpoint.hostname.split(".")[0]}`)).toBe(true);
-  const db = postgres(connection.toString(), {ssl: "require", max: 2, connection: {application_name: "qa_mne019_reservation_race"}, onnotice: () => {}});
+  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const db = postgres(connection.toString(), {max: 2, connection: {application_name: "qa_mne019_reservation_race"}, onnotice: () => {}});
   const nonce = randomUUID(), schema = `qa_reservation_${nonce.replaceAll("-", "")}`, marker = `mne019-reservation:${nonce}`;
   const journal = `.qa/mne019-reservation-${nonce}.json`, job = randomUUID(), workspace = randomUUID();
   let created = false, journalWritten = false, contender: Promise<boolean> | undefined;

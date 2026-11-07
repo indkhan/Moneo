@@ -9,9 +9,8 @@ test('noisy imported spending retains exact sources through reviewed organizatio
  test.setTimeout(360000);
  for(const key of ['SUPABASE_DB_URL','SUPABASE_SERVICE_ROLE_KEY','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'])expect(process.env[key],`${key} required`).toBeTruthy();
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!,connection=new URL(process.env.SUPABASE_DB_URL!);
- const project=new URL(url).hostname.split('.')[0];expect(connection.hostname===`db.${project}.supabase.co`||connection.username.endsWith('.'+project)).toBe(true);
- const run=randomUUID(),journal=`.qa/mne013-browser-${run}.json`,category=randomUUID();
- const db=postgres(connection.toString(),{ssl:'require',max:1,connect_timeout:10,onnotice:()=>{},connection:{application_name:'mne013-browser-'+run,lock_timeout:10000,statement_timeout:120000,idle_in_transaction_session_timeout:150000}});
+ const project=new URL(url).hostname.split('.')[0]; const run=randomUUID(),journal=`.qa/mne013-browser-${run}.json`,category=randomUUID();
+ const db=postgres(connection.toString(),{max:1,connect_timeout:10,onnotice:()=>{},connection:{application_name:'mne013-browser-'+run,lock_timeout:10000,statement_timeout:120000,idle_in_transaction_session_timeout:150000}});
  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
  let user:string|undefined,workspace:string|undefined,context:BrowserContext|undefined;
  const ledger:{version:string;name:string;statements:string[]}[]=[];

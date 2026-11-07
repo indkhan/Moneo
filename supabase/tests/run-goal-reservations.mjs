@@ -1,11 +1,8 @@
 import { readFileSync } from "node:fs";
-import assert from "node:assert/strict";
 import postgres from "postgres";
 process.loadEnvFile(".env");
-const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
-assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`));
-const db = postgres(connection.toString(), { ssl: "require", max: 1, onnotice: () => {} });
+const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
 const rollback = new Error("Successful rollback");
 try {
   try { await db.begin(async tx => {

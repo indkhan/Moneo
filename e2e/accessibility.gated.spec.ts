@@ -30,7 +30,7 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   expect((await db.from("accounts").insert({ id: accountId, workspace_id: workspace!.id, name: accountName, currency_code: "EUR", type: "checking" })).error).toBeNull();
   for (const route of ["/", "/money/transactions", "/money/accounts", "/money/wealth", "/import", "/settings", "/ai"]) {
     await page.goto(route);
-    await expect(page).not.toHaveURL(/login/);
+    await expect(page).not.toHaveURL(/setup/);
     await expect(page.locator("h1").first()).toBeVisible();
     if (route === "/") await expect(page.locator("article").filter({ has: page.getByRole("heading", { name: accountName, exact: true }) })).toBeVisible();
     const overflow = await page.evaluate(() => [...document.querySelectorAll("main *")].filter(element => element.getBoundingClientRect().right > innerWidth)

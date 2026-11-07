@@ -13,8 +13,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
   test.setTimeout(180_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0], run = randomUUID();
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-  const db = postgres(connection.toString(), {ssl: "require", max: 1, connect_timeout: 10,
+  const db = postgres(connection.toString(), {max: 1, connect_timeout: 10,
     connection: {application_name: "mne012-dated-overview", lock_timeout: 10_000, statement_timeout: 30_000}});
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {auth: {persistSession: false, autoRefreshToken: false}});
   const journal = `.qa/mne012-fixture-${run}.json`, account = randomUUID();

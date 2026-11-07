@@ -5,10 +5,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import postgres from "postgres";
 
 process.loadEnvFile(".env");
-const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
-assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`), "Configured project mismatch");
-const db = postgres(connection.toString(), { ssl: "require", max: 3, connect_timeout: 10 });
+const db = postgres(connection.toString(), { max: 3, connect_timeout: 10 });
 const user = randomUUID(), account = randomUUID(), transaction = randomUUID(), conversation = randomUUID(), request = randomUUID();
 let workspace;
 async function authenticated(tx) {

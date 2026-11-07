@@ -7,7 +7,7 @@ import { applicationMigrationSql, replayMigrations } from "./migration-replay.mj
 import { sourceCoverageReaderProof } from "./source-coverage-reader.mjs";
 if (existsSync(".env")) process.loadEnvFile(".env");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL required for disposable-schema SQL acceptance");
-const db = postgres(process.env.SUPABASE_DB_URL, { ssl: "require", max: 1, connect_timeout: 10, onnotice: () => {} });
+const db = postgres(process.env.SUPABASE_DB_URL, { max: 1, connect_timeout: 10, onnotice: () => {} });
 const schema = `mne008_${randomUUID().replaceAll("-", "")}`;
 const rollback = new Error("successful rollback");
 const isolated = sql => sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bschema public\b/g, `schema ${schema}`)

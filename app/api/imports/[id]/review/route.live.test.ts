@@ -30,10 +30,8 @@ afterEach(() => { vi.unstubAllEnvs(); fixture.tampered = false; });
 it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("runs hash-verified legacy parsing/preparation through the authenticated RPC with ingestion parity, retry and undo", async () => {
   process.loadEnvFile(".env");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
-  const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split(".")[0];
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-mocked-storage-boundary");
-  const db = postgres(connection.toString(), { ssl: "require", max: 1, onnotice: () => {} });
+  const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const schema = `mne007_route_qa_${Date.now()}`;
   const rollback = new Error("successful route integration rollback");
   const actor = randomUUID(), account = randomUUID(), replacement = randomUUID();

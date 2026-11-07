@@ -5,7 +5,7 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 it("calls every job in order with the cron secret and keeps going after a failure", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
-  const fetcher = vi.fn(async (url: URL | RequestInfo, _init?: RequestInit) => {
+  const fetcher = vi.fn(async (url: URL | RequestInfo, init?: RequestInit) => { void init;
     if (String(url).endsWith("/api/cron/reviews")) throw new Error("down");
     return new Response("{}", { status: String(url).endsWith("bank-sync") ? 503 : 200 });
   });

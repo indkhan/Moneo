@@ -8,9 +8,8 @@ import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import postgres from "postgres";
 
 process.loadEnvFile(".env");
-const connection = new URL(process.env.SUPABASE_DB_URL), project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
-assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`));
-const db = postgres(connection.toString(), { ssl: "require", max: 1, onnotice: () => {}, connection: { application_name: "mne015-throughput", lock_timeout: "10s", statement_timeout: "120s" } });
+const connection = new URL(process.env.SUPABASE_DB_URL);
+const db = postgres(connection.toString(), { max: 1, onnotice: () => {}, connection: { application_name: "mne015-throughput", lock_timeout: "10s", statement_timeout: "120s" } });
 const schema = `mne015_throughput_qa_${randomUUID().replaceAll("-", "")}`;
 const isolated = text => text.replace(/\bpublic\./g, `${schema}.`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);
 const results = [], plans = {}, rollback = new Error("Successful owned throughput rollback");

@@ -3,10 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
 process.loadEnvFile(".env");
-const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
-assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`), "Database must match configured Supabase project");
-const db = postgres(connection.toString(), { ssl: "require", max: 1, connect_timeout: 10, onnotice: () => {} });
+const db = postgres(connection.toString(), { max: 1, connect_timeout: 10, onnotice: () => {} });
 const rollback = new Error("Verified rollback");
 try {
   const history = await db`select version from supabase_migrations.schema_migrations order by version`;

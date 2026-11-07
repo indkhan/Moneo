@@ -6,7 +6,7 @@ export async function checkSerialization(db, connection, schema, run, record) {
   const actor=randomUUID(), account=randomUUID(), merchant=randomUUID();
   const ids=Array.from({length:6},()=>randomUUID());
   const names=[`MNE014-${run.marker}-writer-a`,`MNE014-${run.marker}-writer-b`];
-  const clients=names.map(application_name=>postgres(connection.toString(),{ssl:"require",max:1,connect_timeout:10,connection:{application_name,statement_timeout:"20000",lock_timeout:"3000",idle_in_transaction_session_timeout:"30000"},onnotice:()=>{}}));
+  const clients=names.map(application_name=>postgres(connection.toString(),{max:1,connect_timeout:10,connection:{application_name,statement_timeout:"20000",lock_timeout:"3000",idle_in_transaction_session_timeout:"30000"},onnotice:()=>{}}));
   const [a,b]=clients;
   let release;
   let tasks=[];

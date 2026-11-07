@@ -6,9 +6,8 @@ import { expect, it } from "vitest";
 
 it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusions, progress, fencing and immutable identity in a rolled-back SQL transaction", async () => {
   process.loadEnvFile(".env");
-  const endpoint = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!), connection = new URL(process.env.SUPABASE_DB_URL!);
-  expect(connection.hostname === `db.${endpoint.hostname.split(".")[0]}.supabase.co` || connection.username.endsWith(`.${endpoint.hostname.split(".")[0]}`)).toBe(true);
-  const db = postgres(connection.toString(), { ssl: "require", max: 1, onnotice: () => {} });
+  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");
   const actor = randomUUID();
   try {
