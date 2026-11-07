@@ -1,0 +1,15 @@
+can you check the pr 142 if it fits bring its code here and see that the artifact agent also has the same tools as the chat agent so the artifact can also upload make things as per scalable capital and all and also we changed since last time before it was for vercel deployment and all now the applicaiton is only for localhost so have that in mind and then tell me 
+
+can we also have that teh scalable tools for the artifact and chat gets torned on and shown to agent to choose from depending on if scalable capital being connected and what access from scalable full or read only so that if no scalable capital we do not give agent tools for scalable even tho we dont have it 
+
+
+lets talk about it
+
+---
+
+no we want to have sliders and all now in teh artifact now not only the the page but also teh widget see into that 
+so get the part of ti that helps and what doesnt then dont get it 
+then make it that it can show the scalable data if scalable is ther eas per the fix u suggest 
+sure
+no the pages shoudl not loose the js but the widget should get it as well we can talk about how it can get it in the best way possible 
+what is the pros and cons fo the live data and last sync snapshot and what is there in the welath and all
