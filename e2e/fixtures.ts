@@ -6,12 +6,17 @@
 import * as fs from "node:fs";
 import type { Sql } from "postgres";
 
-// Removes a spec's disposable user through the same RPC as Settings "Delete account",
-// so cleanup cannot drift behind the schema. The caller removes storage objects first.
+// Removes a spec's disposable user. reset_workspace() (Settings "Reset all data") empties every
+// workspace table in dependency order, so cleanup cannot drift behind the schema; the rest removes
+// the user itself. The caller removes storage objects first.
 export async function deleteDisposableUser(db: Sql, user: string) {
   await db.begin(async tx => {
     await tx`select set_config('request.jwt.claim.sub', ${user}, true)`;
-    await tx`select public.delete_account()`;
+    await tx`select public.reset_workspace()`;
+    await tx`delete from public.workspace_settings where workspace_id in (select id from public.workspaces where owner_id = ${user})`;
+    await tx`delete from public.categories where workspace_id in (select id from public.workspaces where owner_id = ${user})`;
+    await tx`delete from public.workspaces where owner_id = ${user}`;
+    await tx`delete from auth.users where id = ${user}`;
   });
 }
 
