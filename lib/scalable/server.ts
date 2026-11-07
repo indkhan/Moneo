@@ -12,6 +12,8 @@ export function scalableConfigured() {
 export const sealTokens = (tokens: ScalableTokens, connectionId: string) => encryptToken(JSON.stringify(tokens), connectionId);
 const openTokens = (sealed: string, connectionId: string) => JSON.parse(decryptToken(sealed, connectionId)) as ScalableTokens;
 
+const refreshing = new Map<string, Promise<ScalableTokens>>();
+
 /**
  * Runs `work` with a connected MCP session for an active connection. Refreshes the access token
  * when it is about to expire and stores the rotated tokens first, so a crash never loses them.
@@ -24,13 +26,21 @@ export async function withScalable<T>(connectionId: string, workspaceId: string,
   if (row.error || !row.data?.tokens_encrypted) throw new ScalableError("Scalable is not connected", 404);
   let tokens = openTokens(row.data.tokens_encrypted, connectionId);
   if (tokens.expiresAt - Date.now() < 60_000) {
-    if (!tokens.refreshToken) return expire(connectionId, "The Scalable login ended. Connect again.");
-    try { tokens = await refreshTokens({ clientId: row.data.client_id, refreshToken: tokens.refreshToken }, fetcher); } catch (error) {
-      if (error instanceof ScalableError && error.expired) return expire(connectionId, "The Scalable login ended. Connect again.");
-      throw error;
-    }
-    const saved = await db.from("scalable_connections").update({ tokens_encrypted: sealTokens(tokens, connectionId) }).eq("id", connectionId).eq("status", "active");
-    if (saved.error) throw new Error(saved.error.message);
+    // Chat tools run in parallel; one refresh per connection, so a rotated refresh token is never spent twice.
+    const stale = tokens, clientId = row.data.client_id;
+    const pending = refreshing.get(connectionId) ?? (async () => {
+      if (!stale.refreshToken) return expire(connectionId, "The Scalable login ended. Connect again.");
+      let fresh: ScalableTokens;
+      try { fresh = await refreshTokens({ clientId, refreshToken: stale.refreshToken }, fetcher); } catch (error) {
+        if (error instanceof ScalableError && error.expired) return expire(connectionId, "The Scalable login ended. Connect again.");
+        throw error;
+      }
+      const saved = await db.from("scalable_connections").update({ tokens_encrypted: sealTokens(fresh, connectionId) }).eq("id", connectionId).eq("status", "active");
+      if (saved.error) throw new Error(saved.error.message);
+      return fresh;
+    })().finally(() => refreshing.delete(connectionId));
+    refreshing.set(connectionId, pending);
+    tokens = await pending;
   }
   const mcp = scalableMcp(tokens.accessToken, fetcher);
   try {

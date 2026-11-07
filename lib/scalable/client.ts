@@ -10,7 +10,8 @@ const SCOPE = "openid profile offline_access";
 const PROTOCOL_VERSION = "2025-06-18";
 
 export class ScalableError extends Error {
-  constructor(message: string, readonly status: number, readonly expired = false) { super(message); }
+  /** `refused` marks an answer from the tool itself: Scalable decided, so nothing was left half-done. */
+  constructor(message: string, readonly status: number, readonly expired = false, readonly refused = false) { super(message); }
 }
 
 const base64url = (bytes: Buffer) => bytes.toString("base64url");
@@ -108,7 +109,7 @@ export function scalableMcp(accessToken: string, fetcher: typeof fetch = fetch) 
     async callTool(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
       const result = toolResultSchema.parse(await rpc("tools/call", { name, arguments: args }));
       const text = result.content.filter(item => item.type === "text").map(item => item.text ?? "").join("\n");
-      if (result.isError) throw new ScalableError(`Scalable tool ${name} failed: ${text.slice(0, 300)}`, 502);
+      if (result.isError) throw new ScalableError(`Scalable tool ${name} failed: ${text.slice(0, 300)}`, 502, false, true);
       if (result.structuredContent !== undefined) return result.structuredContent;
       try { return JSON.parse(text) as unknown; } catch { return text; }
     },
