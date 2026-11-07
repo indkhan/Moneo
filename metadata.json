@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6SRDYQTSG77HQ54D2T6EADQ",
+  "strategy": "manual-commit",
+  "branch": "t3/self-hosted",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "e2e/fixtures.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 46939,
+    "cache_read_tokens": 15495737,
+    "output_tokens": 26775,
+    "api_call_count": 40
+  },
+  "redaction": {
+    "replacements": 208,
+    "layers": {
+      "betterleaks": 175,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 26,
+      "credentialed_uri": 8,
+      "entropy": 54,
+      "key_context": 11,
+      "provider_token": 2,
+      "shell_stdin": 0
+    }
+  }
+}

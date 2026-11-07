@@ -1,0 +1,57 @@
+lets talk about this 
+
+## Self-hosted: real banks need an HTTPS callback
+Enable Banking production apps accept only `https://` redirect URLs, and Moneo runs on `http://localhost`. Sandbox apps (mock banks) work today. Options: a static HTTPS page (for example on GitHub Pages) that forwards `code` and `state` to `http://localhost:3000/api/bank/callback` in the owner's own browser, or serving Moneo on `https://localhost` if Enable Banking accepts it. The phone-access tunnel above would also provide an HTTPS address.
+
+in very simple words what is it about
+
+---
+
+So the thing is, before, it was the idea that I would talk to Enable Banking to try to make it easier for users to directly use it but now that it is dropped I'm not working on it. I can just make it so that it is the sandbox. Do you think a user can connect it to sandboxes and will they have the same experience and all, or do you think that's a bad idea? What is the thing with sandbox?
+
+---
+
+<task-notification>
+<task-id>b8hhlq0a9</task-id>
+<tool-use-id>toolu_01B8AUvGrTHTJU4hn23TALcX</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\3de23844519d7b87\4ce47a12-474c-497a-87cc-770ace971903\tasks\b8hhlq0a9.output</output-file>
+<status>failed</status>
+<summary>Background command "Run full Playwright suite on production build" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+Okay if that is the case no sandbox . Then first of all, check Enable Banking if they allow it with normal http for our local host , i dont want to have a moneo page they connect thorgh cuz that looks fishy . If they don't allow it then let's not have our own page. You said if we have the mobile thing then that will work with it, right? Let's talk about that then.
+
+---
+
+[Image: image.png; ref=image_c7d8d4e6-d32d-46a3-a928-70fd69add9ba] 
+what to fil for each case give me that so i fill in
+
+<t3_context version="1">
+<context kind="image" id="image_c7d8d4e6-d32d-46a3-a928-70fd69add9ba">
+name: image.png
+mimeType: image/png
+sizeBytes: 25375
+attachmentId: 0e2df6a9-5517-46fb-9f1b-773781ebe08c-1f411e21-5fa8-46b4-b836-f75806e559fc
+</context>
+</t3_context>
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\0e2df6a9-5517-46fb-9f1b-773781ebe08c-1f411e21-5fa8-46b4-b836-f75806e559fc.png]
+
+---
+
+URL "http://localhost:3000/api/bank/callback" uses unsupported scheme
+
+second one works so now in that place it only has that no moneo one
+i am shutting down the deployment down lets talk about each
+
+---
+
+or that i can have a github html css and js for the terms and privacy
+
+---
+
+yes it is public 
+github issues 
+which one do you suggset and which is better considdering the phone thing as well
