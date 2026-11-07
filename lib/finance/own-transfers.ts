@@ -93,9 +93,11 @@ export function ownNameSuggestions(rows: TransferCandidate[], seen: TransferCand
     const other = row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
     if (row.counterparty?.trim() && other.some(iban => own.tracked.has(iban) || own.untracked.has(iban))) names.set(nameKey(row.counterparty), row.counterparty.trim());
   }
+  // A bank can put the holder's own name on a payment with no real other side (Revolut card refunds);
+  // a transfer the owner made names them in the description too.
   return rows.flatMap(row => {
     const name = row.counterparty ? names.get(nameKey(row.counterparty)) : undefined;
-    return name && !answered.has(row.id) ? [{ transactionId: row.id, name }] : [];
+    return name && !answered.has(row.id) && nameKey(row.text ?? "").includes(nameKey(name)) ? [{ transactionId: row.id, name }] : [];
   });
 }
 

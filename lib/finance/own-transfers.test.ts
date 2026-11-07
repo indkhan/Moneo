@@ -74,7 +74,13 @@ describe("own money without an IBAN", () => {
 
 describe("ownNameSuggestions", () => {
   const proven = row("proven", "current", -80000n, "2026-03-06", { ibans: [ELSEWHERE], counterparty: "Usman Khan" });
-  const old = row("old", "current", 150000n, "2025-08-18", { counterparty: "USMAN  KHAN" });
+  const old = row("old", "current", 150000n, "2025-08-18", { counterparty: "USMAN  KHAN", text: "main Usman Khan main End-to-End-Ref.: NOTPROVIDED" });
+
+  it("ignores rows where the bank put the owner's own name on someone else's payment", () => {
+    // Revolut names the account holder as counterparty on card refunds; the description names the shop.
+    const refund = row("refund", "current", 3653n, "2025-11-14", { counterparty: "USMAN KHAN", text: "Refund from temu.com" });
+    expect(ownNameSuggestions([refund], [proven], own)).toEqual([]);
+  });
 
   it("suggests payments from a name already seen on a transfer to an own IBAN", () => {
     expect(ownNameSuggestions([old], [proven], own)).toEqual([{ transactionId: "old", name: "Usman Khan" }]);
@@ -83,7 +89,7 @@ describe("ownNameSuggestions", () => {
   it("never learns a name from a payment to someone else's IBAN, or suggests without a learned name", () => {
     const stranger = row("stranger", "current", -1000n, "2026-03-06", { ibans: ["DE44500105175407324931"], counterparty: "Usman Khan" });
     expect(ownNameSuggestions([old], [stranger], own)).toEqual([]);
-    expect(ownNameSuggestions([row("other", "current", 100n, "2026-01-01", { counterparty: "Saad Malick" })], [proven], own)).toEqual([]);
+    expect(ownNameSuggestions([row("other", "current", 100n, "2026-01-01", { counterparty: "Saad Malick", text: "Saad Malick" })], [proven], own)).toEqual([]);
   });
 
   it("skips rows that already have an answer", () => {
