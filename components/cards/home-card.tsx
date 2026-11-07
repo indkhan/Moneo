@@ -14,7 +14,7 @@ export async function HomeCard({ card, context, shared, version, open }: { card:
   const row = shown ? await loadCardVersion(context.supabase, context.workspace.id, card.id, shown) : null;
   const size = cardSize(card.size);
   const rendered = row ? await renderCard(row, context, { size, shared }) : { tree: null, error: "This card has no version yet.", params: [] };
-  return <CardView key={`${row?.version}-${size}`} cardId={card.id} title={row?.title ?? card.title} size={size} tree={rendered.tree} error={rendered.error} params={rendered.params}
+  return <CardView key={`${row?.version}-${size}`} cardId={card.id} title={row?.title ?? card.title} size={size} tree={rendered.tree} error={rendered.error} params={rendered.params} local={rendered.local ?? null}
     scope={cardScope(card.id)} version={version} open={open} locale={context.workspace.locale} />;
 }
 

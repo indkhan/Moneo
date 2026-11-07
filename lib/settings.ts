@@ -32,6 +32,8 @@ export const settingsSchema = z.object({
   muted_insight_types: z.array(z.enum(INSIGHT_TYPES)).max(INSIGHT_TYPES.length).default([]),
   summary_cadence: z.enum(["none", "weekly", "monthly"]).default("none"),
   summary_time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).default("09:00"),
+  // Artifacts read Scalable from the last sync unless the owner turns on live data.
+  artifact_scalable_data: z.enum(["snapshot", "live"]).default("snapshot"),
 });
 export type WorkspaceSettings = z.infer<typeof settingsSchema>;
 export const DEFAULT_SETTINGS = settingsSchema.parse({});

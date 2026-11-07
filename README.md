@@ -110,6 +110,8 @@ Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days
 
 Moneo then reads your holdings, totals and cash every day and shows the portfolio on Wealth. No keys are needed.
 
+Artifact Pages and Home cards can show your Scalable portfolio, recent activity and watchlist. By default they use the last sync, the same figures as Wealth. Turn on **Live Scalable data in artifacts** in Settings → AI and your data to read Scalable each time one opens; that also allows quotes, charts and news for any security, but loads slower and needs Scalable to be reachable.
+
 ## Good to know
 
 - Moneo only listens on `127.0.0.1`, so other devices on your network can't open it.

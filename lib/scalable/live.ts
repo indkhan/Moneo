@@ -10,12 +10,12 @@ import { scalableConfigured } from "./server";
 export const READ_ONLY_TRADING = "Your Scalable connection only allows read access, so Moneo can't buy or sell for you. To trade from Moneo, turn on full access for AI agents in the Scalable app under Profile → Security.";
 
 /** The workspace's active Scalable connection, or null when there is none (or this install cannot hold one). */
-export async function activeScalableConnection(workspaceId: string): Promise<string | null> {
+export async function activeScalableConnection(workspaceId: string): Promise<{ id: string; tradingAccess: "full" | "read" | null } | null> {
   if (!scalableConfigured()) return null;
-  const { data, error } = await serviceDb().from("scalable_connections").select("id").eq("workspace_id", workspaceId).eq("status", "active")
+  const { data, error } = await serviceDb().from("scalable_connections").select("id, trading_access").eq("workspace_id", workspaceId).eq("status", "active")
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (error) throw new Error(error.message);
-  return data?.id ?? null;
+  return data ? { id: data.id, tradingAccess: data.trading_access ?? null } : null;
 }
 
 /** Full access lists the order tools; read-only access does not. */

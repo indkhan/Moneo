@@ -7,11 +7,13 @@ import { cardParamsSchema, resolveParams, type CardParam, type ParamState } from
 import { compileCard, runCard, type CardNode } from "./sandbox";
 import { CardTreeError, sanitizeTree } from "./tree";
 import { CARD_SIZE_KEYS, type CardSize } from "./sizes";
+import { localValues, type LocalRun } from "./local";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 export type CardVersion = { id: string; card_id: string; version: number; title: string; kind: "preset" | "code"; preset: string | null; compiled: string; queries: unknown; params: unknown };
 export type CardRow = { id: string; artifact_id: string; title: string; size: string; published_version: number | null };
-export type RenderedCard = { tree: CardNode | null; error: string | null; params: ParamState[] };
+/** local is set for a card with sliders or switches, so the browser can rerun it as they move. */
+export type RenderedCard = { tree: CardNode | null; error: string | null; params: ParamState[]; local?: LocalRun | null };
 export const CARD_VERSION_COLUMNS = "id, card_id, version, title, kind, preset, compiled, queries, params";
 
 /** Each card's CSS and ids are namespaced by this, so two cards never clash. */
@@ -41,13 +43,14 @@ export async function renderCard(version: CardVersion, context: Context, { size,
     const { resolved, state } = resolveParams(declared, requested, today, context.workspace.locale);
     params = state;
     const data = await runArtifactQueries(queries, context, today, { params: resolved, shared });
-    const input = { data, params: resolved.values, size };
+    const input = { data, params: { ...resolved.values, ...localValues(state) }, size };
+    const local = state.some(param => param.control) ? { compiled: version.compiled, data, values: resolved.values } : null;
     const key = createHash("sha256").update(JSON.stringify([RENDERER_VERSION, context.workspace.id, version.id, input])).digest("base64url");
     const hit = cache.get(key);
-    if (hit) return { tree: hit, error: null, params };
+    if (hit) return { tree: hit, error: null, params, local };
     const tree = sanitizeTree(await runCard(version.compiled, input), { scope: cardScope(version.card_id) });
     remember(key, tree);
-    return { tree, error: null, params };
+    return { tree, error: null, params, local };
   } catch (cause) {
     return { tree: null, error: `This card could not be shown: ${cause instanceof Error ? cause.message : "unknown error"}`, params };
   }
@@ -70,14 +73,22 @@ export async function checkCard(source: string, queries: ArtifactQuery[], params
   let compiled: string;
   try { compiled = compileCard(source); } catch (cause) { return { errors: [`Syntax: ${cause instanceof Error ? cause.message : String(cause)}`] }; }
   const today = calendarDate(new Date(), context.settings.timezone);
-  const { resolved } = resolveParams(params, {}, today, context.workspace.locale);
+  const { resolved, state } = resolveParams(params, {}, today, context.workspace.locale);
   const queryErrors = checkQueries(queries, today, resolved);
   if (queryErrors.length) return { errors: queryErrors };
   const data = await runArtifactQueries(queries, context, today, { params: resolved });
   const errors: string[] = [];
+  const values = { ...resolved.values, ...localValues(state) };
+  // Sliders and switches can be moved to any value: the card must also work at both ends, with the switches flipped.
+  for (const end of ["min", "max"] as const) {
+    const moved = Object.fromEntries(params.flatMap((param): [string, number | boolean][] => param.kind === "number" ? [[param.name, param[end]]] : param.kind === "toggle" ? [[param.name, !param.default]] : []));
+    if (!Object.keys(moved).length) break;
+    try { sanitizeTree(await runCard(compiled, { data, params: { ...values, ...moved }, size: "M" }), { scope: "check" }); }
+    catch (cause) { errors.push(`With sliders at their ${end} and switches flipped (${JSON.stringify(moved)}): ${cause instanceof Error ? cause.message : String(cause)}`); }
+  }
   for (const size of CARD_SIZE_KEYS) {
     try {
-      const tree = sanitizeTree(await runCard(compiled, { data, params: resolved.values, size }), { scope: "check" });
+      const tree = sanitizeTree(await runCard(compiled, { data, params: values, size }), { scope: "check" });
       // A control the card declares must be on it, at every size; otherwise the user asked for it and never sees it.
       const shown = controls(tree);
       const missing = params.filter(param => !shown.has(param.name)).map(param => param.name);

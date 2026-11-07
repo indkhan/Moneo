@@ -39,7 +39,8 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await page.goto("/ai/artifacts");
     const tile = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: title, exact: true }) });
     await expect(tile).toContainText("Count my accounts");
-    await expect(tile.frameLocator("iframe").getByText("Accounts:")).toBeVisible({ timeout: 30_000 });
+    // The page runs inside the frame's own sandboxed inner frame; a count means its script ran with the data.
+    await expect(tile.frameLocator("iframe").frameLocator("iframe").getByText(/Accounts: \d+/)).toBeVisible({ timeout: 30_000 });
 
     // The Home cards tab renders the card in the page itself (no frame), at the chosen size.
     await page.goto(`/ai/artifacts/${id}?tab=cards`);
@@ -209,7 +210,7 @@ test("an unfinished artifact shows progress on return and keeps scrolling inside
     await page.goto('/ai/artifacts');
     await db`insert into public.artifact_versions (workspace_id, artifact_id, version, prompt, html, queries) values (${workspaceId}, ${id}, 1, 'Build my page', '<html><body>Finished page</body></html>', '[]')`;
     await db`update public.chat_requests set status='completed' where id=${requestId}`;
-    await expect(tile.frameLocator('iframe').getByText('Finished page')).toBeVisible({ timeout: 15000 });
+    await expect(tile.frameLocator("iframe").frameLocator("iframe").getByText("Finished page")).toBeVisible({ timeout: 15000 });
   } finally {
     await db`delete from public.messages where conversation_id=${conversationId}`;
     await db`delete from public.artifacts where id=${id}`;

@@ -198,6 +198,7 @@ export const scalableConnections = pgTable("scalable_connections", {
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   lastError: text("last_error"),
   portfolio: jsonb("portfolio"),
+  tradingAccess: text("trading_access"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("scalable_connections_workspace_idx").on(table.workspaceId),
@@ -205,6 +206,7 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_redirect_uri_check", sql`char_length(${table.redirectUri}) between 1 and 500`),
   check("scalable_connections_status_check", sql`${table.status} in ('pending','active','expired','revoked','error')`),
   check("scalable_connections_last_error_check", sql`char_length(${table.lastError}) <= 1000`),
+  check("scalable_connections_trading_access_check", sql`${table.tradingAccess} in ('full','read')`),
   check("scalable_connections_check", sql`${table.status} <> 'active' or ${table.tokensEncrypted} is not null`),
   check("scalable_connections_portfolio_check", sql`${table.portfolio} is null or jsonb_typeof(${table.portfolio}) = 'object'`),
 ]);
@@ -995,6 +997,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   mutedInsightTypes: text("muted_insight_types").array().notNull().default(sql`'{}'::text[]`),
   summaryCadence: text("summary_cadence").notNull().default("none"),
   summaryTime: text("summary_time").notNull().default("09:00"),
+  artifactScalableData: text("artifact_scalable_data").notNull().default("snapshot"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),
@@ -1006,6 +1009,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   check("workspace_settings_muted_insight_types_check", sql`${table.mutedInsightTypes} <@ array['spending_changes','budget_pressure','unusual_activity','recurring_changes','upcoming_obligations','cash_shortfall','goal_progress','asset_debt','data_quality']::text[]`),
   check("workspace_settings_summary_cadence_check", sql`${table.summaryCadence} in ('none','weekly','monthly')`),
   check("workspace_settings_summary_time_check", sql`${table.summaryTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  check("workspace_settings_artifact_scalable_data_check", sql`${table.artifactScalableData} in ('snapshot','live')`),
 ]);
 
 export const voiceCalls = pgTable("voice_calls", {

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
 import type { CardNode } from "@/lib/cards/sandbox";
-import type { ParamState } from "@/lib/cards/params";
+import type { LocalControl, ParamState } from "@/lib/cards/params";
+import type { LocalRun } from "@/lib/cards/local";
 import type { z } from "zod";
 import type { linkTarget } from "@/lib/cards/tree";
 import { CARD_HEIGHT, type CardSize } from "@/lib/cards/sizes";
@@ -45,10 +46,40 @@ function Tabs({ tabs, className, style, scope }: { tabs: { label: string; conten
   </div>;
 }
 
+/** A slider's value as the card's figures show it: money in the card's currency, a percentage, or a plain number. */
+function controlValue(control: Extract<LocalControl, { kind: "number" }>, value: number, locale?: string) {
+  try {
+    if (control.format === "money" && control.currency) return formatMoney(BigInt(Math.round(value)), control.currency, locale);
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(value) + (control.format === "percent" ? "%" : "");
+  } catch { return String(value); }
+}
+
+/** A slider or switch drawn by the app, so it looks like the rest of Moneo; moving it reruns the card in the browser. */
+function LocalParam({ param, control, className, style }: { param: ParamState; control: LocalControl; className?: string; style?: React.CSSProperties }) {
+  const { setParam, busy, locale } = useContext(LiveCard);
+  if (control.kind === "toggle") {
+    const on = param.value === "true";
+    return <button type="button" role="switch" aria-checked={on} disabled={busy} onClick={() => setParam(param.name, String(!on))}
+      className={`group inline-flex min-w-0 items-center gap-2 text-xs text-muted-foreground disabled:opacity-60 ${className ?? ""}`} style={style}>
+      <span className="relative h-4 w-7 shrink-0 rounded-full bg-muted ring-1 ring-border transition-colors group-aria-checked:bg-brand group-aria-checked:ring-brand">
+        <span className="absolute top-0.5 left-0.5 size-3 rounded-full bg-card shadow-sm transition-transform group-aria-checked:translate-x-3" /></span>
+      <span className="truncate">{control.label}</span>
+    </button>;
+  }
+  const value = Number(param.value);
+  return <label className={`flex min-w-0 items-center gap-2 text-xs ${className ?? ""}`} style={style}>
+    <span className="max-w-[40%] shrink-0 truncate text-muted-foreground">{control.label}</span>
+    <input type="range" min={control.min} max={control.max} step={control.step} value={value} disabled={busy} aria-valuetext={controlValue(control, value, locale)}
+      onChange={event => setParam(param.name, event.target.value)} className="h-4 min-w-0 flex-1 cursor-pointer accent-brand disabled:opacity-60" />
+    <span className="shrink-0 text-right font-mono tabular-nums text-foreground">{controlValue(control, value, locale)}</span>
+  </label>;
+}
+
 function Param({ name, variant, className, style }: { name: string; variant?: "pills" | "select"; className?: string; style?: React.CSSProperties }) {
   const { params, setParam, busy } = useContext(LiveCard);
   const param = params.find(item => item.name === name);
   if (!param) return null;
+  if (param.control) return <LocalParam param={param} control={param.control} className={className} style={style} />;
   if (variant === "select" || param.options.length > 5) return <select aria-label={name} value={param.value} disabled={busy} onChange={event => setParam(name, event.target.value)}
     className={`h-7 rounded-lg border border-border bg-card px-2 text-xs ${className ?? ""}`} style={style}>{param.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
   return <div className={`inline-flex rounded-lg border border-border p-0.5 ${className ?? ""}`} style={style}>{param.options.map(option => <button key={option.value} type="button" aria-pressed={param.value === option.value}
@@ -73,19 +104,20 @@ function render(node: CardNode, scope: string, key?: number): ReactNode {
   }
 }
 
-export type CardViewProps = { cardId: string; title: string; size: CardSize; tree: CardNode | null; error?: string | null; params: ParamState[]; scope: string; version?: number; open?: string; locale?: string };
+export type CardViewProps = { cardId: string; title: string; size: CardSize; tree: CardNode | null; error?: string | null; params: ParamState[]; local?: LocalRun | null; scope: string; version?: number; open?: string; locale?: string };
 
 /**
  * A Home card: the app's own title row, then the card's checked tree in a fixed-height, clipped, isolated box.
- * Nothing in the tree can paint outside the box or cover the rest of Home. Changing a param re-renders it on the server.
+ * Nothing in the tree can paint outside the box or cover the rest of Home. Changing a month, period or choice re-renders
+ * it on the server; moving a slider or switch reruns it in the browser with the data it already has.
  */
-export function CardView({ cardId, title, size: renderedSize, tree: initialTree, error: initialError, params: initialParams, scope, version, open, locale }: CardViewProps) {
+export function CardView({ cardId, title, size: renderedSize, tree: initialTree, error: initialError, params: initialParams, local: initialLocal = null, scope, version, open, locale }: CardViewProps) {
   const size = useContext(HomeCardSize) ?? renderedSize;
-  const [view, setView] = useState({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize });
+  const [view, setView] = useState({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize, local: initialLocal });
   const [busy, start] = useTransition();
   const [seen, setSeen] = useState(initialTree);
   // A server re-render (a new version, another size) replaces what this card showed.
-  if (seen !== initialTree) { setSeen(initialTree); setView({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize }); }
+  if (seen !== initialTree) { setSeen(initialTree); setView({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize, local: initialLocal }); }
   const request = useRef(0);
   useEffect(() => () => { request.current++; }, []);
   function load(values: ParamState[]) {
@@ -96,10 +128,32 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
       const response = await fetch(`/api/cards/${cardId}?${query}`, { cache: "no-store" });
       const body = await response.json().catch(() => ({ error: "Could not load the card" }));
       if (ticket !== request.current) return;
-      setView(current => response.ok ? { tree: body.tree, error: body.error ?? null, params: body.params, size } : { ...current, error: body.error ?? "Could not load the card" });
+      setView(current => response.ok ? { tree: body.tree, error: body.error ?? null, params: body.params, size, local: body.local ?? null } : { ...current, error: body.error ?? "Could not load the card" });
     });
   }
-  const setParam = (name: string, value: string) => load(view.params.map(param => param.name === name ? { ...param, value } : param));
+  // A slider fires on every step; only the newest position runs once the one before it finishes.
+  const next = useRef<{ local: LocalRun; params: ParamState[] } | null>(null);
+  const rerunning = useRef(false);
+  async function rerun(local: LocalRun, params: ParamState[]) {
+    next.current = { local, params };
+    if (rerunning.current) return;
+    rerunning.current = true;
+    const { rerunCard } = await import("@/lib/cards/local");
+    const take = () => { const job = next.current; next.current = null; return job; };
+    for (let job = take(); job; job = take()) {
+      const ticket = request.current;
+      const shown = await rerunCard(job.local, job.params, view.size, scope).then(tree => ({ tree, error: null }),
+        (cause: unknown) => ({ tree: null, error: `This card could not be shown: ${cause instanceof Error ? cause.message : "unknown error"}` }));
+      if (ticket === request.current) setView(current => ({ ...current, ...shown }));
+    }
+    rerunning.current = false;
+  }
+  function setParam(name: string, value: string) {
+    const params = view.params.map(param => param.name === name ? { ...param, value } : param);
+    if (!view.params.find(param => param.name === name)?.control || !view.local) return load(params);
+    setView(current => ({ ...current, params }));
+    void rerun(view.local, params);
+  }
   // Resized on Home: the body was laid out for the old width.
   useEffect(() => { request.current++; if (size !== view.size) load(view.params); }, [size]); // eslint-disable-line react-hooks/exhaustive-deps
   return <section aria-label={title} className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card" style={{ height: CARD_HEIGHT }}>
