@@ -15,7 +15,7 @@ const STATUS: Record<string, string> = { queued: "Queued", running: "Running", c
 
 export default async function AgentRunsPage({ searchParams }: { searchParams: Promise<{ import?: string; before?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const query = await searchParams;
   const importId = z.uuid().safeParse(query.import);

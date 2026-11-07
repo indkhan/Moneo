@@ -22,7 +22,7 @@ const HISTORY_SIZE = 20;
 export default async function ImportReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ after?: string; reviewedAfter?: string; decidedAfter?: string; typeAfter?: string; historyBefore?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
-  catch { redirect("/login"); }
+  catch { redirect("/setup"); }
   const { id } = await params;
   // By row number, not offset: deciding rows shrinks the list, and an offset would then skip the ones left.
   const query = await searchParams;

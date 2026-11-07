@@ -19,7 +19,7 @@ const truncate = (value: string | null | undefined, max = 200) => !value ? "" : 
 // One feed for Activity and Notifications. Each filter queries only the sources it shows.
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const requested = (await searchParams).filter;
   const filter: Filter = requested && requested in FILTERS ? requested as Filter : "all";

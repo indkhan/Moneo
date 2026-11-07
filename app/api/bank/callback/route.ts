@@ -13,7 +13,7 @@ const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1)
 export async function GET(request: Request) {
   const back = (result: string) => NextResponse.redirect(new URL(`/import?bank=${result}`, request.url), 303);
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { return NextResponse.redirect(new URL("/login", request.url), 303); }
+  try { context = await requireWorkspace(); } catch { return NextResponse.redirect(new URL("/setup", request.url), 303); }
   const query = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!query.success) return back("invalid");
   const db = serviceDb();

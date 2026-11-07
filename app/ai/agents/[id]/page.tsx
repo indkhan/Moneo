@@ -8,7 +8,7 @@ export const metadata = { title: "Agent run" };
 
 export default async function AgentRunPage({ params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const id = z.uuid().safeParse((await params).id);
   if (!id.success) notFound();
   const run = await loadAgentRun(context.supabase, context.workspace.id, id.data);

@@ -20,7 +20,7 @@ const UPCOMING_DAYS = 30;
 
 export default async function RecurringPage() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const money = (amount: string | bigint, currency: string) => formatMoney(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);

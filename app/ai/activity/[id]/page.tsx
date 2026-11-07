@@ -18,7 +18,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
   try {
     context = await requireWorkspace();
   } catch {
-    redirect("/login");
+    redirect("/setup");
   }
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();

@@ -29,7 +29,7 @@ function sum(items: WealthItem[]) {
 
 export default async function WealthPage({ searchParams }: { searchParams?: Promise<{ removed?: string; history?: string }> } = {}) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const params = (await searchParams) ?? {};
   const db = supabase as SupabaseClient;

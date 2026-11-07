@@ -14,7 +14,7 @@ const runningSince = () => new Date(Date.now() - 6 * 60_000).toISOString();
 
 export default async function ArtifactsPage({ searchParams }: { searchParams: Promise<{ prompt?: string; q?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const { prompt, q: rawQuery } = await searchParams;
   const q = z.string().trim().max(100).catch("").parse(rawQuery ?? "");

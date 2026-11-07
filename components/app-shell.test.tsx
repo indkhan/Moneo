@@ -27,7 +27,7 @@ it("filters commands by every typed word", () => {
   expect(filterCommands(commands, "zzz")).toEqual([]);
 });
 
-it("renders the rail, section tabs and mobile navigation, and skips the frame on login", () => {
+it("renders the rail, section tabs and mobile navigation, and skips the frame on the setup page", () => {
   const html = renderToStaticMarkup(<AppShell shell={Promise.resolve(null)}><h1>Page</h1></AppShell>);
   expect(html).toContain('aria-label="Main"');
   expect(html).toContain('aria-label="Main mobile"');
@@ -41,6 +41,6 @@ it("renders the rail, section tabs and mobile navigation, and skips the frame on
   for (const href of ["/ai", "/ai/agents", "/ai/artifacts", "/ai/activity"]) expect(aiPage).toContain(`href="${href}"`);
   path.current = "/money/transactions";
   expect(html).toContain('aria-label="Search or ask Moneo"');
-  path.current = "/login";
+  path.current = "/setup";
   expect(renderToStaticMarkup(<AppShell shell={Promise.resolve(null)}><h1>Page</h1></AppShell>)).toBe("<h1>Page</h1>");
 });

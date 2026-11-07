@@ -1,4 +1,4 @@
-// Self-hosted Moneo runs its background jobs from the server process instead of Vercel Cron.
+// Moneo runs its background jobs from the server process.
 // Every job is safe to repeat: summaries and review recovery claim due work, and the syncs
 // skip connections synced within the last day. Running hourly catches up after the
 // computer was asleep or off.
