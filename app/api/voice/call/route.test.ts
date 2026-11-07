@@ -3,8 +3,8 @@ import { POST } from "./route";
 import { requireWorkspace } from "@/lib/auth";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 
-const { doCreateWebRTCSession } = vi.hoisted(() => ({ doCreateWebRTCSession: vi.fn(async (options: { sdp: string; sessionConfig: { instructions: string; voice: string; providerOptions: { openai: { input: unknown[] } } } }) => { void options; return { sessionId: "session", sdp: "answer" }; }) }));
-vi.mock("@ai-sdk/openai", () => ({ openai: { experimental_realtime: () => ({ doCreateWebRTCSession }) } }));
+const { doCreateWebRTCSession, createOpenAI } = vi.hoisted(() => ({ createOpenAI: vi.fn(), doCreateWebRTCSession: vi.fn(async (options: { sdp: string; sessionConfig: { instructions: string; voice: string; providerOptions: { openai: { input: unknown[] } } } }) => { void options; return { sessionId: "session", sdp: "answer" }; }) }));
+vi.mock("@ai-sdk/openai", () => ({ createOpenAI }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 
 const conversationId = "00000000-0000-4000-8000-000000000002";
@@ -12,6 +12,7 @@ let conversation: unknown, messages: { role: string; content: string }[];
 const eqs: unknown[][] = [];
 beforeEach(() => {
   vi.clearAllMocks(); eqs.length = 0; process.env.OPENAI_API_KEY = "test";
+  createOpenAI.mockReturnValue({ experimental_realtime: () => ({ doCreateWebRTCSession }) });
   conversation = { id: conversationId, deleted_at: null }; messages = [];
   const query = { select: () => query, eq: (...args: unknown[]) => { eqs.push(args); return query; }, order: () => query,
     limit: async (count: number) => ({ data: messages.slice(-count).reverse(), error: null }), maybeSingle: async () => ({ data: conversation, error: null }) };
@@ -58,4 +59,17 @@ it("starts a new chat's call with no history", async () => {
   conversation = null;
   expect((await POST(request({ sdp: "offer", conversationId }))).status).toBe(200);
   expect(doCreateWebRTCSession.mock.calls[0][0].sessionConfig.providerOptions.openai.input).toEqual([]);
+});
+
+it("explains that calls need an OpenAI key when only OpenRouter is set up", async () => {
+  process.env.OPENAI_API_KEY = ""; process.env.OPENROUTER_API_KEY = "sk-or";
+  const response = await POST(request({ sdp: "offer", conversationId }));
+  expect(response.status).toBe(503);
+  expect((await response.json()).error).toBe("Voice calls and dictation need an OpenAI API key. Add one under Settings → AI access.");
+  expect(doCreateWebRTCSession).not.toHaveBeenCalled();
+  delete process.env.OPENROUTER_API_KEY;
+});
+it("starts the call with the OpenAI key", async () => {
+  await POST(request({ sdp: "offer", conversationId }));
+  expect(createOpenAI).toHaveBeenCalledWith({ apiKey: "test" });
 });

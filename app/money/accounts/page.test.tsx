@@ -3,13 +3,17 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalanceSafely: async () => ({}), undoMoneyMetadataSafely: async () => ({}), removeOwnAccountSafely: async () => ({}), findTransfersSafely: async () => ({}), addAccount: async () => {}, addAccountSafely: async () => ({}), addOwnAccountSafely: async () => ({}), addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
-const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, order: () => q, limit: () => q, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
+const query = (data: unknown[] | unknown) => { const q = { select: () => q, eq: () => q, in: () => q, not: () => q, order: () => q, limit: () => q, maybeSingle: () => q,
+  then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
+const portfolio = { asOf: "2026-11-06", currency: "EUR", totalMinor: "1234500", securitiesMinor: "1000000", cryptoMinor: "34500", cashMinor: "200000",
+  performance: [{ timeframe: "ONE_MONTH", returnMinor: "-4200" }] };
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
   workspace: { id: "w", locale: "en-US", timezone: "UTC", display_currency: "EUR" },
   supabase: { from: (table: string) => query(table === "money_metadata_events" ? [
     { id: "e1", entity_type: "account", entity_id: "imported", before: { name: "Old", version: 1 }, after: { name: "Checking", version: 2 }, created_at: "2026-10-01T00:00:00Z", undone_at: null, undo_of: null },
   ] : table === "bank_connection_accounts" ? [{ account_name: "Cash jar", currency_code: "EUR", iban: null }]
-    : table === "own_account_identifiers" ? [{ id: "i1", account_id: null, iban: "DE02120300000000202051", label: "Savings at DKB" }] : []) },
+    : table === "own_account_identifiers" ? [{ id: "i1", account_id: null, iban: "DE02120300000000202051", label: "Savings at DKB" }]
+    : table === "scalable_connections" ? { status: "active", last_synced_at: "2026-11-06T08:00:00Z", portfolio } : []) },
 }) }));
 vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({
   asOf: "2026-10-16T12:00:00Z",
@@ -51,4 +55,12 @@ it("lists own account IBANs masked and reports found transfers", async () => {
   expect(html).not.toContain("DE02120300000000202051");
   expect(html).toContain("Not tracked in Moneo");
   expect(html).toContain("Found 2 transfer pairs and 1 payment to your untracked accounts.");
+});
+
+it("shows the synced Scalable portfolio with a link to manage the connection on Import", async () => {
+  const { default: AccountsPage } = await import("./page");
+  const html = renderToStaticMarkup(await AccountsPage());
+  expect(html).toContain("Scalable Capital");
+  expect(html).toContain("12345.00");
+  expect(html).toContain('href="/import#scalable"');
 });

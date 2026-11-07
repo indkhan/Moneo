@@ -9,7 +9,7 @@ export const maxDuration = 60;
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !enableBankingConfigured()) return Response.json({ error: "Bank sync unavailable" }, { status: 503 });
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !(await enableBankingConfigured())) return Response.json({ error: "Bank sync unavailable" }, { status: 503 });
   // ponytail: 100 connections per run is plenty for personal use; page before going multi-user.
   const { data, error } = await serviceDb().from("bank_connections").select("id, workspace_id").eq("status", "active")
     // Hourly runs only pick up connections not synced for 20 hours.

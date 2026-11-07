@@ -11,6 +11,8 @@ import { startFinancialReview } from "@/lib/finance/start-review";
 // The model run is mocked as one async call returning the final text and steps; streamText wraps it.
 type Run = { text: string; usage?: unknown; steps?: unknown[] };
 const { generateText } = vi.hoisted(() => ({ generateText: vi.fn(async (options: { tools: unknown; stopWhen?: unknown; instructions?: string; messages?: unknown }): Promise<Run> => { void options; return { text: "Evidence reviewed" }; }) }));
+// Keys come from the stubbed env only; the synthetic Supabase URL must not be fetched.
+vi.mock("@/lib/service-keys", () => ({ serviceKey: async (name: string) => process.env[name.toUpperCase()] || undefined }));
 vi.mock("@/lib/finance/investigation-reader", async original => ({ ...await original<typeof import("@/lib/finance/investigation-reader")>(), investigationDetail: vi.fn(async () => ({ synthetic: "detail" })) }));
 vi.mock("ai", () => ({ tool: (value: unknown) => value, stepCountIs: (value: number) => value, streamText: (options: Parameters<typeof generateText>[0]) => {
   const run = generateText(options);

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { maskAccountNumber } from "@/lib/import/csv";
-import { enableBankingClient, enableBankingConfigured, type BankAccount, type PsuContext } from "./enable-banking";
+import { EnableBankingError, enableBankingClient, enableBankingConfigured, type BankAccount, type PsuContext } from "./enable-banking";
+import { BANK_REDIRECT_URL } from "./return-listener";
 import { decryptToken } from "./token-crypto";
 
 // Bank tables are service_role-only for writes and for the encrypted session column.
@@ -8,6 +9,16 @@ export function serviceDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Bank sync service is not configured");
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+// What the owner can do about an Enable Banking failure. Other errors keep the caller's generic message.
+export function enableBankingErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof EnableBankingError)) return fallback;
+  if (error.code === "REDIRECT_URI_NOT_ALLOWED") return `Enable Banking rejected the return address. Add ${BANK_REDIRECT_URL} as a Redirect URL in your Enable Banking application, then try again.`;
+  if (error.status === 401 || error.status === 403) return "Enable Banking rejected the App ID or private key. Check them under Import → Connected banks, then try again.";
+  if (error.rateLimited) return "Enable Banking is limiting requests right now. Try again later.";
+  if (error.status >= 500) return "Enable Banking or the bank is not responding. Try again later.";
+  return error.code ? `${fallback} (Enable Banking said ${error.code}). Try again.` : fallback;
 }
 
 export function psuFrom(request: Request): PsuContext {
@@ -35,10 +46,10 @@ export function consentValidUntil(maximumSeconds: number | null | undefined, now
 // Before a workspace reset deletes the rows, end each consent at Enable Banking. Best effort:
 // a session that can't be revoked here still expires at its valid_until.
 export async function revokeBankSessions(workspaceId: string) {
-  if (!enableBankingConfigured() || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  if (!(await enableBankingConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
   try {
     const { data } = await serviceDb().from("bank_connections").select("id, session_id_encrypted").eq("workspace_id", workspaceId).not("session_id_encrypted", "is", null);
-    const client = enableBankingClient();
+    const client = await enableBankingClient();
     await Promise.allSettled((data ?? []).map(async row => client.deleteSession(decryptToken(row.session_id_encrypted, row.id))));
   } catch { /* the reset itself must not depend on the bank */ }
 }

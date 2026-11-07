@@ -2,16 +2,18 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
 import { chatgptFetch, usesChatGPT } from "./chatgpt";
+import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 
 // Each agent uses the model typed in Settings, else its default. OpenRouter IDs are
 // "vendor/model" and go to OpenRouter; plain IDs ("gpt-6.1-sol") go to OpenAI, paid by the
 // owner's ChatGPT plan (Sign in with ChatGPT) or the OpenAI API key, whichever Settings picks.
+// With only an OpenRouter key, plain IDs go to OpenRouter as "openai/<id>", so the defaults still run.
 // Docs: https://ai-sdk.dev/providers/ai-sdk-providers/openai + https://openrouter.ai/docs
 export async function getModel(modelId: string) {
   if (modelId.includes("/")) {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) throw new Error("OPENROUTER_API_KEY is missing. Add it to .env (see .env.example).");
+    const apiKey = await serviceKey("openrouter_api_key");
+    if (!apiKey) throw new Error("Model IDs with a / run on OpenRouter. Add an OpenRouter API key under Settings → AI access.");
     return createOpenRouter({ apiKey }).chat(modelId);
   }
   if (await usesChatGPT()) {
@@ -19,9 +21,11 @@ export async function getModel(modelId: string) {
     return wrapLanguageModel({ model: createOpenAI({ apiKey: "chatgpt", fetch: chatgptFetch })(modelId),
       middleware: defaultSettingsMiddleware({ settings: { providerOptions: { openai: { store: false } } } }) });
   }
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("No AI is set up. Sign in with ChatGPT or add OPENAI_API_KEY to .env (Settings → AI access).");
-  return createOpenAI({ apiKey })(modelId);
+  const apiKey = await serviceKey("openai_api_key");
+  if (apiKey) return createOpenAI({ apiKey })(modelId);
+  const openRouterKey = await serviceKey("openrouter_api_key");
+  if (openRouterKey) return createOpenRouter({ apiKey: openRouterKey }).chat(`openai/${modelId}`);
+  throw new Error("No AI is set up. Sign in with ChatGPT or add an API key under Settings → AI access.");
 }
 
 

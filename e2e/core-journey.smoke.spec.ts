@@ -26,7 +26,8 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     const body = await response.json();
     expect(body.ok).toBe(true);
     expect(body.supabase).toBe(Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY));
-    expect(body.openai).toBe(Boolean(process.env.OPENAI_API_KEY));
+    // Keys can be saved in the app, so only the shape is fixed here.
+    expect(typeof body.openai).toBe("boolean");
   });
 
   test("the setup page explains how to finish setup", async ({ page }) => {

@@ -11,7 +11,7 @@ const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1)
 
 // Scalable redirects here. The state must match a fresh pending connection in the caller's workspace.
 export async function GET(request: Request) {
-  const back = (result: string) => NextResponse.redirect(new URL(`/settings?scalable=${result}#scalable`, request.url), 303);
+  const back = (result: string) => NextResponse.redirect(new URL(`/import?scalable=${result}#scalable`, request.url), 303);
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.redirect(new URL("/setup", request.url), 303); }
   const query = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));

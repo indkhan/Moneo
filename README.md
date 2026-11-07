@@ -25,9 +25,13 @@ Everything listens on `127.0.0.1` only, so other devices on your network cannot 
 Settings → **AI access** offers two equal options, and you choose which one pays:
 
 - **ChatGPT plan**: click **Sign in with ChatGPT** and allow plan usage. Requests count toward your Go, Plus or Pro plan's limits.
-- **OpenAI API key**: set `OPENAI_API_KEY` in `.env` and restart Moneo. Usage is billed to that key.
+- **OpenAI API key**: paste it under **OpenAI API key** and click **Save key**. Usage is billed to that key.
 
-Voice calls and dictation need the API key, because ChatGPT plan usage doesn't support audio. Models are chosen per agent under Settings → AI and your data; IDs with a `/` (for example `vendor/model`) go to OpenRouter and need `OPENROUTER_API_KEY`.
+You can also save an **OpenRouter API key** there. Keys are checked with the provider before they are saved, stored encrypted in Moneo's database (they survive restarts and Reset all data), shown only by their last four characters, and can be replaced or removed at any time. You don't need to edit `.env`.
+
+Voice calls and dictation need the OpenAI API key, because ChatGPT plan usage and OpenRouter don't support realtime audio. Models are chosen per agent under Settings → AI and your data; IDs with a `/` (for example `vendor/model`) go to OpenRouter. With only an OpenRouter key, the plain default IDs run on OpenRouter as `openai/<id>`.
+
+Older installs that set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` in `.env` keep working; a key saved in the app takes precedence.
 
 ## Background jobs
 
@@ -35,7 +39,7 @@ While Moneo runs, it checks hourly for scheduled summaries, review recovery, ban
 
 ## Scalable Capital (optional)
 
-First turn on access in Scalable on the web under Profile → Security → Agentic Investing (read-only is enough). Then Settings → **Connect Scalable Capital** opens Scalable's login (with 2FA in the Scalable app). Moneo then reads your holdings, totals and cash daily as wealth records. It uses Scalable's official read-only MCP server and needs no keys.
+First turn on access in Scalable on the web under Profile → Security → Agentic Investing (read-only is enough). Then **Connect Scalable Capital** (on Import or in Settings) opens Scalable's login (with 2FA in the Scalable app). Moneo then reads your holdings, totals and cash daily as wealth records, and shows the portfolio on Accounts. It uses Scalable's official read-only MCP server and needs no keys.
 
 ## Connect your bank (optional)
 
@@ -48,10 +52,8 @@ Moneo can sync booked transactions and balances from EU banks (for example Revol
    - Terms of service URL: `https://indkhan.github.io/Moneo/terms.html`
 3. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`).
 4. In the control panel, link your own accounts to the application. Only linked accounts can be synced.
-5. Add to `.env`, then restart Moneo:
-   - `ENABLE_BANKING_APP_ID`: the application ID
-   - `ENABLE_BANKING_PRIVATE_KEY`: the PEM contents (one line with literal `\n` is fine)
-6. Use **Import → Connected banks → Choose a bank → Connect bank**.
+5. In Moneo, open **Import → Connected banks**, paste the application ID, paste the private key or upload the `.pem` file, and click **Save and check**. Moneo checks them with Enable Banking and stores them encrypted; **Replace** and **Remove** are next to the bank picker. (An existing `ENABLE_BANKING_APP_ID` and `ENABLE_BANKING_PRIVATE_KEY` in `.env` keep working until you save new ones here.)
+6. Use **Import → Connected banks → Choose a bank → Connect bank**. If Enable Banking says it rejected the return address, add the Redirect URL from step 2 to your application and try again.
 
 Consent usually lasts up to 180 days, depending on the bank, and a reconnect banner appears 7 days before it ends. PSD2 allows about 4 background fetches a day per bank; Moneo syncs about once a day, and **Sync now** runs with you present, so it doesn't count. Pending transactions are not synced.
 

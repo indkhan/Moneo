@@ -4,6 +4,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { startFinancialReview } from "@/lib/finance/start-review";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 import {resolveReviewRequest} from "@/lib/finance/review-request";
+// Keys come from the stubbed env only; the synthetic Supabase URL must not be fetched.
+vi.mock("@/lib/service-keys", () => ({ serviceKey: async (name: string) => process.env[name.toUpperCase()] || undefined }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => ({})), getModel: vi.fn() }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));

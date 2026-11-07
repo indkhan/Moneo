@@ -10,6 +10,8 @@ import { ChatForm } from "@/app/ai/chat-form";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { usePolling } from "@/lib/ai/use-polling";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
+import { useAiAccess } from "@/lib/ai/use-ai-access";
+import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import type { HistoryThread } from "@/lib/ai/conversation-history";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
@@ -66,6 +68,9 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   // Overview's Call opens chat already calling; the flag is dropped once read, so a reload does not call again.
   const autoCall = params.get("call") === "1";
   const [calling, setCalling] = useState(autoCall);
+  const access = useAiAccess();
+  // Without an OpenAI API key a call can't start: the chat stays and says why, without opening the microphone.
+  const callBlocked = calling && access?.voice === false;
   useEffect(() => {
     if (!autoCall) return;
     const url = new URL(window.location.href); url.searchParams.delete("call"); window.history.replaceState(null, "", url);
@@ -238,7 +243,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <aside className="scroll-fade hidden h-full w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
-      {calling ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
+      {calling && !callBlocked ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex flex-wrap items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         {/* On phones the title gets its own row, so the actions cannot squeeze it down to a few letters. */}
@@ -249,10 +254,12 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           <div className="sticky top-0 z-10 flex justify-end bg-card p-2"><button type="button" onClick={() => reviewDialog.current?.close()} className="flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" />Close</button></div>
           {reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}
         </dialog>
-        <button type="button" onClick={() => setCalling(true)} className={summary}><Phone className="size-4" aria-hidden="true" />Call</button>
+        <button type="button" onClick={() => setCalling(true)} title={access?.voice === false ? VOICE_NEEDS_OPENAI_KEY : undefined} className={summary}><Phone className="size-4" aria-hidden="true" />Call</button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
+        {access?.ai === false && <p role="status" className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">No AI is set up yet. Sign in with ChatGPT or add an OpenAI or OpenRouter API key in <Link href="/settings#ai-access" className="underline">Settings → AI access</Link> to start chatting.</p>}
+        {callBlocked && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"><span>Voice calls and dictation need an OpenAI API key. <Link href="/settings#ai-access" className="underline">Add one in Settings → AI access</Link>.</span><button type="button" onClick={() => setCalling(false)} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
         {notice && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
         {unavailable ? <div className="py-10"><h2 className="font-semibold">Conversation unavailable</h2><p role="alert" className="mt-1 text-sm">{unavailable}</p><Link href={href("new")} onClick={event => open(event, null)} className="mt-3 inline-block text-sm underline">New conversation</Link></div>
           : selectedId && !entry ? <div className="space-y-6 py-6" role="status" aria-label="Loading conversation">{[0, 1].map(row => <div key={row} className="space-y-3"><div className="ml-auto h-9 w-1/2 animate-pulse rounded-3xl bg-muted" /><div className="h-4 w-5/6 animate-pulse rounded bg-muted" /><div className="h-4 w-2/3 animate-pulse rounded bg-muted" /></div>)}</div>

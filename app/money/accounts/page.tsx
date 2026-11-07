@@ -13,6 +13,8 @@ import { accountTypes, suggestAccountName } from "./naming";
 import { balanceTrend, shownBalance, trendSummary } from "./history";
 import { Sparkline } from "./sparkline";
 import { OwnAccounts } from "./own-accounts";
+import { ScalablePortfolioView } from "@/components/scalable-portfolio";
+import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
 
 export const metadata = { title: "Accounts" };
 
@@ -35,12 +37,15 @@ function describeEvent(event: MetaEvent) {
 export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string }> } = {}) {
   const { transfers, saved } = (await searchParams) ?? {};
   const { supabase, workspace } = await requireWorkspace();
-  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }] = await Promise.all([
+  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id),
     supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
     supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
     supabase.from("bank_connection_accounts").select("account_name,currency_code,iban").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
+    // The broker shows here once connected; connecting lives on Import. A failed read only hides it.
+    supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
+      .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (historyError || viewsError || bankError || identifierError) throw new Error("Could not load account and saved view history");
   // A bank sync imports into the account with the bank's name and currency, so those accounts take their balance from the sync.
@@ -153,6 +158,12 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
 
     {active.length ? <section id="needs-balance" className="scroll-mt-20 divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
       : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Use Add account or <Link className="underline" href="/import">import a statement</Link>.</p>}
+
+    {scalable?.portfolio && <section id="scalable" aria-labelledby="scalable-portfolio" className="scroll-mt-20 space-y-3 rounded-xl border border-border bg-card p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 id="scalable-portfolio" className="text-sm font-medium">Scalable Capital</h2>
+        <p className="text-xs text-muted-foreground">{scalable.status === "active" ? "Synced" : "Login ended, showing the last sync"}{scalable.last_synced_at ? ` · ${new Date(scalable.last_synced_at).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone })}` : ""} · <Link href="/import#scalable" className="text-brand hover:underline">Manage</Link></p></div>
+      <ScalablePortfolioView portfolio={scalable.portfolio as ScalablePortfolio} locale={locale} />
+    </section>}
 
     <OwnAccounts identifiers={identifiers ?? []} accounts={active.map(account => ({ id: account.id, name: account.name }))} transfers={transfers}
       banked={(bankAccounts ?? []).flatMap(item => item.iban ? [{ iban: item.iban, name: item.account_name }] : [])} />

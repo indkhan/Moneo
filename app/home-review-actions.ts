@@ -59,7 +59,9 @@ export async function loadUncategorizedGroups() {
   return { groups: top, total: spending.length, categories: (categories.data ?? []) as { id: string; name: string }[] };
 }
 
-const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.number().int().min(0) }).strict()).min(1).max(1000), categoryId: z.uuid(), key: z.string().max(1000) });
+// A group names an existing category or a new one the person typed.
+const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.number().int().min(0) }).strict()).min(1).max(1000), categoryId: z.uuid().optional(),
+  newCategory: z.string().trim().min(1).max(100).optional(), key: z.string().max(1000) }).refine(group => !!group.categoryId !== !!group.newCategory);
 
 /**
  * Categorizes a group through the audited organization review, 50 rows per batch. Only when the person asks does it also
@@ -74,7 +76,12 @@ export async function categorizeGroups(inputs: z.input<typeof groupInput>[], rem
   const applied: Record<string, number> = {};
   let error: string | undefined;
   try {
-    for (const group of groups.data) applied[group.key] = await categorize(context, group, remember === true);
+    const created = new Map<string, string>();
+    for (const group of groups.data) {
+      const categoryId = group.categoryId ?? created.get(group.newCategory!) ?? await createCategory(context, group.newCategory!);
+      created.set(group.newCategory ?? "", categoryId);
+      applied[group.key] = await categorize(context, { ...group, categoryId }, remember === true);
+    }
   } catch (cause) {
     console.error("categorizeGroups failed", cause);
     error = cause instanceof z.ZodError || !(cause instanceof Error) ? "Could not categorize these transactions. Reload and try again." : cause.message;
@@ -83,7 +90,13 @@ export async function categorizeGroups(inputs: z.input<typeof groupInput>[], rem
   return { applied, error };
 }
 
-async function categorize({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, { rows, categoryId, key }: z.infer<typeof groupInput>, remember: boolean) {
+async function createCategory({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, name: string) {
+  const { data, error } = await supabase.from("categories").upsert({ workspace_id: workspace.id, name }, { onConflict: "workspace_id,name" }).select("id").single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
+}
+
+async function categorize({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, { rows, categoryId, key }: { rows: { id: string; version: number }[]; categoryId: string; key: string }, remember: boolean) {
   let applied = 0;
   for (let offset = 0; offset < rows.length; offset += 50) {
     const current = await loadOrganizationSuggestions(supabase, workspace.id, rows.slice(offset, offset + 50));

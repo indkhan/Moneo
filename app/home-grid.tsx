@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, pointerWithin, useSensor, useSensors,
   type Announcements, type CollisionDetection, type DragEndEvent, type DragMoveEvent, type DragStartEvent, type UniqueIdentifier } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable } from "@dnd-kit/sortable";
@@ -14,7 +14,7 @@ import { SectionFallback } from "./section-fallback";
 type Layout = { items: string[]; sizes: Record<string, CardSize> };
 type Drag = { id: string; from: string[]; clone: HTMLElement; width: number; height: number; touch: boolean };
 type Notice = { text: string; action?: { label: string; run: () => void } };
-export type HomeGridProps = Layout & { version: number; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]>; afterFirst?: ReactNode };
+export type HomeGridProps = Layout & { version: number; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]> };
 
 const CARD_KEY = "card:";
 // Widgets never shift under the dragged one: the order itself changes as it moves, and the grid lays out for real.
@@ -29,7 +29,7 @@ const nearest = (options: CardSize[], columns: number) => options.reduce((best, 
  * Home's widgets in the user's order and widths. Drag a widget by its grip (or hold it on a phone) to move it, drag its right
  * edge to resize it, and hide or add widgets in place. Every change shows at once and saves in the background.
  */
-export function HomeGrid({ version, items, sizes, widgets, labels, options, afterFirst }: HomeGridProps) {
+export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
   const currentLayout = useRef(layout);
   const currentWidgets = useRef(widgets);
@@ -262,12 +262,12 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
     </div>
     <SortableContext items={shown} strategy={stay}>
       <div ref={grid} className="grid items-start gap-4 lg:auto-rows-[4px] lg:grid-flow-row-dense lg:grid-cols-6 lg:gap-y-0 lg:[&>*]:[grid-row-end:span_var(--rows,1)]">
-        {shown.map((key, index) => {
+        {shown.map(key => {
           const size = resizing?.key === key ? resizing.size : layout.sizes[key] ?? "M";
-          return <Fragment key={key}><Widget id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key || customizing} resizing={resizing?.key === key}
+          return <Widget key={key} id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key || customizing} resizing={resizing?.key === key}
             onHide={() => hide(key)} onMoveKey={event => moveKey(key, event)} onResizeStart={event => startResize(key, event)} onResizeKey={event => resizeKey(key, event)}>
             <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <SectionFallback title={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
-          </Widget>{index === 0 && afterFirst && <div className="min-w-0 empty:hidden lg:col-span-6">{afterFirst}</div>}</Fragment>;
+          </Widget>;
         })}
       </div>
     </SortableContext>

@@ -1,7 +1,7 @@
 "use workflow";
 
 import { createHash } from "node:crypto";
-import { EnableBankingError, enableBankingClient, type PsuContext } from "@/lib/bank/enable-banking";
+import { EnableBankingError, enableBankingClient, type EnableBankingClient, type PsuContext } from "@/lib/bank/enable-banking";
 import { bankStatement, preferredBalance } from "@/lib/bank/statement";
 import { serviceDb } from "@/lib/bank/server";
 import { loadWorkspaceSettings } from "@/lib/settings";
@@ -29,7 +29,7 @@ function daysBefore(day: string, days: number) { return isoDay(new Date(Date.par
 // consent (when the first sync runs) and about 90 days after that. So with no cursor ask for
 // everything, falling back to 90 days for banks that reject an old date_from.
 const FULL_HISTORY_FROM = "2000-01-01";
-async function bookedSince(client: ReturnType<typeof enableBankingClient>, uid: string, lastBookedOn: string | null, today: string, psu?: PsuContext) {
+async function bookedSince(client: EnableBankingClient, uid: string, lastBookedOn: string | null, today: string, psu?: PsuContext) {
   // Re-fetch a week of overlap: late-booked rows dedupe on the bank id.
   if (lastBookedOn) return client.bookedTransactions(uid, daysBefore(lastBookedOn, 7), psu);
   try { return await client.bookedTransactions(uid, FULL_HISTORY_FROM, psu); } catch (error) {
@@ -54,7 +54,7 @@ async function stageBankImports(connectionId: string, workspaceId: string, psu?:
   const accounts = await db.from("bank_connection_accounts").select("provider_account_uid, currency_code, account_name, last_booked_on").eq("connection_id", connectionId);
   if (accounts.error) throw new Error(accounts.error.message);
   const settings = await loadWorkspaceSettings(db, workspaceId);
-  const client = enableBankingClient();
+  const client = await enableBankingClient();
   const today = isoDay(new Date());
   const imports: BankImport[] = [];
   try {

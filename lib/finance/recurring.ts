@@ -60,10 +60,12 @@ function amountFits(min: bigint, max: bigint) {
   return largest === 0n ? min === max : abs(max - min) * 100n <= largest * AMOUNT_TOLERANCE_PERCENT;
 }
 
-const cadences: {cadence: RecurringSeries["cadence"]; days?: number; months?: number; tolerance: number}[] = [
-  {cadence: "weekly", days: 7, tolerance: 2}, {cadence: "biweekly", days: 14, tolerance: 2},
-  {cadence: "monthly", months: 1, tolerance: 4}, {cadence: "quarterly", months: 3, tolerance: 4},
-  {cadence: "yearly", months: 12, tolerance: 7},
+// minimum: payments needed before a pattern is suggested. Short cadences fit by chance more easily, so they need more.
+// Saving a suggestion requires at least 3 (confirm_recurring_series).
+const cadences: {cadence: RecurringSeries["cadence"]; days?: number; months?: number; tolerance: number; minimum: number}[] = [
+  {cadence: "weekly", days: 7, tolerance: 2, minimum: 6}, {cadence: "biweekly", days: 14, tolerance: 2, minimum: 5},
+  {cadence: "monthly", months: 1, tolerance: 4, minimum: 3}, {cadence: "quarterly", months: 3, tolerance: 4, minimum: 3},
+  {cadence: "yearly", months: 12, tolerance: 7, minimum: 3},
 ];
 
 export function recurringDateTolerance(cadence: string): number {
@@ -115,7 +117,7 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
   const series: RecurringSeries[] = [];
   for (const group of groups.values()) {
     if (group.length < 3) continue;
-    const candidates: {rows: RecurringTransaction[]; cadence: RecurringSeries["cadence"]; missing: number; difference: number}[] = [];
+    const candidates: {rows: RecurringTransaction[]; cadence: RecurringSeries["cadence"]; minimum: number; missing: number; difference: number}[] = [];
     const byDateAmount = new Map<string, RecurringTransaction>();
     // Equal-date/equal-amount observations cannot establish distinct schedules.
     // Preserve materially different same-date amounts and disclose selected alternatives.
@@ -126,7 +128,7 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
     const sorted = [...byDateAmount.values()];
     for (const cadence of cadences) {
       const used = new Set<string>();
-      for (let start = 0; start < sorted.length - 2; start++) {
+      for (let start = 0; start <= sorted.length - cadence.minimum; start++) {
         if (used.has(sorted[start].id)) continue;
         const rows = [sorted[start]];
         const expectedDates = new Map<number, number>();
@@ -145,9 +147,10 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
           missing += occurrence.index - previous - 1; previous = occurrence.index;
           difference += occurrence.difference; rows.push(sorted[next]);
         }
-        if (rows.length >= 3) {
+        // Each payment beyond the minimum may cover for one missed period; at the minimum, none may be missing.
+        if (rows.length >= cadence.minimum && missing <= rows.length - cadence.minimum) {
           rows.forEach(row => used.add(row.id));
-          candidates.push({rows, cadence: cadence.cadence, missing, difference});
+          candidates.push({rows, cadence: cadence.cadence, minimum: cadence.minimum, missing, difference});
         }
       }
     }
@@ -180,7 +183,7 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
         }
       }
       const exactAmounts = min === max;
-      const confidence = Math.max(0.1, Math.min(0.95, Math.round((0.6 + 0.05 * (ordered.length - 3) + (exactAmounts ? 0.1 : 0) - 0.05 * candidate.missing) * 100) / 100));
+      const confidence = Math.max(0.1, Math.min(0.95, Math.round((0.6 + 0.05 * (ordered.length - candidate.minimum) + (exactAmounts ? 0.1 : 0) - 0.05 * candidate.missing) * 100) / 100));
       series.push({
         cadence: candidate.cadence,
         // Bank descriptions can run to hundreds of characters; keep the label within what a schedule name accepts.

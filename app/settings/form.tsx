@@ -6,6 +6,8 @@ import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
 import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, INSIGHT_TYPES, VOICES, type WorkspaceSettings } from "@/lib/settings";
 import { saveSettings } from "./actions";
+import { useAiAccess } from "@/lib/ai/use-ai-access";
+import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 
 const input = "min-h-10 min-w-0 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal text-foreground";
 const card = "scroll-mt-20 space-y-4 rounded-xl border border-border bg-card p-6";
@@ -24,11 +26,14 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
   const [voice, setVoice] = useState(value);
   const [state, setState] = useState<"idle" | "loading" | "playing" | "failed">("idle");
   const audio = useRef<HTMLAudioElement | null>(null);
+  // Samples are spoken by OpenAI, so they need the OpenAI API key too.
+  const access = useAiAccess();
   const stop = () => { audio.current?.pause(); audio.current = null; setState("idle"); };
   // Leaving Settings must not leave a sample talking.
   useEffect(() => () => audio.current?.pause(), []);
   async function play() {
     if (state === "playing") return stop();
+    if (access?.voice === false) return setState("failed");
     audio.current?.pause();
     setState("loading");
     try {
@@ -47,7 +52,7 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
         {state === "loading" ? "Loading…" : state === "playing" ? "Stop sample" : "Play sample"}</button>
     </div>
     {/* Only present on failure: an always-mounted empty status would match every page-wide status lookup (and the specs') beside "Preferences saved". */}
-    {state === "failed" && <span role="alert" className="text-sm font-normal text-danger">Couldn’t play the sample. Check your sound and try again.</span>}</div>;
+    {state === "failed" && <span role="alert" className="text-sm font-normal text-danger">{access?.voice === false ? VOICE_NEEDS_OPENAI_KEY : "Couldn’t play the sample. Check your sound and try again."}</span>}</div>;
 }
 
 export function SettingsForm({ settings, currency, timeZones }: { settings: WorkspaceSettings; currency: string; timeZones: string[] }) {

@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   // A call turn carries a brief of the call so far, so it gets more room.
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
-  if (!(await aiConfigured())) return Response.json({ error: "AI is not configured" }, { status: 503 });
+  if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or add an API key under Settings → AI access." }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });

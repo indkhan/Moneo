@@ -68,11 +68,3 @@ export function getSupabaseConfig(): SupabaseConfig {
 export function hasSupabase() {
   return getSupabaseConfig().status === "configured";
 }
-
-export function hasOpenAI() {
-  return Boolean(process.env.OPENAI_API_KEY);
-}
-
-export function hasOpenRouter() {
-  return Boolean(process.env.OPENROUTER_API_KEY);
-}

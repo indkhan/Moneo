@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   if (!query.data.code || query.data.error) return fail(query.data.error ? `The bank returned ${query.data.error}` : "The bank did not return a consent code");
   try {
     const psu = psuFrom(request);
-    const session = await enableBankingClient().createSession(query.data.code, psu);
+    const session = await (await enableBankingClient()).createSession(query.data.code, psu);
     const names = bankAccountNames(pending.data.aspsp_name, session.accounts);
     const linked = await db.from("bank_connection_accounts").insert(session.accounts.map((account, index) => ({
       connection_id: connectionId, workspace_id: workspaceId, provider_account_uid: account.uid,

@@ -1,7 +1,9 @@
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { VOICE_INSTRUCTIONS, VOICE_MODEL, seedInput } from "@/lib/ai/voice-call";
+import { voiceApiKey } from "@/lib/ai/configured";
+import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 
 const inputSchema = z.object({ sdp: z.string().min(1).max(20_000), conversationId: z.uuid() }).strict();
 
@@ -11,7 +13,8 @@ export async function POST(request: Request) {
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Invalid call request" }, { status: 400 });
-  if (!process.env.OPENAI_API_KEY) return Response.json({ error: "Voice isn't set up on this server: OPENAI_API_KEY is missing" }, { status: 503 });
+  const apiKey = await voiceApiKey();
+  if (!apiKey) return Response.json({ error: VOICE_NEEDS_OPENAI_KEY }, { status: 503 });
   const { sdp, conversationId } = parsed.data;
   const { supabase, workspace, settings } = context;
   // Both reads go together; a new chat has no row or messages yet, and its first call request creates it.
@@ -25,7 +28,7 @@ export async function POST(request: Request) {
   if (messages.error) throw messages.error;
   const history: { role: string; content: string }[] = existing.data ? (messages.data ?? []).reverse() : [];
   try {
-    const session = await openai.experimental_realtime(VOICE_MODEL).doCreateWebRTCSession({ sdp, abortSignal: request.signal, sessionConfig: {
+    const session = await createOpenAI({ apiKey }).experimental_realtime(VOICE_MODEL).doCreateWebRTCSession({ sdp, abortSignal: request.signal, sessionConfig: {
       instructions: VOICE_INSTRUCTIONS, voice: settings.voice,
       providerOptions: { openai: { delegation: { type: "client" }, input: seedInput(history) } },
     } });

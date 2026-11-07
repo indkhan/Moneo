@@ -1,5 +1,6 @@
 import { createPrivateKey, sign } from "node:crypto";
 import { z } from "zod";
+import { serviceKey } from "@/lib/service-keys";
 
 // Enable Banking REST client (https://enablebanking.com/docs/api/reference/).
 // Auth is a short-lived RS256 JWT signed with the app's private key; there are no refresh tokens.
@@ -65,14 +66,17 @@ export class EnableBankingError extends Error {
   get rateLimited() { return this.status === 429; }
 }
 
-const config = z.object({
-  ENABLE_BANKING_APP_ID: z.string().min(1),
-  ENABLE_BANKING_PRIVATE_KEY: z.string().min(1),
-  ENABLE_BANKING_API_URL: z.string().url().default("https://api.enablebanking.com"),
-});
+export type EnableBankingCredentials = { appId: string; privateKey: string };
+const apiUrl = () => z.string().url().default("https://api.enablebanking.com").parse(process.env.ENABLE_BANKING_API_URL || undefined);
 
-export function enableBankingConfigured() {
-  return config.safeParse(process.env).success && !!process.env.BANK_TOKEN_ENCRYPTION_KEY;
+// The App ID and key the owner saved under Import → Connected banks, else the legacy .env pair.
+async function credentials(): Promise<EnableBankingCredentials | null> {
+  const [appId, privateKey] = await Promise.all([serviceKey("enable_banking_app_id"), serviceKey("enable_banking_private_key")]);
+  return appId && privateKey ? { appId, privateKey } : null;
+}
+
+export async function enableBankingConfigured() {
+  return !!process.env.BANK_TOKEN_ENCRYPTION_KEY && !!(await credentials());
 }
 
 // RS256 JWT with the app id as kid. Enable Banking accepts at most 24h; one hour is plenty per request.
@@ -87,13 +91,25 @@ export function signJwt(appId: string, privateKeyPem: string, now = Math.floor(D
 // PSU headers mark a request as user-present, so it doesn't count against the ~4/day background limit.
 export type PsuContext = { ip: string; userAgent: string };
 
-export function enableBankingClient(fetcher: typeof fetch = fetch) {
-  const env = config.parse(process.env);
+export async function enableBankingClient(fetcher: typeof fetch = fetch) {
+  const saved = await credentials();
+  if (!saved) throw new Error("Enable Banking is not set up. Add the App ID and private key under Import → Connected banks.");
+  return clientFor(saved, fetcher);
+}
+
+/** Checks a pasted App ID and key before they are saved: a bad PEM fails locally, a wrong pair at Enable Banking. */
+export async function checkEnableBankingCredentials(input: EnableBankingCredentials, fetcher: typeof fetch = fetch) {
+  try { signJwt(input.appId, input.privateKey); } catch { throw new EnableBankingError(0, "INVALID_PRIVATE_KEY", "That private key could not be read"); }
+  await clientFor(input, fetcher).application();
+}
+
+function clientFor({ appId, privateKey }: EnableBankingCredentials, fetcher: typeof fetch) {
+  const base = apiUrl();
   async function call<T>(schema: z.ZodType<T>, method: string, path: string, options: { body?: unknown; psu?: PsuContext } = {}): Promise<T> {
-    const response = await fetcher(`${env.ENABLE_BANKING_API_URL}${path}`, {
+    const response = await fetcher(`${base}${path}`, {
       method,
       headers: {
-        authorization: `Bearer ${signJwt(env.ENABLE_BANKING_APP_ID, env.ENABLE_BANKING_PRIVATE_KEY)}`,
+        authorization: `Bearer ${signJwt(appId, privateKey)}`,
         "content-type": "application/json",
         ...(options.psu ? { "psu-ip-address": options.psu.ip, "psu-user-agent": options.psu.userAgent } : {}),
       },
@@ -112,6 +128,7 @@ export function enableBankingClient(fetcher: typeof fetch = fetch) {
   }
 
   return {
+    application: () => call(z.unknown(), "GET", "/application"),
     listAspsps: async (country: string) =>
       (await call(z.object({ aspsps: z.array(aspspSchema) }), "GET", `/aspsps?country=${encodeURIComponent(country)}&psu_type=personal`)).aspsps,
     startAuthorization: (input: { aspsp: { name: string; country: string }; validUntil: Date; state: string; redirectUrl: string; psu?: PsuContext }) =>
@@ -139,4 +156,4 @@ export function enableBankingClient(fetcher: typeof fetch = fetch) {
     },
   };
 }
-export type EnableBankingClient = ReturnType<typeof enableBankingClient>;
+export type EnableBankingClient = ReturnType<typeof clientFor>;
