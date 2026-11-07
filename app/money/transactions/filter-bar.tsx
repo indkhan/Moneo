@@ -6,6 +6,7 @@ import { formatInputAmount } from "@/lib/finance/format";
 import { amountBounds, shownBounds } from "./input";
 import { compileFilterQuery } from "./nl-filter";
 import { calendarDate } from "@/lib/finance/calendar";
+import { CategoryCombobox, resolveCategory } from "@/components/category-combobox";
 
 type Named = { id: string; name: string };
 export type FilterValues = Partial<Record<"q" | "from" | "to" | "account" | "category" | "merchant" | "status" | "kind" | "direction" | "tag" | "event" | "minAmount" | "maxAmount" | "sort" | "group", string>>;
@@ -28,12 +29,17 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
   const [direction, setDirection] = useState(values.direction ?? "");
   const shown = shownBounds(values.direction, values.minAmount, values.maxAmount);
   const [open, setOpen] = useState(false);
+  // "Uncategorized" filters by none; empty text means all categories.
+  const categoryOptions = [{ id: "none", name: "Uncategorized" }, ...categories];
+  const [categoryText, setCategoryText] = useState(categoryOptions.find(row => row.id === values.category)?.name ?? "");
+  const categoryId = (choice => choice && "id" in choice ? choice.id : "")(resolveCategory(categoryOptions, categoryText));
   const [more, setMore] = useState(Boolean(values.minAmount || values.maxAmount || values.status || values.kind || values.direction || values.tag || values.event));
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const params = new URLSearchParams();
+    if (categoryText.trim() && !categoryId) { setError("Choose a category from the list"); return; }
     try {
       for (const [key, raw] of form) {
         const value = String(raw).trim();
@@ -73,7 +79,8 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       <label className="grid gap-1 text-xs text-muted-foreground">From<input name="from" type="date" defaultValue={values.from} aria-label="From date" className={`${control} text-foreground`} /></label>
       <label className="grid gap-1 text-xs text-muted-foreground">To<input name="to" type="date" defaultValue={values.to} aria-label="To date" className={`${control} text-foreground`} /></label>
       <select name="account" value={account} onChange={event => setAccount(event.target.value)} aria-label="Account" className={control}><option value="">All accounts</option>{accounts.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
-      <select name="category" defaultValue={values.category ?? ""} aria-label="Category" className={control}><option value="">All categories</option><option value="none">Uncategorized</option>{categories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
+      <input type="hidden" name="category" value={categoryId} />
+      <CategoryCombobox label="Category" options={categoryOptions} value={categoryText} placeholder="All categories" onChange={setCategoryText} />
       <select name="merchant" defaultValue={values.merchant ?? ""} aria-label="Merchant" className={control}><option value="">All merchants</option><option value="none">Unknown</option>{merchants.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       {/* The links beside the results do this from md up. */}
       <select name="group" defaultValue={values.group ?? ""} aria-label="Group by" className={`${control} md:hidden`}><option value="">No grouping</option><option value="category">Group by category</option><option value="merchant">Group by merchant</option><option value="month">Group by month</option></select>

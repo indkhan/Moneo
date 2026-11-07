@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatMoney } from "@/lib/finance/format";
 import { SafeForm } from "@/components/safe-form";
+import { CategoryCombobox } from "@/components/category-combobox";
 import { bulkEditTransactionsSafely } from "./actions";
 
 type Target = { id: string; version: number; description: string; amount_minor: string; currency_code: string; category_id: string | null; merchant_id: string | null; tags: string[] | null; event_name: string | null };
@@ -43,10 +44,9 @@ export function BulkBar({ targets, categories, merchants, query, requestId, loca
         <select aria-label="Change" value={mode} onChange={event => change(() => { setMode(event.target.value as Mode); setText(""); })} className={control}>
           {Object.entries(MODES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </select>
-        {mode === "category" ? <>
-          <input aria-label="Category" list="bulk-categories" value={text} maxLength={100} placeholder="Search or create a category" onChange={event => change(() => setText(event.target.value))} className={`${control} w-56`} />
-          <datalist id="bulk-categories">{categories.map(option => <option key={option.id} value={option.name} />)}</datalist>
-        </> : mode === "merchant" ? <select aria-label="Merchant" value={text} onChange={event => change(() => setText(event.target.value))} className={control}>
+        {mode === "category" ? <CategoryCombobox label="Category" options={categories} value={text} allowCreate placeholder="Search or create a category"
+          onChange={next => change(() => setText(next))} className="w-56 max-w-full" />
+        : mode === "merchant" ? <select aria-label="Merchant" value={text} onChange={event => change(() => setText(event.target.value))} className={control}>
           <option value="">Unknown merchant</option>{merchants.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
         </select> : <input aria-label={mode === "tags" ? "Tags, separated by commas" : "Group name"} placeholder={mode === "tags" ? "Tags, separated by commas" : "Group name"} value={text} maxLength={mode === "event" ? 120 : 1000} onChange={event => change(() => setText(event.target.value))} className={`${control} w-56`} />}
         <button type="button" onClick={() => setPreview(true)} className="min-h-9 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90">Preview changes</button>
