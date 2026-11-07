@@ -61,3 +61,7 @@ Consent usually lasts up to 180 days, depending on the bank, and a reconnect ban
 | `npm run test:e2e` | Playwright browser tests (see [e2e/README.md](e2e/README.md)) |
 
 Browser tests use a separate QA user, never the owner's workspace: `node --env-file=.env scripts/e2e-auth.mjs` creates it and saves its session, and `--reset` empties its workspace.
+
+## License
+
+[MIT](LICENSE)

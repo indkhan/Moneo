@@ -1,52 +1,85 @@
 # AGENTS.md
 
-Moneo is an open-source, self-hosted Next.js 16 + React 19 + TypeScript personal-finance app. Its backend is Postgres plus the open-source Supabase Auth/PostgREST/Storage services in Docker (`docker-compose.yml`, bound to 127.0.0.1), with Drizzle, Workflow (local world), Vitest/Playwright, and the Vercel AI SDK (ChatGPT plan or API key; OpenRouter for vendor/model IDs). One owner is signed in automatically; there is no sign-in screen.
+Moneo is an open-source personal-finance app you run on your own computer. One owner imports statements or syncs a bank, tracks accounts and wealth, plans spending, and asks about their money in chat, artifacts and voice calls.
+
+Stack: Next.js 16 + React 19 + TypeScript. The backend is Postgres plus the open-source Supabase Auth, PostgREST and Storage services in Docker (`docker-compose.yml`). Drizzle schema, Workflow (local world) for durable jobs, Vitest and Playwright, and the Vercel AI SDK, paid by the owner's ChatGPT plan or an API key.
+
+These are defaults. The developer's instructions override them; if a rule conflicts with the task, say so and ask.
+
+## Non-negotiables
+
+- **Local-first.** Everything listens on `127.0.0.1`. Data leaves the machine only for services the owner set up (AI provider, Enable Banking, Scalable). New features must work fully offline from the cloud except those calls.
+- **One owner, no accounts.** The proxy signs the owner in automatically; there is no sign-up or sign-in screen. Anything that exposes Moneo beyond this computer must add a login first.
+- **Financial truth comes from code and data, never from AI guesses.** Money is integer minor units (`bigint`) with an explicit currency. The AI explains and proposes; every write it suggests is a card the owner accepts.
+- **History is kept.** Preserve source records, corrections, history and undo when changing financial data flows.
+- **Open source.** No secrets, private statements or personal data in the repo (`npm run check:privacy` runs before tests and lint).
+
+## How to work
+
+1. **Think before coding.** State your assumptions. If a request has more than one reading, name them and ask instead of picking silently. If a simpler approach exists, say so.
+2. **Simplicity first.** Write the least code that solves the problem: no speculative features, options or single-use abstractions. Prefer existing utilities and dependencies, and Zod for validating user and external input. Would a senior engineer call it overcomplicated? Then simplify.
+3. **Surgical changes.** Touch only what the task needs and match the nearby style. Remove what your own change made unused; mention unrelated dead code instead of deleting it.
+4. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts with a test that fails on the current code. Purely visual changes get a before/after screenshot instead.
+
+## Safety
+
+- Never run tests or experiments against the owner's workspace. Browser tests use the QA user (`scripts/e2e-auth.mjs`) or disposable users they create and remove.
+- Never delete the Docker volumes (`docker compose down -v`) or drop the database: that is the owner's financial history.
+- Never change `JWT_SECRET`, `POSTGRES_PASSWORD` or `BANK_TOKEN_ENCRYPTION_KEY` in an existing `.env`; keys, sessions and stored bank and ChatGPT tokens stop working.
+- Never commit `.env*` (except `.env.example`), `.data/`, `e2e/.auth.json` or `.qa/`.
+- Only kill processes you started, or ones you verified by port and working directory. Never kill by name.
+- Real AI, bank and Scalable calls cost money or count against limits (PSD2 allows about 4 background bank fetches a day). Mock them in tests unless the task is to check the real service.
+
+## Hit every surface
+
+Before calling a feature done, check where else it shows up:
+
+- Pages and their mobile layout, light and dark.
+- Chat tools and the system prompt in `lib/ai/provider.ts`, artifacts, and the voice call (`lib/ai/voice-*`).
+- Home widgets and the command palette.
+- Background jobs (`lib/scheduler.ts`, `workflows/`) and imports from files, banks and Scalable.
+- The reverse path: undo, reset all data, reconnect, disconnect.
+- Docs: `README.md` for anything the owner sets up or runs, `.env.example` for new variables, `BACKLOG.md` for deferred work.
 
 ## Commands
 
 Use npm (`package-lock.json` is authoritative).
 
 - Install: `npm ci`
-- Backend: `npm run setup` (writes .env secrets, starts Docker, applies migrations, creates the owner; safe to rerun)
-- Dev: `npm run dev`
-- Unit: `npm test`
-- Lint: `npm run lint`
-- Build: `npm run build`
-- E2E: `npm run test:e2e`
+- Backend: `npm run setup` (writes `.env` secrets, starts Docker, applies migrations, creates the owner; safe to rerun)
+- Dev: `npm run dev` (http://localhost:3000)
+- Unit: `npm test` · Lint: `npm run lint` · Build: `npm run build`
+- E2E: `npm run test:e2e` (see `e2e/README.md`)
 
 ## Project map
 
-- `app/` — App Router UI, route handlers, server actions
+- `app/` — App Router pages, route handlers, server actions
 - `lib/finance/` — deterministic financial logic
-- `lib/ai/` — model/provider behavior
+- `lib/ai/` — models, chat tools, ChatGPT sign-in (`chatgpt.ts`), voice
+- `lib/bank/`, `lib/scalable/` — Enable Banking and Scalable Capital
 - `lib/schema.ts` + `supabase/migrations/` — database schema
-- `workflows/` — durable background jobs
-- `e2e/` — Playwright flows
+- `workflows/` — durable background jobs; `lib/scheduler.ts` runs the daily ones
+- `docker-compose.yml`, `docker/`, `scripts/setup.mjs` — the self-hosted backend
+- `e2e/` — Playwright flows; `supabase/tests/` — SQL regressions
 
-## Rules
-- Find the simplest cleanest way of doing something 
-- Keep changes scoped; follow nearby patterns and prefer existing utilities/dependencies.
-- Validate user/external input; Zod is the established pattern.
-- Financial truth comes from application code/data, not AI guesses. Keep money in integer minor units/`bigint` and currencies explicit.
-- Preserve source records, correction/history, and undo semantics when changing financial data flows.
-- For schema changes, add a new ordered migration and keep `lib/schema.ts` aligned. Do not rewrite applied migrations.
-- Migrations are applied by `npm run setup` (history in `supabase_migrations.schema_migrations`). For other Supabase CLI commands use `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`).
-- for each thing break it down and for each thing make a commit directly if a big task make multiple commits
+## Database changes
+
+Add a new ordered migration in `supabase/migrations/` and keep `lib/schema.ts` aligned. Never rewrite an applied migration. `npm run setup` applies pending ones and records them in `supabase_migrations.schema_migrations`. For other Supabase CLI commands use `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`).
 
 ## Validation
 
-Run the smallest relevant test while iterating. Before finishing, run `npm test` and `npm run lint`; add `npm run build` for app/config/build changes and Playwright for changed user flows. Gated E2E requires configured Supabase/auth; see `e2e/README.md`.
+Run the smallest relevant test while iterating. Before finishing, run `npm test` and `npm run lint`; add `npm run build` for app, config or build changes, and Playwright for changed user flows. Await real events in tests; don't add sleeps or polling.
 
-Signed-in E2E uses one persistent QA user, separate from the owner (login in the git-ignored `.env` as `E2E_USER_EMAIL`/`E2E_USER_PASSWORD`). With the backend running:
+## Commits and pull requests
 
-- `node --env-file=.env scripts/e2e-auth.mjs` signs it in and writes its session to `e2e/.auth.json` (creates the user on first run).
-- `node --env-file=.env scripts/e2e-auth.mjs --reset` empties its workspace; do this before a full suite run. Never delete the user.
+- Break the work into steps and commit each one; a big task is several commits.
+- Never open a pull request unless asked.
+- Write commit messages in plain language: what changed and why.
+- Don't commit plans, research notes or scratch files. Deferred work goes in `BACKLOG.md`.
 
 ## Context
- 
- 
-Read only what the task needs: `.env.example` for environment names, and `e2e/README.md` for browser-test setup.
 
+Read only what the task needs: `.env.example` for environment names, `e2e/README.md` for browser tests, `supabase/tests/README.md` for SQL checks.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

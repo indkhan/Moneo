@@ -1,31 +1,27 @@
-# Database regression checks
+# Database checks
 
-Run `node supabase/tests/run-recurring-occurrences.mjs` for migration `202610060003` and its explicit occurrence fixture on the configured database. It checks current-owner/version/date guards, partial/full and pending-to-posted receipts, undo/reassociation/deletion history and authenticated isolation. Candidate schema and migration history are verified unchanged after rollback.
+These scripts test the SQL functions, row-level security and concurrency of the self-hosted database. They read `SUPABASE_DB_URL` and the Supabase keys from `.env` (written by `npm run setup`).
 
-Run `node supabase/tests/recurring-occurrence-concurrency.mjs` to check association versus transaction correction on separate authenticated connections. It creates only a disposable application schema with synthetic users, verifies correction/association lock order and stale-version rejection, then drops that exact schema and verifies cleanup. Public migration history and schema privileges remain unchanged; an ignored `.qa` recovery journal records the disposable schema if interrupted.
+## Migrations and regressions
 
-Run `node supabase/tests/migrations.mjs` with the existing `.env` configuration. The script tests pending migrations against the current application schema and replays every migration into a temporary isolated schema. It compares columns, constraints, indexes, RLS, policies, views, triggers and application functions, and runs the synthetic `.sql` regressions on both paths.
+```sh
+node supabase/tests/migrations.mjs
+```
 
-All writes run inside rollback-only transactions. Migration history stays unchanged, and the script verifies that its temporary schema was removed. It does not apply migrations permanently. Fresh verification uses an empty `auth.users` surrogate and skips Supabase-owned storage bucket/policy setup; full Supabase platform bootstrap still requires a disposable local Supabase instance.
+Replays every migration into a temporary schema, compares it with the current schema (columns, constraints, indexes, RLS, policies, views, triggers, functions), and runs the `.sql` regression fixtures on both. Everything runs in rollback-only transactions; migration history stays unchanged and the temporary schema is removed.
 
-`workspace-isolation.sql` seeds two synthetic users and foreign records in every current application table. It switches to the actual `authenticated` database role to check row visibility and foreign-target RPC denial. Keep its fixture list and RPC cases aligned when adding tables or mutations.
+`workspace-isolation.sql` seeds two synthetic users with records in every application table and checks, as the `authenticated` role, that neither can see or change the other's data. Keep its fixtures and RPC cases in step when adding tables or mutations.
 
-Run `node supabase/tests/precision.mjs` to verify the actual Money/budget page SELECTs through PostgREST with amounts beyond JavaScript's safe integer range. This check temporarily commits a synthetic user/workspace and removes only those records in `finally`; it verifies cleanup. It requires the existing service-role key, which is never printed.
+Single regressions run with their `run-*.mjs` script, for example `node supabase/tests/run-goal-reservations.mjs`. `run-sql.mjs` runs the import-review fixture.
 
-Run `node supabase/tests/chat-concurrency.mjs` after migration 023 is applied to check duplicate claims and cancellation on separate authenticated connections. It verifies cancellation waits for the execution lock and prevents later corrections/replies, then removes its synthetic user/workspace.
+## Concurrency
 
-Run `node supabase/tests/review-concurrency.mjs` after migration 043 is applied to exercise review finish/cancel and first preference-insert races on separate real authenticated/service connections. Cancellation or scope revocation prevents analysis persistence; a committed finisher retains its historical result. Synthetic fixtures are removed by exact IDs.
+`*-concurrency.mjs` scripts (chat, imports, reviews, recurring occurrences, reservations) open separate authenticated and service connections to check locks, cancellation and duplicate claims. They create synthetic users or a disposable schema, remove them by exact ID, and leave a recovery note in ignored `.qa/` files if interrupted.
 
-Run `node supabase/tests/import-concurrency.mjs` after migration 051 is applied to check cancellation and ingestion on separate authenticated/service connections. It observes the specific waiter and holder database process locks, verifies cancellation cannot admit later row effects, retains already committed source evidence, fences old workers after resume and deduplicates simultaneous retries. Its exact large-money synthetic records are removed by ID.
+## Live checks
 
-Run `node supabase/tests/summary-live.mjs` with the local app running and its existing `CRON_SECRET` configured to verify actual cron dispatch, free-model review completion, period deduplication, cancellation and disabling. It uses a disposable empty workspace and targeted cleanup. The running server's scheduler calls the same endpoint hourly.
+- `precision.mjs` reads Money and budget pages through PostgREST with amounts beyond JavaScript's safe integer range.
+- `summary-live.mjs` (with the app running) checks scheduled summaries end to end: dispatch, deduplication per period, cancellation and disabling.
+- Opt-in unit tests compare SQL with application logic, for example `RUN_RESERVATION_DB_TESTS=1 npm test -- lib/finance/reservation-balance.live.test.ts` (PowerShell: `$env:RUN_RESERVATION_DB_TESTS='1'` first).
 
-Run `npx playwright test e2e/two-user-isolation.gated.spec.ts --reporter=list` for two real disposable authenticated users. It exercises page/API/file ownership, denied foreign review cancellation, account editing/archive/sequential undo, saved view rename/removal/filter replacement/undo, Home insight dismissal/restore, exact large relevance thresholds and type mute/unmute. It requires the configured admin/auth/database environment, sends no email, uses no saved credentials or mocked backend, and removes its fixtures. Recovery IDs are written to ignored `.qa` files only if interrupted.
-
-`insight-preferences.sql` checks owner isolation, exact thresholds beyond JavaScript's safe integer range, dismissal deduplication, bounded lookahead and dismissal restoration. The pure insight fixtures cover all nine supported types, dated evidence changes, ambiguity suppression, half-up medians and filling the item limit after dismissed evidence is removed. Insights make no model calls.
-
-For the targeted import review regression only, use `node supabase/tests/run-sql.mjs --candidate` before applying migration 020, or omit `--candidate` afterward. It also rolls back its synthetic fixtures and candidate function replacement.
-
-Run `node supabase/tests/run-goal-reservations.mjs` for the reservation boundary/history fixture. For SQL/application resolver parity, run `RUN_RESERVATION_DB_TESTS=1 npm test -- lib/finance/reservation-balance.live.test.ts` (PowerShell: set `$env:RUN_RESERVATION_DB_TESTS='1'` first). This opt-in test compares six synthetic balance fixtures and rolls everything back.
-
-Migrations are applied by `npm run setup`, which records them in `supabase_migrations.schema_migrations`. Do not run it as a routine test.
+None of these touch the owner's workspace. Migrations themselves are applied by `npm run setup`.

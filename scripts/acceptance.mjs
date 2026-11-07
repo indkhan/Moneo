@@ -12,7 +12,7 @@ mkdirSync(directory, { recursive: true });
 const revision = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const worktreeDirty = Boolean(execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim());
 const migrationHead = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort().at(-1);
-const result = { revision, worktreeDirty, migrationHead, tier, environment: "local configured Supabase (not deployed acceptance)", startedAt: new Date().toISOString(), provider: "optional; not run; core-journey.gated.spec.ts excluded because it invokes the live provider; deterministic mocks are not provider evaluation", checks: [] };
+const result = { revision, worktreeDirty, migrationHead, tier, environment: "self-hosted backend", startedAt: new Date().toISOString(), provider: "optional; not run; core-journey.gated.spec.ts excluded because it invokes the live provider; deterministic mocks are not provider evaluation", checks: [] };
 
 function run(name, script, args = [], env = {}) {
   const log = openSync(`${directory}/${name}.log`, "w");

@@ -252,7 +252,7 @@
   <h2>What still isn't perfect</h2>
   <div class="grid2">
     <div class="card"><h3>No live browser maths on Home</h3><p>A slider on a card asks the server to re-render, which is fast but not 60 fps. The Page (sandboxed iframe) keeps full client-side interactivity.</p></div>
-    <div class="card"><h3>Durability equals chat's</h3><p>A deploy or crash mid-build loses that run. The request shows as failed, and you ask again.</p></div>
+    <div class="card"><h3>Durability equals chat's</h3><p>A restart or crash mid-build loses that run. The request shows as failed, and you ask again.</p></div>
     <div class="card"><h3>A card can show a wrong number</h3><p>The sandbox stops capabilities, not wrong arithmetic or labels: a card can compute or hard-code an amount and nothing rejects it. The preview, drafts and version history are how you catch and undo that. Enforcing it would mean cards bind to values instead of rendering them, which would cost the design freedom this version was built for.</p></div>
     <div class="card"><h3>Tailwind classes</h3><p>Only classes the app already uses exist, so designed cards style themselves with style objects and scoped CSS.</p></div>
   </div>
