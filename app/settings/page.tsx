@@ -9,6 +9,7 @@ import { ConnectedBanks } from "@/components/connected-banks";
 import { ScalableConnection } from "@/components/scalable-connection";
 import { AiUsage } from "./ai-usage";
 import { AiAccess } from "./ai-access";
+import { SetupSecrets } from "./setup-secrets";
 import { parseUsageWindow } from "@/lib/ai/usage";
 
 export const metadata = { title: "Settings" };
@@ -16,8 +17,8 @@ export const metadata = { title: "Settings" };
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
-  ["ai-access", "AI access"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
-  ["banks", "Connected banks"], ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
+  ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
+  ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
 ] as const;
 
 async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[] | null> {
@@ -46,11 +47,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
-        <AiAccess message={query.chatgpt} />
+        <section id="connections" aria-labelledby="connections-title" className="scroll-mt-20 space-y-4">
+          <div><h2 id="connections-title" className="text-base font-semibold">Keys and connections</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Every key and outside service Moneo uses is set up here. Keys are checked before they are saved and stored encrypted in your database; there is no file to edit.</p></div>
+          <AiAccess message={query.chatgpt} />
+          <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
+          <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
+          <SetupSecrets />
+        </section>
         <SettingsForm settings={settings} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
-        <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
-        <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
           <details className="mt-2 text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">Weekly summaries are due on Monday and monthly ones on the first, in your timezone and at your preferred time. A daily check starts due summaries, so they can arrive a day late. Turn summaries off to stop future runs, or stop an active run below.</p></details>
