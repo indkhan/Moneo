@@ -3,7 +3,7 @@
   "checkpoint_id": "01M6V199WPJS2SG38AQ2V41CW2",
   "strategy": "manual-commit",
   "branch": "t3/in-app-keys",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "app/api/bank/aspsps/route.ts",
     "app/api/bank/callback/route.test.ts",
@@ -28,6 +28,13 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
@@ -38,7 +45,7 @@
     "api_call_count": 0
   },
   "redaction": {
-    "replacements": 11,
+    "replacements": 12,
     "layers": {
       "betterleaks": 2,
       "connection_string": 0,
@@ -46,7 +53,7 @@
       "credential_value": 10,
       "credentialed_uri": 0,
       "entropy": 0,
-      "key_context": 3,
+      "key_context": 4,
       "provider_token": 0,
       "shell_stdin": 0
     }
