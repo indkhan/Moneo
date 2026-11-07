@@ -3,7 +3,7 @@
   "checkpoint_id": "01M6V1979EHDZQG0H8YTWGKF6N",
   "strategy": "manual-commit",
   "branch": "t3/in-app-keys",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "lib/schema.ts",
     "lib/service-keys.test.ts",
@@ -17,17 +17,24 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 40,
-    "cache_creation_tokens": 37769,
-    "cache_read_tokens": 1119164,
-    "output_tokens": 8988,
-    "api_call_count": 20
+    "input_tokens": 46,
+    "cache_creation_tokens": 60368,
+    "cache_read_tokens": 1260700,
+    "output_tokens": 9682,
+    "api_call_count": 23
   },
   "redaction": {
-    "replacements": 11,
+    "replacements": 12,
     "layers": {
       "betterleaks": 2,
       "connection_string": 0,
@@ -35,7 +42,7 @@
       "credential_value": 10,
       "credentialed_uri": 0,
       "entropy": 0,
-      "key_context": 3,
+      "key_context": 4,
       "provider_token": 0,
       "shell_stdin": 0
     }
