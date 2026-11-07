@@ -8,6 +8,7 @@ import { offeredQueriesSchema, offeredSources, sourceGuide, checkQueries, type S
 import { cardParamsSchema, resolveParams, type CardParam } from "@/lib/cards/params";
 import { PRESETS, PRESET_GUIDE, PRESET_NAMES, checkPresetBindings, presetSource, type PresetName } from "@/lib/cards/presets";
 import { checkCard } from "@/lib/cards/render";
+import { pageScriptErrors } from "@/lib/ai/page-check";
 import { CARD_BODY_HEIGHT, CARD_SIZES } from "@/lib/cards/sizes";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
@@ -110,9 +111,18 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
     supabase.from("artifact_versions").select("version, html").eq("workspace_id", workspace.id).eq("artifact_id", artifactId).order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (current.error) throw current.error;
-  const prompt = `${current.data ? `Current page (change it as the brief says, keep the rest):\n${current.data.html}\n\n` : ""}Brief:\n${input.brief}\n\nQueries:\n${JSON.stringify(input.queries)}\n\nData now (window.MONEO_DATA):\n${sample(data)}`;
-  const { text, model } = await design(run, PAGE_DESIGNER, prompt);
-  if (!/<[a-z]/i.test(text)) return { saved: false, errors: ["The designer returned no HTML; try again with a clearer brief."] };
+  let prompt = `${current.data ? `Current page (change it as the brief says, keep the rest):\n${current.data.html}\n\n` : ""}Brief:\n${input.brief}\n\nQueries:\n${JSON.stringify(input.queries)}\n\nData now (window.MONEO_DATA):\n${sample(data)}`;
+  // A page whose script doesn't parse draws nothing, so it is never saved; the designer gets two chances to fix it
+  // and otherwise the current version stays.
+  let text = "", model = "";
+  for (let attempt = 0; ; attempt++) {
+    ({ text, model } = await design(run, PAGE_DESIGNER, prompt));
+    if (!/<[a-z]/i.test(text)) return { saved: false, errors: ["The designer returned no HTML; try again with a clearer brief."] };
+    const errors = pageScriptErrors(text);
+    if (!errors.length) break;
+    if (attempt === 2) return { saved: false, errors: [`The page's code did not parse, so the current version was kept: ${errors.join("; ")}`] };
+    prompt = `${prompt}\n\nYour last version:\n${text}\n\nIts JavaScript does not parse, so the page would show nothing. Fix these and reply with the whole document again:\n${errors.join("\n")}`;
+  }
   await run.ensureActive();
   const version = (current.data?.version ?? 0) + 1;
   const saved = await supabase.from("artifact_versions").insert({ workspace_id: workspace.id, artifact_id: artifactId, version, prompt: input.brief.slice(0, 4000), html: text, queries: input.queries, model });
