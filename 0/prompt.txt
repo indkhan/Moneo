@@ -1,0 +1,3 @@
+The thing is the artifact feature. I think there is this problem with it: the first prompt I gave it, it made the artifact, which was working, and the things it was showing. When I asked it to update it to something, then the artifact it made had no values. Can you check why it is and how to fix it? This is another bug in it so tell me. and how to make it that artifact works without erros and bugs like this
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\99276e35-29a8-4679-8766-7672ddc00cfd-29f6009e-083d-4274-b07d-6637cfa16a7b.png]
