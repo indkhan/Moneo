@@ -163,7 +163,12 @@ export async function investmentsSecurity(mcp: ScalableMcp, input: z.infer<typeo
   return { isin: input.isin, summary: news.summary?.short ?? null, detail: news.summary?.long?.slice(0, 2500) ?? null };
 }
 
+const dayMove = (quote: unknown) => {
+  const today = (quote as { performances?: { timeframe?: string; performance?: number | string | null }[] } | null)?.performances?.find(entry => entry.timeframe === "INTRADAY")?.performance;
+  return today == null ? null : Math.round(Number(today) * 10000) / 100;
+};
 const watchlistSchema = z.object({ items: z.array(z.object({ isin: z.string(), name: z.string(), securityType: z.string().optional(), currentQuote: quoteSchema.nullable().optional() })).default([]) });
 export async function investmentsWatchlist(mcp: ScalableMcp) {
-  return { items: watchlistSchema.parse(await mcp.callTool("list_watchlist_items")).items.map(item => ({ isin: item.isin, name: item.name, type: item.securityType ?? null, quote: quoted(item.currentQuote) })) };
+  return { items: watchlistSchema.parse(await mcp.callTool("list_watchlist_items")).items.map(item => ({ isin: item.isin, name: item.name, type: item.securityType ?? null, quote: quoted(item.currentQuote),
+    dayPercent: dayMove(item.currentQuote) })) };
 }

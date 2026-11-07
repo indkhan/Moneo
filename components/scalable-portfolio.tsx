@@ -3,7 +3,7 @@ import { formatMoney } from "@/lib/finance/format";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
 
 // Scalable's own returns per timeframe, shortest first; the rest are left out.
-const TIMEFRAMES = [["ONE_WEEK", "1 week"], ["ONE_MONTH", "1 month"], ["THREE_MONTHS", "3 months"], ["ONE_YEAR", "1 year"], ["MAX", "All time"]] as const;
+const TIMEFRAMES = [["INTRADAY", "Today"], ["ONE_WEEK", "1 week"], ["ONE_MONTH", "1 month"], ["THREE_MONTHS", "3 months"], ["YEAR_TO_DATE", "This year"], ["ONE_YEAR", "1 year"], ["MAX", "All time"]] as const;
 
 /** The synced Scalable portfolio: total, split, and Scalable's own returns. */
 export function ScalablePortfolioView({ portfolio, locale }: { portfolio: ScalablePortfolio; locale?: string }) {
@@ -19,10 +19,10 @@ export function ScalablePortfolioView({ portfolio, locale }: { portfolio: Scalab
         <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono tabular-nums">{money(minor)}</dd></div>)}
     </dl>
     {returns.length > 0 && <div>
-      <p className="text-xs text-muted-foreground">Gain or loss, as Scalable reports it</p>
-      <dl className="mt-1 grid grid-cols-3 gap-3 sm:grid-cols-5">{returns.map(entry => <div key={entry.label}><dt className="text-xs text-muted-foreground">{entry.label}</dt>
-        <dd className={`font-mono tabular-nums ${BigInt(entry.minor) < 0n ? "text-danger" : ""}`}>{BigInt(entry.minor) > 0n ? "+" : ""}{money(entry.minor)}</dd></div>)}</dl>
+      <p className="text-xs text-muted-foreground">Gain or loss</p>
+      <dl className="mt-1 grid grid-cols-3 gap-3 sm:grid-cols-7">{returns.map(entry => <div key={entry.label}><dt className="text-xs text-muted-foreground">{entry.label}</dt>
+        <dd className={`font-mono tabular-nums ${BigInt(entry.minor) < 0n ? "text-danger" : BigInt(entry.minor) > 0n ? "text-success" : ""}`}>{BigInt(entry.minor) > 0n ? "+" : ""}{money(entry.minor)}</dd></div>)}</dl>
     </div>}
-    <p className="text-muted-foreground">Each position, plus cash and crypto, is an investment on <Link href="/money/wealth" className="text-brand underline-offset-4 hover:underline">Wealth</Link> and counts toward net worth. Moneo syncs daily.</p>
+    <Link href="/money/wealth" className="inline-block text-brand underline-offset-4 hover:underline">See positions, chart and activity on Wealth</Link>
   </div>;
 }

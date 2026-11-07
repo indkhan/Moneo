@@ -14,7 +14,8 @@ const tables: Record<string, unknown[]> = {
   transactions: [{ id: "t1", account_id: "acc", amount_minor: "-1000", currency_code: "EUR", posted_on: "2026-10-10", posted_at: null, status: "posted", version: 1 }],
   accounts: [{ id: "acc", name: "Checking", type: "checking", currency_code: "EUR", archived_at: null }],
 };
-const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, is: () => q, order: () => q, limit: () => q, range: async () => ({ data, error: null }),
+const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, is: () => q, in: () => q, not: () => q, order: () => q, limit: () => q, range: async () => ({ data, error: null }),
+  maybeSingle: async () => ({ data: data[0] ?? null, error: null }),
   then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", locale: "en-US", timezone: "UTC", display_currency: "EUR" },
   supabase: { from: (table: string) => query(tables[table] ?? []) } }) }));
@@ -32,10 +33,32 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   expect(html).toContain("2025-10-31");
   expect(html).toContain("Investments");
   expect(html).toContain("Debts");
-  expect(html).toContain("1 valuation is dated before today");
+  expect(html).not.toContain("How this was calculated");
   expect(html).toContain("Undo Index fund change"); expect(html).toContain("Remove Car loan (keep history)");
   // Debts are owed in plain amounts, and the outdated loan is named as left out rather than dropped silently.
   expect(html).toContain("Amount you still owe (EUR)"); expect(html).toContain('value="15.00"');
   expect(html).toContain("Older valuations left out"); expect(html).toContain("-EUR 15.00"); expect(html).toContain('href="#item-loan"');
   expect(html).toContain("Net worth by month"); expect(html).toContain(">Today<");
+});
+
+it("shows the Scalable portfolio in its own panel, with today's move and each position's gain", async () => {
+  vi.useFakeTimers({ now: new Date("2026-10-16T12:00:00Z"), toFake: ["Date"] });
+  const etf = { ...item("etf", "holding", "Tech ETF", "3549", "2026-10-16"), quantity_text: "8", unit_price_text: "4.43625", cost_basis_minor: "7089" };
+  tables.wealth_items = [...tables.wealth_items, etf, item("cash", "asset", "Scalable cash", "2313", "2026-10-16")];
+  tables.wealth_events = [...tables.wealth_events, { id: "e2", item_id: "etf", before: null, after: { ...etf, amount_minor: "3600", as_of: "2026-10-15" }, created_at: "2026-10-15T08:00:00Z", undone_at: null }];
+  tables.scalable_connections = [{ status: "active", last_synced_at: "2026-10-16T06:00:00Z", portfolio: { currency: "EUR", asOf: "2026-10-16", totalMinor: "5862", securitiesMinor: "3549", cryptoMinor: "0", cashMinor: "2313",
+    performance: [{ timeframe: "INTRADAY", returnMinor: "136" }, { timeframe: "ONE_YEAR", returnMinor: "-3511" }], itemIds: ["etf", "cash"],
+    activity: [{ id: "t", date: "2026-10-14", status: "SETTLED", type: "buy", description: "Tech ETF", shares: "3", amountMinor: "-2463", currencyCode: "EUR" }] } }];
+  const { default: WealthPage } = await import("./page");
+  const html = renderToStaticMarkup(await WealthPage());
+  vi.useRealTimers();
+  expect(html).toContain("Scalable Capital");
+  expect(html).toContain("+EUR 1.36"); expect(html).toContain("today");
+  expect(html).toContain("1 year"); expect(html).toContain("-EUR 35.11");
+  // 35.49 now against 70.89 paid.
+  expect(html).toContain("-EUR 35.40"); expect(html).toContain("-49.9%");
+  expect(html).toContain("Recent activity"); expect(html).toContain("Cash to invest");
+  // Synced positions are not listed again as editable items, and the explanation panel is gone.
+  expect(html).not.toContain("Remove Tech ETF (keep history)");
+  expect(html).not.toContain("How this is worked out");
 });
