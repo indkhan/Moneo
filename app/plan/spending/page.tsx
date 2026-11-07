@@ -60,7 +60,7 @@ async function loadSpending(supabase: Db, workspaceId: string, from: string, bef
 
 export default async function SpendingPlansPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const currentMonth = monthPrefix(new Date(), workspace.timezone);
   const params = await searchParams;

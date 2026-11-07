@@ -6,9 +6,8 @@ import {resolveReviewRequest} from "./review-request";
 
 it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("freezes owned request identity and fences durable budgets to the elected running worker", async () => {
   process.loadEnvFile(".env");
-  const endpoint = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!), connection = new URL(process.env.SUPABASE_DB_URL!);
-  expect(connection.hostname === `db.${endpoint.hostname.split(".")[0]}.supabase.co` || connection.username.endsWith(`.${endpoint.hostname.split(".")[0]}`)).toBe(true);
-  const db = postgres(connection.toString(), {ssl: "require", max: 1, connection: {application_name: "qa_mne019_request_gate"}, onnotice: () => {}});
+  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const db = postgres(connection.toString(), {max: 1, connection: {application_name: "qa_mne019_request_gate"}, onnotice: () => {}});
   const schema = `qa_request_${randomUUID().replaceAll("-", "")}`, owner = randomUUID(), other = randomUUID();
   const rollback = new Error("Fixture rollback");
   try {

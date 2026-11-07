@@ -11,8 +11,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   test.setTimeout(180_000);
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL!,connection=new URL(process.env.SUPABASE_DB_URL!);
   const project=new URL(url).hostname.split(".")[0];
-  expect(connection.hostname===`db.${project}.supabase.co`||connection.username.endsWith(`.${project}`)).toBe(true);
-  const db=postgres(connection.toString(),{ssl:"require",max:1,connect_timeout:10,connection:{application_name:"MNE014-browser-source",lock_timeout:10_000,statement_timeout:120_000,idle_in_transaction_session_timeout:150_000}});
+  const db=postgres(connection.toString(),{max:1,connect_timeout:10,connection:{application_name:"MNE014-browser-source",lock_timeout:10_000,statement_timeout:120_000,idle_in_transaction_session_timeout:150_000}});
   const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
   const runId=randomUUID(),email=`qa-${runId}@example.invalid`,password=randomBytes(24).toString("hex");
   let user:string|undefined,workspace:string|undefined,migrationLedger:unknown;

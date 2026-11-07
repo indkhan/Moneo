@@ -35,7 +35,7 @@ function fromUsableAccounts(plan: Plan): Plan {
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<LiquidityParams & { removed?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const { removed, ...params } = await searchParams;
   const requestedHorizon = z.coerce.number().int().min(1).max(365).safeParse(params.horizon ?? 30);

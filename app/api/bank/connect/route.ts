@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
 import { consentValidUntil, psuFrom, serviceDb } from "@/lib/bank/server";
-import { getEnv } from "@/lib/env";
+import { BANK_REDIRECT_URL } from "@/lib/bank/return-listener";
 
 const bodySchema = z.object({ aspspName: z.string().trim().min(1).max(200), country: z.string().regex(/^[A-Z]{2}$/) }).strict();
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     if (pending.error) throw pending.error;
     const { url } = await client.startAuthorization({
       aspsp: { name: aspsp.name, country: aspsp.country }, validUntil: consentValidUntil(aspsp.maximum_consent_validity),
-      state: pending.data.auth_state, redirectUrl: new URL("/api/bank/callback", getEnv().NEXT_PUBLIC_APP_URL).toString(), psu: psuFrom(request),
+      state: pending.data.auth_state, redirectUrl: BANK_REDIRECT_URL, psu: psuFrom(request),
     });
     return NextResponse.json({ url });
   } catch {

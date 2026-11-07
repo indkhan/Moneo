@@ -43,7 +43,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   try {
     context = await requireWorkspace();
   } catch {
-    redirect("/login");
+    redirect("/setup");
   }
   const { supabase, workspace } = context;
   const displayCurrency: string = workspace.display_currency;

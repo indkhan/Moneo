@@ -20,7 +20,7 @@ it("starts one background sync per active connection, without PSU headers", asyn
   vi.stubEnv("CRON_SECRET", "synthetic-secret");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.supabase.co");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-key");
-  const builder = { select: vi.fn(() => builder), eq: vi.fn(() => builder), order: vi.fn(() => builder),
+  const builder = { select: vi.fn(() => builder), eq: vi.fn(() => builder), or: vi.fn(() => builder), order: vi.fn(() => builder),
     limit: vi.fn(async () => ({ data: [{ id: "c1", workspace_id: "w1" }, { id: "c2", workspace_id: "w2" }], error: null })) };
   vi.mocked(serviceDb).mockReturnValue({ from: () => builder } as never);
   const response = await GET(new Request("http://localhost/api/cron/bank-sync", { headers: { authorization: "Bearer synthetic-secret" } }));

@@ -10,9 +10,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
   test.setTimeout(600_000);
   for (const name of ["SUPABASE_DB_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]) expect(Boolean(process.env[name]), `Missing ${name}`).toBe(true);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
-  const project = new URL(url).hostname.split(".")[0];
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-  const db = postgres(connection.toString(), { ssl: "require", max: 1, connect_timeout: 15, connection: { statement_timeout: 30000 } });
+  const db = postgres(connection.toString(), { max: 1, connect_timeout: 15, connection: { statement_timeout: 30000 } });
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   const userIds: string[] = [], workspaceIds: string[] = [], threadIds: string[] = [], messageIds: string[] = [];
   const journal = `.qa/mne024-seed-${randomUUID()}.json`;

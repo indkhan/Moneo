@@ -14,9 +14,8 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   const project = new URL(url).hostname.split(".")[0];
   const connection = new URL(process.env.SUPABASE_DB_URL!);
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBeTruthy();
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
-  const db = postgres(connection.toString(), { ssl: "require", max: 1 });
+  const db = postgres(connection.toString(), { max: 1 });
   const users: string[] = [], workspaces: string[] = [], contexts: BrowserContext[] = [];
   const runId = randomUUID(), recoveryPath = `.qa/isolation-${runId}.json`;
   mkdirSync(".qa", { recursive: true });

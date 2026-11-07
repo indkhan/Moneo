@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
 import { modelForSettings } from "@/lib/ai/provider";
+import { aiConfigured } from "@/lib/ai/configured";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { stableId } from "@/lib/import/row";
 import { linkOwnTransfers } from "@/lib/finance/own-transfers";
@@ -157,7 +158,7 @@ async function failImport(importId: string, workspaceId: string, error: string, 
 
 async function maybeStartFirstReview(importId: string, workspaceId: string) {
   "use step";
-  if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY) || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+  if (!(await aiConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const settings = await loadWorkspaceSettings(db, workspaceId);
   try {

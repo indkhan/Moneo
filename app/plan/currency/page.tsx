@@ -21,7 +21,7 @@ export default async function CurrencyPage({ searchParams }: { searchParams?: Pr
   try {
     context = await requireWorkspace();
   } catch {
-    redirect("/login");
+    redirect("/setup");
   }
   const { supabase, workspace } = context;
   const params = (await searchParams) ?? {};

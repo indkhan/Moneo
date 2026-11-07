@@ -27,7 +27,7 @@ const GROUPS: { value: TransactionGroup | ""; label: string }[] = [{ value: "", 
 
 export default async function TransactionsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const params = await searchParams;
   // Opaque saved-view id (?view=<uuid>): filter JSON is loaded from

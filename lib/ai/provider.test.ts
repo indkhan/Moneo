@@ -18,16 +18,16 @@ test("a voice call follows the chat model until its own model is set", () => {
   expect(modelIdFor(undefined, "voice_call")).toBe(AI_AGENTS.chat.model);
 });
 
-test("requires an OpenAI key", () => {
+test("requires an OpenAI key when not signed in with ChatGPT", async () => {
   vi.stubEnv("OPENAI_API_KEY", "");
-  expect(() => getModel("gpt-5")).toThrow("OPENAI_API_KEY");
+  await expect(getModel("gpt-5")).rejects.toThrow("OPENAI_API_KEY");
   vi.stubEnv("OPENAI_API_KEY", "test-key");
-  expect(getModel("gpt-5").modelId).toBe("gpt-5");
+  expect((await getModel("gpt-5")).modelId).toBe("gpt-5");
 });
 
-test("sends vendor/model IDs to OpenRouter", () => {
+test("sends vendor/model IDs to OpenRouter", async () => {
   vi.stubEnv("OPENROUTER_API_KEY", "");
-  expect(() => getModel("nvidia/nemotron-3.5-lightning:free")).toThrow("OPENROUTER_API_KEY");
+  await expect(getModel("nvidia/nemotron-3.5-lightning:free")).rejects.toThrow("OPENROUTER_API_KEY");
   vi.stubEnv("OPENROUTER_API_KEY", "test-key");
-  expect(getModel("nvidia/nemotron-3.5-lightning:free").provider).toContain("openrouter");
+  expect((await getModel("nvidia/nemotron-3.5-lightning:free")).provider).toContain("openrouter");
 });

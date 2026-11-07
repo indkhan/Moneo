@@ -1,17 +1,11 @@
-// Partial live-backend journey — CREDENTIAL-GATED, skipped without auth state.
+// Partial live-backend journey — skipped without the QA user's session.
 //
-// Covers login state, import completion, transaction visibility, real chat,
+// Covers the signed-in session, import completion, transaction visibility, real chat,
 // goal creation, and overlapping re-import.
 // It does not yet prove transaction correction or scenario changes.
 //
-// Why gated: every step after login needs a real Supabase project, an
-// authenticated session, and seeded workspace data. Local .env in this repo
-// may be configured, but Supabase magic-link OTP has no deterministic inbox in CI, so
-// this spec SKIPS (explicitly, via test.skip with the missing vars listed)
-// unless the operator supplies:
-//   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, and
-//   E2E_STORAGE_STATE pointing at a Playwright storageState file (or
-//   e2e/.auth.json). See e2e/README.md §2 for the login-and-save steps.
+// Needs the self-hosted backend (npm run setup) and E2E_STORAGE_STATE pointing at a
+// Playwright storageState file (or e2e/.auth.json from scripts/e2e-auth.mjs).
 // A skip is reported as skipped — never as a pass.
 //
 // File mapping is mocked; import, chat, planning,
@@ -67,9 +61,9 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       });
     });
 
-    await test.step("authenticate: session loads Home, not /login", async () => {
+    await test.step("authenticate: session loads Home, not /setup", async () => {
       await page.goto("/");
-      await expect(page).not.toHaveURL(/\/login/);
+      await expect(page).not.toHaveURL(/\/setup/);
       await expect(
         page.getByRole("heading", { name: "Overview" }),
       ).toBeVisible();

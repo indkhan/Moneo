@@ -1,49 +1,61 @@
 # Moneo
 
-Moneo is a personal finance workspace for importing transactions, tracking accounts, planning spending, and exploring your finances with AI. It is a Next.js and TypeScript app backed by Supabase.
+Moneo is an open-source personal finance workspace you run on your own computer. Import statements or sync your bank, track accounts and wealth, plan spending, and ask questions about your money in chat or on a voice call. Financial figures always come from your own records; the AI explains them and proposes changes you accept.
 
-## Run locally
+It is a Next.js and TypeScript app. The backend (Postgres plus the open-source Supabase Auth, PostgREST and Storage services) runs in Docker on your machine. There are no accounts and no sign-in screen: one owner, one workspace, and everything stays on `127.0.0.1`.
 
-1. Install dependencies: `npm ci`
-2. Copy `.env.example` to `.env` and add your Supabase URL and publishable key. Add `SUPABASE_SERVICE_ROLE_KEY` for import and analysis workflows, and `OPENAI_API_KEY` for AI features (models per agent are set in Settings).
-3. Apply the SQL files in `supabase/migrations/` to your Supabase project in filename order. Configure Supabase email sign-in with `http://localhost:3000/auth/callback` as an allowed redirect URL.
-4. Start the app: `npm run dev`, then open [http://localhost:3000](http://localhost:3000).
-5. Sign in: during `npm run dev` on localhost, type your email and click **Sign in instantly (local dev)**. It needs `SUPABASE_SERVICE_ROLE_KEY`, sends no email, and is disabled in production builds. The normal email link also works, but must be opened in the same browser that requested it.
+## Run it
 
-Without Supabase keys, the home page shows a setup message. Keep `.env` private; it is git-ignored.
+You need [Node.js](https://nodejs.org) 22+ and [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on Windows and macOS).
 
-If `npm run dev` says another server is already running, stop the old one (the message prints its PID, e.g. `taskkill /PID <pid> /F` on Windows) and start again.
+```sh
+npm ci
+npm run setup              # creates .env with fresh secrets, starts the database, applies migrations
+npm run build && npm start # then open http://localhost:3000
+```
 
-## Deploy to Vercel
+`npm run setup` is safe to rerun. Run it again after every `git pull` to apply new migrations; your data and secrets are kept. For development, use `npm run dev` instead of build and start.
 
-Set the environment variables from `.env.example` in Vercel, using your deployed website origin for `NEXT_PUBLIC_APP_URL` (for example, `https://your-moneo.vercel.app`).
+The database keeps running in Docker after you stop Moneo (`docker compose stop` stops it, `docker compose up -d` starts it again). Your data lives in Docker volumes `moneo_db-data` and `moneo_storage-data`; `docker compose down` keeps them, `docker compose down -v` deletes them.
 
-In the same Supabase project used by Vercel, open **Authentication → URL Configuration**:
+Everything listens on `127.0.0.1` only, so other devices on your network cannot open Moneo. Keep `.env` private: it holds the database password and the keys that sign the owner in.
 
-1. Set **Site URL** to your deployed website origin.
-2. Add the exact deployed callback URL to **Redirect URLs**, for example `https://your-moneo.vercel.app/auth/callback`. Keep `http://localhost:3000/auth/callback` for local development. Add each additional domain you use for sign-in explicitly.
-3. Under **Authentication → Email Templates**, ensure **Confirm signup** and **Magic Link** use `{{ .ConfirmationURL }}` as their sign-in link, without a hardcoded localhost URL.
+## AI
 
-The login page supplies the current website's `/auth/callback` as `emailRedirectTo`. Supabase must allow that exact URL or it falls back to **Site URL**, which defaults to localhost. Changing `NEXT_PUBLIC_APP_URL` alone does not change Supabase's authentication settings. See [Supabase redirect troubleshooting](https://supabase.com/docs/guides/troubleshooting/why-am-i-being-redirected-to-the-wrong-url-when-using-auth-redirectto-option-_vqIeO).
+Settings → **AI access** offers two equal options, and you choose which one pays:
 
-After saving the settings, request a new sign-in email from the deployed website and open it in the same browser used to request it. Previously sent emails retain their original URLs.
+- **ChatGPT plan**: click **Sign in with ChatGPT** and allow plan usage. Requests count toward your Go, Plus or Pro plan's limits.
+- **OpenAI API key**: set `OPENAI_API_KEY` in `.env` and restart Moneo. Usage is billed to that key.
+
+Voice calls and dictation need the API key, because ChatGPT plan usage doesn't support audio. Models are chosen per agent under Settings → AI and your data; IDs with a `/` (for example `vendor/model`) go to OpenRouter and need `OPENROUTER_API_KEY`.
+
+## Background jobs
+
+While Moneo runs, it checks hourly for scheduled summaries, review recovery, bank sync and Scalable Capital sync. Each sync runs about once a day, and anything missed while the computer was off runs shortly after Moneo starts.
+
+## Scalable Capital (optional)
+
+First turn on access in Scalable on the web under Profile → Security → Agentic Investing (read-only is enough). Then Settings → **Connect Scalable Capital** opens Scalable's login (with 2FA in the Scalable app). Moneo then reads your holdings, totals and cash daily as wealth records. It uses Scalable's official read-only MCP server and needs no keys.
 
 ## Connect your bank (optional)
 
 Moneo can sync booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). Its restricted mode is free for personal use and covers the accounts you link yourself. Each sync is written as an ordinary import, so it shows in import history and can be reviewed and undone.
 
-1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create a new application in the **Production** environment. A new production app runs in restricted mode, which limits it to linked accounts.
-2. Set the redirect URL to `https://<your-app>/api/bank/callback`. Production apps accept only `https://` redirects, so `http://localhost` is rejected. To try the flow locally, register a second app in the **Sandbox** environment (it only reaches mock banks) with `http://localhost:3000/api/bank/callback`.
-3. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`), or upload your own public certificate and keep its private key.
-4. In the control panel, link your own accounts to the application (activate it by linking accounts). Only linked accounts can be synced.
-5. Set the environment variables in `.env`:
+1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create an application in the **Production** environment. A new production app runs in restricted mode: free, and limited to the accounts you link yourself.
+2. Fill in the application form:
+   - Redirect URL: `https://localhost:3443/api/bank/callback`
+   - Privacy policy URL: `https://indkhan.github.io/Moneo/privacy.html`
+   - Terms of service URL: `https://indkhan.github.io/Moneo/terms.html`
+3. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`).
+4. In the control panel, link your own accounts to the application. Only linked accounts can be synced.
+5. Add to `.env`, then restart Moneo:
    - `ENABLE_BANKING_APP_ID`: the application ID
    - `ENABLE_BANKING_PRIVATE_KEY`: the PEM contents (one line with literal `\n` is fine)
-   - `BANK_TOKEN_ENCRYPTION_KEY`: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
-   - `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_APP_URL` (the callback base) must also be set
-6. Apply the new migrations, restart `npm run dev`, then use **Import → Connected banks → Choose a bank → Connect bank**.
+6. Use **Import → Connected banks → Choose a bank → Connect bank**.
 
-Consent usually lasts up to 180 days, depending on the bank. A reconnect banner appears 7 days before it ends. A daily cron (`/api/cron/bank-sync`, authorized by `CRON_SECRET`) syncs in the background. PSD2 allows about 4 background fetches a day per bank. **Sync now** runs with you present, so it doesn't count toward that limit. Pending transactions are not synced. The first sync, and the next one after you undo a sync import, asks for full history. How far back that goes is up to the bank: under PSD2 most share full history only shortly after you approve access, and about 90 days later on.
+Consent usually lasts up to 180 days, depending on the bank, and a reconnect banner appears 7 days before it ends. PSD2 allows about 4 background fetches a day per bank; Moneo syncs about once a day, and **Sync now** runs with you present, so it doesn't count. Pending transactions are not synced.
+
+Enable Banking only accepts `https://` return addresses, so after you approve access the bank sends you to `https://localhost:3443`. Moneo answers there with a certificate `npm run setup` made and trusted on this computer only (using [mkcert](https://github.com/FiloSottile/mkcert); the first run may ask you to allow it), and passes you straight back to Moneo.
 
 ## Checks
 
@@ -52,10 +64,10 @@ Consent usually lasts up to 180 days, depending on the bank. A reconnect banner 
 | `npm test` | Unit tests |
 | `npm run lint` | ESLint |
 | `npm run build` | Production build |
-| `npm run test:e2e` | Playwright browser tests |
+| `npm run test:e2e` | Playwright browser tests (see [e2e/README.md](e2e/README.md)) |
 
-The browser tests include a live-backend journey that skips until its prerequisites are configured; see [e2e/README.md](e2e/README.md).
+Browser tests use a separate QA user, never the owner's workspace: `node --env-file=.env scripts/e2e-auth.mjs` creates it and saves its session, and `--reset` empties its workspace.
 
-## Project notes
+## License
 
-- [End-to-end test setup and coverage](e2e/README.md)
+[MIT](LICENSE)

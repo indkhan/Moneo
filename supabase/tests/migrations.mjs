@@ -7,11 +7,8 @@ import { applicationMigrationSql, canonicalFunctionDefinition, replayMigrations,
 
 process.loadEnvFile(".env");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL is required");
-const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
-assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`),
-  "Database connection must match the configured Supabase project");
-const db = postgres(connection.toString(), { ssl: "require", max: 1, connect_timeout: 10, onnotice: () => {},
+const db = postgres(connection.toString(), { max: 1, connect_timeout: 10, onnotice: () => {},
   connection: { application_name: process.env.MONEO_MIGRATION_QA_APP_NAME ?? "moneo-migration-qa", lock_timeout: "10s", statement_timeout: "120s" } });
 const files = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort();
 const migrations = files.map(file => ({ file, version: file.split("_")[0], sql: readFileSync(`supabase/migrations/${file}`, "utf8") }));

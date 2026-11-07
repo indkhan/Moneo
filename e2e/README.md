@@ -1,54 +1,32 @@
-# Browser acceptance
+# Browser tests
 
-## Bounded investigation acceptance
+Playwright tests run against the app on http://localhost:3000. The config starts it (`npm run dev`, or the production build with `E2E_PRODUCTION_BUILD=1`) unless a server is already running there.
 
-`npx playwright test --config e2e/review-investigation.config.ts` runs the installed Next/Workflow runtime with the unchanged analysis form/routes, dispatcher, bounded controller, deterministic reader, receipt persistence, synthesis and freshness code. Its local synthetic HTTP database/model boundaries use no Supabase auth, public DDL, financial account or paid provider. The synthetic owner cookie exists only in the ignored harness app; it does not alter production authentication.
+## Setup
 
-The gate checks chosen question/focus/dates/planning through UI dispatch and reload, material decline drill-down, retained checkpoint-response loss and durable retry, support exhaustion, unavailable follow-ups, an actual read deadline with zero synthesis transport calls, source fingerprint change with unchanged historical output, and Stop settling the actual synthesis fetch before suppressing publication. Exact fixture IDs are deleted in `finally`; Next runs in `.qa/mne019-runtime`, and the harness stops its Windows Next process tree on shutdown. Run only with the shared heavy/browser slot released, ports3040/3041 free, and Playwright Chromium installed. These prepared tests require execution; syntax/lint checks are not runtime acceptance. Real SQL ownership/reservation races, Supabase authentication and deployed acceptance remain separate gates.
+1. Start the backend: `npm run setup`.
+2. Create the QA user and save its session: `node --env-file=.env scripts/e2e-auth.mjs`. Its login is stored in `.env` as `E2E_USER_EMAIL`/`E2E_USER_PASSWORD`, and its session in `e2e/.auth.json` (or set `E2E_STORAGE_STATE`).
+3. Before a full run, empty its workspace: `node --env-file=.env scripts/e2e-auth.mjs --reset`. Never delete the user.
 
-## Financial-review recovery acceptance
+Tests never use the owner's workspace: a saved QA session takes the place of the owner's automatic sign-in.
 
-`npx playwright test --config e2e/review-runtime.config.ts` compiles the actual financial-review workflow, dispatcher, recovery route and instrumentation with the installed Next/Workflow runtime. Its synthetic HTTP database/provider boundaries use no bank records or provider account. The interruption case kills the actual Next process tree during provider work, restarts against the same persisted local Workflow world, and requires the same run identity and one publication. `node supabase/tests/run-review-runtime.mjs` separately exercises actual Postgres functions/roles and lock races in an exactly removed disposable schema; it does not apply public migrations.
+## Running
 
-The review recovery cron is configured daily at 01:00 UTC, independently of summary preferences, using `CRON_SECRET`. Each invocation examines the oldest 25 active reviews; observed active jobs move behind other candidates even after a runtime error when the database remains usable through a checked timestamp update. The 24-hour dispatch deadline is a business policy, checked at the next successful reconciliation, rather than a Workflow execution timeout. Normal retries remain active before that deadline. After the deadline, recovery awaits runtime cancellation and confirmed terminal status before failing an active application job. Missing runtime records receive the same 24-hour receipt grace. Unacknowledged claims expire 24 hours after creation through a conditional update that cannot overwrite a concurrent elected run or publication; late workers must still register before useful work. Transport/cleanup/cancel errors remain recoverable and produce a 503 cron response. There is no automatic replacement of an acknowledged run.
+```sh
+npm run test:e2e -- --workers=1
+```
 
-Daily scheduling is compatible with Vercel Hobby. For up to 25 eligible jobs and healthy services, deadline convergence occurs at the next daily invocation (about 24 hours plus the cadence and platform scheduling delay); a backlog takes further invocations. Persistent service failures are reported and cannot guarantee a wall-clock bound. Actual deployed cron registration, credentials, invocations and Vercel durable-queue behavior require separate deployment acceptance; local runtime/SQL tests do not establish them.
+Use one worker: several specs change the same QA workspace and its preferences. Stop a running server on port 3000 before `npm run build`, so the two don't write `.next` at the same time.
 
-## Repository release gates
+## Kinds of specs
 
-`npx playwright test --config e2e/review-runtime.config.ts --grep 'Stop aborts'` runs the installed Next/Workflow engine and actual AI SDK/OpenAI HTTP transport against a controlled local provider. Stop is observed through bounded database polling every 500 ms (each read has a 2 s timeout), aborts the active request, and persists acknowledgment only after the application transport settles. Runtime cancellation follows that acknowledgment. No provider account or financial records are used. This does not establish deletion of data a remote provider already received or provider-side termination.
+- `*.smoke.spec.ts` and `*.mocked.spec.ts` need no saved session; mocked specs stub API responses to check UI contracts.
+- `*.gated.spec.ts` need the backend. Most use the QA session; others create disposable users with the service key, sign them in by session cookie, and remove them in `finally`. If interrupted, their IDs are left in ignored `.qa/` files for cleanup.
+- `core-journey.gated.spec.ts` calls the real AI provider, so it costs money: run it only when you mean to.
+- `review-runtime.config.ts` and `review-investigation.config.ts` run the real Workflow engine against local synthetic database and model servers (ports 3040/3041), including a server restart mid-review: `npx playwright test --config e2e/review-runtime.config.ts`.
 
-`e2e/provider-stop.gated.spec.ts` requires deployed migration 202610060013 and real disposable Supabase authentication. It checks owned Stop/reload requested versus acknowledged state, an explicitly unconfirmed termination receipt, late-publication suppression, completed report retention and unchanged intentional correction/history. Its worker acknowledgment is a controlled service receipt; the separate installed-runtime HTTP test establishes real transport abort. Recovery allows a canceled runtime's running step time to acknowledge, then uses `cancellation_unconfirmed` for stale steps rather than claiming termination. Runtime/step lookup failures remain recoverable, and missing cancellation timestamps use the existing 24-hour deadline. Actual hosted Workflow/provider cancellation remains a separate deployment check.
+A skipped spec is not a pass: it means a prerequisite (backend, QA session, service key) is missing.
 
-Run `npm run acceptance:fast` (unit tests, lint, build), then `npm run acceptance:required` (rollback-only fresh/upgrade SQL regressions, unit tests with live DB balance parity, and the deterministic browser suite with one worker). Both commands must pass for local release acceptance. Fast validation alone permits the default live DB test skip and is not release evidence.
+## Acceptance
 
-The required tier fails on absent prerequisites, failed commands, empty reports, any unit/browser skip, or flaky browser results. It also requires the latest fast result to pass on a clean checkout and match the current commit and `.next/BUILD_ID`; rerun `npm run acceptance:fast` after any commit, uncommitted change or replacement build. Configure `.env` with `SUPABASE_DB_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; supply `E2E_STORAGE_STATE` (or `e2e/.auth.json`) for an empty disposable synthetic workspace. Install Playwright Chromium and apply the repository migration head through your normal reviewed deployment process before browser acceptance. Stop any existing port3000 server before the fast build; stop any port3000 server before the required tier too: it starts the verified production build with `npm start`, without HMR, existing-server reuse or a live provider key. `E2E_PRODUCTION_BUILD=1` selects that production server for direct Playwright runs; ordinary runs retain the development server.
-
-Each invocation writes an ignored `.qa/acceptance-<tier>-<timestamp>/result.json` with tested commit, worktree-dirty flag, migration filename head, command outcomes, production build ID and local environment label. Detailed logs, reports and browser artifacts stay in that ignored directory because they may contain identifying evidence. Run against a clean committed checkout for revision-bound evidence; dirty results explicitly describe an uncommitted tree. No credentials or auth contents are included in the summary.
-
-Fresh application schema replay and SQL fixtures run in a disposable schema and roll back before upgrading the configured database inside a separate rollback-only transaction. Upgrade failure does not negate the separately logged fresh pass. Schema changed outside `supabase_migrations.schema_migrations` can make a pending migration fail; reconcile that discrepancy through the normal reviewed database process, never skip or mark SQL applied merely to turn this gate green. The harness neither applies migrations permanently nor rewrites migration history.
-
-Actual provider quality/cancellation evaluation is a separate optional, explicitly budgeted tier, not run by either command. The existing `core-journey.gated.spec.ts` invokes the live provider and is explicitly excluded from the required tier and recorded in its summary; run that journey separately when provider evaluation is authorized. Browser AI mocks remain deterministic contracts. Local gates do not establish deployed revision/health/auth/journey or Vercel administration acceptance; record those separately. New issue-specific regression journeys remain necessary where existing tests do not cover their failures.
-
-Use `npm run test:e2e -- --workers=1 --output=.qa/final-e2e-results` with the configured local app and applied migrations. The config reads `.env`; it reuses a running port3000 server. Stop that server before building so build/dev do not write the same `.next` directory.
-
-Authenticated specs require `E2E_STORAGE_STATE` pointing at an ignored Playwright storage state, or `e2e/.auth.json`. Other gated specs create their own disposable users and require `SUPABASE_DB_URL`, the public Supabase variables and `SUPABASE_SERVICE_ROLE_KEY`. No production authentication bypass is used and no test emails are sent. Never commit credentials, auth state, private statements or detailed private evidence. A skipped required authenticated spec is not a pass.
-
-Use an empty disposable workspace for the full suite: the core journey independently expects its initial two ledger entries. Run with one worker because several authenticated specs mutate the same supplied workspace/preferences. Specs that create users remove their exact fixtures in `finally`; ignored `.qa` recovery journals retain IDs if interrupted. Remove only those recorded QA records and storage objects after acceptance.
-
-## Coverage and limits
-
-- Anonymous smoke and mocked import journeys verify health, login, empty/error states and deterministic UI contracts.
-- `core-journey.gated.spec.ts` uses real auth, confirmation/import workflow, ledger, chat and goals; file interpretation/manual analysis start are explicitly mocked. It proves overlapping rows are held for review. Separate private-file and free-provider acceptance supplies the actual parsing/model evidence; mocks are not provider verification.
-- Money, verified-link, goal/reservation, wealth, budget-rollover and scenario specs exercise actual persisted actions, exact totals, history/undo, source preservation and unchanged canonical data for hypothetical scenarios.
-- `recurring-source.gated.spec.ts` independently asserts EUR990→1000→990 forecast when a confirmed source becomes a transfer then is undone.
-- `recurring-occurrences.gated.spec.ts` requires migration `202610060003`; it exercises explicit partial/full association, dated forecast changes, undo and retained original posting/history.
-- `pending-holds.gated.spec.ts` requires migration `202610060010`; it verifies atomic reviewed import settlement, changed amount/date, exact forecast release, partial settlement and undo with both original source observations retained. Missing prerequisites or migration fail explicitly. Run rollback-only fresh SQL first with `node supabase/tests/run-pending-holds.mjs`; that command does not deploy the migration or establish browser acceptance.
-- `reviewed-balances.gated.spec.ts` requires migration `202610060001`; it covers explicit timestamp/date-only posted activity review, conservative unconfirmed balances, later postings and retained undo history. A rollback-only migration test cannot enable this browser gate.
-- `review-freshness.gated.spec.ts` asserts current→stale→unknown evidence, retained full saved review after a dated correction; denied scopes supply no balance data.
-- `two-user-isolation.gated.spec.ts` exercises owned and foreign pages/APIs/files/RPCs/workflows, account/view histories and deterministic insight dismissal/restore/muting/exact relevance settings. SQL fixtures cover every current table and service boundary.
-- `auth-refresh.gated.spec.ts` verifies persistent authenticated cookies; when supplied an actually expired session it also asserts rotation. Fresh-session acceptance alone does not prove rotation.
-- `accessibility.gated.spec.ts` checks seven routes at360px, persisted dark appearance, native modal keyboard/background focus blocking/Escape/focus return. Scenario acceptance adds skip-link/de-DE/invalid horizon checks. These targeted checks are not a blanket WCAG certification.
-- `import-control.gated.spec.ts` requires051 and exercises real partial Stop/Resume, worker fencing, exact progress/idempotency/source retention and full undo. Separate SQL/three-connection checks cover races; missing required migration fails explicitly.
-
-Final acceptance also requires unit tests (enable live DB resolver parity), lint/build, fresh/upgraded schema checks and deployed revision/health/auth/journey checks. Production Vercel administration/cron/logs require actual project access; local success does not establish deployment success.
+`npm run acceptance:fast` runs unit tests, lint and the build. `npm run acceptance:required` then runs the SQL regressions, live database checks and the browser suite on that build with one worker. Results go to an ignored `.qa/acceptance-*` folder; logs there may contain workspace data, so keep them out of the repo.

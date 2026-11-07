@@ -12,8 +12,7 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
   test.setTimeout(120_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
-  expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-  const db = postgres(connection.toString(), { ssl: "require", max: 1 });
+  const db = postgres(connection.toString(), { max: 1 });
   const [migration] = await db`select to_regprocedure('public.record_manual_balance(uuid,text,date,boolean,jsonb,uuid,integer,uuid)') present`;
   if (!migration.present) { await db.end(); test.skip(true, "Requires applied candidate migration 202610060001; rollback SQL acceptance does not expose it to the browser"); }
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });

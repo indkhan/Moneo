@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { APICallError, generateText } from "ai";
 import { requireWorkspace } from "@/lib/auth";
-import { createClient } from "@/lib/supabase-server";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
 import { modelForSettings } from "@/lib/ai/provider";
 import { minorDigits } from "@/lib/finance/fx";
@@ -64,30 +63,6 @@ async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<
       if (!removed.data.length) break; // RLS-denied removes return nothing; never spin
     }
   }
-}
-
-export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  revalidatePath("/", "layout");
-  redirect("/login");
-}
-
-export async function deleteAccount(_previous: { error?: string }, form: FormData): Promise<{ error?: string }> {
-  try {
-    const context = await requireWorkspace();
-    if (!z.literal("DELETE").safeParse(form.get("confirmation")).success) return { error: "Type DELETE to confirm" };
-    await removeWorkspaceFiles(context);
-    await revokeBankSessions(context.workspace.id);
-    const result = await context.supabase.rpc("delete_account");
-    if (result.error) throw result.error;
-    // The user is gone, so only this browser's session is left to clear.
-    await context.supabase.auth.signOut({ scope: "local" });
-  } catch {
-    return { error: "Your account could not be deleted. Some files or bank connections may already be gone, so try again to finish." };
-  }
-  revalidatePath("/", "layout");
-  redirect("/login?deleted=1");
 }
 
 export async function resetAllData(_previous: { error?: string }, form: FormData): Promise<{ error?: string }> {

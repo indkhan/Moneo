@@ -11,7 +11,7 @@ test("owned September/August investigation uses exact splits/refunds, complete s
   for (const key of ["SUPABASE_DB_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]) expect(process.env[key], `${key} required`).toBeTruthy();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
-  const db = postgres(process.env.SUPABASE_DB_URL!, { ssl: "require", max: 1, onnotice: () => {} });
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
   const run = randomUUID(), account = randomUUID(), otherAccount = randomUUID(), groceries = randomUUID(), travel = randomUUID(), merchant = randomUUID(), split = randomUUID(), splitSet = randomUUID(), series = randomUUID();
   const foreignAccount = randomUUID(), imported = randomUUID(), source = randomUUID();

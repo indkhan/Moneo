@@ -11,7 +11,7 @@ export const metadata = { title: "Ask" };
 export default async function AiPage({ searchParams }: { searchParams: Promise<{ conversation?: string; threadsBefore?: string; messagesBefore?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch (cause) {
-    if (cause instanceof Error && cause.message === "Unauthorized") redirect("/login");
+    if (cause instanceof Error && cause.message === "Unauthorized") redirect("/setup");
     return <main className="p-8"><p role="alert">Could not load workspace. Try again.</p></main>;
   }
   const { supabase, workspace, settings } = context;

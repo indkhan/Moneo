@@ -35,7 +35,7 @@ export function getSupabaseConfig(): SupabaseConfig {
   if (!url && !key) {
     return {
       status: "missing",
-      detail: "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env to start Moneo.",
+      detail: "Moneo isn't set up yet. In the Moneo folder, run npm run setup, then restart Moneo.",
     };
   }
   if (!url || !key) {
@@ -50,7 +50,7 @@ export function getSupabaseConfig(): SupabaseConfig {
   if (!/^https?:\/\//i.test(url)) {
     return {
       status: "invalid",
-      detail: "NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL, for example https://xyzcompany.supabase.co.",
+      detail: "NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL, for example http://127.0.0.1:54321.",
     };
   }
   try {
@@ -59,7 +59,7 @@ export function getSupabaseConfig(): SupabaseConfig {
   } catch {
     return {
       status: "invalid",
-      detail: "NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL, for example https://xyzcompany.supabase.co.",
+      detail: "NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL, for example http://127.0.0.1:54321.",
     };
   }
   return { status: "configured", detail: "Supabase configuration is present." };

@@ -29,7 +29,7 @@ it("permits read-only rendering while preserving real cookie failures", async ()
 it("throws an actionable error instead of the library assertion when unconfigured", async () => {
   delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  await expect(createClient()).rejects.toThrow("NEXT_PUBLIC_SUPABASE_URL");
+  await expect(createClient()).rejects.toThrow("npm run setup");
   expect(vi.mocked(createServerClient)).not.toHaveBeenCalled();
 });
 

@@ -23,7 +23,7 @@ function recordSummary(record: unknown, locale?: string) {
 const EVIDENCE_RETURN = /^\/ai\/activity\/[0-9a-f-]{36}$/i;
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ metric?: string; sourcePage?: string; metricPage?: string; q?: string; from?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { id } = await params, query = await searchParams;
   const parsed = z.object({ id: z.uuid(), metric: z.string().min(1).max(200).optional(), sourcePage: z.coerce.number().int().min(0).max(1000).default(0), metricPage: z.coerce.number().int().min(0).max(40).default(0), q: z.string().trim().max(100).optional(), from: z.string().regex(EVIDENCE_RETURN).optional().catch(undefined) }).safeParse({ id, ...query });
   if (!parsed.success) notFound();

@@ -23,15 +23,13 @@ const head = git.stdout.trim();
 if (existsSync(".env")) process.loadEnvFile(".env");
 assert(process.env.SUPABASE_DB_URL && process.env.NEXT_PUBLIC_SUPABASE_URL, "Configured synthetic SQL prerequisites required");
 const connection = new URL(process.env.SUPABASE_DB_URL);
-const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
-assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`), "Project/database mismatch");
 const schema = `mne014_${randomUUID().replaceAll("-", "")}`;
 const run = {task: "MNE014", schema, worktree: root, head, marker: randomUUID(), mode: baseline ? "baseline" : upgrade ? "upgrade" : serialize ? "serialization" : "fresh"};
 mkdirSync(".qa", {recursive: true});
 const journal = `.qa/${schema}-owner.jsonl`;
 const record = value => appendFileSync(journal, JSON.stringify({...run, at: new Date().toISOString(), ...value}) + "\n");
 record({phase: "prepared", rollbackOnly: !serialize, ownerRecordsRead: false, publicDdl: false});
-const db = postgres(connection.toString(), {ssl: "require", max: 1, connect_timeout: 10, connection: {application_name: `MNE014-${run.marker}`, statement_timeout: "20000", lock_timeout: "3000", idle_in_transaction_session_timeout: "30000"}, onnotice: () => {}});
+const db = postgres(connection.toString(), {max: 1, connect_timeout: 10, connection: {application_name: `MNE014-${run.marker}`, statement_timeout: "20000", lock_timeout: "3000", idle_in_transaction_session_timeout: "30000"}, onnotice: () => {}});
 const rollback = new Error("MNE014 verified rollback");
 function isolated(sql) {
   const rewritten = sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bschema public\b/g, `schema ${schema}`)

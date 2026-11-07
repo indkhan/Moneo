@@ -8,8 +8,7 @@ import { applicationMigrationSql, replayMigrations } from "./migration-replay.mj
 process.loadEnvFile(".env");
 const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
-assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`), "Configured project mismatch");
-const db = postgres(connection.toString(), { ssl: "require", max: 4, connect_timeout: 10, onnotice: () => {} });
+const db = postgres(connection.toString(), { max: 4, connect_timeout: 10, onnotice: () => {} });
 const schema = `moneo_occurrence_qa_${randomUUID().replaceAll("-", "")}`;
 assert(/^moneo_occurrence_qa_[a-f0-9]{32}$/.test(schema));
 const isolated = sql => sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bschema public\b/g, `schema ${schema}`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);

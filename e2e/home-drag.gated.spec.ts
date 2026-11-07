@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { deleteDisposableUser } from "./fixtures";
@@ -30,11 +31,12 @@ test("a widget dropped in the empty space of a row goes there and stays after a 
   try {
     const [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${user}`;
     await db`insert into public.dashboard_layouts(workspace_id,items,sizes) values(${workspace},${["recent", "accounts", "goals"]},${db.json({ recent: "L", accounts: "L", goals: "S" })})`;
-    await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await page.waitForURL(url => url.pathname === "/");
+    // Sign the disposable user in by its session cookie (the app has no sign-in page).
+    const jar = new Map<string, string>();
+    const auth = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => jar.set(name, value)) } });
+    expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
+    await page.context().addCookies([...jar].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
+    await page.goto("/");
     // The grid only moves once hydrated.
     await page.waitForLoadState("networkidle");
     const widget = (name: string) => page.locator(`[data-widget="${name}"]`);

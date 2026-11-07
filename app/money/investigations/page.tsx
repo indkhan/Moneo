@@ -34,7 +34,7 @@ function Checks({ name, options, checked }: { name: string; options: Record<stri
 
 export default async function InvestigationPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/login"); }
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const today = calendarDate(new Date(), context.workspace.timezone);
   const monthStart = `${today.slice(0, 7)}-01`;
   let spec: InvestigationSpec | undefined;
