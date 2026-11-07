@@ -61,7 +61,8 @@ export async function listRecurring(context: Context) {
       cadence: item.cadence, next: expandSchedule({ ...item, account_id: item.account_id ?? "unassigned", ends_on: null }, today, 400)[0]?.date ?? null, category: item.category?.name ?? null })),
     suggestions: suggestions.pending.filter(item => item.related.length <= 1).map(({ series }) => ({ id: series.runAnchorId, label: series.label, cadence: series.cadence,
       amount: series.amountMinMinor === series.amountMaxMinor ? money(series.amountMinMinor, series.currencyCode) : `${money(series.amountMinMinor, series.currencyCode)} to ${money(series.amountMaxMinor, series.currencyCode)}`,
-      occurrences: series.occurrences })),
+      amount_min_minor: series.amountMinMinor.toString(), amount_max_minor: series.amountMaxMinor.toString(), currency_code: series.currencyCode,
+      direction: series.amountMinMinor < 0n ? "out" : "in", occurrences: series.occurrences })),
   };
 }
 

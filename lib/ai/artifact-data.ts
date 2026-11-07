@@ -38,7 +38,7 @@ export const ARTIFACT_SOURCES = {
     run: (_: unknown, context: Context, shared: QueryShared) => shared.entities ??= loadInvestigationEntities(context) },
   balances: { description: "Current dated account balances.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => getBalances(context, imports(context)) },
   accounts: { description: "The user's accounts.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => listAccounts(context) },
-  recurring: { description: "Confirmed recurring payments and income in schedules (name, formatted amount, exact signed amount_minor, currency_code, direction, cadence, next date, category), plus suggestions still awaiting confirmation. Generated code can calculate requested totals and cadence equivalents from schedules; keep currencies separate.", input: empty, scopes: ["planning", "transactions"],
+  recurring: { description: "Confirmed recurring payments and income in schedules (name, formatted amount, exact signed amount_minor, currency_code, direction, cadence, next date, category), plus suggestions still awaiting confirmation (label, formatted amount, exact signed amount_min_minor and amount_max_minor, currency_code, direction, cadence, occurrences). Generated code can calculate requested totals and cadence equivalents from schedules; keep currencies separate.", input: empty, scopes: ["planning", "transactions"],
     run: (_: unknown, context: Context) => listRecurring(context) },
   goals: { description: "The user's savings goals.", input: empty, scopes: ["planning"], run: (_: unknown, context: Context) => listGoals(context) },
   wealth: { description: "Money lent to and owed to people, other assets, holdings and debts, with totals per currency.", input: empty, scopes: ["planning"], run: (_: unknown, context: Context) => listWealth(context) },
@@ -223,7 +223,12 @@ export function artifactDocument(html: string, data: Record<string, unknown>, { 
   const scheme = theme ?? "light dark";
   // A link the designer left in can't go anywhere (navigation is blocked, which would leave an error page), so clicks on links do nothing.
   const head = `<meta http-equiv="Content-Security-Policy" content="${pageCsp(origin)}"><script>window.MONEO_DATA=${json};`
-    + `addEventListener("click",e=>{if(e.target instanceof Element&&e.target.closest("a[href]"))e.preventDefault()},true);</script>`
+    + `addEventListener("click",e=>{if(e.target instanceof Element&&e.target.closest("a[href]"))e.preventDefault()},true);`
+    // A broken script would leave empty boxes that look like missing data; say so on the page instead.
+    + `addEventListener("error",e=>{if(document.getElementById("moneo-page-error"))return;const show=()=>{const n=document.createElement("p");n.id="moneo-page-error";n.setAttribute("role","alert");`
+    + `n.style.cssText="margin:16px;padding:12px 16px;border:1px solid var(--moneo-negative);border-radius:12px;color:var(--moneo-negative);font:14px/1.5 var(--moneo-font)";`
+    + `n.textContent="Part of this page failed to run, so some values are missing. Ask Moneo in the chat to fix it. ("+(e.message||"script error")+")";document.body.prepend(n)};`
+    + `document.body?show():addEventListener("DOMContentLoaded",show)});</script>`
     + `<style>${tokens(theme)}${KIT}:root{color-scheme:${scheme}}</style>`;
   const page = (/<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => match + head) : head + html).replace(CDN_ECHARTS, `${origin}/artifact-lib/echarts.min.js`);
   const srcdoc = page.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
