@@ -6,7 +6,6 @@ import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
 import { ResetData } from "./reset";
 import { ConnectedBanks } from "@/components/connected-banks";
-import { ScalableConnection } from "@/components/scalable-connection";
 import { AiUsage } from "./ai-usage";
 import { AiAccess } from "./ai-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
@@ -50,7 +49,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <SettingsForm settings={settings} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
-        <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
           <details className="mt-2 text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">Weekly summaries are due on Monday and monthly ones on the first, in your timezone and at your preferred time. A daily check starts due summaries, so they can arrive a day late. Turn summaries off to stop future runs, or stop an active run below.</p></details>

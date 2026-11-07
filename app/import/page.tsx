@@ -6,6 +6,7 @@ import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/import/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
 import { ConnectedBanks } from "@/components/connected-banks";
+import { ScalableConnection } from "@/components/scalable-connection";
 import { PhoneCollapse } from "@/components/phone-collapse";
 
 type Preview = {
@@ -523,6 +524,7 @@ export default function ImportPage() {
     </section>}
 
     <ConnectedBanks />
+    <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
 
     <section className="space-y-4" aria-label="Import history">
       <h2 className="text-sm font-medium text-foreground">Import history</h2>
