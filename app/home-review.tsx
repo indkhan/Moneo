@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useBusy } from "@/components/use-busy";
+import { CategoryCombobox, resolveCategory } from "@/components/category-combobox";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
@@ -121,7 +122,9 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
   useReportCleared(!!data && data.total <= shown && data.groups.every(group => done[group.key] && done[group.key] !== "Skipped"));
   if (failed) return <p role="alert" className="mt-3 text-sm text-danger">Could not load these {total} transactions. <button type="button" onClick={() => { setFailed(false); setAttempt(count => count + 1); }} className="underline">Try again</button></p>;
   if (!data) return <p role="status" className="mt-3 text-sm text-muted-foreground">Grouping {total} transactions…</p>;
-  const pick = (group: UncategorizedGroup) => chosen[group.key] ?? group.suggested ?? "";
+  // What is typed per group: the suggestion's name until the person changes it.
+  const typed = (group: UncategorizedGroup) => chosen[group.key] ?? data.categories.find(category => category.id === group.suggested)?.name ?? "";
+  const pick = (group: UncategorizedGroup) => resolveCategory(data.categories, typed(group), true);
   // Marked done at once; groups that fail to save are put back with the error.
   const apply = (groups: UncategorizedGroup[]) => run(async () => {
     const keys = groups.map(group => group.key);
@@ -129,14 +132,14 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
     const outcome = (count: number) => `${count} categorized${remember ? ", future entries too" : ""}`;
     setDone(current => ({ ...current, ...Object.fromEntries(groups.map(group => [group.key, outcome(group.count)])) }));
     try {
-      const { applied, error } = await categorizeGroups(groups.map(group => ({ rows: group.rows, categoryId: pick(group), key: group.key })), remember);
+      const { applied, error } = await categorizeGroups(groups.map(group => ({ rows: group.rows, key: group.key, ...(choice => choice && "id" in choice ? { categoryId: choice.id } : { newCategory: choice?.name })(pick(group)) })), remember);
       restore(keys.filter(key => !(key in applied)));
       setDone(current => ({ ...current, ...Object.fromEntries(Object.entries(applied).map(([key, count]) => [key, outcome(count)])) }));
       return error;
     } catch (cause) { restore(keys); throw cause; }
   });
   const open = data.groups.filter(group => !done[group.key]);
-  const suggested = open.filter(group => group.suggested && pick(group) === group.suggested);
+  const suggested = open.filter(group => { const choice = pick(group); return !!group.suggested && !!choice && "id" in choice && choice.id === group.suggested; });
   return <div>
     <div className="mt-2 flex flex-wrap items-center gap-2"><p className="mr-auto text-sm text-muted-foreground">Every batch can be undone.</p>
       {suggested.length > 0 && <button type="button" disabled={pending} className={primary} onClick={() => apply(suggested)}>Apply {suggested.length} suggested</button>}</div>
@@ -153,11 +156,8 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
           {group.count > group.recent.length && <p className="mt-1">…and {group.count - group.recent.length} more.</p>}
         </details></div>
       {done[group.key] ? <p role="status" className="text-sm">{done[group.key]}</p> : <>
-        <select aria-label={`Category for ${group.label}`} value={pick(group)} disabled={pending} onChange={event => setChosen(current => ({ ...current, [group.key]: event.target.value }))}
-          className="min-h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-sm sm:max-w-56">
-          <option value="">Choose…</option>
-          {data.categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
+        <CategoryCombobox label={`Category for ${group.label}`} options={data.categories} value={typed(group)} allowCreate placeholder="Type a category" disabled={pending}
+          onChange={text => setChosen(current => ({ ...current, [group.key]: text }))} className="flex-1 sm:max-w-56" />
         <button type="button" disabled={pending || !pick(group)} className={primary} onClick={() => apply([group])}>Apply</button>
         <button type="button" disabled={pending} className={secondary} onClick={() => setDone(current => ({ ...current, [group.key]: "Skipped" }))}>Skip</button>
       </>}
