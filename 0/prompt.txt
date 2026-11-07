@@ -1,0 +1,184 @@
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>[8/85] [chromium] › e2e\artifact-home.gated.spec.ts:163:5 › a new artifact sends its first request once, and a failed one takes a press</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>4) [chromium] › e2e\budget-completeness.gated.spec.ts:12:5 › native and AI budget completeness follow real classification correction and undo
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>5) [chromium] › e2e\core-journey.gated.spec.ts:39:7 › partial core journey (gated: real Supabase, selected AI mocks) › authenticate → import → home → ask → goal → mocked analysis → re-import › view Home with trusted metrics
+Error: expect(locator).toBeVisible() failed
+Error: element(s) not found</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+remove things from the codebase that are related to the old this so the codebase is clean as well
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>6) [chromium] › e2e\core-journey.smoke.spec.ts:8:7 › core journey smoke (no session, no live AI) › home shows setup guidance or redirects unauthenticated users
+Error: expect(page).toHaveURL(expected) failed</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>7) [chromium] › e2e\core-journey.smoke.spec.ts:35:7 › core journey smoke (no session, no live AI) › login page renders email and password form
+Error: expect(locator).toBeVisible() failed
+Error: element(s) not found</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>8) [chromium] › e2e\core-journey.smoke.spec.ts:47:7 › core journey smoke (no session, no live AI) › a signed-out link to the import page goes to login and remembers it
+Error: expect(page).toHaveURL(expected) failed</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>9) [chromium] › e2e\coverage-recurring.gated.spec.ts:15:7 › weekly: owned confirm/decline, calendar forecast, occurrence undo and source correction
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>10) [chromium] › e2e\coverage-recurring.gated.spec.ts:15:7 › biweekly: owned confirm/decline, calendar forecast, occurrence undo and source correction
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>11) [chromium] › e2e\coverage-recurring.gated.spec.ts:15:7 › monthly: owned confirm/decline, calendar forecast, occurrence undo and source correction
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>12) [chromium] › e2e\coverage-recurring.gated.spec.ts:15:7 › quarterly: owned confirm/decline, calendar forecast, occurrence undo and source correction
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>13) [chromium] › e2e\coverage-recurring.gated.spec.ts:15:7 › yearly: owned confirm/decline, calendar forecast, occurrence undo and source correction
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>14) [chromium] › e2e\dated-overview.gated.spec.ts:12:5 › dated observations remain visible and explicit booked confirmation reloads and undoes without retyping
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>15) [chromium] › e2e\goal-reservations.gated.spec.ts:6:5 › current cash reservations persist and undo without claiming recorded savings
+Error: expect(locator).toContainText(expected) failed</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>16) [chromium] › e2e\home-cash-flow.gated.spec.ts:8:5 › Home switches cash-flow In/Out in the browser and keeps the pick in the URL
+Error: expect(locator).toBeVisible() failed
+Error: element(s) not found</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>17) [chromium] › e2e\home-dashboard.gated.spec.ts:18:5 › Home widgets are moved, resized, hidden and added back in place, and stay that way
+Error: locator.getAttribute: Test timeout of 120000ms exceeded.</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>18) [chromium] › e2e\home-drag.gated.spec.ts:21:5 › a widget dropped in the empty space of a row goes there and stays after a reload
+Error: locator.fill: Test timeout of 120000ms exceeded.</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunfd3e9q</task-id>
+<summary>Monitor event: "E2E failures and final summary"</summary>
+<event>19) [chromium] › e2e\import-control.gated.spec.ts:10:5 › durable import Stop, Resume, byte deduplication, undo and reimport preserve exact sources
+Error: expect(received).toBe(expected) // Object.is equality</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bujs1q5bz</task-id>
+<tool-use-id>toolu_01RajgvUskahYSFredCFPjaF</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\3de23844519d7b87\4ce47a12-474c-497a-87cc-770ace971903\tasks\bujs1q5bz.output</output-file>
+<status>killed</status>
+<summary>Background command "Start dev server fresh" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
