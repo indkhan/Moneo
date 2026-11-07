@@ -28,6 +28,9 @@ describe("detectRecurring", () => {
       transaction({ id: "w1", date: "2026-01-02", description: "Gym", amountMinor: -2000n }),
       transaction({ id: "w2", date: "2026-01-09", description: "Gym", amountMinor: -2000n }),
       transaction({ id: "w3", date: "2026-01-16", description: "Gym", amountMinor: -2100n }),
+      transaction({ id: "w4", date: "2026-01-23", description: "Gym", amountMinor: -2000n }),
+      transaction({ id: "w5", date: "2026-01-30", description: "Gym", amountMinor: -2000n }),
+      transaction({ id: "w6", date: "2026-02-06", description: "Gym", amountMinor: -2000n }),
       transaction({ id: "once", date: "2026-01-05", description: "Coffee", amountMinor: -300n }),
       transaction({ id: "twice", date: "2026-01-06", description: "Coffee", amountMinor: -300n }),
     ]);
@@ -44,7 +47,7 @@ describe("detectRecurring", () => {
     });
     expect(monthly.confidence).toBeGreaterThanOrEqual(0.6);
     const weekly = result.find((series) => series.cadence === "weekly")!;
-    expect(weekly.transactionIds).toEqual(["w1", "w2", "w3"]);
+    expect(weekly.transactionIds).toEqual(["w1", "w2", "w3", "w4", "w5", "w6"]);
     expect(weekly.amountMinMinor).toBe(-2100n);
     expect(weekly.amountMaxMinor).toBe(-2000n);
   });

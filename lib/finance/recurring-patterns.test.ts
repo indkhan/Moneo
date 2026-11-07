@@ -33,10 +33,10 @@ it("retains monthly evidence across a missing month without inventing an occurre
 it.each([
   {cadence: "quarterly", dates: ["2026-01-31", "2026-04-30", "2026-07-31"]},
   {cadence: "yearly", dates: ["2024-02-29", "2025-02-28", "2026-02-28"]},
-  {cadence: "biweekly", dates: ["2026-01-02", "2026-01-16", "2026-01-30"]},
+  {cadence: "biweekly", dates: ["2026-01-02", "2026-01-16", "2026-01-30", "2026-02-13", "2026-02-27"]},
 ])("finds calendar-anchored $cadence runs with exact observed amounts", ({cadence, dates}) => {
   const result = detectRecurring(dates.map((date, index) => posting(`observed-${index}`, date, "ACME fee", -9007199254740993n)));
-  expect(result).toEqual(expect.arrayContaining([expect.objectContaining({cadence, amountMinMinor: -9007199254740993n, amountMaxMinor: -9007199254740993n, transactionIds: ["observed-0", "observed-1", "observed-2"]})]));
+  expect(result).toEqual(expect.arrayContaining([expect.objectContaining({cadence, amountMinMinor: -9007199254740993n, amountMaxMinor: -9007199254740993n, transactionIds: dates.map((_, index) => `observed-${index}`)})]));
 });
 
 it("keeps separate observed runs when the gap exceeds the disclosed missing-period limit", () => {
