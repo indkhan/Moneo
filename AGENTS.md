@@ -62,6 +62,16 @@ Use npm (`package-lock.json` is authoritative).
 - `docker-compose.yml`, `docker/`, `scripts/setup.mjs` — the self-hosted backend
 - `e2e/` — Playwright flows; `supabase/tests/` — SQL regressions
 
+## Sign-in callbacks and addresses
+
+Each outside service sends the browser back to a different address. Keep these in mind before changing ports, hosts or remote access:
+
+- **Sign in with ChatGPT** (`lib/ai/chatgpt.ts`): OpenAI only accepts the loopback `http://127.0.0.1:<PORT>/api/ai/chatgpt/callback`. It can only be completed in a browser on the computer running Moneo; from another device the redirect lands on that device's own 127.0.0.1 and fails. Tokens are stored, so once signed in on the computer, chat works from any device.
+- **Enable Banking** (`lib/bank/return-listener.ts`): production apps need an `https://` redirect registered in the Enable Banking app. Moneo uses `https://localhost:3443/api/bank/callback` (a local listener with a cert from `npm run setup`) which forwards to `NEXT_PUBLIC_APP_URL`. A remote device needs its own https URL (e.g. a tunnel's `https://…/api/bank/callback`) registered as an extra redirect URL.
+- **Scalable Capital** (`lib/scalable/server.ts`): dynamic client registration with `NEXT_PUBLIC_APP_URL/api/scalable/callback`. `localhost` registers freely; any other host must be on Scalable's allowlist, so connect from the computer.
+- **Supabase** (`NEXT_PUBLIC_SUPABASE_URL`, `127.0.0.1:54321`): only the server should call it. Anything that sends the browser there (e.g. chat attachment signed URLs in `app/api/chat/attachments/route.ts`) breaks on other devices.
+- **Voice** needs a secure context (https or localhost) for the microphone.
+
 ## Database changes
 
 Add a new ordered migration in `supabase/migrations/` and keep `lib/schema.ts` aligned. Never rewrite an applied migration. `npm run setup` applies pending ones and records them in `supabase_migrations.schema_migrations`. For other Supabase CLI commands use `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`).
