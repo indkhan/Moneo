@@ -75,7 +75,8 @@ Run the smallest relevant test while iterating. Before finishing, run `npm test`
 - Break the work into steps and commit each one; a big task is several commits.
 - Never open a pull request unless asked.
 - Write commit messages in plain language: what changed and why.
-- Don't commit plans, research notes or scratch files. Deferred work goes in `BACKLOG.md`.
+- Deferred work gets their issue created on github.
+- suggest edits in agents.md if there was something that is changed or needs to be there in agents.md but only suggest when it is actually needed dont suggest just for suggesting.(only for prs)
 
 ## Context
 
