@@ -39,7 +39,7 @@ While Moneo runs, it checks hourly for scheduled summaries, review recovery, ban
 
 ## Scalable Capital (optional)
 
-First turn on access in Scalable on the web under Profile → Security → Agentic Investing (read-only is enough). Then Import → **Connect Scalable Capital** opens Scalable's login (with 2FA in the Scalable app). Moneo then reads your holdings, totals and cash daily as wealth records, and shows the portfolio on Accounts. It uses Scalable's official read-only MCP server and needs no keys.
+First turn on access in Scalable on the web under Profile → Security → Agentic Investing (read-only is enough). Then **Connect Scalable Capital** (on Import or in Settings) opens Scalable's login (with 2FA in the Scalable app). Moneo then reads your holdings, totals and cash daily as wealth records, and shows the portfolio on Accounts. It uses Scalable's official read-only MCP server and needs no keys.
 
 ## Connect your bank (optional)
 
