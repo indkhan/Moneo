@@ -7,12 +7,16 @@ import { ArtifactFrame } from "@/components/artifact-frame";
 import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { loadConversation } from "@/lib/ai/conversation-history";
 import { cardWidgetKey, homeLayout, isBuiltinWidget, widgetLabel } from "@/lib/finance/dashboard";
-import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
+import { CARD_SIZES, CARD_SIZE_KEYS, cardSize, type CardSize } from "@/lib/cards/sizes";
+
 import { publishCardSafely, setCardSizeSafely, unpublishCardSafely } from "@/app/dashboard-actions";
 import { SafeForm } from "@/components/safe-form";
 import { DeleteArtifactButton } from "../delete-artifact-button";
 import { ArtifactChat, SendButton } from "./artifact-chat";
 import { ExitFullScreen, PendingSubmit, RenameArtifact } from "./artifact-controls";
+
+// The neighbouring widgets show only when at least 160px is left beside the card (its width plus the gap).
+const NEIGHBOURS_FIT: Record<CardSize, string> = { S: "@min-[524px]:grid", M: "@min-[704px]:grid", L: "@min-[884px]:grid", XL: "" };
 
 const cardControl = "flex flex-wrap items-center gap-2";
 
@@ -132,12 +136,12 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
                   {onHome && <SafeForm action={unpublishCardSafely} className={cardControl}><input type="hidden" name="id" value={card.id} /><PendingSubmit className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</PendingSubmit></SafeForm>}
                 </div>
               </div>
-              {/* The card in its Home slot, between the user's own widgets, with live data. */}
-              <div className="grid grid-flow-dense gap-3 rounded-2xl border border-dashed border-border p-3 lg:grid-cols-6">
-                <div className={`min-w-0 ${CARD_SIZES[size].span}`}>
+              {/* The card at the width it is designed for (the panel is narrower than Home), between the user's own widgets when they fit, with live data. */}
+              <div className="@container flex gap-3 rounded-2xl border border-dashed border-border p-3">
+                <div className="min-w-0 shrink-0" style={{ width: `min(100%, ${CARD_SIZES[size].width}px)` }}>
                   <Suspense fallback={<CardSkeleton title={card.title} />}><HomeCard key={`${shown}-${size}`} card={card} context={context} version={shown} /></Suspense>
                 </div>
-                {filler > 0 && <div aria-hidden="true" className="hidden gap-3 lg:grid" style={{ gridColumn: `span ${filler}`, gridTemplateColumns: `repeat(${Math.max(1, Math.floor(filler / 2))}, minmax(0, 1fr))` }}>
+                {filler > 0 && <div aria-hidden="true" className={`hidden min-w-0 flex-1 gap-3 ${NEIGHBOURS_FIT[size]}`} style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.floor(filler / 2))}, minmax(0, 1fr))` }}>
                   {neighbours.slice(0, Math.max(1, Math.floor(filler / 2))).map(name => <div key={name} className="rounded-2xl border border-border bg-card p-5 opacity-40"><p className="text-sm font-medium">{name}</p></div>)}
                 </div>}
               </div>
