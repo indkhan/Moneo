@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentNetWorth, dayRange, firstSyncedOn, monthEnds, netWorth, netWorthSeries, scalableKnownIds } from "./net-worth";
+import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, monthEnds, netWorth, netWorthSeries, scalableKnownIds, valuationHistory } from "./net-worth";
 
 it("lists month ends then today", () => {
   expect(monthEnds("2026-03-15", 3)).toEqual(["2025-12-31", "2026-01-31", "2026-02-28", "2026-03-15"]);
@@ -25,8 +25,8 @@ it("carries forward the latest recorded values per date without mixing currencie
       valuation("fund", "holding", "2000", "2026-02-01"), valuation("fund", "holding", "2500", "2026-02-01", "2026-02-05T00:00:00Z"),
       valuation("loan", "debt", "-800", "2026-01-15"), valuation("car", "asset", "300", "2026-01-01"),
       valuation("linked", "asset", "100", "2026-01-01", undefined, { linked_account_id: "a" }),
+      valuation("car", "asset", "300", "2026-03-10", undefined, { removed: true }),
     ],
-    removedOn: new Map([["car", "2026-03-10"]]),
   });
   expect(series.map(point => netWorth(point).get("EUR"))).toEqual([500n, 3000n, 3200n]);
   expect(series[0].debts.get("EUR")).toBe(-800n);
@@ -35,7 +35,7 @@ it("carries forward the latest recorded values per date without mixing currencie
 
 it("works balances back from the first recorded one through posted transactions, and leaves earlier dates unknown", () => {
   const series = netWorthSeries({ dates: ["2026-06-30", "2026-07-31", "2026-08-31", "2026-09-30", "2026-10-26"], timeZone: "UTC", accountIds: new Set(["bank"]),
-    snapshots: [{ account_id: "bank", amount_minor: "2711", currency_code: "EUR", as_of: "2026-10-15T09:00:00Z" }], valuations: [], removedOn: new Map(),
+    snapshots: [{ account_id: "bank", amount_minor: "2711", currency_code: "EUR", as_of: "2026-10-15T09:00:00Z" }], valuations: [],
     ledger: [
       { account_id: "bank", amount_minor: "50000", currency_code: "EUR", posted_on: "2026-07-21", status: "posted" },
       { account_id: "bank", amount_minor: "-20000", currency_code: "EUR", posted_on: "2026-08-10", status: "posted" },
@@ -54,7 +54,7 @@ it("works balances back from the first recorded one through posted transactions,
 
 it("rolls a recorded balance forward through later posted transactions", () => {
   const series = netWorthSeries({ dates: ["2026-10-14", "2026-10-15", "2026-10-31"], timeZone: "UTC", accountIds: new Set(["bank"]),
-    snapshots: [{ account_id: "bank", amount_minor: "100000", currency_code: "EUR", as_of: "2026-10-01T00:00:00Z" }], valuations: [], removedOn: new Map(),
+    snapshots: [{ account_id: "bank", amount_minor: "100000", currency_code: "EUR", as_of: "2026-10-01T00:00:00Z" }], valuations: [],
     ledger: [
       { account_id: "bank", amount_minor: "-105875", currency_code: "EUR", posted_on: "2026-10-15", status: "posted" },
       { account_id: "bank", amount_minor: "-1", currency_code: "EUR", posted_on: "2026-10-01", status: "posted" },
@@ -65,7 +65,7 @@ it("rolls a recorded balance forward through later posted transactions", () => {
 
 it("keeps postings made after a balance typed in during the day on the far side of it", () => {
   const series = netWorthSeries({ dates: ["2026-09-30", "2026-10-30", "2026-10-31"], timeZone: "UTC", accountIds: new Set(["bank"]),
-    snapshots: [{ account_id: "bank", amount_minor: "100000", currency_code: "EUR", as_of: "2026-10-31T13:14:00Z" }], valuations: [], removedOn: new Map(),
+    snapshots: [{ account_id: "bank", amount_minor: "100000", currency_code: "EUR", as_of: "2026-10-31T13:14:00Z" }], valuations: [],
     ledger: [
       { account_id: "bank", amount_minor: "250000", currency_code: "EUR", posted_on: "2026-10-01", status: "posted" },
       { account_id: "bank", amount_minor: "-10000", currency_code: "EUR", posted_on: "2026-10-31", posted_at: "2026-10-31T09:00:00Z", status: "posted" },
@@ -86,7 +86,7 @@ describe("calculated Scalable values", () => {
   const rows = [value("2026-10-29", "111"), value("2026-10-30", "222"), value("2026-10-31", "333"), value("2026-11-01", "999")];
   const synced = { item_id: "cash", kind: "asset", amount_minor: "500", currency_code: "EUR", as_of: "2026-10-31", created_at: "2026-10-31T10:00:00Z", linked_account_id: null };
   const bank = (as_of: string) => [{ account_id: "bank", amount_minor: "1000", currency_code: "EUR", as_of }];
-  const series = (dates: string[], snapshots = bank("2026-10-01T00:00:00Z")) => netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [synced], removedOn: new Map(), calculated: { rows, before: "2026-10-31" }, snapshots });
+  const series = (dates: string[], snapshots = bank("2026-10-01T00:00:00Z")) => netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [synced], calculated: { rows, before: "2026-10-31" }, snapshots });
 
   it("counts only before the first synced value, so the portfolio is never counted twice", () => {
     expect(series(["2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]).map(point => netWorth(point).get("EUR"))).toEqual([1111n, 1222n, 1500n, 1500n]);
@@ -98,12 +98,12 @@ describe("calculated Scalable values", () => {
   });
 
   it("gives Home's month base the calculated value when the first sync came after it", () => {
-    const [base] = netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [{ ...synced, as_of: "2026-11-05" }], removedOn: new Map(), calculated: { rows, before: "2026-11-05" }, snapshots: bank("2026-10-01T00:00:00Z") });
+    const [base] = netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [{ ...synced, as_of: "2026-11-05" }], calculated: { rows, before: "2026-11-05" }, snapshots: bank("2026-10-01T00:00:00Z") });
     expect(netWorth(base).get("EUR")).toBe(1222n);
   });
 
   it("adds nothing without a first synced value", () => {
-    const [point] = netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [], removedOn: new Map(), calculated: { rows, before: null }, snapshots: bank("2026-10-01T00:00:00Z") });
+    const [point] = netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [], calculated: { rows, before: null }, snapshots: bank("2026-10-01T00:00:00Z") });
     expect(netWorth(point).get("EUR")).toBe(1000n);
   });
 
@@ -112,5 +112,52 @@ describe("calculated Scalable values", () => {
     expect([...known]).toEqual(["sold", "cash"]);
     expect(firstSyncedOn([{ ...synced, as_of: "2026-11-05" }, { ...synced, item_id: "sold", as_of: "2026-11-03" }, { ...synced, item_id: "manual", as_of: "2020-01-01" }], known)).toBe("2026-11-03");
     expect(firstSyncedOn([{ ...synced, item_id: "manual" }], known)).toBeNull();
+  });
+});
+
+describe("things that change over time", () => {
+  type Over = Record<string, unknown>;
+  const item = (over: Over = {}) => ({ id: "fund", name: "Fund", kind: "holding", currency_code: "EUR", amount_minor: "1000", as_of: "2026-11-01", linked_account_id: null, removed_at: null, ...over });
+  const event = (id: string, created_at: string, after: Over, over: Over = {}) => ({ id, item_id: "fund", before: null, after: item(after), created_at, undone_at: null, ...over });
+  const total = (events: unknown[], items: unknown[], dates: string[]) => netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(), snapshots: [], valuations: valuationHistory(events as never, items as never, "UTC") })
+    .map(point => netWorth(point).get("EUR") ?? 0n);
+  const dates = ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"];
+
+  it("counts a position sold and rebought as zero during the gap", () => {
+    const events = [event("a", "2026-11-01T10:00:00Z", {}), event("b", "2026-11-02T10:00:00Z", { removed_at: "2026-11-02T10:00:00Z" }), event("c", "2026-11-05T10:00:00Z", { amount_minor: "1100", as_of: "2026-11-05" })];
+    expect(total(events, [item({ amount_minor: "1100", as_of: "2026-11-05" })], dates)).toEqual([1000n, 0n, 0n, 0n, 1100n]);
+  });
+
+  it("treats an undone addition as never added, and keeps the past days of a real removal", () => {
+    expect(total([event("a", "2026-11-01T10:00:00Z", {}, { undone_at: "2026-11-03T10:00:00Z" })], [item({ removed_at: "2026-11-03T10:00:00Z" })], dates)).toEqual([0n, 0n, 0n, 0n, 0n]);
+    const created = event("a", "2026-11-01T10:00:00Z", {}), removal = event("b", "2026-11-03T10:00:00Z", { removed_at: "2026-11-03T10:00:00Z" });
+    expect(total([created, removal], [item({ removed_at: "2026-11-03T10:00:00Z" })], dates)).toEqual([1000n, 1000n, 0n, 0n, 0n]);
+    // Undoing the removal brings every day back.
+    expect(total([created, { ...removal, undone_at: "2026-11-04T10:00:00Z" }], [item()], dates)).toEqual([1000n, 1000n, 1000n, 1000n, 1000n]);
+  });
+
+  it("stops counting an asset's old value from the day it is linked to an account", () => {
+    const events = [event("a", "2026-11-01T10:00:00Z", {}), event("b", "2026-11-03T10:00:00Z", { as_of: "2026-11-03", linked_account_id: "bank" })];
+    expect(total(events, [item({ as_of: "2026-11-03", linked_account_id: "bank" })], dates)).toEqual([1000n, 1000n, 0n, 0n, 0n]);
+  });
+
+  it("keeps a loan and its repaid amount from changing net worth, whenever you look", () => {
+    const loan = (over: Over) => event("x", "2026-11-01T10:00:00Z", { name: "Lent to Sam", kind: "asset", quantity_text: null, ...over });
+    const snapshots = [{ account_id: "bank", amount_minor: "90000", currency_code: "EUR", as_of: "2026-11-01T00:00:00Z" }];
+    const ledger = [{ account_id: "bank", amount_minor: "4000", currency_code: "EUR", posted_on: "2026-11-03", status: "posted" }, { account_id: "bank", amount_minor: "6000", currency_code: "EUR", posted_on: "2026-11-05", status: "posted" }];
+    // Lent 100.00 before the balance date; 40.00 comes back on the 3rd and the last 60.00 on the 5th.
+    const events = [loan({ amount_minor: "10000" }), { ...loan({ amount_minor: "6000", as_of: "2026-11-03" }), id: "y" }, { ...loan({ amount_minor: "6000", as_of: "2026-11-03", removed_at: "2026-11-05T00:00:00Z" }), id: "z" }];
+    const series = netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["bank"]), snapshots, ledger, valuations: valuationHistory(events as never, [item({ removed_at: "2026-11-05T00:00:00Z" })] as never, "UTC") });
+    expect(new Set(series.map(point => netWorth(point).get("EUR")))).toEqual(new Set([100000n]));
+  });
+
+  it("keeps an archived account in past days until its date, and counts money moved out of it once", () => {
+    const snapshots = [{ account_id: "old", amount_minor: "5000", currency_code: "EUR", as_of: "2026-11-01T00:00:00Z" }, { account_id: "new", amount_minor: "100", currency_code: "EUR", as_of: "2026-11-01T00:00:00Z" }];
+    const ledger = [{ account_id: "old", amount_minor: "-5000", currency_code: "EUR", posted_on: "2026-11-03", status: "posted" }, { account_id: "new", amount_minor: "5000", currency_code: "EUR", posted_on: "2026-11-03", status: "posted" }];
+    const archivedOn = archiveDates([{ id: "old", archived_at: "2026-11-03T12:00:00Z" }, { id: "new", archived_at: null }], "UTC");
+    const series = netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["old", "new"]), archivedOn, snapshots, ledger, valuations: [] });
+    expect(series.map(point => netWorth(point).get("EUR"))).toEqual([5100n, 5100n, 5100n, 5100n, 5100n]);
+    // Old archives, closed without being asked, still drop on their date rather than rewriting the past.
+    expect(netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["old", "new"]), archivedOn, snapshots, ledger: [], valuations: [] }).map(point => netWorth(point).get("EUR"))).toEqual([5100n, 5100n, 100n, 100n, 100n]);
   });
 });

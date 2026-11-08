@@ -14,8 +14,8 @@ import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
 import { NetWorthProblems } from "./net-worth-problems";
-import { loadImportStates, netWorthFindings } from "@/lib/finance/net-worth-checks";
-import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
+import { loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
+import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, archiveDates } from "./net-worth";
 
 export const metadata = { title: "Wealth" };
 
@@ -37,7 +37,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const [items, accounts, assumptions, pending, events, evidence, scalable, calculatedHistory, imports] = await Promise.all([
+  const [items, accounts, assumptions, pending, events, evidence, scalable, calculatedHistory, imports, repayments] = await Promise.all([
     loadWealthItems(supabase, workspace.id, true),
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
@@ -48,6 +48,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
       .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     loadScalableHistory(db, workspace.id),
     loadImportStates(db, workspace.id),
+    loadRepaymentLinks(db, workspace.id),
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
   const active = items.filter(item => !item.removed_at);
@@ -55,11 +56,11 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     pending: (pending.data ?? []).map(item => ({ id: item.id, currency_code: item.currency_code, label: `${item.description} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.posted_on}` })), today, currency: workspace.display_currency, locale: workspace.locale };
   const itemById = new Map(items.map(item => [item.id, item]));
 
-  const allValuations = valuationHistory(events, items);
+  const allValuations = valuationHistory(events, items, workspace.timezone);
   const calculated = { rows: calculatedHistory.rows, before: firstSyncedOn(allValuations, calculatedHistory.knownIds) };
   const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone, calculated,
-    accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots: evidence.snapshots, ledger: evidence.ledger,
-    valuations: allValuations, removedOn: removedOn(items, workspace.timezone) });
+    accountIds: new Set((accounts.data ?? []).map(account => account.id)), archivedOn: archiveDates(accounts.data ?? [], workspace.timezone), snapshots: evidence.snapshots, ledger: evidence.ledger,
+    valuations: allValuations });
   // Today uses the balances Accounts and Overview show and the same valuations, so the totals match theirs.
   const resolved = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone).filter(account => !account.archived_at);
   const valuations = wealthEvidence(active, today);
@@ -78,10 +79,10 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     const valuations = allValuations.filter(row => knownIds.has(row.item_id));
     // Daily from the first synced value.
     const from = valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today);
-    return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations, removedOn: removedOn(items, workspace.timezone) })
-      .flatMap(point => { const value = point.assets.get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value }]; });
+    return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations })
+      .flatMap(point => { const value = netWorth(point).get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value }]; });
   })();
-  const findings = netWorthFindings({ accounts: resolved, snapshots: evidence.snapshots, ledger: evidence.ledger, timeZone: workspace.timezone, locale: workspace.locale, portfolio, imports,
+  const findings = netWorthFindings({ accounts: resolved, snapshots: evidence.snapshots, ledger: evidence.ledger, timeZone: workspace.timezone, locale: workspace.locale, portfolio, imports, repayments,
     lastCalculated: calculated.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, calculated.before, portfolio?.currency ?? "EUR") });
   // The days before that, worked out from Scalable's transactions and prices back to the first trade.
   const scalableCalculated = portfolio && calculated.before ? calculated.rows.filter(row => row.on_date < calculated.before! && row.currency_code === portfolio.currency) : [];

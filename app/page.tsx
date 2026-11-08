@@ -33,8 +33,8 @@ import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
-import { checksNotice, loadImportStates, netWorthFindings } from "@/lib/finance/net-worth-checks";
-import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
+import { checksNotice, loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
+import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, archiveDates } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
 import { Phone } from "lucide-react";
@@ -70,7 +70,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const reviewPromise = loadReview(supabase, workspace);
   // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems, calculatedHistory, imports, portfolios] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems, calculatedHistory, imports, portfolios, repayments] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -90,6 +90,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     loadScalableHistory(supabase, workspace.id),
     loadImportStates(supabase, workspace.id),
     supabase.from("scalable_connections").select("portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    loadRepaymentLinks(supabase, workspace.id),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   const ai = await aiPromise;
@@ -134,9 +135,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
 
   // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (issue #158).
   // Days before Scalable's first sync use its calculated value, so a portfolio connected this month is not a gain.
-  const allValuations = valuationHistory(wealthEvents, allWealth);
-  const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
-    snapshots: balanceEvidence.snapshots, valuations: allValuations, removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger,
+  const allValuations = valuationHistory(wealthEvents, allWealth, workspace.timezone);
+  const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(balanceEvidence.accounts.map(account => account.id)), archivedOn: archiveDates(balanceEvidence.accounts, workspace.timezone),
+    snapshots: balanceEvidence.snapshots, valuations: allValuations, ledger: balanceEvidence.ledger,
     calculated: { rows: calculatedHistory.rows, before: firstSyncedOn(allValuations, calculatedHistory.knownIds) } });
   // Today's point is the headline's own inputs, so the chart ends on the number above it.
   series[series.length - 1] = currentNetWorth(today, accounts, valuations.included.map(valuation => ({ ...valuation, debt: kinds.get(valuation.id) === "debt" })));
@@ -145,7 +146,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
   const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
   const portfolio = (portfolios.data?.portfolio ?? null) as ScalablePortfolio | null;
-  const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports,
+  const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports, repayments,
     lastCalculated: calculatedHistory.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, firstSyncedOn(allValuations, calculatedHistory.knownIds), portfolio?.currency ?? displayCurrency) });
   const checkNotice = checksNotice(findings);
   const { date: fullDate, monthYear: monthLabel } = display;

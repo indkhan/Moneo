@@ -3,7 +3,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import type { WealthItem } from "@/lib/finance/wealth";
 
 type Snapshot = { account_id: string; amount_minor: string | number; currency_code: string; as_of: string; undone_at?: string | null };
-type Valuation = { item_id: string; created_at: string; kind: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
+type Valuation = { item_id: string; created_at: string; kind: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null; removed?: boolean };
 type Posting = { account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; posted_at?: string | null; status: string };
 type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; known: boolean };
 export type CalculatedValue = { on_date: string; currency_code: string; total_minor: string };
@@ -33,9 +33,9 @@ export function dayRange(from: string, to: string): string[] {
 // `calculated` adds Scalable's worked-out value to dates before its first real synced value, never on or after it, so
 // nothing counts twice. It only joins a date something else already covers: alone, it would draw portfolio-only
 // numbers and then a false jump up when bank data starts.
-// ponytail: archived accounts are left out (matching Home); include them if history must show closed accounts.
-export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuations, removedOn, ledger = [], calculated }: {
-  dates: string[]; timeZone: string; accountIds: Set<string>; snapshots: Snapshot[]; valuations: Valuation[]; removedOn: Map<string, string>; ledger?: Posting[];
+// An archived account counts on the days before its archive date (`archivedOn`), and stops from that date, as on Home.
+export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapshots, valuations, ledger = [], calculated }: {
+  dates: string[]; timeZone: string; accountIds: Set<string>; archivedOn?: Map<string, string>; snapshots: Snapshot[]; valuations: Valuation[]; ledger?: Posting[];
   calculated?: { rows: CalculatedValue[]; before: string | null };
 }): NetWorthPoint[] {
   const calculatedOn = new Map((calculated?.rows ?? []).map(row => [row.on_date, row]));
@@ -43,8 +43,9 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
     .map(row => ({ key: row.account_id, date: calendarDate(row.as_of, timeZone), at: row.as_of, amount: BigInt(row.amount_minor), currency: row.currency_code,
       // As in resolveBalances: a balance typed in during the day is moved by later timed postings that day; a dated one is that day's closing balance.
       observed: calendarDate(new Date(Date.parse(row.as_of) - 1).toISOString(), timeZone) === calendarDate(row.as_of, timeZone) }));
-  const values = valuations.filter(row => !row.linked_account_id)
-    .map(row => ({ key: row.item_id, date: row.as_of, at: row.created_at, amount: BigInt(row.amount_minor), currency: row.currency_code, debt: row.kind === "debt" }));
+  // Every state an item was in. Which one applied on a day is decided first, and only then whether it counts:
+  // a removed item is zero and a linked one is inside its account, from those dates on.
+  const values = valuations.map(row => ({ key: row.item_id, date: row.as_of, at: row.created_at, amount: BigInt(row.amount_minor), currency: row.currency_code, debt: row.kind === "debt", counts: !row.linked_account_id && !row.removed }));
   const latest = <T extends { key: string; date: string; at: string }>(rows: T[], date: string) => {
     const pick = new Map<string, T>();
     for (const row of rows) {
@@ -64,20 +65,17 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
   const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
   return dates.map(date => {
     const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), known: false };
-    const recorded = [...latest(balances, date)];
+    const open = (key: string) => { const archived = archivedOn?.get(key); return !archived || date < archived; };
+    const recorded = [...latest(balances, date)].filter(row => open(row.key));
     for (const row of recorded) add(point.accounts, row.currency, row.amount + sum(posted.filter(item => item.account_id === row.key && item.currency_code === row.currency && afterBalance(item, row) && item.day <= date)));
     for (const key of accountIds) {
       const first = firstPosted.get(key);
-      if (recorded.some(row => row.key === key) || !first || date < dayBefore(first)) continue;
+      if (!open(key) || recorded.some(row => row.key === key) || !first || date < dayBefore(first)) continue;
       const next = balances.filter(row => row.key === key && row.date > date).sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at))[0];
       if (!next) continue;
       add(point.accounts, next.currency, next.amount - sum(posted.filter(row => row.account_id === key && row.currency_code === next.currency && row.day > date && !afterBalance(row, next))));
     }
-    for (const row of latest(values, date)) {
-      const removed = removedOn.get(row.key);
-      if (removed && removed <= date) continue;
-      add(row.debt ? point.debts : point.assets, row.currency, row.amount);
-    }
+    for (const row of latest(values, date)) if (row.counts) add(row.debt ? point.debts : point.assets, row.currency, row.amount);
     point.known = point.accounts.size + point.assets.size + point.debts.size > 0;
     const portfolio = point.known && calculated?.before && date < calculated.before ? calculatedOn.get(date) : undefined;
     if (portfolio) add(point.assets, portfolio.currency_code, BigInt(portfolio.total_minor));
@@ -116,10 +114,13 @@ export async function loadWealthEvents(db: SupabaseClient, workspaceId: string):
   }
 }
 
-// Valuation history = every non-undone saved version of each item, plus the current row.
-export function valuationHistory(events: WealthEvent[], items: WealthItem[]): Valuation[] {
-  return [...events.filter(event => !event.undone_at && !event.after.removed_at).map(event => ({ ...event.after, item_id: event.item_id, created_at: event.created_at, amount_minor: String(event.after.amount_minor) })),
-    ...items.map(item => ({ ...item, item_id: item.id, created_at: "9999-12-31" }))];
+// Valuation history = every non-undone saved version of each item, plus the current row while it is live. A removal is a
+// state of its own, dated when it happened. An item whose creation was undone has no non-undone versions left, and it isn't
+// live, so it disappears from past days too; a real removal keeps the days before it.
+export function valuationHistory(events: WealthEvent[], items: WealthItem[], timeZone: string): Valuation[] {
+  return [...events.filter(event => !event.undone_at).map(event => ({ ...event.after, item_id: event.item_id, created_at: event.created_at, amount_minor: String(event.after.amount_minor),
+    removed: !!event.after.removed_at, as_of: event.after.removed_at ? calendarDate(event.after.removed_at, timeZone) : event.after.as_of })),
+    ...items.filter(item => !item.removed_at).map(item => ({ ...item, item_id: item.id, created_at: "9999-12-31", removed: false }))];
 }
 
 /** Every wealth item a Scalable sync ever wrote, from any connection of the workspace. */
@@ -128,7 +129,7 @@ export const scalableKnownIds = (portfolios: ({ knownItemIds?: string[]; itemIds
 
 /** The date of the first real synced Scalable value: calculated values stay before it. */
 export function firstSyncedOn(valuations: Valuation[], knownIds: Set<string>): string | null {
-  return valuations.reduce<string | null>((first, row) => knownIds.has(row.item_id) && (first === null || row.as_of < first) ? row.as_of : first, null);
+  return valuations.reduce<string | null>((first, row) => knownIds.has(row.item_id) && !row.removed && (first === null || row.as_of < first) ? row.as_of : first, null);
 }
 
 /** Calculated Scalable values, oldest first, and the items that tell where they stop. Disconnected connections count: their synced values still do. */
@@ -148,11 +149,13 @@ export async function loadScalableHistory(db: SupabaseClient, workspaceId: strin
 /** What Scalable's records added up to on the first day they exist, to compare with the last calculated day. */
 export function firstRealValue(valuations: Valuation[], knownIds: Set<string>, before: string | null, currency: string) {
   if (!before) return null;
-  const onDay = valuations.filter(row => knownIds.has(row.item_id) && row.as_of === before && row.currency_code === currency);
+  const onDay = valuations.filter(row => knownIds.has(row.item_id) && !row.removed && row.as_of === before && row.currency_code === currency);
   if (!onDay.length) return null;
   const latest = new Map<string, Valuation>();
   for (const row of onDay) if (!latest.has(row.item_id) || row.created_at >= latest.get(row.item_id)!.created_at) latest.set(row.item_id, row);
   return { date: before, minor: [...latest.values()].reduce((sum, row) => sum + BigInt(row.amount_minor), 0n) };
 }
 
-export const removedOn = (items: WealthItem[], timeZone: string) => new Map(items.filter(item => item.removed_at).map(item => [item.id, calendarDate(item.removed_at!, timeZone)]));
+/** When each archived account closed, for `netWorthSeries`. */
+export const archiveDates = (accounts: { id: string; archived_at?: string | null }[], timeZone: string) =>
+  new Map(accounts.flatMap(account => account.archived_at ? [[account.id, calendarDate(account.archived_at, timeZone)] as const] : []));
