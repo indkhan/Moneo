@@ -3,6 +3,7 @@ import "./globals.css";
 import { Suspense } from "react";
 import { Providers } from "@/components/providers";
 import { AppShell, type ShellData } from "@/components/app-shell";
+import { SyncOnOpen } from "@/components/sync-on-open";
 import { cookies } from "next/headers";
 import { ThemePreference } from "@/components/theme-preference";
 import { hasSupabase } from "@/lib/env";
@@ -61,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" data-theme={theme} suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         {hasSupabase() ? <Suspense fallback={<ThemePreference preference={theme} />}><WorkspaceTheme fallback={theme} /></Suspense> : <ThemePreference preference={theme} />}
+        {hasSupabase() && <SyncOnOpen />}
         <Providers><AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell></Providers>
       </body>
     </html>
