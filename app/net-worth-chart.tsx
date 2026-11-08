@@ -2,7 +2,7 @@
 import { useId, useState } from "react";
 
 // Points carry their exact formatted amount from the server; `y` is only used for pixel scale.
-export type NetWorthPoint = { date: string; label: string; amount: string; y: number };
+export type NetWorthPoint = { date: string; label: string; amount: string; y: number; uncertain?: string };
 
 const WIDTH = 640, HEIGHT = 140, PAD = 6;
 
@@ -19,12 +19,13 @@ export function NetWorthChart({ points, label }: { points: NetWorthPoint[]; labe
   const shown = active === null ? null : points[active];
   const move = (step: number) => setActive(current => Math.max(0, Math.min(points.length - 1, (current ?? points.length) + step)));
   return <div className="relative" onPointerLeave={() => setActive(null)}>
-    <svg role="img" aria-label={`${label}. Use the arrow keys to read each point.`} tabIndex={0} onBlur={() => setActive(null)}
+    <svg role="img" aria-label={`${label}.${points.some(point => point.uncertain) ? " Some days can't be proven and are marked." : ""} Use the arrow keys to read each point.`} tabIndex={0} onBlur={() => setActive(null)}
       onKeyDown={event => { const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0; if (step) { event.preventDefault(); move(step); } }} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="h-[140px] w-full cursor-crosshair touch-pan-y overflow-visible rounded text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onPointerMove={event => pick(event.clientX, event.currentTarget.getBoundingClientRect())} onPointerDown={event => pick(event.clientX, event.currentTarget.getBoundingClientRect())}>
       <defs><linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity={0.22} /><stop offset="100%" stopColor="currentColor" stopOpacity={0} /></linearGradient></defs>
       <polygon points={`0,${HEIGHT} ${line} ${WIDTH},${HEIGHT}`} fill={`url(#${gradient})`} />
       <polyline points={line} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      {points.map((point, index) => point.uncertain ? <line key={point.date} data-uncertain="true" x1={x(index)} x2={x(index)} y1={0} y2={HEIGHT} stroke="var(--color-warning)" strokeOpacity={0.45} strokeDasharray="2 3" vectorEffect="non-scaling-stroke" /> : null)}
       {active !== null && <line x1={x(active)} x2={x(active)} y1={0} y2={HEIGHT} stroke="var(--color-muted-foreground)" strokeOpacity={0.5} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />}
     </svg>
     {shown && <>
@@ -34,6 +35,7 @@ export function NetWorthChart({ points, label }: { points: NetWorthPoint[]; labe
         style={{ left: `clamp(0px, calc(${(x(active!) / WIDTH) * 100}% - 4.5rem), calc(100% - 9rem))`, top: `max(0px, calc(${(y(shown.y) / HEIGHT) * 100}% - 4.75rem))` }}>
         <p className="whitespace-nowrap font-mono text-sm font-semibold">{shown.amount}</p>
         <p className="whitespace-nowrap text-[11px] text-muted-foreground">{shown.label}</p>
+        {shown.uncertain && <p className="mt-1 w-36 text-[11px] text-warning">Not proven: {shown.uncertain}</p>}
       </div>
     </>}
     {points.length > 1 && <p className="mt-1 flex justify-between gap-4 font-mono text-[11px] text-muted-foreground"><span>{points[0].amount}</span><span>{points.at(-1)!.amount}</span></p>}

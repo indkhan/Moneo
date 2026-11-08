@@ -7,15 +7,17 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
-import { carriedDebtPayments, currentOn, loadWealthItems, wealthEvidence, type WealthItem } from "@/lib/finance/wealth";
-import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
+import { carriedDebtPayments, currentOn, loadWealthItems, type WealthItem } from "@/lib/finance/wealth";
+import { loadBalanceEvidence } from "@/lib/finance/balances";
 import { describeOutdated, formatMoney as formatCurrency } from "@/lib/finance/format";
 import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
 import { NetWorthProblems } from "./net-worth-problems";
 import { loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
-import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, archiveDates } from "./net-worth";
+import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth, netWorthSeries } from "./net-worth";
+import { loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
+import { transitOn } from "@/lib/finance/transit";
 
 export const metadata = { title: "Wealth" };
 
@@ -37,16 +39,16 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const [items, accounts, assumptions, pending, events, evidence, scalable, calculatedHistory, imports, repayments] = await Promise.all([
-    loadWealthItems(supabase, workspace.id, true),
+  const itemsPromise = loadWealthItems(supabase, workspace.id, true), eventsPromise = loadWealthEvents(db, workspace.id), balancesPromise = loadBalanceEvidence(db, workspace.id);
+  const [items, accounts, assumptions, pending, events, scalable, netWorthEvidence, imports, repayments] = await Promise.all([
+    itemsPromise,
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
     supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspace.id).eq("status", "pending").order("posted_on", { ascending: false }).limit(100),
-    loadWealthEvents(db, workspace.id),
-    loadBalanceEvidence(db, workspace.id),
+    eventsPromise,
     supabase.from("scalable_connections").select("status, last_synced_at, portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    loadScalableHistory(db, workspace.id),
+    loadNetWorthEvidence(db, workspace, { balances: balancesPromise, items: itemsPromise, events: eventsPromise }),
     loadImportStates(db, workspace.id),
     loadRepaymentLinks(db, workspace.id),
   ]);
@@ -56,20 +58,18 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     pending: (pending.data ?? []).map(item => ({ id: item.id, currency_code: item.currency_code, label: `${item.description} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.posted_on}` })), today, currency: workspace.display_currency, locale: workspace.locale };
   const itemById = new Map(items.map(item => [item.id, item]));
 
-  const allValuations = valuationHistory(events, items, workspace.timezone);
-  const calculated = { rows: calculatedHistory.rows, before: firstSyncedOn(allValuations, calculatedHistory.knownIds) };
-  const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone, calculated,
-    accountIds: new Set((accounts.data ?? []).map(account => account.id)), archivedOn: archiveDates(accounts.data ?? [], workspace.timezone), snapshots: evidence.snapshots, ledger: evidence.ledger,
-    valuations: allValuations });
-  // Today uses the balances Accounts and Overview show and the same valuations, so the totals match theirs.
-  const resolved = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone).filter(account => !account.archived_at);
-  const valuations = wealthEvidence(active, today);
-  const now = currentNetWorth(today, resolved, valuations.included.map(valuation => ({ ...valuation, debt: itemById.get(valuation.id)?.kind === "debt" })));
-  series[series.length - 1] = now;
+  const evidence = netWorthEvidence.balances, calculatedHistory = netWorthEvidence.scalable;
+  // The same calculation as Home and chat: the month-end table, the chart and today's total all read it.
+  const worth = netWorthModel(netWorthEvidence);
+  const { calculated, valuations: allValuations, accounts: resolved, dated: valuations, now } = worth;
+  const series = worth.points(monthEnds(today, MONTHS));
   const unbalanced = resolved.filter(account => account.balance.amount_minor === null).length;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
-  const chartPoints = (currency: string) => series.flatMap(point => { const value = netWorth(point).get(currency); return value === undefined ? [] : [{ date: point.date, value }]; });
+  const chartPoints = (currency: string) => series.flatMap(point => { const value = netWorth(point).get(currency); return value === undefined || !point.known ? [] : [{ date: point.date, value, uncertain: point.uncertain.join(". ") || undefined }]; });
+  // A returned withdrawal looks as if the money stayed, here as on the net worth graph. The records stay on Scalable's list.
+  const returned = worth.windows.filter(window => window.kind === "returned");
+  const withReturns = (date: string, value: bigint, currency: string) => value + (transitOn(returned, date).get(currency) ?? 0n);
   const history = params.history === "all" ? events : events.slice(0, HISTORY);
   // Scalable's synced positions, cash and crypto get their own panel; they still count in net worth like any valuation.
   const portfolio = (scalable.data?.portfolio ?? null) as ScalablePortfolio | null;
@@ -80,10 +80,10 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     // Daily from the first synced value.
     const from = valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today);
     return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations })
-      .flatMap(point => { const value = netWorth(point).get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value }]; });
+      .flatMap(point => { const value = netWorth(point).get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value: withReturns(point.date, value, portfolio.currency) }]; });
   })();
   const findings = netWorthFindings({ accounts: resolved, snapshots: evidence.snapshots, ledger: evidence.ledger, timeZone: workspace.timezone, locale: workspace.locale, portfolio, imports, repayments,
-    lastCalculated: calculated.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, calculated.before, portfolio?.currency ?? "EUR") });
+    lastCalculated: calculated.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, calculated.before, portfolio?.currency ?? "EUR"), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
   // The days before that, worked out from Scalable's transactions and prices back to the first trade.
   const scalableCalculated = portfolio && calculated.before ? calculated.rows.filter(row => row.on_date < calculated.before! && row.currency_code === portfolio.currency) : [];
 
@@ -100,23 +100,23 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
             <dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-0.5 break-words font-mono tabular-nums">{formatMoney(map.get(currency) ?? 0n, currency)}</dd></div>)}
         </dl>
         <div className="mt-5"><NetWorthChart label={`Recorded net worth in ${currency} at each month end`}
-          points={recorded.map(point => ({ date: point.date, label: point.date === today ? "Today" : point.date, amount: formatMoney(point.value, currency), y: Number(point.value) }))} /></div>
+          points={recorded.map(point => ({ date: point.date, label: point.date === today ? "Today" : point.date, amount: formatMoney(point.value, currency), y: Number(point.value), uncertain: point.uncertain }))} /></div>
         <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{recorded[0].date}</span><span>Today</span></p>
         <p className="mt-1 text-xs text-muted-foreground">Lowest {formatMoney(low, currency)} · highest {formatMoney(high, currency)}</p>
         <details className="mt-2"><summary className="min-h-11 cursor-pointer content-center text-sm underline">Net worth by month</summary>
           <table className="mt-2 w-full text-sm"><caption className="sr-only">Recorded net worth in {currency} at each month end</caption><thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th scope="col" className="py-1.5 font-medium">Date</th><th scope="col" className="py-1.5 text-right font-medium">Net worth</th></tr></thead>
-            <tbody>{series.map(point => { const value = netWorth(point).get(currency); return <tr key={point.date} className="border-b border-border last:border-0"><th scope="row" className="py-1.5 text-left font-normal">{point.date === today ? "Today" : point.date}</th><td className="py-1.5 text-right font-mono tabular-nums">{value === undefined ? "Nothing recorded" : formatMoney(value, currency)}</td></tr>; })}</tbody></table>
+            <tbody>{series.map(point => { const value = netWorth(point).get(currency); return <tr key={point.date} className="border-b border-border last:border-0"><th scope="row" className="py-1.5 text-left font-normal">{point.date === today ? "Today" : point.date}</th><td className="py-1.5 text-right font-mono tabular-nums">{value === undefined || !point.known ? "Nothing recorded" : formatMoney(value, currency)}{point.uncertain.length > 0 && <span className="block font-sans text-xs text-warning">Not proven: {point.uncertain.join(". ")}</span>}</td></tr>; })}</tbody></table>
         </details>
       </div>; })}
       {valuations.outdated.length > 0 && <p className="text-xs text-muted-foreground">{describeOutdated(valuations.outdated)}</p>}
       {unbalanced > 0 && <p className="text-sm">{unbalanced} account{unbalanced === 1 ? " has" : "s have"} no usable balance and {unbalanced === 1 ? "is" : "are"} left out. <Link href="/money/accounts" className="font-medium text-brand underline">Review account balances</Link></p>}
       {!currencies.length && !active.length && <div className="rounded-xl border border-border bg-card p-6 text-sm"><p className="font-medium">Add your first item</p><p className="mt-1 text-muted-foreground">Net worth is your accounts plus investments and assets, minus debts. Start with one below.</p></div>}
       {!currencies.length && active.length > 0 && <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations count today yet.</p>}
-      <NetWorthProblems findings={findings} />
+      <NetWorthProblems findings={findings} unresolved={worth.unresolved} locale={workspace.locale} />
     </section>
 
     {portfolio && <ScalableInvestments portfolio={portfolio} positions={active.filter(item => scalableIds.has(item.id) && item.kind === "holding").sort((a, b) => Number(BigInt(b.amount_minor) - BigInt(a.amount_minor)))}
-      history={[...scalableCalculated.map(row => ({ date: row.on_date, value: BigInt(row.total_minor) })), ...scalableHistory]} calculatedBefore={scalableCalculated.length ? calculated.before : null}
+      history={[...scalableCalculated.map(row => ({ date: row.on_date, value: withReturns(row.on_date, BigInt(row.total_minor), row.currency_code) })), ...scalableHistory]} calculatedBefore={scalableCalculated.length ? calculated.before : null}
       historyFailed={scalable.data?.history_status === "failed" && !scalableCalculated.length} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} />}
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>

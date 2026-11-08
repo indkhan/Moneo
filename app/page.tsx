@@ -32,9 +32,11 @@ import { HomeHistory } from "./home-history";
 import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from "./waiting-for-you";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
-import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
+import { loadWealthItems } from "@/lib/finance/wealth";
 import { checksNotice, loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
-import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, archiveDates } from "./money/wealth/net-worth";
+import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth } from "./money/wealth/net-worth";
+import { loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
+import { TRANSIT_MATCH_DAYS } from "@/lib/finance/transit";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
 import { Phone } from "lucide-react";
@@ -61,6 +63,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
   const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
+  const wealthEventsPromise = loadWealthEvents(supabase, workspace.id);
   // Secondary widgets start inside their Suspense boundaries after the core reads finish.
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version, sizes").eq("workspace_id", workspace.id).maybeSingle());
   // Include published cards hidden from Home so Add widget can restore them without rendering their bodies.
@@ -70,7 +73,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const reviewPromise = loadReview(supabase, workspace);
   // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems, calculatedHistory, imports, portfolios, repayments] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, netWorthEvidence, bankAccounts, priceChanges, syncProblems, imports, portfolios, repayments] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -82,12 +85,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
     sourceMetadataPromise,
     allWealthPromise,
-    loadWealthEvents(supabase, workspace.id),
+    loadNetWorthEvidence(supabase, workspace, { balances: balanceEvidencePromise, items: allWealthPromise, events: wealthEventsPromise }),
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
     loadSyncProblems(supabase, workspace.id),
-    loadScalableHistory(supabase, workspace.id),
     loadImportStates(supabase, workspace.id),
     supabase.from("scalable_connections").select("portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     loadRepaymentLinks(supabase, workspace.id),
@@ -106,7 +108,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   let netWorthMinor = 0n;
   let convertedCount = 0;
   // Split by source, as on Wealth: every account balance (overdrawn ones too), assets and investments, and debts.
-  const parts = { cash: 0n, assets: 0n, debts: 0n };
+  const parts = { cash: 0n, assets: 0n, debts: 0n, transit: 0n };
   const addConverted = (amountMinor: bigint, from: string, asOf: string, source: string, name: string, part: keyof typeof parts) => {
     const rate = from === displayCurrency ? undefined : fxRates.find(row => row.from_currency === from && String(row.rate_date).slice(0, 10) <= asOf);
     try {
@@ -126,28 +128,29 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     if (balance.amount_minor === null) { missingInputs.push(`balance:${account.name}`); continue; }
     addConverted(BigInt(balance.amount_minor), balance.currency_code, calendarDate(balance.as_of!, workspace.timezone), balance.provenance || "balance", account.name, "cash");
   }
-  const valuations = wealthEvidence(wealthItems, today);
+  // The same calculation as Wealth and chat: the headline's inputs, past days, and own money between its two sides.
+  const worth = netWorthModel(netWorthEvidence);
+  const calculatedHistory = netWorthEvidence.scalable, allValuations = worth.valuations;
+  const valuations = worth.dated;
   missingInputs.push(...valuations.missingInputs);
   const kinds = new Map(wealthItems.map(item => [item.id, item.kind]));
   for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, kinds.get(valuation.id) === "debt" ? "debts" : "assets");
+  for (const [currency, amount] of worth.now.transit) addConverted(amount, currency, today, "own transfer", "Money between your accounts", "transit");
   const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
   const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
 
   // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (issue #158).
   // Days before Scalable's first sync use its calculated value, so a portfolio connected this month is not a gain.
-  const allValuations = valuationHistory(wealthEvents, allWealth, workspace.timezone);
-  const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(balanceEvidence.accounts.map(account => account.id)), archivedOn: archiveDates(balanceEvidence.accounts, workspace.timezone),
-    snapshots: balanceEvidence.snapshots, valuations: allValuations, ledger: balanceEvidence.ledger,
-    calculated: { rows: calculatedHistory.rows, before: firstSyncedOn(allValuations, calculatedHistory.knownIds) } });
-  // Today's point is the headline's own inputs, so the chart ends on the number above it.
-  series[series.length - 1] = currentNetWorth(today, accounts, valuations.included.map(valuation => ({ ...valuation, debt: kinds.get(valuation.id) === "debt" })));
-  const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
+  const series = worth.points(dayRange(monthEnds(today, 12)[0], today));
+  const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n, uncertain: point.uncertain.join(". ") || undefined }));
+  // A side still on its way changes today's total, so the card says so; the full list stays on Wealth.
+  const landing = worth.unresolved.filter(item => item.side === "broker" && item.currencyCode === displayCurrency && Date.parse(`${today}T00:00:00Z`) - Date.parse(`${item.date}T00:00:00Z`) <= TRANSIT_MATCH_DAYS * 86400000);
   // The change needs last month's end on record; without it there is nothing to compare with.
   const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
   const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
   const portfolio = (portfolios.data?.portfolio ?? null) as ScalablePortfolio | null;
   const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports, repayments,
-    lastCalculated: calculatedHistory.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, firstSyncedOn(allValuations, calculatedHistory.knownIds), portfolio?.currency ?? displayCurrency) });
+    lastCalculated: calculatedHistory.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, worth.firstReal, portfolio?.currency ?? displayCurrency), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
   const checkNotice = checksNotice(findings);
   const { date: fullDate, monthYear: monthLabel } = display;
   const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
@@ -184,10 +187,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
+        {landing.length > 0 && <p className="text-xs text-muted-foreground">{landing.length === 1 ? "A transfer has" : `${landing.length} transfers have`} one side showing so far, so the total can run off by {money(landing.reduce((sum, item) => sum + (item.amountMinor < 0n ? -item.amountMinor : item.amountMinor), 0n), displayCurrency)} until the other lands. <Link href="/money/wealth" className="underline">See Wealth</Link></p>}
+        {parts.transit !== 0n && <p className="text-xs text-muted-foreground">Includes {money(parts.transit, displayCurrency)} on its way between your accounts.</p>}
         {conflicted.length > 0 && <p className="text-xs text-warning">Two balances disagree for {conflicted.map(account => account.name).join(", ")}; using the most recently recorded one. <Link href="/money/accounts" className="underline">See both</Link></p>}
         {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
-            points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
+            points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value), uncertain: point.uncertain }))} />
           <p className="mt-2 flex justify-between font-mono text-[11px] text-subtle"><span>{monthLabel(trend[0].date)}</span>{trend.length > 2 && <span>{monthLabel(trend[Math.floor(trend.length / 2)].date)}</span>}<span>{monthLabel(today)}</span></p></div>}
         {convertedCount > 0 && <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] bg-border sm:grid-cols-3">
           {([["Accounts", parts.cash, "/money/accounts"], ["Investments & assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
