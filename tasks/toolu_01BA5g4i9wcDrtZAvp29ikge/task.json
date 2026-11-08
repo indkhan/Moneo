@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01BA5g4i9wcDrtZAvp29ikge",
+  "agent_id": "a2992dc3cc7b25223",
+  "subagent_type": "general-purpose",
+  "task_description": "Review phone access branch",
+  "token_usage": {
+    "input_tokens": 18,
+    "cache_creation_tokens": 122221,
+    "cache_read_tokens": 688204,
+    "output_tokens": 25874,
+    "api_call_count": 9
+  },
+  "started_at": "2026-11-08T11:48:49.6638605+01:00",
+  "completed_at": "2026-11-08T11:50:10.4862541+01:00"
+}
