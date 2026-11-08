@@ -8,7 +8,7 @@ type Valuation = { item_id: string; created_at: string; kind: string; amount_min
 // As in lib/finance/balances, without the fields only the headline's reports need.
 type Snapshot = Omit<BalanceSnapshot, "provenance">;
 type Posting = Omit<BalanceTransaction, "id"> & { id?: string };
-export type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; transit: Map<string, bigint>; known: boolean; uncertain: string[] };
+export type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; transit: Map<string, bigint>; known: boolean; uncertain: string[]; accountValues?: Map<string, bigint> };
 export type CalculatedValue = { on_date: string; currency_code: string; total_minor: string };
 
 const add = (map: Map<string, bigint>, currency: string, amount: bigint) => map.set(currency, (map.get(currency) ?? 0n) + amount);
@@ -81,7 +81,7 @@ export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapsh
   const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
   return dates.map(date => {
     const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), transit: new Map(), known: false, uncertain: [] };
-    const counted = new Set<string>();
+    const counted = new Map<string, bigint>();
     for (const account of accounts) {
       const archived = archivedOn?.get(account.id);
       if (archived && date >= archived) continue;
@@ -95,7 +95,7 @@ export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapsh
         }
         if (anchor.problem) point.uncertain.push(anchor.problem);
         add(point.accounts, anchor.snapshot.currency_code, amount);
-        counted.add(account.id);
+        counted.set(account.id, amount);
         continue;
       }
       if (!account.firstPosted || date < dayBefore(account.firstPosted)) continue;
@@ -106,7 +106,7 @@ export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapsh
       for (const item of next.read) if (item.posted > date && item.side === "inside") amount -= item.amount;
       if (next.problem) point.uncertain.push(next.problem);
       add(point.accounts, next.snapshot.currency_code, amount);
-      counted.add(account.id);
+      counted.set(account.id, amount);
     }
     for (const row of latestValues(date)) if (row.counts) add(row.debt ? point.debts : point.assets, row.currency, row.amount);
     point.known = hasAccountData ? point.accounts.size > 0 : point.assets.size + point.debts.size > 0;
@@ -116,6 +116,7 @@ export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapsh
     const brokerShows = !!before && (date >= before || !!portfolio);
     if (point.known) point.transit = transitOn(transit, date, window => (!window.broker || brokerShows) && window.accounts.every(id => counted.has(id)));
     point.uncertain = [...new Set(point.uncertain)];
+    point.accountValues = counted;
     return point;
   });
 }

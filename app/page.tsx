@@ -16,7 +16,7 @@ import { IntentLink } from "@/components/intent-link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { getSupabaseConfig } from "@/lib/env";
-import { convertFx, minorDigits } from "@/lib/finance/fx";
+import { minorDigits } from "@/lib/finance/fx";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { describeMissingInputs, describeOutdated } from "@/lib/finance/format";
@@ -35,7 +35,7 @@ import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems } from "@/lib/finance/wealth";
 import { checksNotice, loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
 import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth } from "./money/wealth/net-worth";
-import { loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
+import { convertedNetWorth, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
 import { TRANSIT_MATCH_DAYS } from "@/lib/finance/transit";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
@@ -73,7 +73,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const reviewPromise = loadReview(supabase, workspace);
   // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, netWorthEvidence, bankAccounts, priceChanges, syncProblems, imports, portfolios, repayments] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, netWorthEvidence, bankAccounts, priceChanges, syncProblems, imports, portfolios, repayments] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -84,14 +84,13 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
     sourceMetadataPromise,
-    allWealthPromise,
     loadNetWorthEvidence(supabase, workspace, { balances: balanceEvidencePromise, items: allWealthPromise, events: wealthEventsPromise }),
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
     loadSyncProblems(supabase, workspace.id),
     loadImportStates(supabase, workspace.id),
-    supabase.from("scalable_connections").select("portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("scalable_connections").select("portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     loadRepaymentLinks(supabase, workspace.id),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
@@ -103,39 +102,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const conflicted = accounts.filter(account => account.balance.conflicts.length > 0);
   const fxRates = rates.data ?? [];
 
-  // Net worth: dated balances and valuations converted with the latest rate on or before each observation.
-  const missingInputs: string[] = [];
-  let netWorthMinor = 0n;
-  let convertedCount = 0;
-  // Split by source, as on Wealth: every account balance (overdrawn ones too), assets and investments, and debts.
-  const parts = { cash: 0n, assets: 0n, debts: 0n, transit: 0n };
-  const addConverted = (amountMinor: bigint, from: string, asOf: string, source: string, name: string, part: keyof typeof parts) => {
-    const rate = from === displayCurrency ? undefined : fxRates.find(row => row.from_currency === from && String(row.rate_date).slice(0, 10) <= asOf);
-    try {
-      const result = convertFx({ amountMinor, from, to: displayCurrency, rate: rate?.rate_text, source: rate?.source ?? source, date: rate ? String(rate.rate_date).slice(0, 10) : asOf });
-      if (result.status === "available") {
-        const converted = result.converted.amountMinor;
-        netWorthMinor += converted; convertedCount += 1;
-        parts[part] += converted;
-      }
-      else missingInputs.push(...result.missingInputs.map(input => `${input} for ${name}`));
-    } catch {
-      missingInputs.push(`rate:${from}->${displayCurrency} for ${name}`);
-    }
-  };
-  for (const account of accounts) {
-    const { balance } = account;
-    if (balance.amount_minor === null) { missingInputs.push(`balance:${account.name}`); continue; }
-    addConverted(BigInt(balance.amount_minor), balance.currency_code, calendarDate(balance.as_of!, workspace.timezone), balance.provenance || "balance", account.name, "cash");
-  }
   // The same calculation as Wealth and chat: the headline's inputs, past days, and own money between its two sides.
   const worth = netWorthModel(netWorthEvidence);
   const calculatedHistory = netWorthEvidence.scalable, allValuations = worth.valuations;
   const valuations = worth.dated;
-  missingInputs.push(...valuations.missingInputs);
-  const kinds = new Map(wealthItems.map(item => [item.id, item.kind]));
-  for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, kinds.get(valuation.id) === "debt" ? "debts" : "assets");
-  for (const [currency, amount] of worth.now.transit) addConverted(amount, currency, today, "own transfer", "Money between your accounts", "transit");
+  const { totalMinor: netWorthMinor, parts, missingInputs, convertedCount } = convertedNetWorth(worth, fxRates as never, displayCurrency);
   const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
   const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
 
@@ -145,13 +116,16 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n, uncertain: point.uncertain.join(". ") || undefined }));
   // A side still on its way changes today's total, so the card says so; the full list stays on Wealth.
   const landing = worth.unresolved.filter(item => item.side === "broker" && item.currencyCode === displayCurrency && Date.parse(`${today}T00:00:00Z`) - Date.parse(`${item.date}T00:00:00Z`) <= TRANSIT_MATCH_DAYS * 86400000);
-  // The change needs last month's end on record; without it there is nothing to compare with.
-  const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
-  const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
+  // The change needs last month's end on record; without it there is nothing to compare with. Newly added money counts in the total, not as a gain.
+  const split = worth.monthSplit(displayCurrency);
+  const monthBase = split?.baseMinor ?? null, monthChange = split?.changeMinor ?? 0n;
+  const signedMoney = (minor: bigint) => `${minor > 0n ? "+" : ""}${money(minor, displayCurrency)}`;
   const portfolio = (portfolios.data?.portfolio ?? null) as ScalablePortfolio | null;
   const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports, repayments,
     lastCalculated: calculatedHistory.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, worth.firstReal, portfolio?.currency ?? displayCurrency), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
   const checkNotice = checksNotice(findings);
+  // The chart can't reach back as far as it should; a quiet line, as nothing about today's number is wrong.
+  const historyNote = portfolios.data?.history_status !== "failed" ? null : calculatedHistory.rows.length ? "Scalable's calculated history failed its latest check, so older days show the last good run." : "Scalable's earlier days could not be worked out, so its part of the chart starts at your first sync.";
   const { date: fullDate, monthYear: monthLabel } = display;
   const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
   const dateTile = (date: string) => ({ month: display.shortMonth(date), day: date.slice(8, 10) });
@@ -183,15 +157,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         </div>
         {!accounts.length && !wealthItems.length ? <FirstSteps ai={ai} />
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
-            {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
+            {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{signedMoney(monthChange)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
+        {split && (split.changeMinor !== 0n || split.newlyAddedMinor !== 0n) && <p className="font-mono text-xs text-muted-foreground">{[`${signedMoney(split.moneyMinor)} money in and out`, `${signedMoney(split.investmentsMinor)} investments`, ...(split.newlyAddedMinor !== 0n ? [`${signedMoney(split.newlyAddedMinor)} newly added`] : [])].join(" · ")}</p>}
+        {historyNote && <p className="text-xs text-muted-foreground">{historyNote}</p>}
         {landing.length > 0 && <p className="text-xs text-muted-foreground">{landing.length === 1 ? "A transfer has" : `${landing.length} transfers have`} one side showing so far, so the total can run off by {money(landing.reduce((sum, item) => sum + (item.amountMinor < 0n ? -item.amountMinor : item.amountMinor), 0n), displayCurrency)} until the other lands. <Link href="/money/wealth" className="underline">See Wealth</Link></p>}
         {parts.transit !== 0n && <p className="text-xs text-muted-foreground">Includes {money(parts.transit, displayCurrency)} on its way between your accounts.</p>}
         {conflicted.length > 0 && <p className="text-xs text-warning">Two balances disagree for {conflicted.map(account => account.name).join(", ")}; using the most recently recorded one. <Link href="/money/accounts" className="underline">See both</Link></p>}
         {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
-        {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
+        {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} by day`}
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value), uncertain: point.uncertain }))} />
           <p className="mt-2 flex justify-between font-mono text-[11px] text-subtle"><span>{monthLabel(trend[0].date)}</span>{trend.length > 2 && <span>{monthLabel(trend[Math.floor(trend.length / 2)].date)}</span>}<span>{monthLabel(today)}</span></p></div>}
         {convertedCount > 0 && <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] bg-border sm:grid-cols-3">
