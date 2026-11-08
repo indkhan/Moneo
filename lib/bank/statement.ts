@@ -47,7 +47,7 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
   const mapping: ImportMapping = {
     accountName: account.accountName, currencyCode: account.currencyCode,
     dateColumn: "date", descriptionColumn: "description", amountColumn: "amount", currencyColumn: "currency",
-    balanceColumn: "balance", merchantColumn: "counterparty", externalIdColumn: "id",
+    balanceColumn: "balance", merchantColumn: "counterparty", externalIdColumn: "id", completeWindow: true,
     dateFormat: "iso", amountSign: "signed", numericConvention: "decimal-dot",
     ...(account.calendarTimezone ? { calendarTimezone: account.calendarTimezone } : {}),
   };

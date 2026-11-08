@@ -7,6 +7,8 @@ import { ClassificationActions, ReviewActions, UndoRowDecision } from "./actions
 import { formatMoney } from "@/lib/finance/format";
 import { mappingSchema, mapImportReviewRow, type SourceRow } from "@/lib/import/csv";
 import { PendingSettlement } from "./pending-settlement";
+import { ResolveRepeats } from "./repeats";
+import { findWaitingRepeats } from "@/lib/import/repeats";
 
 export const metadata = { title: "Review import" };
 
@@ -65,6 +67,8 @@ export default async function ImportReviewPage({ params, searchParams }: { param
     .select("id, source_id, action, created_at, undone_at").eq("workspace_id", workspace.id)
     .in("source_id", decisionSources).order("created_at", { ascending: false }).limit(1000) : null;
   const complete = imported.status === "completed" && !imported.review_rows && !imported.classification_review_rows;
+  // A failed check only hides the shortcut: each row can still be decided below.
+  const repeats = await findWaitingRepeats(supabase, workspace.id).catch(() => []);
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <Link href="/import" className="text-sm underline">← Import history</Link>
@@ -76,6 +80,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
       {imported.status !== "completed" && <p className="text-muted-foreground">Decisions open once this import has finished. <Link className="underline" href="/import">Check its progress</Link></p>}
       <nav aria-label="Review sections" className="flex flex-wrap gap-x-4 gap-y-1"><a className="underline" href="#transaction-type">Transaction type</a><a className="underline" href="#source-coverage">Source coverage</a><a className="underline" href="#decided-rows">Decided rows</a><a className="underline" href="#type-history">Type history</a></nav>
     </div>
+    {repeats.length > 0 && <ResolveRepeats count={repeats.length} />}
     {error && <p role="alert" className="text-sm text-danger">Could not load the rows to review. <Link className="underline" href={`/import/${id}/review`}>Try again</Link></p>}
     {destinations.error && <p role="alert" className="text-sm text-danger">Could not load your accounts, so a row whose account is unavailable cannot be accepted yet. <Link className="underline" href={`/import/${id}/review`}>Try again</Link></p>}
     {!error && !rows?.length && <p className="text-sm text-muted-foreground">{after > 0 ? <>No more rows after this point. <Link className="underline" href={`/import/${id}/review`}>Back to the first rows</Link></> : "No rows awaiting review."}</p>}
