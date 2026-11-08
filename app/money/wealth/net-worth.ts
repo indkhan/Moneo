@@ -1,11 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate } from "@/lib/finance/calendar";
 import type { WealthItem } from "@/lib/finance/wealth";
+import { coveredRows, latestSnapshotFirst, rowAgainstSnapshot, type BalanceSnapshot, type BalanceTransaction } from "@/lib/finance/balances";
+import { transitOn, type TransitWindow } from "@/lib/finance/transit";
 
-type Snapshot = { account_id: string; amount_minor: string | number; currency_code: string; as_of: string; undone_at?: string | null };
 type Valuation = { item_id: string; created_at: string; kind: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null; removed?: boolean };
-type Posting = { account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; posted_at?: string | null; status: string };
-type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; known: boolean };
+// As in lib/finance/balances, without the fields only the headline's reports need.
+type Snapshot = Omit<BalanceSnapshot, "provenance">;
+type Posting = Omit<BalanceTransaction, "id"> & { id?: string };
+export type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; transit: Map<string, bigint>; known: boolean; uncertain: string[] };
 export type CalculatedValue = { on_date: string; currency_code: string; total_minor: string };
 
 const add = (map: Map<string, bigint>, currency: string, amount: bigint) => map.set(currency, (map.get(currency) ?? 0n) + amount);
@@ -24,61 +27,95 @@ export function dayRange(from: string, to: string): string[] {
   return dates;
 }
 
-// Recorded net worth on each date: the latest recorded account balance plus the posted transactions after
-// its day, and the latest standalone valuation dated on or before it. No FX and no interpolation.
-// With a ledger, a date before an account's first recorded balance is worked back from that balance by
-// removing the posted transactions after the date, but only from the day before its first posting, since
-// earlier activity is not on record. `known` is false when nothing covers the date.
+// Recorded net worth on each date, by the same balance rules as today's number (lib/finance/balances): the latest recorded balance
+// plus the posted transactions after it, and the valuation in force. No FX and no interpolation.
+// A date before an account's first balance is worked back from that balance by removing what happened since, but only from
+// the day before its first posting, since earlier activity is not on record.
+// A day whose balance can't be proven gets a reason in `uncertain` and its best estimate, so a chart can mark it.
+// `known` says the graph can draw a date: it starts where accounts start, or at the first value if there are no accounts at all.
 // Today's point should come from `currentNetWorth`, which uses the exact resolved balances every screen shows.
-// `calculated` adds Scalable's worked-out value to dates before its first real synced value, never on or after it, so
-// nothing counts twice. It only joins a date something else already covers: alone, it would draw portfolio-only
-// numbers and then a false jump up when bank data starts.
+// `calculated` adds Scalable's worked-out value to dates before its first real synced value, never on or after it, so nothing counts twice.
+// `transit` adds back own money between its two sides, only on days both sides have a balance to correct.
 // An archived account counts on the days before its archive date (`archivedOn`), and stops from that date, as on Home.
-export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapshots, valuations, ledger = [], calculated }: {
+export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapshots, valuations, ledger = [], calculated, transit = [] }: {
   dates: string[]; timeZone: string; accountIds: Set<string>; archivedOn?: Map<string, string>; snapshots: Snapshot[]; valuations: Valuation[]; ledger?: Posting[];
-  calculated?: { rows: CalculatedValue[]; before: string | null };
+  calculated?: { rows: CalculatedValue[]; before: string | null }; transit?: TransitWindow[];
 }): NetWorthPoint[] {
   const calculatedOn = new Map((calculated?.rows ?? []).map(row => [row.on_date, row]));
-  const balances = snapshots.filter(row => !row.undone_at && accountIds.has(row.account_id))
-    .map(row => ({ key: row.account_id, date: calendarDate(row.as_of, timeZone), at: row.as_of, amount: BigInt(row.amount_minor), currency: row.currency_code,
-      // As in resolveBalances: a balance typed in during the day is moved by later timed postings that day; a dated one is that day's closing balance.
-      observed: calendarDate(new Date(Date.parse(row.as_of) - 1).toISOString(), timeZone) === calendarDate(row.as_of, timeZone) }));
   // Every state an item was in. Which one applied on a day is decided first, and only then whether it counts:
   // a removed item is zero and a linked one is inside its account, from those dates on.
   const values = valuations.map(row => ({ key: row.item_id, date: row.as_of, at: row.created_at, amount: BigInt(row.amount_minor), currency: row.currency_code, debt: row.kind === "debt", counts: !row.linked_account_id && !row.removed }));
-  const latest = <T extends { key: string; date: string; at: string }>(rows: T[], date: string) => {
-    const pick = new Map<string, T>();
-    for (const row of rows) {
+  const latestValues = (date: string) => {
+    const pick = new Map<string, typeof values[number]>();
+    for (const row of values) {
       if (row.date > date) continue;
       const prior = pick.get(row.key);
       if (!prior || row.date > prior.date || (row.date === prior.date && row.at >= prior.at)) pick.set(row.key, row);
     }
     return pick.values();
   };
-  const posted = ledger.filter(row => row.status === "posted" && accountIds.has(row.account_id))
-    .map(row => ({ ...row, day: row.posted_at ? calendarDate(row.posted_at, timeZone) : row.posted_on, amount: BigInt(row.amount_minor) }));
-  const afterBalance = (row: typeof posted[number], balance: typeof balances[number]) => row.day > balance.date ||
-    (row.day === balance.date && balance.observed && !!row.posted_at && Date.parse(row.posted_at) > Date.parse(balance.at));
-  const sum = (rows: typeof posted) => rows.reduce((total, row) => total + row.amount, 0n);
-  const firstPosted = new Map<string, string>();
-  for (const row of posted) if (!firstPosted.has(row.account_id) || row.posted_on < firstPosted.get(row.account_id)!) firstPosted.set(row.account_id, row.posted_on);
+  const dayCache = new Map<string, string>();
+  const day = (at: string) => { let value = dayCache.get(at); if (value === undefined) { value = calendarDate(at, timeZone); dayCache.set(at, value); } return value; };
+  const accounts = [...accountIds].map(id => {
+    const rows = (ledger as BalanceTransaction[]).filter(row => row.account_id === id && row.status === "posted");
+    const anchors = (snapshots as BalanceSnapshot[]).filter(row => row.account_id === id && !row.undone_at).sort(latestSnapshotFirst).map(snapshot => {
+      // Each balance reads the ledger once, whichever days ask about it.
+      const boundary = day(snapshot.as_of), observed = day(new Date(Date.parse(snapshot.as_of) - 1).toISOString()) === boundary;
+      const read = rows.map(row => ({ row, posted: row.posted_at ? day(row.posted_at) : row.posted_on, amount: BigInt(row.amount_minor), side: "inside" as "inside" | "after", problem: null as string | null }));
+      let problem: string | null = null, covered = new Set<string>();
+      try { covered = coveredRows(snapshot, rows); } catch (error) { problem = error instanceof Error ? error.message : "This balance can't be proven"; }
+      for (const item of read) {
+        if (covered.has(item.row.id)) continue;
+        try {
+          item.side = rowAgainstSnapshot(item.row, item.posted, snapshot, boundary, observed);
+          if (item.side === "after" && item.row.currency_code !== snapshot.currency_code) throw new Error("Ledger currency differs from account currency");
+        } catch (error) { item.problem = error instanceof Error ? error.message : "This row can't be placed"; item.side = "inside"; }
+      }
+      return { snapshot, boundary, read, problem, amount: BigInt(snapshot.amount_minor) };
+    });
+    const firstPosted = rows.reduce<string | null>((first, row) => first === null || row.posted_on < first ? row.posted_on : first, null);
+    return { id, anchors, firstPosted };
+  });
+  // Without account data the graph has nothing to start from but values; with it, values alone would look like a jump when it begins.
+  const hasAccountData = accounts.some(account => account.anchors.length > 0);
   const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
   return dates.map(date => {
-    const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), known: false };
-    const open = (key: string) => { const archived = archivedOn?.get(key); return !archived || date < archived; };
-    const recorded = [...latest(balances, date)].filter(row => open(row.key));
-    for (const row of recorded) add(point.accounts, row.currency, row.amount + sum(posted.filter(item => item.account_id === row.key && item.currency_code === row.currency && afterBalance(item, row) && item.day <= date)));
-    for (const key of accountIds) {
-      const first = firstPosted.get(key);
-      if (!open(key) || recorded.some(row => row.key === key) || !first || date < dayBefore(first)) continue;
-      const next = balances.filter(row => row.key === key && row.date > date).sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at))[0];
+    const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), transit: new Map(), known: false, uncertain: [] };
+    const counted = new Set<string>();
+    for (const account of accounts) {
+      const archived = archivedOn?.get(account.id);
+      if (archived && date >= archived) continue;
+      // Anchors are newest first, and ties settle on the most recently recorded, exactly as the headline does.
+      const anchor = account.anchors.find(item => item.boundary <= date);
+      if (anchor) {
+        let amount = anchor.amount;
+        for (const item of anchor.read) if (item.posted <= date) {
+          if (item.problem) point.uncertain.push(item.problem);
+          if (item.side === "after") amount += item.amount;
+        }
+        if (anchor.problem) point.uncertain.push(anchor.problem);
+        add(point.accounts, anchor.snapshot.currency_code, amount);
+        counted.add(account.id);
+        continue;
+      }
+      if (!account.firstPosted || date < dayBefore(account.firstPosted)) continue;
+      const next = [...account.anchors].reverse().find(item => item.boundary > date);
       if (!next) continue;
-      add(point.accounts, next.currency, next.amount - sum(posted.filter(row => row.account_id === key && row.currency_code === next.currency && row.day > date && !afterBalance(row, next))));
+      // Work back: everything inside this balance that happened after the date hadn't happened yet.
+      let amount = next.amount;
+      for (const item of next.read) if (item.posted > date && item.side === "inside") amount -= item.amount;
+      if (next.problem) point.uncertain.push(next.problem);
+      add(point.accounts, next.snapshot.currency_code, amount);
+      counted.add(account.id);
     }
-    for (const row of latest(values, date)) if (row.counts) add(row.debt ? point.debts : point.assets, row.currency, row.amount);
-    point.known = point.accounts.size + point.assets.size + point.debts.size > 0;
-    const portfolio = point.known && calculated?.before && date < calculated.before ? calculatedOn.get(date) : undefined;
+    for (const row of latestValues(date)) if (row.counts) add(row.debt ? point.debts : point.assets, row.currency, row.amount);
+    point.known = hasAccountData ? point.accounts.size > 0 : point.assets.size + point.debts.size > 0;
+    const before = calculated?.before ?? null;
+    const portfolio = point.known && before && date < before ? calculatedOn.get(date) : undefined;
     if (portfolio) add(point.assets, portfolio.currency_code, BigInt(portfolio.total_minor));
+    const brokerShows = !!before && (date >= before || !!portfolio);
+    if (point.known) point.transit = transitOn(transit, date, window => (!window.broker || brokerShows) && window.accounts.every(id => counted.has(id)));
+    point.uncertain = [...new Set(point.uncertain)];
     return point;
   });
 }
@@ -86,8 +123,8 @@ export function netWorthSeries({ dates, timeZone, accountIds, archivedOn, snapsh
 // Net worth now, from the same inputs as the Overview total: resolved account balances (one without a usable balance
 // is left out, as there) and the valuations that count today.
 export function currentNetWorth(date: string, accounts: { currency_code: string; balance: { amount_minor: string | null } }[],
-  valuations: { amountMinor: bigint; currencyCode: string; debt: boolean }[]): NetWorthPoint {
-  const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), known: false };
+  valuations: { amountMinor: bigint; currencyCode: string; debt: boolean }[], transit: Map<string, bigint> = new Map()): NetWorthPoint {
+  const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), transit, known: false, uncertain: [] };
   for (const account of accounts) if (account.balance.amount_minor !== null) add(point.accounts, account.currency_code, BigInt(account.balance.amount_minor));
   for (const valuation of valuations) add(valuation.debt ? point.debts : point.assets, valuation.currencyCode, valuation.amountMinor);
   point.known = point.accounts.size + point.assets.size + point.debts.size > 0;
@@ -96,7 +133,7 @@ export function currentNetWorth(date: string, accounts: { currency_code: string;
 
 export function netWorth(point: NetWorthPoint): Map<string, bigint> {
   const total = new Map<string, bigint>();
-  for (const map of [point.accounts, point.assets, point.debts]) for (const [currency, amount] of map) add(total, currency, amount);
+  for (const map of [point.accounts, point.assets, point.debts, point.transit]) for (const [currency, amount] of map) add(total, currency, amount);
   return total;
 }
 

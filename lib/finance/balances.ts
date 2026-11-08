@@ -44,6 +44,43 @@ export const latestSnapshotFirst = (a: BalanceSnapshot, b: BalanceSnapshot) => D
 export const conflictingSnapshots = (snapshot: BalanceSnapshot, candidates: BalanceSnapshot[]) => candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of)
   && (item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== exactMinor(snapshot.amount_minor) || boundaryEvidence(item) !== boundaryEvidence(snapshot)));
 
+/** Where a posted row falls against a balance: already inside it, or after it. Throws when the records can't say. One rule, for today and every past day. */
+export function rowAgainstSnapshot(row: BalanceTransaction, postingDate: string, snapshot: BalanceSnapshot, boundaryDate: string, observedDuringDay: boolean): "inside" | "after" {
+  if (postingDate < boundaryDate) return "inside";
+  if (snapshot.boundary_kind === "reviewed_activity" && postingDate === boundaryDate) {
+    if (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(snapshot.as_of)) throw new Error("Same-day activity was not covered by the booked balance review");
+    return "after";
+  }
+  if (row.posted_at && snapshot.boundary_kind === "after_transaction" && snapshot.source_transaction_id) {
+    const postingTime = Date.parse(row.posted_at), boundaryTime = Date.parse(snapshot.as_of);
+    if (postingTime < boundaryTime) return "inside";
+    if (postingTime === boundaryTime) {
+      if (row.source_transaction_ids?.includes(snapshot.source_transaction_id)) return "inside";
+      throw new Error("Same-timestamp ledger has no evidenced order relative to the snapshot");
+    }
+    return "after";
+  }
+  // A date-only balance is that day's closing balance, unless it was observed during the day: then later timed rows still move it.
+  if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) return "inside";
+  return "after";
+}
+
+/** The rows a reviewed balance says it covers; refuses when they changed since the review. */
+export function coveredRows(snapshot: BalanceSnapshot, ledger: BalanceTransaction[]) {
+  const covered = new Set<string>();
+  if (snapshot.boundary_kind !== "reviewed_activity") return covered;
+  if (!Array.isArray(snapshot.covered_transactions)) throw new Error("Reviewed activity evidence is missing");
+  const rowsById = new Map(ledger.filter(row => row.account_id === snapshot.account_id && row.status === "posted").map(row => [row.id, row]));
+  for (const receipt of snapshot.covered_transactions) {
+    const row = rowsById.get(receipt.id);
+    if (covered.has(receipt.id) || !row || JSON.stringify(coveredTransaction(row)) !== JSON.stringify(coveredTransaction({ ...receipt, account_id: snapshot.account_id, status: "posted" })) ||
+        row.currency_code !== snapshot.currency_code || (row.posted_at && Date.parse(row.posted_at) > Date.parse(snapshot.as_of)))
+      throw new Error("Reviewed activity changed; review the booked balance again");
+    covered.add(receipt.id);
+  }
+  return covered;
+}
+
 export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin", sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>) {
   const today = calendarDate(asOf, timeZone);
   const resolved = accounts.map(account => {
@@ -67,18 +104,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
       // Balances entered for today record the moment they were observed; past-dated ones start at local midnight.
       const observedDuringDay = calendarDate(new Date(Date.parse(snapshot.as_of) - 1).toISOString(), timeZone) === boundaryDate;
-      const covered = new Set<string>();
-      if (snapshot.boundary_kind === "reviewed_activity") {
-        if (!Array.isArray(snapshot.covered_transactions)) throw new Error("Reviewed activity evidence is missing");
-        const rowsById = new Map(ledger.filter(row => row.account_id === account.id && row.status === "posted").map(row => [row.id, row]));
-        for (const receipt of snapshot.covered_transactions) {
-          const row = rowsById.get(receipt.id);
-          if (covered.has(receipt.id) || !row || JSON.stringify(coveredTransaction(row)) !== JSON.stringify(coveredTransaction({ ...receipt, account_id: account.id, status: "posted" })) ||
-              row.currency_code !== account.currency_code || (row.posted_at && Date.parse(row.posted_at) > Date.parse(snapshot.as_of)))
-            throw new Error("Reviewed activity changed; review the booked balance again");
-          covered.add(receipt.id);
-        }
-      }
+      const covered = coveredRows(snapshot, ledger);
       let estimate = amount;
       for (const row of ledger) {
         if (row.account_id !== account.id || row.status !== "posted" || covered.has(row.id)) continue;
@@ -87,22 +113,11 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
             (row.posted_at && Date.parse(row.posted_at) > Date.parse(asOf))) continue;
         const delta = exactMinor(row.amount_minor);
         if (delta === 0n) continue;
-        if (snapshot.boundary_kind === "reviewed_activity" && postingDate === boundaryDate) {
-          if (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(snapshot.as_of))
-            throw new Error("Same-day activity was not covered by the booked balance review");
-        } else if (row.posted_at && snapshot.boundary_kind === "after_transaction" && snapshot.source_transaction_id) {
-          const postingTime = Date.parse(row.posted_at), boundaryTime = Date.parse(snapshot.as_of);
-          if (postingTime < boundaryTime) continue;
-          if (postingTime === boundaryTime) {
-            if (row.source_transaction_ids?.includes(snapshot.source_transaction_id)) continue;
-            throw new Error("Same-timestamp ledger has no evidenced order relative to the snapshot");
-          }
-        } else if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) {
+        if (rowAgainstSnapshot(row, postingDate, snapshot, boundaryDate, observedDuringDay) === "inside") {
           // A balance typed in today without confirming today's postings may or may not include them.
-          if (boundaryDate === today && snapshot.actor_id && (snapshot.boundary_kind ?? "date_only") === "date_only") balance.unconfirmed_rows++;
+          if (postingDate === boundaryDate && boundaryDate === today && snapshot.actor_id && (snapshot.boundary_kind ?? "date_only") === "date_only") balance.unconfirmed_rows++;
           continue;
         }
-        // A date-only balance is that day's closing balance, unless it was observed during the day: then later timed rows still move it.
         if (row.currency_code !== account.currency_code) throw new Error("Ledger currency differs from account currency");
         estimate += delta;
         balance.reconciled_rows++;

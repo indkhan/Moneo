@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveBalances } from "@/lib/finance/balances";
 import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, monthEnds, netWorth, netWorthSeries, scalableKnownIds, valuationHistory } from "./net-worth";
 
 it("lists month ends then today", () => {
@@ -159,5 +160,58 @@ describe("things that change over time", () => {
     expect(series.map(point => netWorth(point).get("EUR"))).toEqual([5100n, 5100n, 5100n, 5100n, 5100n]);
     // Old archives, closed without being asked, still drop on their date rather than rewriting the past.
     expect(netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["old", "new"]), archivedOn, snapshots, ledger: [], valuations: [] }).map(point => netWorth(point).get("EUR"))).toEqual([5100n, 5100n, 100n, 100n, 100n]);
+  });
+});
+
+describe("the graph's safeguards", () => {
+  const base = { timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [] };
+  const snapshot = (over = {}) => ({ account_id: "bank", amount_minor: "1000", currency_code: "EUR", as_of: "2026-10-01T00:00:00Z", provenance: "bank", ...over });
+  const fund = { item_id: "fund", kind: "asset", amount_minor: "500", currency_code: "EUR", as_of: "2026-09-01", created_at: "2026-09-01T00:00:00Z", linked_account_id: null };
+
+  it("starts where accounts start, and only without any account data at the first value", () => {
+    const withAccount = netWorthSeries({ ...base, dates: ["2026-09-15", "2026-10-02"], snapshots: [snapshot()], valuations: [fund] });
+    expect(withAccount.map(point => point.known)).toEqual([false, true]);
+    const noAccounts = netWorthSeries({ ...base, accountIds: new Set(), dates: ["2026-08-15", "2026-09-15"], snapshots: [], valuations: [fund] });
+    expect(noAccounts.map(point => point.known)).toEqual([false, true]);
+    const emptyAccount = netWorthSeries({ ...base, dates: ["2026-09-15"], snapshots: [], valuations: [fund] });
+    expect(emptyAccount[0].known).toBe(true);
+  });
+
+  it("resolves two same-dated balances like the headline, whatever order they are read in", () => {
+    const older = snapshot({ id: "a", created_at: "2026-10-01T10:00:00Z" }), newer = snapshot({ id: "b", amount_minor: "2000", created_at: "2026-10-01T11:00:00Z" });
+    for (const order of [[older, newer], [newer, older]]) {
+      const [point] = netWorthSeries({ ...base, dates: ["2026-10-02"], snapshots: order });
+      expect(netWorth(point).get("EUR")).toBe(BigInt(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], order, [], "2026-10-02T12:00:00Z", "UTC")[0].balance.amount_minor!));
+    }
+  });
+
+  it("agrees with today's balance rules on reviewed balances, and marks a day it can't prove", () => {
+    const row = { id: "r", account_id: "bank", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-01", status: "posted", version: 1 };
+    const covered = [{ id: "r", version: 1, amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-01", posted_at: null }];
+    const reviewed = snapshot({ boundary_kind: "reviewed_activity", as_of: "2026-10-01T12:00:00Z", covered_transactions: covered });
+    const good = netWorthSeries({ ...base, dates: ["2026-09-30", "2026-10-01", "2026-10-02"], snapshots: [reviewed], ledger: [row] });
+    expect(good.map(point => [netWorth(point).get("EUR"), point.uncertain])).toEqual([[1100n, []], [1000n, []], [1000n, []]]);
+    // The reviewed row was corrected afterwards: the balance can't be proven any more.
+    const changed = netWorthSeries({ ...base, dates: ["2026-10-02"], snapshots: [reviewed], ledger: [{ ...row, amount_minor: "-150" }] });
+    expect(changed[0].uncertain).toEqual(expect.arrayContaining([expect.stringContaining("review the booked balance")]));
+    expect(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], [reviewed], [{ ...row, amount_minor: "-150" }], "2026-10-02T12:00:00Z", "UTC")[0].balance.status).toBe("ambiguous");
+  });
+
+  it("treats a row imported twice the same for every reader: one canonical row, repeated closing balances", () => {
+    const copies = [snapshot({ id: "a", source_transaction_id: "s1", created_at: "2026-10-01T10:00:00Z" }), snapshot({ id: "b", source_transaction_id: "s2", created_at: "2026-10-02T10:00:00Z" })];
+    const ledger = [{ id: "t", account_id: "bank", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-02", status: "posted" }];
+    const [point] = netWorthSeries({ ...base, dates: ["2026-10-03"], snapshots: copies, ledger });
+    const { balance } = resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], copies, ledger, "2026-10-03T12:00:00Z", "UTC")[0];
+    expect([netWorth(point).get("EUR"), BigInt(balance.amount_minor!), balance.conflicts.length]).toEqual([900n, 900n, 0]);
+  });
+
+  it("applies a correction only to what is counted: not before the broker has a value, and not where an account has none", () => {
+    const window = { from: "2026-10-01", to: "2026-10-05", amountMinor: 700n, currencyCode: "EUR", kind: "matched" as const, broker: true, accounts: ["bank"], key: "k" };
+    const dates = ["2026-10-02", "2026-10-03"];
+    const rows = [{ on_date: "2026-10-03", currency_code: "EUR", total_minor: "10" }];
+    const points = netWorthSeries({ ...base, dates, snapshots: [snapshot()], transit: [window], calculated: { rows, before: "2026-10-10" } });
+    expect(points.map(point => point.transit.get("EUR"))).toEqual([undefined, 700n]);
+    const noBank = netWorthSeries({ ...base, dates: ["2026-09-20"], snapshots: [snapshot()], transit: [{ ...window, from: "2026-09-01", broker: false }] });
+    expect(noBank[0].transit.size).toBe(0);
   });
 });
