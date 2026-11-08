@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Suspense } from "react";
 import { Providers } from "@/components/providers";
@@ -7,6 +8,11 @@ import { cookies } from "next/headers";
 import { ThemePreference } from "@/components/theme-preference";
 import { hasSupabase } from "@/lib/env";
 import { requireWorkspace } from "@/lib/auth";
+
+// Downloaded at build time and served by Moneo itself, so the app stays local-first and works offline.
+const sans = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
+const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage", axes: ["opsz"] });
 
 export const metadata: Metadata = {
   title: { default: "Moneo — Personal Finance Workspace", template: "%s — Moneo" },
@@ -58,7 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const cookieTheme = (await cookies()).get("moneo-theme")?.value;
   const theme: Theme = cookieTheme === "light" || cookieTheme === "dark" ? cookieTheme : "system";
   return (
-    <html lang="en" data-theme={theme} suppressHydrationWarning>
+    <html lang="en" data-theme={theme} className={`${sans.variable} ${mono.variable} ${display.variable}`} suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         {hasSupabase() ? <Suspense fallback={<ThemePreference preference={theme} />}><WorkspaceTheme fallback={theme} /></Suspense> : <ThemePreference preference={theme} />}
         <Providers><AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell></Providers>

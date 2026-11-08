@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -6,9 +5,9 @@
    "system" follows the OS in CSS, so there is no light flash before ThemePreference runs.
    Dark is the primary look: graphite ground, lime for money and actions, violet for anything the AI did. */
 @theme {
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, Consolas, monospace;
-  --font-display: "Bricolage Grotesque", "Geist", sans-serif;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, Consolas, monospace;
+  --font-display: var(--font-bricolage), var(--font-geist), sans-serif;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1.25rem;
