@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { transactionAccountOptions } from "@/lib/ai/transaction-proposals";
+import { cashAccountOptions } from "@/lib/ai/cash-proposals";
 
 /** Card kinds that live outside an agent run: raised by chat or detection, decided one at a time. */
-export const STANDALONE_KINDS = ["iou_create", "iou_settle", "transaction_create", "balance_set", "recurring_edit", "own_transfer"];
+export const STANDALONE_KINDS = ["iou_create", "iou_settle", "transaction_create", "balance_set", "recurring_edit", "own_transfer", "cash_withdrawal"];
 
 /** Card ids an assistant answer shows in its moneo-proposal(s) blocks. */
 export function answerCardIds(content: string | null | undefined): string[] {
@@ -27,6 +28,7 @@ export async function openStandaloneProposals(supabase: SupabaseClient, workspac
   return Promise.all((data ?? []).map(async ({ payload, evidence, ...row }) => {
     const transactions = cardTransactions(evidence), proposal = transactions.length ? { ...row, transactions } : row;
     // Without options the card still accepts into the proposed account, so one unreadable payload does not hide the rest.
+    if (proposal.kind === "cash_withdrawal") return { ...proposal, ...await cashAccountOptions(supabase, workspaceId, payload).catch(() => ({})) };
     return proposal.kind === "transaction_create" ? { ...proposal, ...await transactionAccountOptions(supabase, workspaceId, payload).catch(() => ({})) } : proposal;
   }));
 }

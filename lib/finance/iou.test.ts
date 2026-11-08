@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { iouName, iouRecord, loanPayouts, parseIouName, repaymentMatches, settledRecord, type IouItem } from "./iou";
+import { iouName, iouRecord, loanPayouts, parseIouName, repaymentMatches, type IouItem } from "./iou";
 
 const lent: IouItem = { id: "i1", kind: "asset", name: "Lent to Mohammed", currency_code: "EUR", amount_minor: "50000", as_of: "2026-10-01", version: 1, removed_at: null, linked_account_id: null };
 const owed: IouItem = { id: "i2", kind: "debt", name: "Owed to Sara", currency_code: "EUR", amount_minor: "-20000", as_of: "2026-10-01", version: 1, removed_at: null, linked_account_id: null };
@@ -37,13 +37,19 @@ describe("repaymentMatches", () => {
   });
 });
 
-describe("settledRecord", () => {
-  it("reduces what is left and keeps its direction", () => {
-    expect(settledRecord({ ...lent, annual_rate_text: null, monthly_payment_minor: null }, "48000", "2026-10-26")).toMatchObject({ kind: "asset", amount_minor: "2000", as_of: "2026-10-26" });
-    expect(settledRecord({ ...owed, annual_rate_text: "0", monthly_payment_minor: "0" }, "5000", "2026-10-26")).toMatchObject({ kind: "debt", amount_minor: "-15000" });
+describe("a receipt that already counted", () => {
+  it("can only go against a loan for what is left of it", () => {
+    const counted = new Map([["t", 6000n]]);
+    expect(repaymentMatches([lent], [txn("t", "Mohammed", "10000")], counted)).toMatchObject([{ transactionId: "t", appliedMinor: "4000" }]);
+    expect(repaymentMatches([lent], [txn("t", "Mohammed", "6000")], counted)).toEqual([]);
   });
-  it("returns null when fully repaid", () => {
-    expect(settledRecord({ ...lent, annual_rate_text: null, monthly_payment_minor: null }, "50000", "2026-10-26")).toBeNull();
+  it("never proposes more than a receipt across any number of loans", () => {
+    const second = { ...lent, id: "i3", name: "Lent to Mohammed Two" };
+    let left = 5000n; const counted = new Map<string, bigint>();
+    for (const loans of [[lent], [second]]) for (const match of repaymentMatches(loans, [txn("t", "Mohammed Two Mohammed", "5000")], counted)) {
+      left -= BigInt(match.appliedMinor); counted.set("t", (counted.get("t") ?? 0n) + BigInt(match.appliedMinor));
+    }
+    expect(left).toBe(0n);
   });
 });
 

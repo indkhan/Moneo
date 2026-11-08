@@ -5,7 +5,7 @@ import { buildSourceCoverage, type loadSourceCoverageMetadata } from "./source-c
 
 export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null; version?: number };
 export type BalanceSnapshot = { id?: string; account_id: string; amount_minor: string | number; currency_code: string; as_of: string; provenance: string;
-  boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null;
+  boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null; balance_type?: string | null;
   actor_id?: string | null; undone_at?: string | null; version?: number; created_at?: string };
 export type BalanceTransaction = { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string;
   posted_at?: string | null; source_transaction_ids?: string[]; version?: number; description?: string;
@@ -24,8 +24,11 @@ export function balanceReviewRows(ledger: BalanceTransaction[], accountId: strin
     .map(coveredTransaction).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+// What point in the day a balance describes. A date-only closing balance means the same whichever source row carried it,
+// so overlapping imports of one statement agree; a reviewed or after-transaction boundary is defined by its evidence.
 function boundaryEvidence(snapshot: BalanceSnapshot) {
-  return JSON.stringify([snapshot.boundary_kind ?? "date_only", snapshot.source_transaction_id ?? null,
+  if ((snapshot.boundary_kind ?? "date_only") === "date_only") return "date_only";
+  return JSON.stringify([snapshot.boundary_kind, snapshot.source_transaction_id ?? null,
     [...(snapshot.covered_transactions ?? [])].map(row => coveredTransaction({ ...row, account_id: snapshot.account_id, status: "posted" })).sort((a, b) => a.id.localeCompare(b.id))]);
 }
 
@@ -34,45 +37,74 @@ function exactMinor(value: string | number): bigint {
   return BigInt(value);
 }
 
-export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin", sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>,
-  // Display-only views may settle same-moment conflicts (e.g. overlapping statement imports) with the most recently recorded balance.
-  { preferLatestRecorded = false } = {}) {
+/** Newest financial moment first; records of the same moment settle on the most recently recorded one, whatever order they were read in. */
+export const latestSnapshotFirst = (a: BalanceSnapshot, b: BalanceSnapshot) => Date.parse(b.as_of) - Date.parse(a.as_of)
+  || (Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "") || 0) || (b.id ?? "").localeCompare(a.id ?? "");
+/** Records of the same moment that say something different from the chosen one. */
+export const conflictingSnapshots = (snapshot: BalanceSnapshot, candidates: BalanceSnapshot[]) => candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of)
+  && (item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== exactMinor(snapshot.amount_minor) || boundaryEvidence(item) !== boundaryEvidence(snapshot)));
+
+/** Where a posted row falls against a balance: already inside it, or after it. Throws when the records can't say. One rule, for today and every past day. */
+export function rowAgainstSnapshot(row: BalanceTransaction, postingDate: string, snapshot: BalanceSnapshot, boundaryDate: string, observedDuringDay: boolean): "inside" | "after" {
+  if (postingDate < boundaryDate) return "inside";
+  if (snapshot.boundary_kind === "reviewed_activity" && postingDate === boundaryDate) {
+    if (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(snapshot.as_of)) throw new Error("Same-day activity was not covered by the booked balance review");
+    return "after";
+  }
+  if (row.posted_at && snapshot.boundary_kind === "after_transaction" && snapshot.source_transaction_id) {
+    const postingTime = Date.parse(row.posted_at), boundaryTime = Date.parse(snapshot.as_of);
+    if (postingTime < boundaryTime) return "inside";
+    if (postingTime === boundaryTime) {
+      if (row.source_transaction_ids?.includes(snapshot.source_transaction_id)) return "inside";
+      throw new Error("Same-timestamp ledger has no evidenced order relative to the snapshot");
+    }
+    return "after";
+  }
+  // A date-only balance is that day's closing balance, unless it was observed during the day: then later timed rows still move it.
+  if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) return "inside";
+  return "after";
+}
+
+/** The rows a reviewed balance says it covers; refuses when they changed since the review. */
+export function coveredRows(snapshot: BalanceSnapshot, ledger: BalanceTransaction[]) {
+  const covered = new Set<string>();
+  if (snapshot.boundary_kind !== "reviewed_activity") return covered;
+  if (!Array.isArray(snapshot.covered_transactions)) throw new Error("Reviewed activity evidence is missing");
+  const rowsById = new Map(ledger.filter(row => row.account_id === snapshot.account_id && row.status === "posted").map(row => [row.id, row]));
+  for (const receipt of snapshot.covered_transactions) {
+    const row = rowsById.get(receipt.id);
+    if (covered.has(receipt.id) || !row || JSON.stringify(coveredTransaction(row)) !== JSON.stringify(coveredTransaction({ ...receipt, account_id: snapshot.account_id, status: "posted" })) ||
+        row.currency_code !== snapshot.currency_code || (row.posted_at && Date.parse(row.posted_at) > Date.parse(snapshot.as_of)))
+      throw new Error("Reviewed activity changed; review the booked balance again");
+    covered.add(receipt.id);
+  }
+  return covered;
+}
+
+export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin", sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>) {
   const today = calendarDate(asOf, timeZone);
   const resolved = accounts.map(account => {
     const candidates = snapshots.filter(snapshot => snapshot.account_id === account.id && !snapshot.undone_at && Number.isFinite(Date.parse(snapshot.as_of)) && Date.parse(snapshot.as_of) <= Date.parse(asOf))
-      .sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of) || (preferLatestRecorded ? Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "") || 0 : 0));
+      .sort(latestSnapshotFirst);
     const snapshot = candidates[0];
     const balance = { amount_minor: null as string | null, snapshot_amount_minor: null as string | null,
       estimated_amount_minor: null as string | null, currency_code: account.currency_code,
       snapshot_currency_code: snapshot?.currency_code ?? null, as_of: snapshot?.as_of ?? null,
-      evaluated_at: asOf, provenance: snapshot?.provenance ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
-      warnings: [] as string[], reconciled_rows: 0, unconfirmed_rows: 0, snapshot_valid: false };
+      evaluated_at: asOf, provenance: snapshot?.provenance ?? null, balance_type: snapshot?.balance_type ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
+      warnings: [] as string[], reconciled_rows: 0, unconfirmed_rows: 0, snapshot_valid: false,
+      conflicts: [] as { amount_minor: string; currency_code: string; recorded_at: string | null; provenance: string }[] };
     if (!snapshot) { balance.warnings.push("No dated balance at or before the evaluation time"); return { ...account, balance }; }
     try {
       const amount = exactMinor(snapshot.amount_minor);
       balance.snapshot_amount_minor = amount.toString();
       if (snapshot.currency_code !== account.currency_code) throw new Error("Snapshot currency differs from account currency");
-      const ties = candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of));
-      if (ties.some(item => item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== amount || boundaryEvidence(item) !== boundaryEvidence(snapshot))) {
-        if (!preferLatestRecorded) throw new Error("Conflicting snapshots have no evidenced financial order");
-        balance.warnings.push("Conflicting balances on the same date; using the most recently recorded one");
-      }
+      balance.conflicts = conflictingSnapshots(snapshot, candidates).map(item => ({ amount_minor: exactMinor(item.amount_minor).toString(), currency_code: item.currency_code, recorded_at: item.created_at ?? null, provenance: item.provenance }));
+      if (balance.conflicts.length) balance.warnings.push("Conflicting balances on the same date; using the most recently recorded one");
       balance.snapshot_valid = true;
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
       // Balances entered for today record the moment they were observed; past-dated ones start at local midnight.
       const observedDuringDay = calendarDate(new Date(Date.parse(snapshot.as_of) - 1).toISOString(), timeZone) === boundaryDate;
-      const covered = new Set<string>();
-      if (snapshot.boundary_kind === "reviewed_activity") {
-        if (!Array.isArray(snapshot.covered_transactions)) throw new Error("Reviewed activity evidence is missing");
-        const rowsById = new Map(ledger.filter(row => row.account_id === account.id && row.status === "posted").map(row => [row.id, row]));
-        for (const receipt of snapshot.covered_transactions) {
-          const row = rowsById.get(receipt.id);
-          if (covered.has(receipt.id) || !row || JSON.stringify(coveredTransaction(row)) !== JSON.stringify(coveredTransaction({ ...receipt, account_id: account.id, status: "posted" })) ||
-              row.currency_code !== account.currency_code || (row.posted_at && Date.parse(row.posted_at) > Date.parse(snapshot.as_of)))
-            throw new Error("Reviewed activity changed; review the booked balance again");
-          covered.add(receipt.id);
-        }
-      }
+      const covered = coveredRows(snapshot, ledger);
       let estimate = amount;
       for (const row of ledger) {
         if (row.account_id !== account.id || row.status !== "posted" || covered.has(row.id)) continue;
@@ -81,22 +113,11 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
             (row.posted_at && Date.parse(row.posted_at) > Date.parse(asOf))) continue;
         const delta = exactMinor(row.amount_minor);
         if (delta === 0n) continue;
-        if (snapshot.boundary_kind === "reviewed_activity" && postingDate === boundaryDate) {
-          if (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(snapshot.as_of))
-            throw new Error("Same-day activity was not covered by the booked balance review");
-        } else if (row.posted_at && snapshot.boundary_kind === "after_transaction" && snapshot.source_transaction_id) {
-          const postingTime = Date.parse(row.posted_at), boundaryTime = Date.parse(snapshot.as_of);
-          if (postingTime < boundaryTime) continue;
-          if (postingTime === boundaryTime) {
-            if (row.source_transaction_ids?.includes(snapshot.source_transaction_id)) continue;
-            throw new Error("Same-timestamp ledger has no evidenced order relative to the snapshot");
-          }
-        } else if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) {
+        if (rowAgainstSnapshot(row, postingDate, snapshot, boundaryDate, observedDuringDay) === "inside") {
           // A balance typed in today without confirming today's postings may or may not include them.
-          if (boundaryDate === today && snapshot.actor_id && (snapshot.boundary_kind ?? "date_only") === "date_only") balance.unconfirmed_rows++;
+          if (postingDate === boundaryDate && boundaryDate === today && snapshot.actor_id && (snapshot.boundary_kind ?? "date_only") === "date_only") balance.unconfirmed_rows++;
           continue;
         }
-        // A date-only balance is that day's closing balance, unless it was observed during the day: then later timed rows still move it.
         if (row.currency_code !== account.currency_code) throw new Error("Ledger currency differs from account currency");
         estimate += delta;
         balance.reconciled_rows++;
@@ -127,7 +148,7 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
     allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));
   const [accounts, snapshots, ledger, fees, resolutions] = await Promise.all([
     rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at, version"),
-    rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
+    rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, balance_type, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
     rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, version, description, kind, review_reasons, transaction_sources(source_transaction_id)"),
     rows<{ transaction_id: string; fee_minor: string; treatment: string; transaction_links: { undone_at: string | null } }>("transaction_link_fees", "id, transaction_id, fee_minor::text, treatment, transaction_links!inner(undone_at)"),
     rows<{ pending_transaction_id: string | null; released_minor: string; undone_at: string | null }>("pending_hold_resolutions", "id, pending_transaction_id, released_minor::text, undone_at"),

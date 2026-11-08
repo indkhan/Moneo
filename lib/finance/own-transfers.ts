@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { loadWorkspaceSettings } from "@/lib/settings";
+import type { BankLeg } from "./transit";
 
 // Money moved between the owner's own accounts is a transfer, never income or spending.
 // Detection is deterministic and IBAN-only: a row's counterparty IBAN is one of the owner's
@@ -24,13 +26,13 @@ export function sourceIbans(row: unknown) {
 
 export type TransferCandidate = {
   id: string; version: number; accountId: string; postedOn: string; amountMinor: bigint; currencyCode: string;
-  reviewReasons: string[]; ibans: string[]; text?: string; counterparty?: string;
+  reviewReasons: string[]; ibans: string[]; text?: string; counterparty?: string; transferId?: string | null;
 };
 
 // Without an IBAN, only the bank's own wording proves own money: a cash machine, or Scalable Capital
 // once the owner connected Scalable (their withdrawals arrive without the broker's IBAN).
 const CASH = /\b(bargeldauszahlung|bargeldeinzahlung|geldautomat|cash withdrawal|atm withdrawal|cash deposit)\b/i;
-const SCALABLE = /\bscalable capital\b/i;
+const SCALABLE = /\bscalable capital\b/i, SCALABLE_LABEL = /\bscalable\b/i;
 export type NamedAccount = "cash" | "scalable";
 export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital" };
 export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string, string> }; // IBAN → account id / identifier id
@@ -80,6 +82,15 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
   return { pairs, single, named };
 }
 
+/**
+ * Recent cash machine withdrawals with no other side yet. Until the owner accepts a card, one counts as money that left.
+ * Older ones aren't asked about: that cash has most likely been spent, and the owner can set a Cash balance any time.
+ */
+export const CASH_CARD_DAYS = 30;
+export function cashWithdrawals<T extends Pick<TransferCandidate, "id" | "postedOn" | "amountMinor" | "text" | "transferId">>(rows: T[], today: string, answered = new Set<string>()) {
+  return rows.filter(row => row.amountMinor < 0n && !row.transferId && CASH.test(row.text ?? "") && !answered.has(row.id) && days(row.postedOn, today) <= CASH_CARD_DAYS);
+}
+
 const nameKey = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
@@ -123,7 +134,7 @@ export async function loadOwnAccounts(db: SupabaseClient, workspaceId: string): 
   return { tracked, untracked };
 }
 
-type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null; description: string;
+type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null; description: string; transfer_id: string | null;
   transaction_sources: { source_transactions: { original_row: unknown } | null }[] | null };
 
 /** The counterparty name a bank sync stores on its original row; other imports leave it out. */
@@ -136,7 +147,7 @@ async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary
   const rows: TransferCandidate[] = [];
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
     let query = db.from("transactions")
-      .select("id, version, account_id, posted_on, amount_minor::text, currency_code, review_reasons, description, transaction_sources(source_transactions(original_row))")
+      .select("id, version, account_id, posted_on, amount_minor::text, currency_code, review_reasons, description, transfer_id, transaction_sources(source_transactions(original_row))")
       .eq("workspace_id", workspaceId).eq("status", "posted").eq("kind", kind);
     if (kind === "ordinary") query = query.is("transfer_id", null).is("refund_of_id", null);
     const { data, error } = await query.order("posted_on", { ascending: false }).order("id").range(from, from + PAGE - 1);
@@ -146,7 +157,7 @@ async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary
       if (kind === "ordinary" && reviewReasons.some(reason => reason !== "source_transfer")) continue;
       const originals = (row.transaction_sources ?? []).map(source => source.source_transactions?.original_row);
       rows.push({ id: row.id, version: row.version, accountId: row.account_id, postedOn: row.posted_on, amountMinor: BigInt(row.amount_minor),
-        currencyCode: row.currency_code, reviewReasons, ibans: [...new Set(originals.flatMap(sourceIbans))], text: row.description, counterparty: originals.map(counterpartyOf).find(Boolean) });
+        currencyCode: row.currency_code, reviewReasons, ibans: [...new Set(originals.flatMap(sourceIbans))], text: row.description, counterparty: originals.map(counterpartyOf).find(Boolean), transferId: row.transfer_id });
     }
     if ((data ?? []).length < PAGE) break;
   }
@@ -154,6 +165,17 @@ async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary
 }
 
 export const loadTransferCandidates = (db: SupabaseClient, workspaceId: string) => loadRows(db, workspaceId, "ordinary");
+
+/** Own-transfer rows as sides of a transfer: what proves the broker is the other side, and whether a tracked account of the owner's is. */
+export async function loadTransferLegs(db: SupabaseClient, workspaceId: string): Promise<BankLeg[]> {
+  const [rows, own, identifiers] = await Promise.all([loadRows(db, workspaceId, "transfer"), loadOwnAccounts(db, workspaceId),
+    db.from("own_account_identifiers").select("iban, label").eq("workspace_id", workspaceId)]);
+  if (identifiers.error) throw new Error(identifiers.error.message);
+  const brokerIbans = new Set((identifiers.data ?? []).filter(row => SCALABLE_LABEL.test(row.label)).map(row => row.iban as string));
+  return rows.map(row => ({ id: row.id, accountId: row.accountId, amountMinor: row.amountMinor, currencyCode: row.currencyCode, postedOn: row.postedOn, transferId: row.transferId ?? null, text: row.text,
+    provesBroker: row.ibans.some(iban => brokerIbans.has(iban)) || SCALABLE.test(`${row.counterparty ?? ""} ${row.text ?? ""}`),
+    ownAccount: row.ibans.some(iban => own.tracked.has(iban) && own.tracked.get(iban) !== row.accountId) }));
+}
 
 /** Every posted leg, whatever its review state, so a lone leg can see whether its other side exists. */
 async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]> {
@@ -194,6 +216,27 @@ async function proposeOwnNames(db: SupabaseClient, workspaceId: string, rows: Tr
   return data?.length ?? 0;
 }
 
+/** Raises one "add it to your Cash account?" card per recent withdrawal, once: a declined card is never raised again. */
+async function proposeCashWithdrawals(db: SupabaseClient, workspaceId: string, rows: TransferCandidate[]) {
+  const { locale, timezone } = await loadWorkspaceSettings(db, workspaceId);
+  const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "cash_withdrawal").limit(5000);
+  if (known.error) throw new Error(known.error.message);
+  const answered = new Set((known.data ?? []).map(row => String(row.conflict_key).replace(/^cash_withdrawal:/, "")));
+  const found = cashWithdrawals(rows, calendarDate(new Date(), timezone), answered);
+  if (!found.length) return 0;
+  const cards = found.map(row => {
+    const amount = -row.amountMinor, money = formatMoney(amount, row.currencyCode, locale);
+    return { workspace_id: workspaceId, agent: "chat", kind: "cash_withdrawal", conflict_key: `cash_withdrawal:${row.id}`, confidence: 90,
+      title: `${money} from a cash machine: add it to your Cash account?`.slice(0, 200),
+      detail: "Until you add it, it counts as money that left. Once it's in Cash, your net worth stays the same; after spending, update the balance whenever you like.",
+      evidence: { facts: [], transactions: [{ id: row.id, date: row.postedOn, description: row.text ?? "", amountMinor: row.amountMinor.toString(), currency: row.currencyCode }], links: [] },
+      payload: { transactionId: row.id, amountMinor: amount.toString(), currencyCode: row.currencyCode, date: row.postedOn } };
+  });
+  const { data, error } = await db.from("agent_proposals").insert(cards).select("id");
+  if (error && error.code !== "23505") throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
 /** Find and link transfers between the owner's accounts. The service role acts for the owner. */
 export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) {
   const [own, rows, legs, transfers, scalable] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId),
@@ -222,5 +265,7 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
   }
   const handled = new Set([...pairs.flatMap(pair => [pair.outId, pair.inId]), ...single.map(item => item.transactionId), ...named.map(item => item.transactionId)]);
   const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own);
-  return { linked, marked, skipped, suggested };
+  // Rows marked as cash a moment ago are transfers now; either way it is the bank's wording that counts.
+  const cashCards = await proposeCashWithdrawals(db, workspaceId, [...rows.filter(row => !handled.has(row.id) || named.some(item => item.transactionId === row.id && item.account === "cash")), ...transfers]);
+  return { linked, marked, skipped, suggested, cashCards };
 }

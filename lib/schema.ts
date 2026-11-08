@@ -90,6 +90,7 @@ export const balanceSnapshots = pgTable("balance_snapshots", {
   asOf: timestamp("as_of", { withTimezone: true }).notNull(),
   provenance: text("provenance").notNull(),
   boundaryKind: text("boundary_kind").notNull().default("date_only"),
+  balanceType: text("balance_type"),
   sourceTransactionId: uuid("source_transaction_id").references((): AnyPgColumn => sourceTransactions.id),
   coveredTransactions: jsonb("covered_transactions"),
   actorId: uuid("actor_id").references(() => authUsers.id),
@@ -102,6 +103,7 @@ export const balanceSnapshots = pgTable("balance_snapshots", {
   index("balance_snapshots_workspace_id").on(table.workspaceId, table.id),
   check("balance_snapshots_boundary_kind_check", sql`${table.boundaryKind} in ('date_only','after_transaction','reviewed_activity') and (${table.boundaryKind} <> 'after_transaction' or ${table.sourceTransactionId} is not null) and (${table.boundaryKind} <> 'reviewed_activity' or (${table.coveredTransactions} is not null and jsonb_typeof(${table.coveredTransactions}) = 'array' and ${table.actorId} is not null))`),
   check("balance_snapshots_version_check", sql`${table.version} > 0`),
+  check("balance_snapshots_balance_type_check", sql`${table.balanceType} is null or ${table.balanceType} ~ '^[A-Z]{4}$'`),
 ]);
 
 export const dataSources = pgTable("data_sources", {
@@ -156,6 +158,7 @@ export const bankConnections = pgTable("bank_connections", {
   validUntil: timestamp("valid_until", { withTimezone: true }),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   syncStartedAt: timestamp("sync_started_at", { withTimezone: true }),
+  lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
   lastError: text("last_error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -202,6 +205,10 @@ export const scalableConnections = pgTable("scalable_connections", {
   historyStatus: text("history_status"),
   historyCheckedOn: date("history_checked_on"),
   historyError: text("history_error"),
+  tokenVersion: integer("token_version").notNull().default(0),
+  refreshClaimedUntil: timestamp("refresh_claimed_until", { withTimezone: true }),
+  portfolioFetchedAt: timestamp("portfolio_fetched_at", { withTimezone: true }),
+  transfersBackfilledAt: timestamp("transfers_backfilled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("scalable_connections_workspace_idx").on(table.workspaceId),
@@ -214,6 +221,53 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_portfolio_check", sql`${table.portfolio} is null or jsonb_typeof(${table.portfolio}) = 'object'`),
   check("scalable_connections_history_status_check", sql`${table.historyStatus} in ('ok','failed')`),
   check("scalable_connections_history_error_check", sql`char_length(${table.historyError}) <= 1000`),
+]);
+
+// Money Scalable says moved in or out of the broker, once per its own ID (202611080006). Read-time rules decide how charts show it.
+export const scalableTransfers = pgTable("scalable_transfers", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  providerId: text("provider_id").notNull(),
+  type: text("type").notNull(),
+  amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+  currencyCode: text("currency_code").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  onDate: date("on_date").notNull(),
+  status: text("status").notNull(),
+  isCancellation: boolean("is_cancellation").notNull().default(false),
+  description: text("description"),
+  returnsProviderId: text("returns_provider_id"),
+  revision: integer("revision").notNull().default(1),
+  revisions: jsonb("revisions").notNull().default(sql`'[]'::jsonb`),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.providerId] }),
+  index("scalable_transfers_date").on(table.workspaceId, table.onDate),
+  check("scalable_transfers_type_check", sql`${table.type} in ('DEPOSIT','WITHDRAWAL')`),
+  check("scalable_transfers_amount_minor_check", sql`${table.amountMinor} <> 0`),
+  check("scalable_transfers_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+]);
+
+// A loan repayment tied to one bank payment, in the state it had when accepted (202611080005).
+export const iouRepayments = pgTable("iou_repayments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  itemId: uuid("item_id").notNull().references(() => wealthItems.id, { onDelete: "cascade" }),
+  transactionId: uuid("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  wealthEventId: uuid("wealth_event_id").notNull().references(() => wealthEvents.id, { onDelete: "cascade" }),
+  appliedMinor: bigint("applied_minor", { mode: "bigint" }).notNull(),
+  currencyCode: text("currency_code").notNull(),
+  transactionAmountMinor: bigint("transaction_amount_minor", { mode: "bigint" }).notNull(),
+  transactionPostedOn: date("transaction_posted_on").notNull(),
+  requestId: uuid("request_id").notNull(),
+  actorId: uuid("actor_id").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+}, (table) => [
+  unique("iou_repayments_workspace_id_request_id_key").on(table.workspaceId, table.requestId),
+  index("iou_repayments_transaction").on(table.transactionId),
+  index("iou_repayments_item").on(table.itemId),
+  check("iou_repayments_applied_minor_check", sql`${table.appliedMinor} > 0`),
+  check("iou_repayments_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
 ]);
 
 // Past Scalable values calculated from its transactions and price charts (202611080002). A calculation, not a record.
@@ -1158,7 +1212,7 @@ export const agentProposals = pgTable("agent_proposals", {
   index("agent_proposals_workspace_status").on(table.workspaceId, table.status),
   index("agent_proposals_chat_request").on(table.chatRequestId).where(sql`${table.chatRequestId} is not null`),
   uniqueIndex("agent_proposals_standalone_conflict_key").on(table.workspaceId, table.conflictKey).where(sql`${table.runId} is null`),
-  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle','transaction_create','balance_set','recurring_edit','scalable_order','scalable_cancel','own_transfer')`),
+  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle','transaction_create','balance_set','recurring_edit','scalable_order','scalable_cancel','own_transfer','cash_withdrawal')`),
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),
   check("agent_proposals_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("agent_proposals_title_check", sql`char_length(${table.title}) between 1 and 200`),

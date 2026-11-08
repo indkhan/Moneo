@@ -33,10 +33,15 @@ function dateValue(value: string) {
   return date;
 }
 export function debtPayments(input: { principalMinor: bigint; annualRate: string; monthlyPaymentMinor: bigint; nextPaymentOn: string }, start: string, days: number) {
+  const first = dateValue(input.nextPaymentOn); const from = dateValue(start);
+  if (first < from) throw new Error("Update the outstanding principal and next payment date before forecasting");
+  return scheduledPayments(input, from.getTime() + days * 86400000, days);
+}
+
+function scheduledPayments(input: { principalMinor: bigint; annualRate: string; monthlyPaymentMinor: bigint; nextPaymentOn: string }, end: number, days: number) {
   const rate = decimalRatio(input.annualRate);
   if (rate.numerator > 1000n * rate.denominator || input.principalMinor > 0n || input.monthlyPaymentMinor <= 0n || !Number.isInteger(days) || days < 1 || days > 365) throw new Error("Invalid debt assumptions");
-  const first = dateValue(input.nextPaymentOn); const from = dateValue(start); const end = from.getTime() + days * 86400000;
-  if (first < from) throw new Error("Update the outstanding principal and next payment date before forecasting");
+  const first = dateValue(input.nextPaymentOn);
   let outstanding = -input.principalMinor;
   const result: { date: string; paymentMinor: bigint; interestMinor: bigint; principalMinor: bigint; remainingMinor: bigint }[] = [];
   for (let month = 0; month < 13 && outstanding > 0n; month++) {
@@ -52,6 +57,18 @@ export function debtPayments(input: { principalMinor: bigint; annualRate: string
     result.push({ date: date.toISOString().slice(0, 10), paymentMinor, interestMinor, principalMinor, remainingMinor: outstanding });
   }
   return result;
+}
+
+/**
+ * The payments due from `start`, for a principal evidenced on `asOf`. Payment dates that passed since then are assumed
+ * made as scheduled, with the stated interest. Asks for an update only when the schedule can't speak to it: it starts
+ * before the principal it applies to, or the evidence is more than a year behind the schedule.
+ */
+export function carriedDebtPayments(input: { principalMinor: bigint; annualRate: string; monthlyPaymentMinor: bigint; nextPaymentOn: string; asOf: string }, start: string, days: number) {
+  if (input.nextPaymentOn >= start) return debtPayments(input, start, days);
+  if (input.nextPaymentOn < input.asOf || dateValue(start).getTime() - dateValue(input.nextPaymentOn).getTime() > 365 * 86400000)
+    throw new Error("Update the outstanding principal and next payment date before forecasting");
+  return scheduledPayments(input, dateValue(start).getTime() + days * 86400000, days).filter(payment => payment.date >= start);
 }
 
 export type WealthValue = { id: string; name: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
@@ -125,7 +142,9 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
   for (const item of items.filter(item => item.kind === "debt" && !item.removed_at)) {
     const missing = (reason: string) => missingInputs.push(`debt:${item.id}:${reason}`);
     if (BigInt(item.amount_minor) === 0n) continue;
-    if (item.as_of !== today) { missing("principal valuation is historical"); continue; }
+    if (item.as_of > today) { missing("principal is dated in the future"); continue; }
+    // Money owed with no repayment plan at all, like a loan from a friend or broker debt: nothing to schedule.
+    if (!item.payment_account_id && !item.payment_assumption_id && !item.payment_transaction_id && item.monthly_payment_minor !== null && BigInt(item.monthly_payment_minor) === 0n) continue;
     const account = accounts.find(account => account.id === item.payment_account_id);
     if (!account || account.archived_at || !["checking", "savings", "cash", "wallet"].includes(account.type ?? "") || account.currency_code !== item.currency_code) { missing("liquid repayment account"); continue; }
     if (!item.next_payment_on || !item.annual_rate_text || BigInt(item.monthly_payment_minor ?? "0") <= 0n) { missing("repayment assumptions"); continue; }
@@ -139,7 +158,7 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
       }
     }
     let payments: ReturnType<typeof debtPayments>;
-    try { payments = debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, days); }
+    try { payments = carriedDebtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on, asOf: item.as_of }, today, days); }
     catch { missing("repayment assumptions need update"); continue; }
     const pending = item.payment_transaction_id ? ledger.find(row => row.id === item.payment_transaction_id) : undefined;
     if (item.payment_transaction_id && (!pending || BigInt(pending.pending_released_minor ?? "0") > 0n || pending.account_id !== account.id || pending.currency_code !== item.currency_code || pending.status !== "pending" || pending.posted_on !== item.next_payment_on || minor(pending.amount_minor) !== -BigInt(item.monthly_payment_minor!))) {

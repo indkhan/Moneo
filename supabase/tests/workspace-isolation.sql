@@ -116,6 +116,9 @@ begin
   insert into public.accounts(workspace_id,name,currency_code) values(workspace_a,'Synthetic own','EUR');
   foreign_transaction := md5('transactions'||workspace_b)::uuid;
   insert into public.scalable_connections(workspace_id,client_id,redirect_uri) values(workspace_b,'synthetic','http://localhost/callback');
+  insert into public.scalable_transfers(workspace_id,provider_id,type,amount_minor,currency_code,occurred_at,on_date,status) values(workspace_b,'P1','DEPOSIT',100,'EUR','2026-10-01T00:00:00Z','2026-10-01','SETTLED');
+  insert into public.iou_repayments(workspace_id,item_id,transaction_id,wealth_event_id,applied_minor,currency_code,transaction_amount_minor,transaction_posted_on,request_id)
+    values(workspace_b,md5('wealth_items'||workspace_b)::uuid,md5('transactions'||workspace_b)::uuid,md5('wealth_events'||workspace_b)::uuid,1,'EUR',100,'2026-10-01',gen_random_uuid());
   insert into public.scalable_value_history(workspace_id,on_date,currency_code,securities_minor,crypto_minor,cash_minor,total_minor) values(workspace_b,'2026-10-01','EUR',1,2,3,6);
   foreign_account := md5('accounts'||workspace_b)::uuid;
   foreign_goal := md5('goals'||workspace_b)::uuid;

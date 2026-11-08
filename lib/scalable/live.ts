@@ -51,7 +51,7 @@ const overviewSchema = z.object({
 const cashSchema = z.object({ cash: z.object({ cashBalance: decimal, buyingPower: decimal.optional(), pendingBuyOrdersAmount: decimal.optional() }) });
 
 /** Labels for Scalable's return periods, shortest first. */
-export const PERIODS: Record<string, string> = { INTRADAY: "Today", ONE_WEEK: "1 week", ONE_MONTH: "1 month", THREE_MONTHS: "3 months", SIX_MONTHS: "6 months",
+export const PERIODS: Record<string, string> = { INTRADAY: "Latest market day", ONE_WEEK: "1 week", ONE_MONTH: "1 month", THREE_MONTHS: "3 months", SIX_MONTHS: "6 months",
   YEAR_TO_DATE: "This year", ONE_YEAR: "1 year", MAX: "All time" };
 
 /** Holdings, gains, cash and Scalable's returns per period, read live. */

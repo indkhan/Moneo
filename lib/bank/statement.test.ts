@@ -1,8 +1,9 @@
+import { resolveBalances } from "@/lib/finance/balances";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { inspectRows, parseCsv } from "@/lib/import/csv";
 import { batchDecisions } from "@/lib/import/batch";
-import { bankStatement, preferredBalance } from "./statement";
+import { bankStatement, preferredBalance, bankObservation } from "./statement";
 import type { BankTransaction } from "./enable-banking";
 
 const tx = (over: Partial<BankTransaction>): BankTransaction => ({
@@ -58,13 +59,28 @@ describe("bank statement mapping", () => {
     expect(decisions.map(decision => decision.action)).toEqual(["matched", "new"]);
   });
 
-  it("attaches the closing balance to the latest booked row only when it covers it", () => {
+  it("saves the bank's balance apart from the rows, so it survives no rows, a row in review or a row dated tomorrow", () => {
+    const now = new Date("2026-10-05T09:30:00Z");
     const closing = { balance_type: "CLBD", reference_date: "2026-10-02", balance_amount: { currency: "EUR", amount: "-40.50" } };
-    const statement = bankStatement([tx({ entry_reference: "b", booking_date: "2026-10-02" }), tx({})], account, closing)!;
-    const rows = inspectRows(parseCsv(statement.csv), statement.mapping).mapped;
-    expect(rows.map(row => row.balanceMinor)).toEqual([undefined, -4050n]);
-    const stale = bankStatement([tx({ booking_date: "2026-10-03" })], account, closing)!;
-    expect(inspectRows(parseCsv(stale.csv), stale.mapping).mapped[0].balanceMinor).toBeUndefined();
+    expect(bankObservation([closing], "EUR", now, "Europe/Berlin")).toEqual({ amountMinor: "-4050", balanceType: "CLBD", asOf: "2026-10-01T22:00:00.000Z" });
+    // Today's booked balance, and one with no date, describe the moment of the fetch.
+    expect(bankObservation([{ ...closing, balance_type: "ITBD", reference_date: "2026-10-05" }], "EUR", now, "Europe/Berlin")).toMatchObject({ balanceType: "ITBD", asOf: now.toISOString() });
+    expect(bankObservation([{ ...closing, reference_date: null }], "EUR", now, "Europe/Berlin")).toMatchObject({ asOf: now.toISOString() });
+    expect(bankObservation([], "EUR", now, "Europe/Berlin")).toBeNull();
+    // The statement itself no longer carries it, so its bytes only change when rows do.
+    const statement = bankStatement([tx({ booking_date: "2026-10-05" })], account)!;
+    expect(inspectRows(parseCsv(statement.csv), statement.mapping).mapped[0].balanceMinor).toBeUndefined();
+  });
+
+  it("never dates an available balance as an earlier closing balance, so a hold can't count twice", () => {
+    const available = (amount: string) => ({ balance_type: "CLAV", reference_date: "2026-10-04", balance_amount: { currency: "EUR", amount } });
+    const account = { id: "bank", name: "Bank", currency_code: "EUR" };
+    // Monday: 100.00 booked with a 30.00 card hold, so 70.00 available. Tuesday: the hold books, 70.00 is still available.
+    const monday = bankObservation([available("70.00")], "EUR", new Date("2026-10-05T09:00:00Z"), "UTC")!;
+    const tuesday = bankObservation([available("70.00")], "EUR", new Date("2026-10-06T09:00:00Z"), "UTC")!;
+    const snapshot = (row: typeof monday, id: string) => ({ id, account_id: "bank", amount_minor: row.amountMinor, currency_code: "EUR", as_of: row.asOf, provenance: `bank:${row.balanceType}`, balance_type: row.balanceType });
+    const hold = { id: "hold", account_id: "bank", amount_minor: "-3000", currency_code: "EUR", posted_on: "2026-10-06", status: "posted" };
+    expect(resolveBalances([account], [snapshot(monday, "m"), snapshot(tuesday, "t")], [hold], "2026-10-06T12:00:00Z", "UTC")[0].balance.amount_minor).toBe("7000");
   });
 
   it("prefers a booked balance in the account currency, falling back to an available one", () => {

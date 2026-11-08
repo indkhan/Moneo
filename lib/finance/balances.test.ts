@@ -56,16 +56,27 @@ describe("evidenced account balances", () => {
     expect(balance.balance).toMatchObject({ amount_minor: "8750", snapshot_amount_minor: "10000", estimated_amount_minor: "8750",
       as_of: snapshot.as_of, status: "stale", reconciled_rows: 1 });
   });
-  it("excludes future snapshots and does not use ingestion order to resolve financial ties", () => {
-    const tied = { ...snapshot, id: "tie", amount_minor: "11000", created_at: now };
-    expect(resolveBalances(accounts, [snapshot, tied], [], now)[0].balance?.status).toBe("ambiguous");
-    expect(resolveBalances(accounts, [tied, snapshot], [], now)[0].balance?.status).toBe("ambiguous");
+  it("excludes future snapshots", () => {
     expect(resolveBalances(accounts, [{ ...snapshot, as_of: "2026-10-02T00:00:00Z" }], [], now)[0].balance?.status).toBe("missing");
   });
-  it("lets display views settle same-moment ties with the most recently recorded balance", () => {
+  it("settles two different balances of one moment with the most recently recorded one, and says so", () => {
     const older = { ...snapshot, id: "older", created_at: "2026-09-30T10:00:00Z" }, newer = { ...snapshot, id: "newer", amount_minor: "11000", created_at: "2026-09-30T11:00:00Z" };
-    for (const order of [[older, newer], [newer, older]]) expect(resolveBalances(accounts, order, [], now, undefined, undefined, { preferLatestRecorded: true })[0].balance)
-      .toMatchObject({ amount_minor: "11000", snapshot_amount_minor: "11000", snapshot_valid: true, warnings: expect.arrayContaining([expect.stringContaining("most recently recorded")]) });
+    for (const order of [[older, newer], [newer, older]]) expect(resolveBalances(accounts, order, [], now)[0].balance)
+      .toMatchObject({ amount_minor: "11000", snapshot_amount_minor: "11000", snapshot_valid: true, status: "stale", warnings: [expect.stringContaining("most recently recorded")],
+        conflicts: [{ amount_minor: "10000", recorded_at: older.created_at }] });
+  });
+  it("treats the same closing balance from different source rows as agreement, for any order", () => {
+    const closing = { ...snapshot, boundary_kind: "date_only" };
+    const copies = [{ ...closing, id: "a", source_transaction_id: "row-1", provenance: "import:a:row:1", created_at: "2026-09-30T10:00:00Z" },
+      { ...closing, id: "b", source_transaction_id: "row-2", provenance: "import:b:row:9", created_at: "2026-09-30T11:00:00Z" }];
+    for (const order of [copies, [...copies].reverse()]) expect(resolveBalances(accounts, order, [], now)[0].balance)
+      .toMatchObject({ amount_minor: "10000", status: "stale", warnings: [], conflicts: [], provenance: "import:b:row:9" });
+  });
+  it("keeps after-transaction boundaries meaningful: the same amount at another boundary is still a conflict", () => {
+    const after = (id: string, source: string, created_at: string) => ({ ...snapshot, id, boundary_kind: "after_transaction", source_transaction_id: source, created_at });
+    expect(resolveBalances(accounts, [after("a", "row-1", "2026-09-30T10:00:00Z"), after("b", "row-2", "2026-09-30T11:00:00Z")], [], now)[0].balance)
+      .toMatchObject({ conflicts: [{ amount_minor: "10000" }], warnings: [expect.stringContaining("most recently recorded")] });
+    expect(resolveBalances(accounts, [{ ...snapshot, id: "a", created_at: "2026-09-30T11:00:00Z" }, after("b", "row-2", "2026-09-30T10:00:00Z")], [], now)[0].balance.conflicts).toHaveLength(1);
   });
   it("treats same-day date-only rows as included and refuses unsafe numeric database values", () => {
     const today = { ...snapshot, as_of: "2026-10-01T08:00:00Z" };

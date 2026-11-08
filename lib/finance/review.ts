@@ -2,22 +2,11 @@ import { netWorth, summarizeCashflow, type CashflowTransaction } from "./calcula
 import { resolveBalances, type BalanceTransaction, type BalanceSnapshot } from "./balances";
 import { goalContributionProjection } from "./goals";
 import { budgetProgress, type MonthlyLimit } from "./spending-plans";
-import { wealthEvidence, type WealthValue } from "./wealth";
 import { buildSourceCoverage, type SourceCoverage, type loadSourceCoverageMetadata } from "./source-coverage";
 
 type Account = { id: string; name: string; currency_code: string };
 type Transaction = { amount_minor: string; currency_code: string; status: string; kind: string; review_reasons?: string[] };
 export type ReviewTransaction = Transaction & { id: string; account_id?: string; parent_transaction_id?: string; posted_on: string; category_id: string | null; merchant_id: string | null; refund_of_id?: string | null; refund_category_id?: string | null };
-
-export function reviewNetWorth(accountTotals: Record<string, string | null>, wealth: WealthValue[], today: string) {
-  const dated = wealthEvidence(wealth, today);
-  const currencies = [...new Set([...Object.keys(accountTotals), ...wealth.filter(row => !row.linked_account_id).map(row => row.currency_code)])];
-  return Object.fromEntries(currencies.map(currency => {
-    if (accountTotals[currency] === null || wealth.some(row => !row.linked_account_id && row.currency_code === currency && row.as_of > today)) return [currency, null];
-    const total = BigInt(accountTotals[currency] ?? "0") + dated.included.filter(row => row.currencyCode === currency).reduce((sum, row) => sum + row.amountMinor, 0n);
-    return [currency, total.toString()];
-  }));
-}
 
 export function buildPlanningReview(input: {
   today: string;

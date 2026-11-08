@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableToSpend, forecastDaily, netWorth, summarizeCashflow, usableForecastInput } from "./calculations";
+import { accountLiquidity, availableToSpend, forecastDaily, netWorth, summarizeCashflow, usableForecastInput } from "./calculations";
 
 describe("exact financial calculations", () => {
   it("treats an unresolved posted transfer as unknown cashflow before excluding confirmed transfers", () => {
@@ -63,6 +63,17 @@ describe("exact financial calculations", () => {
     expect(forecast.status).toBe("available");
     if (forecast.status === "available") expect(forecast.days.map(day => day.conservativeMinor)).toEqual([9000n, 2000n, 10000n]);
     expect(availableToSpend(input)).toEqual({ status: "available", amountMinor: 500n, limitingDate: "2026-10-02" });
+  });
+
+  it("counts the opening cash: income due today can't be spent before it arrives", () => {
+    const input = { startDate: "2026-10-01", horizonDays: 3, currencyCode: "EUR", accounts: [{ id: "cash", currencyCode: "EUR", balanceMinor: 10000n }],
+      events: [{ date: "2026-10-01", accountId: "cash", expectedMinor: 100000n }] };
+    const forecast = forecastDaily(input);
+    expect(forecast.status === "available" && [forecast.opening.conservativeMinor, forecast.days[0].conservativeMinor]).toEqual([10000n, 110000n]);
+    expect(availableToSpend(input)).toEqual({ status: "available", amountMinor: 10000n, limitingDate: "2026-10-01" });
+    expect(accountLiquidity(input)).toMatchObject({ aggregate: { amountMinor: 10000n }, accounts: [{ amountMinor: 10000n, limitingDate: "2026-10-01", supportingEvents: [] }] });
+    // A payment due today still lowers what can be spent.
+    expect(availableToSpend({ ...input, events: [{ date: "2026-10-01", accountId: "cash", expectedMinor: -4000n }] })).toMatchObject({ amountMinor: 6000n });
   });
 
   it("applies scenario deltas without changing base events", () => {

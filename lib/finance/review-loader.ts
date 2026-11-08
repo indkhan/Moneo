@@ -1,8 +1,10 @@
+import { netWorth } from "@/app/money/wealth/net-worth";
+import { loadNetWorthEvidence, netWorthModel } from "./net-worth-source";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadBalanceEvidence } from "./balances";
 import { calendarDate } from "./calendar";
-import { buildReviewEvidence, buildPlanningReview, reviewNetWorth, type ReviewTransaction } from "./review";
+import { buildReviewEvidence, buildPlanningReview, type ReviewTransaction } from "./review";
 import { evaluatePlanForWorkspace } from "./model";
 import { loadWealthItems, wealthEvidence } from "./wealth";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
@@ -45,7 +47,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
   const sourceMetadata = await loadSourceCoverageMetadata(db, workspace.id, settings.ai_data_scopes.includes("imports"));
   const coverage = (scope: Parameters<typeof buildSourceCoverage>[0]) => buildSourceCoverage(scope, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
   const sourceCoverage = coverage({ from, to });
-  const base = { ...buildReviewEvidence(balances.accounts, balances.snapshots, current, from, to, { ...balances, timeZone: settings.timezone, sourceMetadata }), sourceCoverage };
+  const base = { ...buildReviewEvidence(balances.accounts.filter(account => !account.archived_at), balances.snapshots, current, from, to, { ...balances, timeZone: settings.timezone, sourceMetadata }), sourceCoverage };
   const defaultQuery = investigationSchema.parse({ version: 1, period: { from, to }, comparison: { from: comparisonFrom, to: new Date(Date.parse(`${from}T00:00:00Z`) - 86400000).toISOString().slice(0, 10) }, groupBy: ["category", "merchant"] });
   const queryInvestigation = await runInvestigation(query ?? defaultQuery, { supabase: db, workspace }, { canReadImports: settings.ai_data_scopes.includes("imports") });
   const investigation = { ...queryInvestigation, entities: { accounts: balances.accounts.map(a => ({ id: a.id, name: a.name })), categories, merchants } };
@@ -67,7 +69,10 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceVersion: plan.sourceVersion, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
   // Workflow transport, persistence and prompts receive exact decimal strings, never JSON numbers for money.
   const fullCalculationEvidence = JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input, forecastSource: plan.calculationEvidence }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
-  return { ...base, accountBalanceTotals: base.netWorth, netWorth: reviewNetWorth(base.netWorth, wealth, to), investigation, queryInvestigation,
+  // The shared calculation, on the review's last day, so a review quotes the total every screen shows.
+  const worth = netWorthModel(await loadNetWorthEvidence(db, { id: workspace.id, timezone: settings.timezone }, { balances: Promise.resolve(balances) }));
+  const [lastDay] = worth.points([to > worth.today ? worth.today : to]);
+  return { ...base, accountBalanceTotals: base.netWorth, netWorth: Object.fromEntries([...netWorth(lastDay)].map(([currency, amount]) => [currency, amount.toString()])), investigation, queryInvestigation,
     calculationEvidence: fullCalculationEvidence, sourceVersion: toolSourceVersion(fullCalculationEvidence),
     planning: JSON.parse(JSON.stringify(planning, (_key, value) => typeof value === "bigint" ? value.toString() : value)) as Record<string, unknown> };
 }

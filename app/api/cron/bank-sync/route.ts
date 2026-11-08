@@ -12,8 +12,8 @@ export async function GET(request: Request) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !(await enableBankingConfigured())) return Response.json({ error: "Bank sync unavailable" }, { status: 503 });
   // ponytail: 100 connections per run is plenty for personal use; page before going multi-user.
   const { data, error } = await serviceDb().from("bank_connections").select("id, workspace_id").eq("status", "active")
-    // Hourly runs only pick up connections not synced for 20 hours.
-    .or(`last_synced_at.is.null,last_synced_at.lt.${new Date(Date.now() - 20 * 3_600_000).toISOString()}`).order("id").limit(100);
+    // Hourly runs only pick up connections not tried for 20 hours: a failed try waits too, to stay under the allowance.
+    .or(`last_attempted_at.is.null,last_attempted_at.lt.${new Date(Date.now() - 20 * 3_600_000).toISOString()}`).order("id").limit(100);
   if (error) return Response.json({ error: "Bank connections unavailable" }, { status: 503 });
   let started = 0, failed = 0;
   for (const row of data ?? []) {

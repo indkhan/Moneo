@@ -45,6 +45,8 @@ export const mappingSchema = z.object({
   merchantColumn: z.string().min(1).optional(),
   categoryColumn: z.string().min(1).optional(),
   externalIdColumn: z.string().min(1).optional(),
+  // Set by a bank sync: the bank's answer is complete for the dates it covers, so identical rows can be counted.
+  completeWindow: z.literal(true).optional(),
   statusColumn: z.string().min(1).optional(),
   typeColumn: z.string().min(1).optional(),
   feeColumn: z.string().min(1).optional(),

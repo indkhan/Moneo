@@ -19,7 +19,7 @@ test("fractional wealth valuation, cost basis, audited edit, removal and undo", 
   await form.getByRole("button", { name: "Add investment", exact: true }).click();
   const article = page.getByRole("article").filter({ has: page.getByRole("heading", { name, exact: true }) });
   await expect(article).toContainText("EUR 10.01", { timeout: 30_000 });
-  await expect(article).toContainText("valuation gain/loss EUR 2.01");
+  await expect(article).toContainText("since bought for EUR 8.00");
   await article.getByText("Edit valuation and details", { exact: true }).click();
   await article.getByRole("textbox", { name: "Unit price in currency", exact: true }).fill("80.00");
   await article.getByRole("button", { name: "Save wealth edit", exact: true }).click();

@@ -3,6 +3,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, listWealth, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
+import { netWorthInput, readNetWorth } from "@/lib/finance/net-worth-source";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import type { InvestigationEntities } from "@/lib/finance/investigation";
 import { listRecurring } from "@/lib/ai/recurring-proposals";
@@ -36,6 +37,8 @@ export const ARTIFACT_SOURCES = {
     run: (input: unknown, context: Context) => evaluateInvestigationScenario(input, context, { canReadImports: imports(context) }) },
   entities: { description: "Account, category and merchant names with ids, plus tags and events.", input: empty, scopes: ["accounts", "transactions"],
     run: (_: unknown, context: Context, shared: QueryShared) => shared.entities ??= loadInvestigationEntities(context) },
+  net_worth: { description: "Net worth from the same calculation as Home and Wealth: today or a past `date`, its parts, this month's change split into money in and out, investments and newly added, what was left out, and with `days` a daily trend. Use this for any net worth figure instead of adding accounts and wealth.", input: netWorthInput, scopes: ["accounts", "planning"],
+    run: (input: unknown, context: Context) => readNetWorth(context, input) },
   balances: { description: "Current dated account balances.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => getBalances(context, imports(context)) },
   accounts: { description: "The user's accounts.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => listAccounts(context) },
   recurring: { description: "Confirmed recurring payments and income in schedules (name, formatted amount, exact signed amount_minor, currency_code, direction, cadence, next date, category), plus suggestions still awaiting confirmation (label, formatted amount, exact signed amount_min_minor and amount_max_minor, currency_code, direction, cadence, occurrences). Generated code can calculate requested totals and cadence equivalents from schedules; keep currencies separate.", input: empty, scopes: ["planning", "transactions"],

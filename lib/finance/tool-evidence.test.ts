@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { toolResultReceipt } from "./tool-evidence";
-import { buildPlanningReview, buildReviewEvidence, reviewNetWorth } from "./review";
+import { buildPlanningReview, buildReviewEvidence } from "./review";
 import { resolveBalances } from "./balances";
 import { wealthEvidence } from "./wealth";
 const context = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" };
@@ -22,7 +22,7 @@ it.each(["manual", "manual reviewed"])("discloses %s provenance when publishing 
 });
 it("requires aggregate net worth to disclose its own currency's included manual valuation", () => {
   const wealth = [{ id: "manual", name: "Asset", amount_minor: "1000", currency_code: "EUR", as_of: "2026-10-01", linked_account_id: null }];
-  const result = { netWorth: reviewNetWorth({ EUR: "500", USD: "200" }, wealth, "2026-10-01"), accountBalanceTotals: { EUR: "500" }, planning: { wealth: wealthEvidence(wealth, "2026-10-01") } };
+  const result = { netWorth: { EUR: "1500", USD: "200" }, accountBalanceTotals: { EUR: "500" }, planning: { wealth: wealthEvidence(wealth, "2026-10-01") } };
   const receipt = toolResultReceipt("reviews_investigate", {}, result, context, ["accounts", "planning"]);
   const metric = receipt.metrics.find(metric => metric.id === "netWorth.EUR")!;
   expect(metric.qualifiers).toContain("manual_evidence");

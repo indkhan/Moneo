@@ -50,6 +50,14 @@ export async function undoWealthEvent(form: FormData) {
   revalidatePath("/", "layout"); redirect("/money/wealth");
 }
 
+export async function keepRepayment(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { error } = await supabase.rpc("confirm_iou_repayment", { p_repayment_id: z.uuid().parse(form.get("repaymentId")) });
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
+}
+
+export async function keepRepaymentSafely(_state: SafeState, form: FormData) { return safely(form, keepRepayment); }
 export async function saveWealthItemSafely(_state: SafeState, form: FormData) { return safely(form, saveWealthItem); }
 export async function removeWealthItemSafely(_state: SafeState, form: FormData) { return safely(form, removeWealthItem); }
 export async function undoWealthEventSafely(_state: SafeState, form: FormData) { return safely(form, undoWealthEvent); }

@@ -15,7 +15,7 @@ const LOGIN_NEEDED_MS = 600_000;
 export async function rebuildScalableHistory(connection: { id: string; workspace_id: string; portfolio: unknown }, timeZone: string, today: string): Promise<"saved" | "failed" | "skipped"> {
   const db = serviceDb();
   const [events, items] = await Promise.all([loadWealthEvents(db, connection.workspace_id), loadWealthItems(db, connection.workspace_id, true)]);
-  const before = firstSyncedOn(valuationHistory(events, items), scalableKnownIds([connection.portfolio as ScalableExtras | null]));
+  const before = firstSyncedOn(valuationHistory(events, items, timeZone), scalableKnownIds([connection.portfolio as ScalableExtras | null]));
   // Nothing has synced yet, so there is no date to stop before. The next run tries again.
   if (!before) return "skipped";
   const failed = async (reason: string) => {

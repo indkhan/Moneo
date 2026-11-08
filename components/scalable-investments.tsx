@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NetWorthChart } from "@/app/net-worth-chart";
 import { displayFormat } from "@/lib/display-format";
+import { calendarDate } from "@/lib/finance/calendar";
 import type { WealthItem } from "@/lib/finance/wealth";
 import { PERIODS, toMinor } from "@/lib/scalable/live";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
@@ -25,6 +26,9 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
   const total = BigInt(portfolio.totalMinor);
   const today = portfolio.performance.find(entry => entry.timeframe === "INTRADAY");
   const todayMinor = today ? BigInt(today.returnMinor) : null;
+  // A market closed over the weekend: Friday's move is Friday's, whenever the sync ran. A price from today, or none on record, reads as today.
+  const movedOn = portfolio.valuedAt ? calendarDate(portfolio.valuedAt, timeZone) : null;
+  const moveLabel = !movedOn || movedOn === calendarDate(new Date(), timeZone) ? "today" : `on ${date(movedOn)}`;
   const periods = Object.entries(PERIODS).filter(([key]) => key !== "INTRADAY").flatMap(([key, label]) => {
     const entry = portfolio.performance.find(item => item.timeframe === key); return entry ? [{ label, minor: BigInt(entry.returnMinor) }] : []; });
   const slices = [...positions.map(item => ({ name: item.name, minor: BigInt(item.amount_minor) })),
@@ -41,7 +45,7 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
 
     <div>
       <p className="break-words font-mono text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl">{show(total)}</p>
-      {todayMinor !== null && <p className={`mt-1 font-mono text-sm tabular-nums ${tone(todayMinor)}`}>{signed(todayMinor, show(todayMinor))} {pctText(pct(todayMinor, total - todayMinor))} <span className="font-sans text-muted-foreground">today</span></p>}
+      {todayMinor !== null && <p className={`mt-1 font-mono text-sm tabular-nums ${tone(todayMinor)}`}>{signed(todayMinor, show(todayMinor))} {pctText(pct(todayMinor, total - todayMinor))} <span className="font-sans text-muted-foreground">{moveLabel}</span></p>}
     </div>
 
     {periods.length > 0 && <ul aria-label="Gain or loss by period" className="flex flex-wrap gap-2">{periods.map(period =>
@@ -55,7 +59,7 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
           {change !== null && <span className={tone(change)}>{signed(change, show(change))} since then</span>}<span>Today</span></p>
         {calculatedBefore && <p className="mt-2 text-xs text-muted-foreground">Days before {date(calculatedBefore)} are calculated from your transactions and past prices. Prices further than a year back are monthly.</p>}
       </> : <p className="text-sm text-muted-foreground">The value chart fills in day by day as Moneo syncs Scalable.</p>}
-      {historyFailed && <p className="mt-2 text-xs text-muted-foreground">Earlier days could not be worked out, so this chart starts at your first sync.</p>}
+      {historyFailed && <p className="mt-2 text-xs text-muted-foreground">{calculatedBefore ? "The latest check of these calculated days failed, so older days show the last good run." : "Earlier days could not be worked out, so this chart starts at your first sync."}</p>}
     </div>
 
     {total > 0n && <div>

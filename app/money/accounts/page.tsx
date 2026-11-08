@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { requireWorkspace } from "@/lib/auth";
 import { balanceReviewRows, loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
+import { closingTargets } from "@/lib/finance/account-closing";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { addAccountSafely, undoBalanceSafely, undoMoneyMetadataSafely } from "./actions";
 import { AddAccountPanel } from "./add-account-panel";
@@ -54,7 +55,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
   const today = calendarDate(evidence.asOf, timeZone);
   const trendFrom = calendarDate(new Date(Date.parse(evidence.asOf) - TREND_DAYS * 86400000), timeZone);
   // Same balance basis as Overview and Wealth, so the totals match across screens.
-  const accounts = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, timeZone, undefined, { preferLatestRecorded: true })
+  const accounts = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, timeZone)
     .sort((a, b) => a.name.localeCompare(b.name, locale));
   const active = accounts.filter(account => !account.archived_at), archived = accounts.filter(account => account.archived_at);
   const descriptions = new Map(evidence.ledger.map(row => [row.id, row.description]));
@@ -92,7 +93,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
       {saved === `balance:${account.id}` || saved === `account:${account.id}` ? <p role="status" className="mb-2 px-2 text-sm text-success">{saved.startsWith("balance") ? `Balance saved for ${account.name}.` : `${account.name} saved.`}</p> : null}
       <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1 basis-80">
-          <AccountForm key={`${account.id}:${account.version}`} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
+          <AccountForm key={`${account.id}:${account.version}`} moneyLeft={account.balance.amount_minor !== null && BigInt(account.balance.amount_minor) !== 0n ? formatMoney(account.balance.amount_minor, account.currency_code, locale) : null} targets={closingTargets(account, accounts).map(({ id, name, type }) => ({ id, name, type }))} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
           <p className="mt-1 flex flex-wrap items-center gap-x-3 px-2 text-xs text-muted-foreground">
             <span>{account.currency_code}</span>
             {account.archived_at ? <span>Archived</span> : null}
@@ -111,6 +112,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
       {trend.length > 1 ? <details className="mt-2 px-2 text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">{trendSummary(trend, value => formatMoney(value, account.currency_code, locale))}</summary><ul className="mt-1 space-y-0.5">{trend.map(point => <li key={point.date} className="font-mono">{point.date} · {formatMoney(point.value, account.currency_code, locale)}</li>)}</ul><p className="mt-1">Only the balances recorded on these dates, not one for every day.</p></details> : null}
       {account.balance.status === "ambiguous" ? <div className="mt-2 px-2 text-xs"><p className="text-warning">Moneo can’t tell whether activity on that date came before or after this balance, so it’s left out of the total. Enter the balance your bank shows now to settle it.</p><details className="mt-1 text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">Why</summary><p className="mt-1">{account.balance.warnings.join(" ")}</p></details></div> : null}
       {account.balance.status === "stale" ? <p className="mt-2 px-2 text-xs text-muted-foreground">Last recorded balance plus later activity; update it to confirm.</p> : null}
+      {account.balance.conflicts.length > 0 && <div className="mt-2 px-2 text-xs text-warning"><p>Two balances disagree for this date. Moneo uses the most recently recorded one{account.balance.snapshot_amount_minor !== null ? `, ${formatMoney(account.balance.snapshot_amount_minor, account.balance.snapshot_currency_code ?? account.currency_code, locale)}` : ""}. The other said {account.balance.conflicts.map(other => formatMoney(other.amount_minor, other.currency_code, locale)).join(", ")}.</p></div>}
       {account.balance.unconfirmed_rows ? <p className="mt-2 px-2 text-xs text-warning">{account.balance.warnings.at(-1)}.</p> : null}
       {suggestion ? <div className="mt-2 px-2"><RenameSuggestion account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} suggestion={suggestion} requestId={randomUUID()} /></div> : null}
       {!account.archived_at && !synced.has(JSON.stringify([account.name, account.currency_code])) ? <details className="mt-2 px-2 text-sm" open={(account.balance.status === "missing" && active.length === 1) || account.balance.status === "ambiguous"}>
