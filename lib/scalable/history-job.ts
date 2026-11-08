@@ -5,6 +5,9 @@ import { calculateHistory, readHistoryInput } from "./history";
 import type { ScalableExtras } from "./portfolio";
 import { withScalable } from "./server";
 
+// The run makes many calls in a row; the cron route allows it five minutes.
+const LOGIN_NEEDED_MS = 600_000;
+
 /**
  * One try at a connection's calculated history. Separate from syncScalable, so it can't slow down or fail a sync.
  * A failed try saves nothing and leaves any earlier days in place; the reason stays on the connection, out of the owner's way.
@@ -21,7 +24,7 @@ export async function rebuildScalableHistory(connection: { id: string; workspace
     return "failed" as const;
   };
   try {
-    const result = calculateHistory(await withScalable(connection.id, connection.workspace_id, mcp => readHistoryInput(mcp, timeZone, before)));
+    const result = calculateHistory(await withScalable(connection.id, connection.workspace_id, mcp => readHistoryInput(mcp, timeZone, before), fetch, LOGIN_NEEDED_MS));
     if (!result.ok) return await failed(result.reason);
     const saved = await db.rpc("replace_scalable_value_history", { p_connection_id: connection.id, p_checked_on: today,
       p_rows: result.days.map(day => ({ on_date: day.date, currency_code: "EUR", securities_minor: day.securitiesMinor.toString(), crypto_minor: day.cryptoMinor.toString(), cash_minor: day.cashMinor.toString(), total_minor: day.totalMinor.toString() })) });

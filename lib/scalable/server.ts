@@ -17,15 +17,16 @@ const refreshing = new Map<string, Promise<ScalableTokens>>();
 /**
  * Runs `work` with a connected MCP session for an active connection. Refreshes the access token
  * when it is about to expire and stores the rotated tokens first, so a crash never loses them.
- * A rejected refresh marks the connection expired: the owner has to connect again.
+ * A rejected refresh marks the connection expired: the owner has to connect again. Long work passes `needsMs`,
+ * because a token running out halfway looks the same as an ended login.
  */
-export async function withScalable<T>(connectionId: string, workspaceId: string, work: (mcp: ScalableMcp) => Promise<T>, fetcher: typeof fetch = fetch): Promise<T> {
+export async function withScalable<T>(connectionId: string, workspaceId: string, work: (mcp: ScalableMcp) => Promise<T>, fetcher: typeof fetch = fetch, needsMs = 60_000): Promise<T> {
   const db = serviceDb();
   const row = await db.from("scalable_connections").select("client_id, tokens_encrypted").eq("id", connectionId)
     .eq("workspace_id", workspaceId).eq("status", "active").single();
   if (row.error || !row.data?.tokens_encrypted) throw new ScalableError("Scalable is not connected", 404);
   let tokens = openTokens(row.data.tokens_encrypted, connectionId);
-  if (tokens.expiresAt - Date.now() < 60_000) {
+  if (tokens.expiresAt - Date.now() < needsMs) {
     // Chat tools run in parallel; one refresh per connection, so a rotated refresh token is never spent twice.
     const stale = tokens, clientId = row.data.client_id;
     const pending = refreshing.get(connectionId) ?? (async () => {

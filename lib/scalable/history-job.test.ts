@@ -33,6 +33,8 @@ it("saves a passing run and stops before the first synced value, ignoring valuat
   expect(rpc).toHaveBeenCalledWith("replace_scalable_value_history", { p_connection_id: "c", p_checked_on: "2026-11-08",
     p_rows: [{ on_date: "2026-11-01", currency_code: "EUR", securities_minor: "1", crypto_minor: "2", cash_minor: "3", total_minor: "6" }] });
   expect(update).not.toHaveBeenCalled();
+  // The run makes many calls, so the login must last through all of them.
+  expect(vi.mocked(withScalable).mock.calls[0][4]).toBeGreaterThanOrEqual(600_000);
 });
 
 it("saves nothing and records the reason when the check fails", async () => {
