@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6XBJFKTR1QGXR5951VQTHV6",
+  "session_id": "960c24e5-426c-4270-afc6-2ee88b69ffac",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-08T10:34:28.1324772Z",
+  "branch": "t3/mobile-access-options",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/settings/phone-access-card.test.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "104d45ae5156",
+  "checkpoint_transcript_start": 459,
+  "transcript_lines_at_start": 459,
+  "compact_transcript_start": 60,
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 14112,
+    "cache_read_tokens": 1157603,
+    "output_tokens": 9813,
+    "api_call_count": 6
+  },
+  "redaction": {
+    "replacements": 111,
+    "layers": {
+      "betterleaks": 4,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 152,
+      "key_context": 9,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 8
+  }
+}
