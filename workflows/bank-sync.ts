@@ -2,24 +2,25 @@
 
 import { createHash } from "node:crypto";
 import { EnableBankingError, enableBankingClient, type EnableBankingClient, type PsuContext } from "@/lib/bank/enable-banking";
-import { bankStatement, preferredBalance } from "@/lib/bank/statement";
+import { bankObservation, bankStatement } from "@/lib/bank/statement";
 import { serviceDb } from "@/lib/bank/server";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { importFile } from "@/workflows/import-file";
 
 type BankImport = { importId: string; rowCount: number; uid: string; lastBookedOn: string };
+type BankObservation = { accountName: string; currencyCode: string; amountMinor: string; balanceType: string; asOf: string };
 
 // One sync = one ordinary import per bank account, run through the existing import workflow
 // so dedupe (bank id as external_id), review, undo and source history are unchanged.
 export async function syncBankConnection(connectionId: string, workspaceId: string, psu?: PsuContext) {
   "use workflow";
-  const { imports, error } = await stageBankImports(connectionId, workspaceId, psu);
+  const { imports, observations, error, ended } = await stageBankImports(connectionId, workspaceId, psu);
   for (const item of imports) {
     // importFile runs flattened into this run, so a throw from its optional tail (first review,
     // agent team) would end the sync here. The import's stored status is the truth; finishBankSync reads it.
     try { await importFile(item.importId, workspaceId, item.rowCount, 1); } catch {}
   }
-  await finishBankSync(connectionId, workspaceId, imports, error);
+  await finishBankSync(connectionId, workspaceId, imports, observations, error, ended);
 }
 
 function isoDay(date: Date) { return date.toISOString().slice(0, 10); }
@@ -38,15 +39,15 @@ async function bookedSince(client: EnableBankingClient, uid: string, lastBookedO
   }
 }
 
-async function stageBankImports(connectionId: string, workspaceId: string, psu?: PsuContext): Promise<{ imports: BankImport[]; error: string | null }> {
+async function stageBankImports(connectionId: string, workspaceId: string, psu?: PsuContext): Promise<{ imports: BankImport[]; observations: BankObservation[]; error: string | null; ended: boolean }> {
   "use step";
   const db = serviceDb();
   const connection = await db.from("bank_connections").select("status, valid_until").eq("id", connectionId).eq("workspace_id", workspaceId).single();
   if (connection.error) throw new Error(connection.error.message);
-  if (connection.data.status !== "active") return { imports: [], error: null };
+  if (connection.data.status !== "active") return { imports: [], observations: [], error: null, ended: true };
   if (Date.parse(connection.data.valid_until) <= Date.now()) {
     await db.from("bank_connections").update({ status: "expired", last_error: "Bank consent expired; reconnect to keep syncing" }).eq("id", connectionId);
-    return { imports: [], error: null };
+    return { imports: [], observations: [], error: null, ended: true };
   }
   // Marks the sync as running for the UI until finishBankSync sets last_synced_at.
   const started = await db.from("bank_connections").update({ sync_started_at: new Date().toISOString() }).eq("id", connectionId).eq("workspace_id", workspaceId);
@@ -57,11 +58,13 @@ async function stageBankImports(connectionId: string, workspaceId: string, psu?:
   const client = await enableBankingClient();
   const today = isoDay(new Date());
   const imports: BankImport[] = [];
+  const observations: BankObservation[] = [];
   try {
     for (const account of accounts.data) {
-      const closing = preferredBalance(await client.balances(account.provider_account_uid, psu), account.currency_code);
+      const observation = bankObservation(await client.balances(account.provider_account_uid, psu), account.currency_code, new Date(), settings.timezone);
+      if (observation) observations.push({ accountName: account.account_name, currencyCode: account.currency_code, ...observation });
       const transactions = await bookedSince(client, account.provider_account_uid, account.last_booked_on, today, psu);
-      const statement = bankStatement(transactions, { accountName: account.account_name, currencyCode: account.currency_code, calendarTimezone: settings.timezone }, closing);
+      const statement = bankStatement(transactions, { accountName: account.account_name, currencyCode: account.currency_code, calendarTimezone: settings.timezone });
       if (!statement) continue;
       if (statement.rowCount > 10_000) throw new Error("Bank returned more than 10,000 transactions for one account");
       const bytes = Buffer.from(statement.csv, "utf8");
@@ -81,29 +84,38 @@ async function stageBankImports(connectionId: string, workspaceId: string, psu?:
       }
       if (importId) imports.push({ importId, rowCount: statement.rowCount, uid: account.provider_account_uid, lastBookedOn: statement.lastBookedOn });
     }
-    return { imports, error: null };
+    return { imports, observations, error: null, ended: false };
   } catch (error) {
     if (error instanceof EnableBankingError && error.expired) {
       await db.from("bank_connections").update({ status: "expired", last_error: "Bank consent expired; reconnect to keep syncing" }).eq("id", connectionId);
-      return { imports, error: null };
+      return { imports, observations, error: null, ended: true };
     }
     // Rate limits (about 4 background fetches a day) and bank errors wait for the next run.
     const message = error instanceof EnableBankingError && error.rateLimited ? "The bank rate limit was reached; the next sync will retry" : String(error instanceof Error ? error.message : error);
-    return { imports, error: message.slice(0, 1000) };
+    return { imports, observations, error: message.slice(0, 1000), ended: false };
   }
 }
 
-async function finishBankSync(connectionId: string, workspaceId: string, imports: BankImport[], error: string | null) {
+async function finishBankSync(connectionId: string, workspaceId: string, imports: BankImport[], observations: BankObservation[], error: string | null, ended: boolean) {
   "use step";
   const db = serviceDb();
+  // After the imports, which create a new account; a row going to review can't take the balance with it.
+  for (const item of observations) {
+    const saved = await db.rpc("record_bank_balance", { p_connection_id: connectionId, p_account_name: item.accountName, p_currency_code: item.currencyCode, p_amount_minor: item.amountMinor, p_as_of: item.asOf, p_balance_type: item.balanceType });
+    if (saved.error) throw new Error(saved.error.message);
+  }
+  let landed = true;
   for (const item of imports) {
     const imported = await db.from("imports").select("status").eq("id", item.importId).eq("workspace_id", workspaceId).single();
     if (imported.error) throw new Error(imported.error.message);
     // Only advance the window once the rows are actually in; a failed import re-fetches next time.
-    if (imported.data.status !== "completed") continue;
+    if (imported.data.status !== "completed") { landed = false; continue; }
     const advanced = await db.from("bank_connection_accounts").update({ last_booked_on: item.lastBookedOn }).eq("connection_id", connectionId).eq("provider_account_uid", item.uid);
     if (advanced.error) throw new Error(advanced.error.message);
   }
-  const done = await db.from("bank_connections").update({ last_synced_at: new Date().toISOString(), last_error: error }).eq("id", connectionId).eq("workspace_id", workspaceId);
+  // Consent ended: the reason is already on the connection. A failure never publishes a successful sync.
+  if (ended) return;
+  const now = new Date().toISOString(), problem = error ?? (landed ? null : "A bank import did not finish, so its rows aren't in your numbers yet. The next sync retries.");
+  const done = await db.from("bank_connections").update(problem ? { last_attempted_at: now, last_error: problem, sync_started_at: null } : { last_synced_at: now, last_attempted_at: now, last_error: null }).eq("id", connectionId).eq("workspace_id", workspaceId);
   if (done.error) throw new Error(done.error.message);
 }

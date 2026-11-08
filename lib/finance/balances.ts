@@ -5,7 +5,7 @@ import { buildSourceCoverage, type loadSourceCoverageMetadata } from "./source-c
 
 export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null; version?: number };
 export type BalanceSnapshot = { id?: string; account_id: string; amount_minor: string | number; currency_code: string; as_of: string; provenance: string;
-  boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null;
+  boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null; balance_type?: string | null;
   actor_id?: string | null; undone_at?: string | null; version?: number; created_at?: string };
 export type BalanceTransaction = { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string;
   posted_at?: string | null; source_transaction_ids?: string[]; version?: number; description?: string;
@@ -53,7 +53,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
     const balance = { amount_minor: null as string | null, snapshot_amount_minor: null as string | null,
       estimated_amount_minor: null as string | null, currency_code: account.currency_code,
       snapshot_currency_code: snapshot?.currency_code ?? null, as_of: snapshot?.as_of ?? null,
-      evaluated_at: asOf, provenance: snapshot?.provenance ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
+      evaluated_at: asOf, provenance: snapshot?.provenance ?? null, balance_type: snapshot?.balance_type ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
       warnings: [] as string[], reconciled_rows: 0, unconfirmed_rows: 0, snapshot_valid: false,
       conflicts: [] as { amount_minor: string; currency_code: string; recorded_at: string | null; provenance: string }[] };
     if (!snapshot) { balance.warnings.push("No dated balance at or before the evaluation time"); return { ...account, balance }; }
@@ -133,7 +133,7 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
     allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));
   const [accounts, snapshots, ledger, fees, resolutions] = await Promise.all([
     rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at, version"),
-    rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
+    rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, balance_type, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
     rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, version, description, kind, review_reasons, transaction_sources(source_transaction_id)"),
     rows<{ transaction_id: string; fee_minor: string; treatment: string; transaction_links: { undone_at: string | null } }>("transaction_link_fees", "id, transaction_id, fee_minor::text, treatment, transaction_links!inner(undone_at)"),
     rows<{ pending_transaction_id: string | null; released_minor: string; undone_at: string | null }>("pending_hold_resolutions", "id, pending_transaction_id, released_minor::text, undone_at"),

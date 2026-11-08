@@ -16,6 +16,20 @@ it("updates the page once fresher numbers landed", async () => {
   expect(refresh).toHaveBeenCalledTimes(1);
 });
 
+it("reports a request that failed before reaching any bank, offline or refused", async () => {
+  for (const fetcher of [async () => { throw new Error("offline"); }, async () => new Response("", { status: 503 })]) {
+    const { refresh } = setup("visible", fetcher);
+    const failed = vi.fn();
+    await syncIfVisible(refresh, failed);
+    expect(failed).toHaveBeenCalledTimes(1);
+    expect(refresh).not.toHaveBeenCalled();
+  }
+  const fine = setup("visible", async () => Response.json({ refresh: false }));
+  const failed = vi.fn();
+  await syncIfVisible(fine.refresh, failed);
+  expect(failed).not.toHaveBeenCalled();
+});
+
 it("leaves the page alone when nothing ran, when offline, and when the app is in the background", async () => {
   const idle = setup("visible", async () => Response.json({ refresh: false }));
   await syncIfVisible(idle.refresh);

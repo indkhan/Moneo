@@ -40,6 +40,7 @@ function table(name: string) {
 const tx = (id: string, date: string, amount: string): BankTransaction => ({ entry_reference: id, transaction_amount: { currency: "EUR", amount },
   credit_debit_indicator: "DBIT", status: "BOOK", booking_date: date, remittance_information: [`Card ${id}`] });
 let bank: { balances: ReturnType<typeof vi.fn>; bookedTransactions: ReturnType<typeof vi.fn> };
+let rpc: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   tables = {
@@ -47,7 +48,8 @@ beforeEach(() => {
     bank_connection_accounts: [{ connection_id: "c1", provider_account_uid: "u1", currency_code: "EUR", account_name: "Revolut ••1234", last_booked_on: null }],
     imports: [],
   };
-  vi.mocked(serviceDb).mockReturnValue({ from: table, storage: { from: () => ({ upload: async () => ({ error: null }) }) } } as never);
+  rpc = vi.fn().mockResolvedValue({ error: null });
+  vi.mocked(serviceDb).mockReturnValue({ from: table, rpc, storage: { from: () => ({ upload: async () => ({ error: null }) }) } } as never);
   bank = { balances: vi.fn().mockResolvedValue([]), bookedTransactions: vi.fn().mockResolvedValue([tx("a", "2026-10-01", "5.00"), tx("b", "2026-10-02", "7.25")]) };
   vi.mocked(enableBankingClient).mockResolvedValue(bank as never);
   vi.mocked(importFile).mockImplementation(async importId => { tables.imports.find(row => row.id === importId)!.status = "completed"; });
@@ -75,6 +77,39 @@ it("records progress when work after a completed import fails", async () => {
   await syncBankConnection("c1", "w1");
   expect(tables.bank_connection_accounts[0].last_booked_on).toBe("2026-10-02");
   expect(tables.bank_connections[0].last_synced_at).toEqual(expect.any(String));
+});
+
+it("does not publish a successful sync when an import failed, and keeps the problem until one lands", async () => {
+  vi.mocked(importFile).mockImplementationOnce(async importId => { tables.imports.find(row => row.id === importId)!.status = "failed"; });
+  tables.bank_connections[0].last_synced_at = "2026-01-01T00:00:00Z";
+  await syncBankConnection("c1", "w1");
+  expect(tables.bank_connections[0]).toMatchObject({ last_synced_at: "2026-01-01T00:00:00Z", last_error: expect.stringContaining("did not finish"), sync_started_at: null });
+  expect(tables.bank_connections[0].last_attempted_at).toEqual(expect.any(String));
+  expect(tables.bank_connection_accounts[0].last_booked_on).toBeNull();
+  tables.imports[0].status = "queued";
+  await syncBankConnection("c1", "w1");
+  expect(tables.bank_connections[0].last_error).toBeNull();
+  expect(tables.bank_connections[0].last_synced_at).not.toBe("2026-01-01T00:00:00Z");
+});
+
+it("does not publish a sync when the bank refused, and leaves an ended consent's reason in place", async () => {
+  tables.bank_connections[0].last_synced_at = "2026-01-01T00:00:00Z";
+  bank.bookedTransactions.mockRejectedValueOnce(new EnableBankingError(500, undefined, "down"));
+  await syncBankConnection("c1", "w1");
+  expect(tables.bank_connections[0].last_synced_at).toBe("2026-01-01T00:00:00Z");
+  expect(tables.bank_connections[0].last_error).toEqual(expect.any(String));
+  bank.bookedTransactions.mockRejectedValueOnce(new EnableBankingError(401, "EXPIRED_SESSION", "expired"));
+  await syncBankConnection("c1", "w1");
+  expect(tables.bank_connections[0]).toMatchObject({ status: "expired", last_synced_at: "2026-01-01T00:00:00Z", last_error: expect.stringContaining("consent expired") });
+});
+
+it("saves the bank's balance even when no transaction arrives", async () => {
+  bank.balances.mockResolvedValue([{ balance_type: "CLBD", reference_date: "2026-10-02", balance_amount: { currency: "EUR", amount: "12.34" } }]);
+  bank.bookedTransactions.mockResolvedValue([]);
+  await syncBankConnection("c1", "w1");
+  expect(importFile).not.toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledWith("record_bank_balance", expect.objectContaining({ p_connection_id: "c1", p_account_name: "Revolut ••1234", p_amount_minor: "1234", p_balance_type: "CLBD", p_as_of: "2026-10-01T22:00:00.000Z" }));
+  expect(tables.bank_connections[0].last_error).toBeNull();
 });
 
 it("marks an expired consent and records rate limits without importing", async () => {

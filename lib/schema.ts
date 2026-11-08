@@ -90,6 +90,7 @@ export const balanceSnapshots = pgTable("balance_snapshots", {
   asOf: timestamp("as_of", { withTimezone: true }).notNull(),
   provenance: text("provenance").notNull(),
   boundaryKind: text("boundary_kind").notNull().default("date_only"),
+  balanceType: text("balance_type"),
   sourceTransactionId: uuid("source_transaction_id").references((): AnyPgColumn => sourceTransactions.id),
   coveredTransactions: jsonb("covered_transactions"),
   actorId: uuid("actor_id").references(() => authUsers.id),
@@ -102,6 +103,7 @@ export const balanceSnapshots = pgTable("balance_snapshots", {
   index("balance_snapshots_workspace_id").on(table.workspaceId, table.id),
   check("balance_snapshots_boundary_kind_check", sql`${table.boundaryKind} in ('date_only','after_transaction','reviewed_activity') and (${table.boundaryKind} <> 'after_transaction' or ${table.sourceTransactionId} is not null) and (${table.boundaryKind} <> 'reviewed_activity' or (${table.coveredTransactions} is not null and jsonb_typeof(${table.coveredTransactions}) = 'array' and ${table.actorId} is not null))`),
   check("balance_snapshots_version_check", sql`${table.version} > 0`),
+  check("balance_snapshots_balance_type_check", sql`${table.balanceType} is null or ${table.balanceType} ~ '^[A-Z]{4}$'`),
 ]);
 
 export const dataSources = pgTable("data_sources", {
@@ -156,6 +158,7 @@ export const bankConnections = pgTable("bank_connections", {
   validUntil: timestamp("valid_until", { withTimezone: true }),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   syncStartedAt: timestamp("sync_started_at", { withTimezone: true }),
+  lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
   lastError: text("last_error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -202,6 +205,9 @@ export const scalableConnections = pgTable("scalable_connections", {
   historyStatus: text("history_status"),
   historyCheckedOn: date("history_checked_on"),
   historyError: text("history_error"),
+  tokenVersion: integer("token_version").notNull().default(0),
+  refreshClaimedUntil: timestamp("refresh_claimed_until", { withTimezone: true }),
+  portfolioFetchedAt: timestamp("portfolio_fetched_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("scalable_connections_workspace_idx").on(table.workspaceId),

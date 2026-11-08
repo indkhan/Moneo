@@ -1,5 +1,8 @@
 import Papa from "papaparse";
 import { parseCsv, validateImportConfirmation, type ImportMapping } from "@/lib/import/csv";
+import { calendarDate, calendarDayBoundary } from "@/lib/finance/calendar";
+import { BOOKED_BALANCE_TYPES } from "@/lib/finance/net-worth-checks";
+import { wealthAmount } from "@/lib/finance/wealth";
 import type { BankBalance, BankTransaction } from "./enable-banking";
 
 // A bank sync is an ordinary import: booked transactions become a canonical CSV with a
@@ -25,10 +28,9 @@ export function bankStatementRow(tx: BankTransaction) {
 }
 
 // Deterministic bytes: the same bank data always hashes to the same import, so a repeated
-// sync of an unchanged window is a no-op at the imports(file_hash) unique index.
-// The closing balance rides on the latest booked row's balance column, so it lands in
-// balance_snapshots with that import's provenance and undoes with it.
-export function bankStatement(transactions: BankTransaction[], account: { accountName: string; currencyCode: string; calendarTimezone?: string }, closing?: BankBalance) {
+// sync of an unchanged window is a no-op at the imports(file_hash) unique index. The bank's stated
+// balance isn't part of it: that is its own observation (bankObservation), which can't get lost with a row.
+export function bankStatement(transactions: BankTransaction[], account: { accountName: string; currencyCode: string; calendarTimezone?: string }) {
   const byId = new Map<string, ReturnType<typeof bankStatementRow>>();
   const unidentified: ReturnType<typeof bankStatementRow>[] = [];
   for (const tx of transactions) {
@@ -41,8 +43,6 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
     || a.amount.localeCompare(b.amount) || a.description.localeCompare(b.description));
   if (!rows.length) return null;
   const last = rows[rows.length - 1];
-  if (closing && !last.balance && last.currency === account.currencyCode && closing.balance_amount.currency === account.currencyCode
-    && (!closing.reference_date || closing.reference_date >= last.date)) last.balance = closing.balance_amount.amount;
   const csv = Papa.unparse({ fields: [...headers], data: rows.map(row => headers.map(header => row[header])) }, { newline: "\n" });
   const mapping: ImportMapping = {
     accountName: account.accountName, currencyCode: account.currencyCode,
@@ -57,8 +57,23 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
 
 // Booked balances first. Some banks (Revolut) publish only an available balance, so fall back to it.
 // ponytail: an available balance can include an overdraft or credit line; exclude per bank if that bites.
+// An expected balance (XPCD) counts pending money too, so it ranks with the available ones.
 export function preferredBalance(balances: BankBalance[], currencyCode: string) {
   const order = ["CLBD", "ITBD", "XPCD", "CLAV", "ITAV"];
   const usable = balances.filter(balance => balance.balance_amount.currency === currencyCode && order.includes(balance.balance_type));
   return usable.sort((a, b) => order.indexOf(a.balance_type) - order.indexOf(b.balance_type))[0];
+}
+
+/**
+ * The balance to save from one fetch, with its type and the moment it describes. A booked balance for a past date is that
+ * day's closing balance. Anything else describes the fetch itself. That matters for available balances: they already
+ * include card holds, and those holds later book as rows. Every sync that brings rows also saves a newer available balance
+ * dated at the fetch, so a booked hold always falls before the newest balance and can't be taken off twice.
+ */
+export function bankObservation(balances: BankBalance[], currencyCode: string, fetchedAt: Date, timeZone: string) {
+  const balance = preferredBalance(balances, currencyCode);
+  if (!balance) return null;
+  const closesEarlierDay = BOOKED_BALANCE_TYPES.has(balance.balance_type) && balance.reference_date && balance.reference_date < calendarDate(fetchedAt, timeZone);
+  return { amountMinor: wealthAmount(balance.balance_amount.amount, currencyCode).toString(), balanceType: balance.balance_type,
+    asOf: closesEarlierDay ? calendarDayBoundary(balance.reference_date!, timeZone) : fetchedAt.toISOString() };
 }
