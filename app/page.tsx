@@ -19,6 +19,7 @@ import { convertFx, minorDigits } from "@/lib/finance/fx";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { describeMissingInputs, describeOutdated } from "@/lib/finance/format";
+import { loadSyncProblems } from "@/lib/sync-problems";
 import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
@@ -66,7 +67,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const reviewPromise = loadReview(supabase, workspace);
   // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -82,6 +83,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
+    loadSyncProblems(supabase, workspace.id),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   const ai = await aiPromise;
@@ -168,6 +170,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
         {valuations.outdated.length > 0 && <p className="text-xs text-muted-foreground">{describeOutdated(valuations.outdated, fullDate)}</p>}
+        {syncProblems.length > 0 && <p className="text-xs text-warning">{syncProblems.join(" ")} <Link href="/settings" className="underline">Open Settings</Link></p>}
         {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
