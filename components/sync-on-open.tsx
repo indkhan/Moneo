@@ -29,5 +29,5 @@ export function SyncOnOpen() {
     return () => document.removeEventListener("visibilitychange", sync);
   }, [router]);
   if (!failed) return null;
-  return <p role="status" className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-4 z-50 max-w-sm rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-lg lg:bottom-6 lg:left-6">Moneo couldn&apos;t check for new numbers, so these are the last saved ones.</p>;
+  return <p role="status" className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-50 max-w-sm rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-lg lg:bottom-6 lg:right-6">Moneo couldn&apos;t check for new numbers, so these are the last saved ones.</p>;
 }
