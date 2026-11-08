@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b4b09ubrz</task-id>
+<tool-use-id>toolu_011C5gyALCBCxoDmznX3gSsU</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\9fa51fce32cd5d83\3bfc5919-6556-4715-a15d-e68a8831ec62\tasks\b4b09ubrz.output</output-file>
+<status>failed</status>
+<summary>Background command "Start the test server on port 3100 from the worktree" failed with exit code 127</summary>
+</task-notification>
