@@ -199,6 +199,9 @@ export const scalableConnections = pgTable("scalable_connections", {
   lastError: text("last_error"),
   portfolio: jsonb("portfolio"),
   tradingAccess: text("trading_access"),
+  historyStatus: text("history_status"),
+  historyCheckedOn: date("history_checked_on"),
+  historyError: text("history_error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("scalable_connections_workspace_idx").on(table.workspaceId),
@@ -209,6 +212,23 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_trading_access_check", sql`${table.tradingAccess} in ('full','read')`),
   check("scalable_connections_check", sql`${table.status} <> 'active' or ${table.tokensEncrypted} is not null`),
   check("scalable_connections_portfolio_check", sql`${table.portfolio} is null or jsonb_typeof(${table.portfolio}) = 'object'`),
+  check("scalable_connections_history_status_check", sql`${table.historyStatus} in ('ok','failed')`),
+  check("scalable_connections_history_error_check", sql`char_length(${table.historyError}) <= 1000`),
+]);
+
+// Past Scalable values calculated from its transactions and price charts (202611080002). A calculation, not a record.
+export const scalableValueHistory = pgTable("scalable_value_history", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  onDate: date("on_date").notNull(),
+  currencyCode: text("currency_code").notNull(),
+  securitiesMinor: bigint("securities_minor", { mode: "bigint" }).notNull(),
+  cryptoMinor: bigint("crypto_minor", { mode: "bigint" }).notNull(),
+  cashMinor: bigint("cash_minor", { mode: "bigint" }).notNull(),
+  totalMinor: bigint("total_minor", { mode: "bigint" }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.onDate] }),
+  check("scalable_value_history_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+  check("scalable_value_history_check", sql`${table.totalMinor} = ${table.securitiesMinor} + ${table.cryptoMinor} + ${table.cashMinor}`),
 ]);
 
 // The owner's service keys entered in the app (202611070002). Sealed, service_role only, kept on reset.

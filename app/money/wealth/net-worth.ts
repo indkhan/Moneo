@@ -6,6 +6,7 @@ type Snapshot = { account_id: string; amount_minor: string | number; currency_co
 type Valuation = { item_id: string; created_at: string; kind: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
 type Posting = { account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; posted_at?: string | null; status: string };
 type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; known: boolean };
+export type CalculatedValue = { on_date: string; currency_code: string; total_minor: string };
 
 const add = (map: Map<string, bigint>, currency: string, amount: bigint) => map.set(currency, (map.get(currency) ?? 0n) + amount);
 
@@ -29,10 +30,15 @@ export function dayRange(from: string, to: string): string[] {
 // removing the posted transactions after the date, but only from the day before its first posting, since
 // earlier activity is not on record. `known` is false when nothing covers the date.
 // Today's point should come from `currentNetWorth`, which uses the exact resolved balances every screen shows.
+// `calculated` adds Scalable's worked-out value to dates before its first real synced value, never on or after it, so
+// nothing counts twice. It only joins a date something else already covers: alone, it would draw portfolio-only
+// numbers and then a false jump up when bank data starts.
 // ponytail: archived accounts are left out (matching Home); include them if history must show closed accounts.
-export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuations, removedOn, ledger = [] }: {
+export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuations, removedOn, ledger = [], calculated }: {
   dates: string[]; timeZone: string; accountIds: Set<string>; snapshots: Snapshot[]; valuations: Valuation[]; removedOn: Map<string, string>; ledger?: Posting[];
+  calculated?: { rows: CalculatedValue[]; before: string | null };
 }): NetWorthPoint[] {
+  const calculatedOn = new Map((calculated?.rows ?? []).map(row => [row.on_date, row]));
   const balances = snapshots.filter(row => !row.undone_at && accountIds.has(row.account_id))
     .map(row => ({ key: row.account_id, date: calendarDate(row.as_of, timeZone), at: row.as_of, amount: BigInt(row.amount_minor), currency: row.currency_code,
       // As in resolveBalances: a balance typed in during the day is moved by later timed postings that day; a dated one is that day's closing balance.
@@ -73,6 +79,8 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
       add(row.debt ? point.debts : point.assets, row.currency, row.amount);
     }
     point.known = point.accounts.size + point.assets.size + point.debts.size > 0;
+    const portfolio = point.known && calculated?.before && date < calculated.before ? calculatedOn.get(date) : undefined;
+    if (portfolio) add(point.assets, portfolio.currency_code, BigInt(portfolio.total_minor));
     return point;
   });
 }
@@ -112,6 +120,29 @@ export async function loadWealthEvents(db: SupabaseClient, workspaceId: string):
 export function valuationHistory(events: WealthEvent[], items: WealthItem[]): Valuation[] {
   return [...events.filter(event => !event.undone_at && !event.after.removed_at).map(event => ({ ...event.after, item_id: event.item_id, created_at: event.created_at, amount_minor: String(event.after.amount_minor) })),
     ...items.map(item => ({ ...item, item_id: item.id, created_at: "9999-12-31" }))];
+}
+
+/** Every wealth item a Scalable sync ever wrote, from any connection of the workspace. */
+export const scalableKnownIds = (portfolios: ({ knownItemIds?: string[]; itemIds?: string[] } | null)[]) =>
+  new Set(portfolios.flatMap(portfolio => [...(portfolio?.knownItemIds ?? []), ...(portfolio?.itemIds ?? [])]));
+
+/** The date of the first real synced Scalable value: calculated values stay before it. */
+export function firstSyncedOn(valuations: Valuation[], knownIds: Set<string>): string | null {
+  return valuations.reduce<string | null>((first, row) => knownIds.has(row.item_id) && (first === null || row.as_of < first) ? row.as_of : first, null);
+}
+
+/** Calculated Scalable values, oldest first, and the items that tell where they stop. Disconnected connections count: their synced values still do. */
+export async function loadScalableHistory(db: SupabaseClient, workspaceId: string) {
+  const rows: CalculatedValue[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await db.from("scalable_value_history").select("on_date, currency_code, total_minor::text").eq("workspace_id", workspaceId).order("on_date").range(offset, offset + 999);
+    if (error) throw error;
+    rows.push(...(data ?? []) as unknown as CalculatedValue[]);
+    if (!data || data.length < 1000) break;
+  }
+  const connections = await db.from("scalable_connections").select("portfolio").eq("workspace_id", workspaceId).not("portfolio", "is", null);
+  if (connections.error) throw connections.error;
+  return { rows, knownIds: scalableKnownIds((connections.data ?? []).map(row => row.portfolio)) };
 }
 
 export const removedOn = (items: WealthItem[], timeZone: string) => new Map(items.filter(item => item.removed_at).map(item => [item.id, calendarDate(item.removed_at!, timeZone)]));

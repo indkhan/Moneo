@@ -2,7 +2,7 @@
 // Every job is safe to repeat: summaries and review recovery claim due work, and the syncs
 // skip connections synced within the last day. Running hourly catches up after the
 // computer was asleep or off.
-export const CRON_JOBS = ["/api/cron/summaries", "/api/cron/reviews", "/api/cron/bank-sync", "/api/cron/scalable-sync", "/api/cron/chat-titles"] as const;
+export const CRON_JOBS = ["/api/cron/summaries", "/api/cron/reviews", "/api/cron/bank-sync", "/api/cron/scalable-sync", "/api/cron/scalable-history", "/api/cron/chat-titles"] as const;
 const HOUR = 3_600_000, FIRST_RUN = 60_000;
 
 export async function runCronJobs(baseUrl: string, secret: string, fetcher: typeof fetch = fetch) {

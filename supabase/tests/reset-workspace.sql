@@ -110,6 +110,12 @@ begin
     insert into public.import_row_decisions(workspace_id,source_id,action,source_record,actor_id)
       values(seed_ws,md5('source_transactions'||seed_ws)::uuid,'rejected','{}',seed_user);
   end if;
+  if to_regclass(format('%I.scalable_connections',app_schema)) is not null then
+    insert into public.scalable_connections(workspace_id,client_id,redirect_uri) values(seed_ws,'synthetic','http://localhost/callback');
+  end if;
+  if to_regclass(format('%I.scalable_value_history',app_schema)) is not null then
+    insert into public.scalable_value_history(workspace_id,on_date,currency_code,securities_minor,crypto_minor,cash_minor,total_minor) values(seed_ws,'2026-10-01','EUR',1,2,3,6);
+  end if;
   -- Links that the delete guards protect: a refund of the seeded transaction.
   perform set_config('moneo.link_edit','on',true);
   insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code)
