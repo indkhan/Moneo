@@ -53,7 +53,7 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
         <NetWorthChart label={`Scalable portfolio value in ${cur} by day`} points={history.map(point => ({ date: point.date, label: date(point.date), amount: show(point.value), y: Number(point.value) }))} />
         <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{date(history[0].date)}</span>
           {change !== null && <span className={tone(change)}>{signed(change, show(change))} since then</span>}<span>Today</span></p>
-        {calculatedBefore && <p className="mt-2 text-xs text-muted-foreground">Days before {date(calculatedBefore)} are calculated from your transactions and past prices. Prices further than a year back are monthly, and crypto is estimated.</p>}
+        {calculatedBefore && <p className="mt-2 text-xs text-muted-foreground">Days before {date(calculatedBefore)} are calculated from your transactions and past prices. Prices further than a year back are monthly.</p>}
       </> : <p className="text-sm text-muted-foreground">The value chart fills in day by day as Moneo syncs Scalable.</p>}
       {historyFailed && <p className="mt-2 text-xs text-muted-foreground">Earlier days could not be worked out, so this chart starts at your first sync.</p>}
     </div>

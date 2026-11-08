@@ -11,7 +11,7 @@ const render = (over: Partial<Parameters<typeof ScalableInvestments>[0]> = {}) =
 it("says which days are calculated, and leaves out a change that would mostly be money paid in", () => {
   const html = render({ calculatedBefore: "2026-11-05" });
   expect(html).toContain("are calculated from your transactions and past prices");
-  expect(html).toContain("Prices further than a year back are monthly, and crypto is estimated.");
+  expect(html).toContain("Prices further than a year back are monthly.");
   expect(html).not.toContain("since then");
 });
 

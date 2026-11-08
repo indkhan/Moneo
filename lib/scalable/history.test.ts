@@ -5,13 +5,13 @@ const ISIN = "DE000A0TEST1", ETP = "XS0000000ETP";
 const buy = (id: string, at: string, quantity: string, amount: string, isin = ISIN) => ({ id, at, kind: "security" as const, isin, side: "BUY", quantity, amountText: amount });
 const sell = (id: string, at: string, quantity: string, amount: string, isin = ISIN) => ({ id, at, kind: "security" as const, isin, side: "SELL", quantity, amountText: amount });
 const cash = (id: string, at: string, amount: string) => ({ id, at, kind: "cash" as const, amountText: amount });
-const coin = (id: string, at: string, side: string, coins: string, amount: string, ticker = "BTC") => ({ id, at, kind: "crypto" as const, ticker, side, quantity: coins, amountText: amount });
+const etp = (id: string, at: string, side: string, shares: string, amount: string) => ({ id, at, kind: "crypto" as const, isin: ETP, side, quantity: shares, amountText: amount });
 const chart = (...points: [string, number][]) => ({ currency: "EUR", points: points.map(([at, price]) => ({ at, price: String(price) })) });
 
 const input = (over: Partial<HistoryInput> = {}): HistoryInput => ({
   rows: [cash("d", "2026-01-01T09:00:00Z", "100"), buy("b", "2026-01-02T10:00:00Z", "2", "-20")],
-  charts: { [ISIN]: chart(["2026-01-03T17:00:00Z", 11], ["2026-01-05T17:00:00Z", 12]) }, coinCharts: {},
-  holdings: [{ isin: ISIN, filled: 2, currency: "EUR" }], coins: [], cashBalance: 80, cryptoValue: 0, timeZone: "UTC", before: "2026-01-06", ...over,
+  charts: { [ISIN]: chart(["2026-01-03T17:00:00Z", 11], ["2026-01-05T17:00:00Z", 12]) },
+  holdings: [{ isin: ISIN, filled: 2, currency: "EUR" }], cashBalance: 80, timeZone: "UTC", before: "2026-01-06", ...over,
 });
 const failed = (over: Partial<HistoryInput>) => { const result = calculateHistory(input(over)); expect(result.ok).toBe(false); return result.ok ? "" : result.reason; };
 const days = (over: Partial<HistoryInput> = {}) => { const result = calculateHistory(input(over)); if (!result.ok) throw new Error(result.reason); return result.days; };
@@ -52,12 +52,11 @@ it("counts transactions after the first sync in the check but shows no day from 
   expect(result.at(-1)!.securitiesMinor).toBe(2400n);
 });
 
-it("fails the check on a share, coin or cash mismatch", () => {
+it("fails the check on a share or cash mismatch", () => {
   expect(failed({ holdings: [{ isin: ISIN, filled: 2.1, currency: "EUR" }] })).toContain(ISIN);
   expect(failed({ holdings: [{ isin: ISIN, filled: 2, currency: "EUR" }, { isin: "US0000000002", filled: 1, currency: "EUR" }] })).toContain("US0000000002");
   expect(failed({ cashBalance: 81.01 })).toMatch(/cash/i);
-  expect(failed({ coins: [{ ticker: "BTC", filled: 0.5 }], cryptoValue: 100 })).toContain("BTC");
-  expect(failed({ cryptoValue: 100 })).toMatch(/crypto/i);
+  expect(failed({ holdings: [{ isin: ISIN, filled: 2, currency: "EUR" }, { isin: ETP, filled: 10 }] })).toContain(ETP);
 });
 
 it("tolerates tiny differences: a millionth of a share and up to a euro of cash", () => {
@@ -65,11 +64,11 @@ it("tolerates tiny differences: a millionth of a share and up to a euro of cash"
   expect(days({ cashBalance: 81 }).length).toBe(5);
 });
 
-it("fails when shares or coins go negative on any day, even if they end right", () => {
+it("fails when shares go negative on any day, even if they end right", () => {
   const rows = [cash("d", "2026-01-01T09:00:00Z", "100"), sell("s", "2026-01-02T10:00:00Z", "1", "10"), buy("b", "2026-01-03T10:00:00Z", "3", "-30")];
   expect(failed({ rows, charts: { [ISIN]: chart() } })).toMatch(/negative/i);
-  const coins = [cash("d", "2026-01-01T09:00:00Z", "100"), coin("s", "2026-01-02T10:00:00Z", "SELL", "1", "10"), coin("b", "2026-01-03T10:00:00Z", "BUY", "1", "-10")];
-  expect(failed({ rows: coins, charts: {}, holdings: [], coins: [{ ticker: "BTC", filled: 0 }], cashBalance: 100 })).toMatch(/negative/i);
+  const crypto = [cash("d", "2026-01-01T09:00:00Z", "100"), etp("s", "2026-01-02T10:00:00Z", "SELL", "1", "10"), etp("b", "2026-01-03T10:00:00Z", "BUY", "1", "-10")];
+  expect(failed({ rows: crypto, charts: {}, holdings: [], cashBalance: 100 })).toMatch(/negative/i);
   // Same-day order does not matter: only each day's end counts.
   expect(days({ rows: [cash("d", "2026-01-01T09:00:00Z", "100"), sell("s", "2026-01-02T09:00:00Z", "1", "10"), buy("b", "2026-01-02T10:00:00Z", "3", "-30")],
     charts: { [ISIN]: chart() } }).length).toBe(5);
@@ -91,48 +90,26 @@ it("never guesses from a settled row it cannot read", () => {
   expect(failed({ rows: [...input().rows, { id: "x", at: "2026-01-03T10:00:00Z", kind: "security", isin: ISIN, side: "BUY", quantity: null, amountText: "-1" }] })).toMatch(/quantity/i);
 });
 
-it("estimates a held coin from its ETP so the last price lands on today's crypto value", () => {
-  // 0.5 BTC worth 1000 today; the ETP is 10 today, so a coin is 200 ETP prices.
+it("values crypto as its ETP's shares at the ETP's own price, counted apart from securities", () => {
   const result = days({
-    rows: [cash("d", "2026-01-01T09:00:00Z", "1000"), coin("b", "2026-01-02T10:00:00Z", "BUY", "0.5", "-400")],
-    charts: {}, holdings: [], coins: [{ ticker: "BTC", filled: 0.5 }], cashBalance: 600, cryptoValue: 1000,
-    coinCharts: { BTC: chart(["2026-01-02T17:00:00Z", 8], ["2026-01-04T17:00:00Z", 9], ["2026-01-09T17:00:00Z", 10]) },
+    rows: [cash("d", "2026-01-01T09:00:00Z", "1000"), etp("b", "2026-01-02T10:00:00Z", "BUY", "10", "-400")],
+    charts: { [ETP]: chart(["2026-01-03T17:00:00Z", 45], ["2026-01-05T17:00:00Z", 50]) }, holdings: [{ isin: ETP, filled: 10 }], cashBalance: 600,
   });
-  expect(result.map(day => [day.date, day.cryptoMinor, day.cashMinor, day.totalMinor])).toEqual([
-    ["2026-01-01", 0n, 100000n, 100000n],
-    ["2026-01-02", 80000n, 60000n, 140000n],
-    ["2026-01-03", 80000n, 60000n, 140000n],
-    ["2026-01-04", 90000n, 60000n, 150000n],
-    ["2026-01-05", 90000n, 60000n, 150000n],
+  expect(result.map(day => [day.date, day.securitiesMinor, day.cryptoMinor, day.cashMinor, day.totalMinor])).toEqual([
+    ["2026-01-01", 0n, 0n, 100000n, 100000n],
+    ["2026-01-02", 0n, 40000n, 60000n, 100000n], // the trade's own price
+    ["2026-01-03", 0n, 45000n, 60000n, 105000n],
+    ["2026-01-04", 0n, 45000n, 60000n, 105000n],
+    ["2026-01-05", 0n, 50000n, 60000n, 110000n],
   ]);
 });
 
-it("keeps today's crypto value when several coins are held, split by each coin's own trade", () => {
-  // Trades say a BTC is 100 ETP prices and an ETH 10; at today's ETP prices that is 200 + 200, scaled to the real 500.
+it("stops counting an ETP that was sold", () => {
   const result = days({
-    rows: [cash("d", "2026-01-01T09:00:00Z", "1000"), coin("b", "2026-01-02T10:00:00Z", "BUY", "1", "-100"), coin("e", "2026-01-02T11:00:00Z", "BUY", "2", "-100", "ETH")],
-    charts: {}, holdings: [], coins: [{ ticker: "BTC", filled: 1 }, { ticker: "ETH", filled: 2 }], cashBalance: 800, cryptoValue: 500, before: "2026-01-04",
-    coinCharts: { BTC: chart(["2026-01-02T09:00:00Z", 1], ["2026-01-03T17:00:00Z", 2]), ETH: chart(["2026-01-02T09:00:00Z", 5], ["2026-01-03T17:00:00Z", 10]) },
+    rows: [cash("d", "2026-01-01T09:00:00Z", "1000"), etp("b", "2026-01-02T10:00:00Z", "BUY", "10", "-400"), etp("s", "2026-01-04T10:00:00Z", "SELL", "10", "500")],
+    charts: { [ETP]: chart() }, holdings: [], cashBalance: 1100, before: "2026-01-05",
   });
-  expect(result.at(-1)!.cryptoMinor).toBe(50000n);
-});
-
-it("scales a sold coin by its own last trade, with no held value to anchor it", () => {
-  const result = days({
-    rows: [cash("d", "2026-01-01T09:00:00Z", "1000"), coin("b", "2026-01-02T10:00:00Z", "BUY", "1", "-100"), coin("s", "2026-01-04T10:00:00Z", "SELL", "1", "150")],
-    charts: {}, holdings: [], coins: [{ ticker: "BTC", filled: 0 }], cashBalance: 1050, cryptoValue: 0, before: "2026-01-05",
-    coinCharts: { BTC: chart(["2026-01-02T09:00:00Z", 1], ["2026-01-03T17:00:00Z", 1.5]) },
-  });
-  expect(result.map(day => day.cryptoMinor)).toEqual([0n, 10000n, 15000n, 0n]);
-  expect(result.at(-1)!.cashMinor).toBe(105000n);
-});
-
-it("keeps a coin without an ETP chart at its buy amount", () => {
-  const result = days({
-    rows: [cash("d", "2026-01-01T09:00:00Z", "1000"), coin("b", "2026-01-02T10:00:00Z", "BUY", "1", "-100"), coin("c", "2026-01-03T10:00:00Z", "BUY", "1", "-300"), coin("s", "2026-01-04T10:00:00Z", "SELL", "1", "500")],
-    charts: {}, holdings: [], coins: [{ ticker: "BTC", filled: 1 }], cashBalance: 1100, cryptoValue: 900, before: "2026-01-05",
-  });
-  expect(result.map(day => day.cryptoMinor)).toEqual([0n, 10000n, 40000n, 20000n]);
+  expect(result.map(day => [day.cryptoMinor, day.cashMinor])).toEqual([[0n, 100000n], [40000n, 60000n], [40000n, 60000n], [0n, 110000n]]);
 });
 
 // The stand-in below answers like the real server: an exhausted stream starts again when its cursor is left out.
@@ -147,7 +124,7 @@ function fakeMcp(pages: { securities: unknown[][]; crypto: unknown[][] }, charts
     }
     if (name === "get_portfolio_holdings") return { holdings: [{ isin: ISIN, position: { filled: 1 }, currentQuote: { midPrice: 10, currency: "EUR" } }], cryptoHoldings: catalog };
     if (name === "get_portfolio_cash_breakdown") return { cash: { cashBalance: 5 } };
-    if (name === "get_portfolio_overview") return { valuation: { total: 15, crypto: 0 } };
+    if (name === "get_transaction_details") return { transaction: { security: { isin: ETP } } };
     if (name === "get_security_chart") {
       const chart = charts[`${args.isin}:${args.timeframe}`] ?? charts[String(args.isin)];
       if (chart instanceof Error) throw chart;
@@ -157,7 +134,7 @@ function fakeMcp(pages: { securities: unknown[][]; crypto: unknown[][] }, charts
   } };
 }
 const security = (id: string, status = "SETTLED", extra: object = {}) => ({ id, kind: "SECURITY", status, currency: "EUR", isCancellation: false, lastEventAt: "2026-01-02T10:00:00Z", security: { isin: ISIN, transactionType: "SINGLE", side: "BUY", quantity: "1", amount: "-10" }, ...extra });
-const crypto = (id: string) => ({ id, status: "SETTLED", ticker: "BTC", side: "BUY", coinQuantity: "0.5", quantity: "999", amount: "-5", lastEventAt: "2026-01-02T11:00:00Z" });
+const crypto = (id: string) => ({ id, status: "SETTLED", ticker: "BTC", side: "BUY", coinQuantity: "0.5", quantity: "10", amount: "-5", lastEventAt: "2026-01-02T11:00:00Z" });
 
 it("follows both cursors to their ends, keeps exhausted streams exhausted and removes repeated rows", async () => {
   const mcp = fakeMcp({ securities: [[security("a"), security("b")], [security("c")]], crypto: [[crypto("x")], [crypto("x"), crypto("y")], [crypto("z"), crypto("y")]] });
@@ -167,12 +144,13 @@ it("follows both cursors to their ends, keeps exhausted streams exhausted and re
     { pageSize: 100 }, { pageSize: 100, cursor: "1", cryptoCursor: "1" }, { pageSize: 100, cryptoCursor: "2" }]);
 });
 
-it("reads coins from coinQuantity, never quantity, and only settled rows that were not cancelled", async () => {
+it("reads a crypto row's ETP shares, never its coin figure, and only settled rows that were not cancelled", async () => {
   const mcp = fakeMcp({ securities: [[security("a"), security("p", "PENDING"), security("c", "SETTLED", { isCancellation: true }),
     { id: "cash", kind: "CASH", status: "SETTLED", currency: "EUR", isCancellation: false, lastEventAt: "2026-01-01T10:00:00Z", cash: { relatedIsin: null, transactionType: "DEPOSIT", amount: 100 } },
     { id: "split", kind: "NON_TRADE", status: "SETTLED", isCancellation: false, lastEventAt: "2026-01-01T10:00:00Z", nonTradeSecurity: { isin: ISIN, quantity: "5" } }]], crypto: [[crypto("x")]] });
   const input = await readHistoryInput(mcp, "UTC", "2026-02-01");
-  expect(input.rows.map(row => [row.id, row.kind, row.quantity ?? null, row.amountText])).toEqual([["a", "security", "1", "-10"], ["cash", "cash", null, "100"], ["x", "crypto", "0.5", "-5"]]);
+  expect(input.rows.map(row => [row.id, row.kind, row.quantity ?? null, row.amountText])).toEqual([["a", "security", "1", "-10"], ["cash", "cash", null, "100"], ["x", "crypto", "10", "-5"]]);
+  expect(input.rows.find(row => row.id === "x")).toMatchObject({ isin: ETP });
 });
 
 it("merges every chart timeframe, skips empty prices and fails when a security chart cannot be read", async () => {
@@ -187,22 +165,24 @@ it("merges every chart timeframe, skips empty prices and fails when a security c
   await expect(readHistoryInput(fakeMcp(rows, { [`${ISIN}:one_year`]: new Error("down") }), "UTC", "2026-02-01")).rejects.toThrow("down");
 });
 
-it("uses the first ETP whose chart works for a coin", async () => {
-  const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.5 }, etpPositions: [{ isin: "XS0000000BAD", name: "Bad", position: null }, { isin: "XS0000000USD", name: "Usd", position: null }, { isin: ETP, name: "Good", position: null }, { isin: "XS000000LAST", name: "Unused", position: null }] },
+it("holds crypto as ETP shares even when the coin figure has shrunk", async () => {
+  const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.00328548315 }, etpPositions: [{ isin: "XS0000000BAD", name: "Other", position: null }, { isin: ETP, name: "Held", position: { blocked: 0, filled: 10, pending: 0 } }] },
     { ticker: "ETH", name: "Ether", position: { filled: 0 }, etpPositions: [{ isin: "XS0000000ETH", name: "Not traded", position: null }] }];
-  const mcp = fakeMcp({ securities: [[]], crypto: [[crypto("x")]] }, { XS0000000BAD: new Error("no chart"), XS0000000USD: { currency: "USD", dataPoints: [{ midPrice: 1, timestampUtc: "2026-01-01T00:00:00Z" }] },
-    [ETP]: { currency: "EUR", dataPoints: [{ midPrice: 1, timestampUtc: "2026-01-01T00:00:00Z" }] } }, catalog);
+  const mcp = fakeMcp({ securities: [[]], crypto: [[crypto("x")]] }, { [ETP]: { currency: "EUR", dataPoints: [{ midPrice: 1, timestampUtc: "2026-01-01T00:00:00Z" }] } }, catalog);
   const input = await readHistoryInput(mcp, "UTC", "2026-02-01");
-  expect(input.coinCharts.BTC.points.length).toBeGreaterThan(0);
-  expect(input.coinCharts.ETH).toBeUndefined();
-  const charted = mcp.calls.filter(call => call.name === "get_security_chart").map(call => call.args.isin);
-  expect(charted).not.toContain("XS000000LAST");
-  expect(charted).not.toContain("XS0000000ETH");
+  expect(input.holdings).toContainEqual({ isin: ETP, filled: 10 });
+  expect(Object.keys(input.charts)).toEqual([ETP]);
+  expect(mcp.calls.filter(call => call.name === "get_transaction_details").map(call => call.args)).toEqual([{ transactionId: "x" }]);
+});
+
+it("refuses a coin held without an ETP position, since it has no shares or price to replay", async () => {
+  const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.5 }, etpPositions: [{ isin: ETP, name: "Not held", position: null }] }];
+  await expect(readHistoryInput(fakeMcp({ securities: [[]], crypto: [[]] }, {}, catalog), "UTC", "2026-02-01")).rejects.toThrow("BTC");
 });
 
 it("only ever calls read tools", async () => {
-  const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.5 }, etpPositions: [{ isin: ETP, name: "Good", position: null }] }];
+  const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.5 }, etpPositions: [{ isin: ETP, name: "Good", position: { filled: 10 } }] }];
   const mcp = fakeMcp({ securities: [[security("a")]], crypto: [[crypto("x")]] }, {}, catalog);
   await readHistoryInput(mcp, "UTC", "2026-02-01");
-  expect([...new Set(mcp.calls.map(call => call.name))].sort()).toEqual(["get_portfolio_cash_breakdown", "get_portfolio_holdings", "get_portfolio_overview", "get_security_chart", "list_portfolio_transactions"]);
+  expect([...new Set(mcp.calls.map(call => call.name))].sort()).toEqual(["get_portfolio_cash_breakdown", "get_portfolio_holdings", "get_security_chart", "get_transaction_details", "list_portfolio_transactions"]);
 });
