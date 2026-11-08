@@ -115,6 +115,8 @@ begin
   end if;
   insert into public.accounts(workspace_id,name,currency_code) values(workspace_a,'Synthetic own','EUR');
   foreign_transaction := md5('transactions'||workspace_b)::uuid;
+  insert into public.scalable_connections(workspace_id,client_id,redirect_uri) values(workspace_b,'synthetic','http://localhost/callback');
+  insert into public.scalable_value_history(workspace_id,on_date,currency_code,securities_minor,crypto_minor,cash_minor,total_minor) values(workspace_b,'2026-10-01','EUR',1,2,3,6);
   foreign_account := md5('accounts'||workspace_b)::uuid;
   foreign_goal := md5('goals'||workspace_b)::uuid;
   foreign_import := md5('imports'||workspace_b)::uuid;
@@ -122,7 +124,7 @@ begin
   foreign_assumption := md5('financial_assumptions'||workspace_b)::uuid;
   foreign_plan := md5('spending_plans'||workspace_b)::uuid;
   foreign_event := md5('planning_events'||workspace_b)::uuid;
-  for target_table in select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=app_schema and c.relkind='r' and c.relname <> 'auth_users' loop
+  for target_table in select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=app_schema and c.relkind='r' and c.relname not in ('auth_users','service_keys') loop
     if target_table='workspaces' then execute format('select count(*) from %I.workspaces where id=$1',app_schema) into total using workspace_b;
     elsif target_table='transaction_sources' then execute format('select count(*) from %I.transaction_sources where transaction_id=$1',app_schema) into total using foreign_transaction;
     else execute format('select count(*) from %I.%I where workspace_id=$1',app_schema,target_table) into total using workspace_b;
@@ -134,7 +136,7 @@ begin
   if public.owns_workspace(workspace_b) then raise exception 'Foreign workspace ownership leaked'; end if;
   if not public.owns_workspace(workspace_a) then raise exception 'Own workspace ownership unavailable'; end if;
   if (select count(*) from public.accounts where workspace_id=workspace_a) <> 1 then raise exception 'Own account must remain readable'; end if;
-  for target_table in select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=app_schema and c.relkind='r' and c.relname <> 'auth_users' loop
+  for target_table in select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=app_schema and c.relkind='r' and c.relname not in ('auth_users','service_keys') loop
     begin
       if target_table='workspaces' then execute format('select count(*) from %I.workspaces where id=$1',app_schema) into total using workspace_b;
       elsif target_table='transaction_sources' then execute format('select count(*) from %I.transaction_sources where transaction_id=$1',app_schema) into total using foreign_transaction;
