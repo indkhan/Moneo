@@ -108,4 +108,5 @@ Setup is done. Next:
   2. Open ${read("NEXT_PUBLIC_APP_URL")}
   3. In Settings → Keys and connections, sign in with ChatGPT or paste an OpenAI API key.
      Connecting a bank or Scalable Capital is optional and is done there too.
+     So is using Moneo from your phone or tablet (Phone and tablet).
 You never need to edit .env.`);

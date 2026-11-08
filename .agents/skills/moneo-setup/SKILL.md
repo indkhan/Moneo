@@ -1,6 +1,6 @@
 ---
 name: moneo-setup
-description: Install, set up, start, update or troubleshoot Moneo on the user's own computer. Use when someone says "set up Moneo", "install Moneo", "Moneo won't start", or asks how to add their AI key, bank or Scalable Capital.
+description: Install, set up, start, update or troubleshoot Moneo on the user's own computer. Use when someone says "set up Moneo", "install Moneo", "Moneo won't start", or asks how to add their AI key, bank or Scalable Capital, or use Moneo on their phone or tablet.
 ---
 
 # Set up Moneo
@@ -27,7 +27,12 @@ You are helping a person, often not a developer, run Moneo on their own computer
 5. **Turn on the AI.** Ask them to open **Settings → Keys and connections → AI access** and either click **Sign in with ChatGPT** (Go, Plus or Pro plan) or paste an OpenAI API key from https://platform.openai.com/api-keys and click **Save key**. Voice calls need the API key.
 6. **Optional: bank.** Follow the README section "Connect your bank". The person creates an Enable Banking application (Production) with redirect URL `https://localhost:3443/api/bank/callback`, links their own accounts there, and pastes the App ID and `.pem` key into **Settings → Keys and connections → Connected banks**.
 7. **Optional: Scalable Capital.** They turn on Agentic Investing in Scalable (Profile → Security), then click **Connect Scalable Capital** in the same Settings section.
-8. **Finish** by telling them how to start Moneo next time (`npm start` with Docker running) and how to update (`git pull`, `npm ci`, `npm run setup`, `npm run build`, `npm start`).
+8. **Optional: phone and tablet.** Offer this once and skip it unless they want it. It lets their own phone and tablet use the Moneo on this computer, through their own free Tailscale account.
+   - Ask them to open **Settings → Keys and connections → Phone and tablet** and click **Turn on**. The card shows only the step that is missing: install [Tailscale](https://tailscale.com/download), sign in, or allow secure addresses. They click **Check again** after each one. The sign-in and approval are theirs to do.
+   - The address and QR code come from their own Tailscale. Read them from the card; never type or guess an address.
+   - On each phone or tablet: install Tailscale, sign in with the same account, scan the code, then Add to Home Screen.
+   - Tell them plainly: everyone on their Tailscale network gets in without a password, so don't use a shared network; never turn on Tailscale Funnel; the computer must stay awake with Moneo running; new ChatGPT, bank and Scalable logins start on the computer.
+9. **Finish** by telling them how to start Moneo next time (`npm start` with Docker running) and how to update (`git pull`, `npm ci`, `npm run setup`, `npm run build`, `npm start`).
 
 ## When something goes wrong
 
@@ -40,4 +45,8 @@ You are helping a person, often not a developer, run Moneo on their own computer
 | "Could not create the local HTTPS certificate" | Only bank connections need it. Rerun `npm run setup` and accept the certificate prompt. |
 | Chat says "No AI is set up yet" | Step 5. |
 | Bank says the return address was rejected | Add `https://localhost:3443/api/bank/callback` as a redirect URL in the Enable Banking application. |
+| The phone can't open Moneo | Check Tailscale is connected on both devices, the computer is awake, and Moneo and Docker are running (after a restart, `npm start` again). |
+| Phone and tablet card says something else is using the address | Often an older Moneo on another port, or another app. Ask whose it is; if it's safe to clear, run `tailscale serve --https=443 off`, then **Check again**. |
+| Phone and tablet card says "Access denied" (Linux) | Run `sudo tailscale set --operator=$USER`, then **Check again**. |
+| A phone says a login must start on the computer | Expected. Open Moneo on the computer running it to connect; everything else works on the phone. |
 | The page shows a database error after `git pull` | Run `npm run setup` (applies new migrations), then `npm run build` and `npm start`. |

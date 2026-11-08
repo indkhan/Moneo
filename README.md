@@ -65,7 +65,7 @@ Voice calls and dictation need the OpenAI API key. An OpenRouter key is optional
 - **Import** a CSV or Excel export from your bank, or
 - connect your bank or Scalable Capital (optional, see below).
 
-That's it.
+That's it. Want it on your phone or tablet too? See [Use it from your phone or tablet](#use-it-from-your-phone-or-tablet-optional).
 
 ## Everyday use
 
@@ -120,9 +120,11 @@ Your phone becomes another screen on the Moneo running on this computer: same da
 2. On your phone or tablet, install Tailscale and sign in with the same account.
 3. Scan the code in Settings, then choose **Add to Home Screen**.
 
-Only devices in your Tailscale account can reach Moneo, and they get in without a password, so don't add other people to it. Leave Tailscale Funnel off: Moneo refuses traffic from the public internet.
+The address and code are your own, from your own Tailscale account. Only devices on your Tailscale network can reach Moneo, and they get in without a password, so don't use a network you share with other people. Leave Tailscale Funnel off: Moneo refuses traffic from the public internet.
 
-Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, start Docker and run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address.
+Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, start Docker and run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address. On Linux, first run `sudo tailscale set --operator=$USER`.
+
+How it works, step by step: [docs/phone-access-deep-dive.html](docs/phone-access-deep-dive.html).
 
 ## Good to know
 
