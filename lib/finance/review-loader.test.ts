@@ -11,7 +11,7 @@ it.each(["goal_allocations", "financial_assumptions"])("retains %s revisions ind
   let version = 1;
   const from = (name: string) => {
     let columns = "";
-    const query = { select: (selected: string) => { columns = selected; return query; }, eq: () => query, is: () => query, gte: () => query, lte: () => query, order: () => query,
+    const query = { select: (selected: string) => { columns = selected; return query; }, eq: () => query, not: () => query, limit: () => query, is: () => query, gte: () => query, lte: () => query, order: () => query,
       range: async () => ({ data: name === table ? [Object.fromEntries(Object.entries({ id: "record", goal_id: "goal", account_id: "cash", name: "Disabled assumption", amount_minor: "100", currency_code: "EUR", cadence: "once", starts_on: "2026-10-02", ends_on: null, confirmed: false, enabled: false, removed_at: null, version }).filter(([key]) => columns.split(",").map(column => column.trim().split("::")[0]).includes(key)))] : [], error: null }) };
     return query;
   };
@@ -30,7 +30,7 @@ it("omits all planning reads when its scope is disabled and gathers exact compar
   const reads: string[] = [];
   const from = (table: string) => {
     reads.push(table);
-    const query = { select: () => query, eq: () => query, gte: () => query, lte: () => query, order: () => query, in: () => query,
+    const query = { select: () => query, eq: () => query, not: () => query, limit: () => query, gte: () => query, lte: () => query, order: () => query, in: () => query,
       range: async () => ({ data: table === "effective_transactions" ? [{ id: "t", parent_transaction_id: "t", account_id: "a", amount_minor: "-9007199254740993", currency_code: "EUR", posted_on: "2026-10-01", status: "posted", kind: "ordinary", category_id: null, merchant_id: null, review_reasons: [] }] : [], error: null }) };
     return query;
   };
@@ -51,7 +51,7 @@ it("loads older rollover evidence without extending the current cashflow summary
     effective_transactions: [{ id: "old", amount_minor: "-200", currency_code: "EUR", posted_on: "2026-01-01", status: "posted", kind: "ordinary", category_id: "c", merchant_id: null, review_reasons: [] }],
   };
   const from = (table: string) => {
-    const query = { select: () => query, eq: () => query, is: () => query, gte: (_key: string, value: string) => { lowerBounds.push(value); return query; }, lte: () => query, order: () => query,
+    const query = { select: () => query, eq: () => query, not: () => query, limit: () => query, is: () => query, gte: (_key: string, value: string) => { lowerBounds.push(value); return query; }, lte: () => query, order: () => query,
       range: async () => ({ data: tables[table] ?? [], error: null }) }; return query;
   };
   const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, settingsSchema.parse({}));
@@ -63,7 +63,7 @@ it("loads older rollover evidence without extending the current cashflow summary
 it("includes the confirmed calendar anchor and source basis in planning evidence", async () => {
   let assumptionColumns = "";
   const from = (table: string) => {
-    const query = {select: (columns: string) => {if (table === "financial_assumptions") assumptionColumns=columns; return query;},eq: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
+    const query = {select: (columns: string) => {if (table === "financial_assumptions") assumptionColumns=columns; return query;},eq: () => query, not: () => query, limit: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
       range: async () => ({data: [],error: null})}; return query;
   };
   await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},settingsSchema.parse({}));
@@ -75,7 +75,7 @@ it("retains account/version provenance alongside the confirmed calendar anchor i
   const record = {id: "assumption", name: "Monthly", account_id: "cash", amount_minor: "-10000", currency_code: "EUR", cadence: "monthly", starts_on: "2026-03-31", schedule_anchor_on: "2026-01-31", source: "user", ends_on: null, confirmed: true, enabled: true, removed_at: null, version: 7};
   const from = (table: string) => {
     let columns = "";
-    const query = {select: (value: string) => {columns=value; return query;},eq: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
+    const query = {select: (value: string) => {columns=value; return query;},eq: () => query, not: () => query, limit: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
       range: async () => ({data: table === "financial_assumptions" ? [Object.fromEntries(columns.split(",").map(column => {const key=column.trim().split("::")[0]; return [key,record[key as keyof typeof record]];}))] : [],error: null})}; return query;
   };
   const evidence=await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},settingsSchema.parse({ai_data_scopes:["accounts","transactions","planning"]}));

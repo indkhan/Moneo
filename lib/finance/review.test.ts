@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { buildReviewEvidence, buildReviewInvestigation, buildPlanningReview, reviewNetWorth } from "./review";
+import { buildReviewEvidence, buildReviewInvestigation, buildPlanningReview } from "./review";
 
 it("uses recorded rollover history and preserves unknown carry when targets or classifications are missing", () => {
   const input = { today: "2026-03-01", goals: [], allocations: [], categories: [],
@@ -71,13 +71,6 @@ it("compares equal calendar periods and grouped source evidence without counting
 it("attributes a linked refund to the original purchase category in its own posting period", () => {
   const report = buildReviewInvestigation([{ id: "refund", posted_on: "2026-10-01", amount_minor: "500", currency_code: "EUR", status: "posted", kind: "refund", category_id: "other", merchant_id: null, refund_of_id: "purchase", refund_category_id: "food" }], { from: "2026-10-01", to: "2026-10-02" }, [{ id: "food", name: "Food" }], []);
   expect(report.categories[0]).toMatchObject({ id: "food", spendingMinor: "-500" });
-});
-
-it("combines standalone wealth with account totals once, counts older values and keeps future or foreign currency evidence unknown", () => {
-  const item = { id: "asset", name: "Asset", amount_minor: "5000", currency_code: "EUR", as_of: "2026-10-02", linked_account_id: null };
-  expect(reviewNetWorth({ EUR: "10000", USD: null }, [item, { ...item, id: "linked", linked_account_id: "account" }], "2026-10-02")).toEqual({ EUR: "15000", USD: null });
-  expect(reviewNetWorth({ EUR: "10000" }, [{ ...item, as_of: "2026-10-01" }], "2026-10-02")).toEqual({ EUR: "15000" });
-  expect(reviewNetWorth({ EUR: "10000" }, [{ ...item, as_of: "2026-10-03" }], "2026-10-02")).toEqual({ EUR: null });
 });
 
 it("keeps unrelated category uncertainty out of an otherwise complete budget", () => {

@@ -19,7 +19,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
       table === fixture.revisionTable && table === "goals" ? [{ id: "goal", name: "Goal", currency_code: "EUR", target_minor: "1000", recorded_saved_minor: "100", saved_as_of: "2026-10-01", planned_monthly_minor: "0", contribution_starts_on: null, target_date: null, status: "active", version: fixture.revision }] :
       table === fixture.revisionTable && table === "spending_plans" ? [{ id: "budget", category_id: "food", currency_code: "EUR", limit_minor: "1000", enabled: true, version: fixture.revision }] : [];
     let columns = "";
-    const query = { select: (selected: string) => { columns = selected; return query; }, eq: () => query, is: () => query, order: () => query, gte: () => query, lte: () => query, in: () => query,
+    const query = { select: (selected: string) => { columns = selected; return query; }, eq: () => query, not: () => query, limit: () => query, is: () => query, order: () => query, gte: () => query, lte: () => query, in: () => query,
       range: async (from: number, to: number) => ({ data: data.slice(from, to + 1).map(row => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "version" || /\bversion\b/.test(columns)))), error: null }),
       maybeSingle: async () => ({ data: null, error: null }),
       single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
