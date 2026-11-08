@@ -24,7 +24,7 @@ const remove = () => new Request("http://localhost", { method: "DELETE" });
 it("renames only a live conversation in the signed-in workspace with a validated title", async () => {
   const response = await PATCH(patch({ title: "  Renamed  " }), route());
   expect(response.status).toBe(200);
-  expect(updated).toEqual({ title: "Renamed" });
+  expect(updated).toEqual({ title: "Renamed", title_settled: true });
   expect(filters).toEqual([["workspace_id", "owned"], ["id", id], ["deleted_at", null]]);
   for (const body of [{ title: "" }, { title: "x".repeat(121) }, { title: "ok", workspace_id: "other" }]) expect((await PATCH(patch(body), route())).status).toBe(400);
   expect((await PATCH(patch({ title: "ok" }), route("not-a-uuid"))).status).toBe(404);

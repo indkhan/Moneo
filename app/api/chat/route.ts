@@ -30,6 +30,8 @@ import { ADDS_TO_RUNNING, CALL_MODE_PROMPT, callContextSchema, replaceCallTask, 
 import { artifactBriefing, artifactModePrompt, artifactTools } from "@/lib/ai/artifact-agent";
 import { investmentTools } from "@/lib/ai/investment-tools";
 import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live";
+import { titleChatTurn } from "@/lib/ai/chat-title";
+import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -39,6 +41,8 @@ function withoutCharts(content: string) {
 // A run keeps going after the user leaves; this covers the model run (90 s, or 280 s in an artifact's chat,
 // where designers write pages and cards) plus reads and publication.
 export const maxDuration = 300;
+/** How long a finished answer waits for its title, so the sidebar can update without holding up the answer. */
+const TITLE_WAIT_MS = 2000;
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -67,11 +71,11 @@ export async function POST(request: Request) {
     .order("created_at", { ascending: false }).limit(19));
   modelPromise.catch(() => {});
   historyPromise.catch(() => {});
-  const existing = await supabase.from("conversations").select("id, deleted_at, artifact_id").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
+  const existing = await supabase.from("conversations").select("id, deleted_at, artifact_id, title_settled").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
   if (existing.error) throw existing.error;
   if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
   if (!existing.data) {
-    const { error } = await supabase.from("conversations").insert({ id: conversationId, workspace_id: workspace.id, title: message.slice(0, 80) });
+    const { error } = await supabase.from("conversations").insert({ id: conversationId, workspace_id: workspace.id, title: capturedContext?.via === "call" ? VOICE_CALL_TITLE : message.slice(0, 80) });
     if (error && error.code !== "23505") return Response.json({ error: "Conversation unavailable" }, { status: 403 });
   }
   const claim = await supabase.rpc("start_chat_request", {
@@ -92,6 +96,15 @@ export async function POST(request: Request) {
   const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
   const briefingPromise = artifactId ? artifactBriefing(supabase, workspace.id, artifactId) : null;
   briefingPromise?.catch(() => {});
+  // Started beside the answer so the title shows while it is written; an artifact's chat keeps the artifact's name.
+  async function writeChatTitle() {
+    if (artifactId) return null;
+    const viaCall = capturedContext?.via === "call";
+    const earlier = viaCall ? (callContextSchema.safeParse(capturedContext).data?.recentTurns ?? []).filter(turn => turn.role === "user" && turn.text !== message).map(turn => turn.text)
+      : ((await historyPromise).data ?? []).filter(item => item.role === "user").map(item => item.content as string).reverse();
+    return titleChatTurn({ supabase, workspaceId: workspace.id, conversationId, message, viaCall, settled: !!existing.data?.title_settled, earlier, model: () => modelForSettings(settings, "titles") });
+  }
+  const chatTitle = writeChatTitle().catch(() => null);
   // Scalable tools exist only with a live connection and the accounts scope; they read Scalable at call time.
   const scalablePromise = settings.ai_data_scopes.includes("accounts") ? activeScalableConnection(workspace.id).catch(() => null) : Promise.resolve(null);
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
@@ -377,16 +390,21 @@ ${artifactBrief}` : ""}`,
     return stop.signal.aborted ? [{ status: "canceled", error: "Request is canceled" }, 409] : [{ error: failure }, 502];
   }
   }
-  if (!streaming) { const run = complete(() => {}); after(() => run); const [body, status] = await run; return Response.json(body, { status }); }
+  if (!streaming) { const run = complete(() => {}); after(() => Promise.all([run, chatTitle])); const [body, status] = await run; return Response.json(body, { status }); }
   // Opt-in NDJSON: tool progress and the verified answer arrive before publication finishes.
   const encoder = new TextEncoder();
   return new Response(new ReadableStream({ start(controller) {
     const write = (event: ChatStreamEvent) => { try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* the reader went away; work continues */ } };
     write({ type: "started" });
     // after() keeps the run alive once the reader goes away (tab closed, phone locked).
+    void chatTitle.then(title => { if (title) write({ type: "title", title }); });
     const run = complete(write);
-    after(() => run);
-    void run.then(([body, status]) => { write({ type: "result", status, body }); try { controller.close(); } catch { /* already closed */ } });
+    after(() => Promise.all([run, chatTitle]));
+    void run.then(async ([body, status]) => {
+      await Promise.race([chatTitle, new Promise(resolve => setTimeout(resolve, TITLE_WAIT_MS))]);
+      write({ type: "result", status, body });
+      try { controller.close(); } catch { /* already closed */ }
+    });
   } }), { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 }
 

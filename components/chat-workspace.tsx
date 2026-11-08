@@ -5,13 +5,13 @@ import { useFollowOutput } from "@/lib/use-follow-output";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Check, Menu, Pencil, Phone, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Menu, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, Trash2, X } from "lucide-react";
 import { ChatForm } from "@/app/ai/chat-form";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { usePolling } from "@/lib/ai/use-polling";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
-import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
+import { VOICE_CALL_TITLE, VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import type { HistoryThread } from "@/lib/ai/conversation-history";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
@@ -94,13 +94,13 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   // A run that kept going while the user was away shows as working until its answer is saved.
   const resuming = entry?.running && !active ? activeId : null;
   usePolling(() => void json<Loaded>(`/api/conversations/${resuming}`)
-    .then(data => { if (!data.running) setEntries(current => ({ ...current, [resuming!]: loaded(data) })); }).catch(() => {}), 3000, !!resuming);
+    .then(data => { if (!data.running) { setEntries(current => ({ ...current, [resuming!]: loaded(data) })); retitle(resuming!, data.selected.title); } }).catch(() => {}), 3000, !!resuming);
 
   // A finished call is saved after hang-up: its summary and any request still running arrive a little later.
   const waitingOnCall = entry?.messages.some(item => item.call && (item.call.summaryStatus === "pending" || item.call.unfinished.some(task => task.status === "running"))) ? activeId : null;
   const tries = useRef(0);
   useEffect(() => { tries.current = 0; }, [waitingOnCall]);
-  usePolling(() => { if (++tries.current <= 60) fetchEntry(waitingOnCall!).then(data => setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) }))).catch(() => {}); }, 3000, !!waitingOnCall);
+  usePolling(() => { if (++tries.current <= 60) fetchEntry(waitingOnCall!).then(data => { setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) })); retitle(waitingOnCall!, data.selected.title); }).catch(() => {}); }, 3000, !!waitingOnCall);
 
   // Debounced search over titles and message text.
   useEffect(() => {
@@ -155,6 +155,10 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     try { await json(`/api/conversations/${thread.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) }); }
     catch (cause) { retitle(thread.id, thread.title); setNotice((cause as Error).message); }
   }
+  async function regenerate(thread: HistoryThread) {
+    try { retitle(thread.id, (await json<{ title: string }>(`/api/conversations/${thread.id}/title`, { method: "POST" })).title); }
+    catch (cause) { setNotice((cause as Error).message); }
+  }
   async function remove(thread: HistoryThread) {
     if (!window.confirm(`Delete “${thread.title}”? It will no longer appear in your chats. Edits it made stay in transaction history.`)) return;
     try {
@@ -169,18 +173,21 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   // Mirrors each pending exchange so the finished answer can keep its plan and tool calls.
   const live = useRef<Record<string, PendingExchange>>({});
   function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { followOutput(); live.current[id] = { question, attachments, tools: [], spoken }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  // A new chat's title can arrive before the chat is in the list.
+  const written = useRef<Record<string, string>>({});
   function onEvent(id: string, event: ChatStreamEvent) {
+    if (event.type === "title") { written.current[id] = event.title; retitle(id, event.title); return; }
     if (!live.current[id]) return;
     const next = live.current[id] = applyChatEvent(live.current[id], event);
     setPending(current => current[id] ? { ...current, [id]: next } : current);
   }
-  function onDone(id: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[]) {
+  function onDone(id: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[], standIn = question.trim().slice(0, 80)) {
     const finished = live.current[id];
     delete live.current[id];
     setPending(current => omit(current, id));
     if (!result) return;
     const now = new Date().toISOString();
-    const conversation = { id, title: question.trim().slice(0, 80), created_at: now };
+    const conversation = { id, title: written.current[id] ?? standIn, created_at: now };
     const exchange: ChatItem[] = [
       { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken: finished?.spoken },
       ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
@@ -198,6 +205,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
       const data = await fetchEntry(id);
       setEntries(current => ({ ...current, [id]: loaded(data) }));
       setThreads(current => current.some(thread => thread.id === id) ? current : [data.selected, ...current]);
+      retitle(id, data.selected.title);
       if (latest.current.selectedId === null && latest.current.draftId === id) window.history.replaceState(null, "", href(id));
     } catch (cause) { setNotice((cause as Error).message); }
   }
@@ -224,6 +232,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
             className={`min-w-0 flex-1 truncate px-2.5 py-2.5 text-[13px] ${selectedId === thread.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"}`}>{thread.title}{pending[thread.id] && <span className="sr-only"> (answering)</span>}<span className="block text-[11px] text-muted-foreground">{new Date(thread.created_at).toLocaleDateString(locale, { timeZone: timezone, dateStyle: "medium" })}</span></Link>
           <span className="flex shrink-0 pr-1 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
             <button type="button" onClick={() => setEditing(thread.id)} aria-label={`Rename ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"><Pencil className="size-3.5" aria-hidden="true" /></button>
+            <button type="button" onClick={() => void regenerate(thread)} aria-label={`Write a new title for ${thread.title}`} title="Write a new title" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"><RefreshCw className="size-3.5" aria-hidden="true" /></button>
             <button type="button" onClick={() => void remove(thread)} aria-label={`Delete ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-danger"><Trash2 className="size-3.5" aria-hidden="true" /></button>
           </span>
         </div>)}
@@ -243,7 +252,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <aside className="scroll-fade hidden h-full w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
-      {calling && !callBlocked ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
+      {calling && !callBlocked ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [], VOICE_CALL_TITLE)} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex flex-wrap items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         {/* On phones the title gets its own row, so the actions cannot squeeze it down to a few letters. */}
