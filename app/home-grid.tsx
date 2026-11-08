@@ -83,6 +83,8 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     if (!node) return;
     const rows = new ResizeObserver(entries => {
       for (const entry of entries) (entry.target as HTMLElement).style.setProperty("--rows", String(Math.ceil((entry.borderBoxSize[0].blockSize + 16) / 4)));
+      // Until every widget has its span, plain rows keep them from drawing on top of each other.
+      node.dataset.masonry = "";
     });
     for (const child of node.children) rows.observe(child);
     return () => rows.disconnect();
@@ -261,7 +263,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
       <button type="button" aria-pressed={customizing} onClick={() => { setCustomizing(on => !on); setMenu(false); }} className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">{customizing ? "Done" : "Customize"}</button>
     </div>
     <SortableContext items={shown} strategy={stay}>
-      <div ref={grid} className="grid items-start gap-4 lg:auto-rows-[4px] lg:grid-flow-row-dense lg:grid-cols-6 lg:gap-y-0 lg:[&>*]:[grid-row-end:span_var(--rows,1)]">
+      <div ref={grid} className="grid items-start gap-4 lg:grid-flow-row-dense lg:grid-cols-6 lg:data-masonry:auto-rows-[4px] lg:data-masonry:gap-y-0 lg:data-masonry:[&>*]:[grid-row-end:span_var(--rows,1)]">
         {shown.map(key => {
           const size = resizing?.key === key ? resizing.size : layout.sizes[key] ?? "M";
           return <Widget key={key} id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key || customizing} resizing={resizing?.key === key}

@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moneo Artifacts Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Moneo's own tokens (app/globals.css), light and dark. */
+:root {
+  --bg: #f4f3ee; --card: #ffffff; --fg: #141413; --muted: #ecebe5; --muted-fg: #5c5d58; --border: #e2e0d8;
+  --brand: #4a6400; --brand-soft: #f0f7dc; --brand-solid: #cbf26b; --brand-ink: #141413;
+  --ai: #5b45c9; --ai-soft: #f1eeff; --ai-border: #d6cffb;
+  --warn: #a8441c; --warn-soft: #fff1ea; --danger: #b42318; --danger-soft: #fef3f2;
+  --blue: #2a78d6; --blue-soft: #eaf2fc;
+  --shadow: 0 1px 0 rgba(20,20,19,.03), 0 18px 40px -28px rgba(20,20,19,.28);
+  --sans: "Geist", ui-sans-serif, system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, Consolas, monospace;
+  --display: "Bricolage Grotesque", "Geist", sans-serif;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #0f1011; --card: #16171a; --fg: #eeece6; --muted: #1d1e22; --muted-fg: #a3a39e; --border: #24262a;
+  --brand: #cbf26b; --brand-soft: #1c2410; --brand-solid: #cbf26b; --brand-ink: #141413;
+  --ai: #b8a6ff; --ai-soft: #1a1922; --ai-border: #3d3760;
+  --warn: #ff9a76; --warn-soft: #2a1b14; --danger: #ff7a6b; --danger-soft: #2e1614;
+  --blue: #6aa8f0; --blue-soft: #14202e;
+  --shadow: 0 1px 0 rgba(0,0,0,.2), 0 18px 40px -28px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; }
+body { font: 17px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+code, .mono { font-family: var(--mono); }
+
+/* A fixed 1600×900 stage, scaled to the window, so it records the same at any size. */
+#stage { position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px; transform-origin: center; display: flex; background: var(--bg); transition: background .3s; }
+
+/* Left rail, like Moneo's main navigation. */
+.rail { width: 96px; flex: none; display: flex; flex-direction: column; align-items: center; padding: 22px 0; gap: 4px; border-right: 1px solid var(--border); }
+.logo { width: 44px; height: 44px; border-radius: 50%; background: var(--brand-solid); color: var(--brand-ink); display: grid; place-items: center; font: 700 22px var(--display); margin-bottom: 14px; }
+.rail button { all: unset; cursor: pointer; width: 76px; padding: 6px 0 5px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted-fg); font-size: 10.5px; line-height: 1.15; text-align: center; }
+.rail button b { font: 500 12px var(--mono); width: 26px; height: 22px; border-radius: 8px; display: grid; place-items: center; }
+.rail button:hover { color: var(--fg); }
+.rail button[aria-current="true"] { background: var(--muted); color: var(--fg); }
+.rail button[aria-current="true"] b { background: var(--fg); color: var(--bg); }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.top { height: 72px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 52px; border-bottom: 1px solid var(--border); }
+.crumb { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); }
+.crumb strong { color: var(--fg); font-weight: 500; }
+.progress { flex: 1; height: 4px; border-radius: 9px; background: var(--muted); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--brand); border-radius: 9px; transition: width .4s ease; }
+.keys { font-size: 12px; color: var(--muted-fg); display: flex; gap: 10px; align-items: center; }
+kbd { font: 500 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; background: var(--card); color: var(--fg); }
+
+.scenes { position: relative; flex: 1; }
+.scene { position: absolute; inset: 0; padding: 40px 52px 36px; display: none; flex-direction: column; }
+.scene.on { display: flex; animation: enter .45s ease both; }
+@keyframes enter { from { opacity: 0; transform: translateY(10px); } }
+
+/* Step reveals: anything with data-s shows once the scene reaches that step. */
+[data-s] { opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s ease; }
+[data-s].shown { opacity: 1; transform: none; }
+svg [data-s] { transform: none; }
+.draw { stroke-dasharray: 600; stroke-dashoffset: 600; transition: stroke-dashoffset .8s ease, opacity .2s; }
+.draw.shown { stroke-dashoffset: 0; }
+
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-fg); margin: 0 0 10px; }
+h1, h2 { font-family: var(--display); letter-spacing: -.025em; margin: 0; font-weight: 600; }
+h1 { font-size: 92px; line-height: .98; }
+h2 { font-size: 46px; line-height: 1.05; margin-bottom: 8px; }
+.lede { font-size: 21px; color: var(--muted-fg); max-width: 60ch; margin: 0; }
+.head { margin-bottom: 26px; }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 22px 24px; box-shadow: var(--shadow); }
+.card h3 { margin: 0 0 6px; font: 600 21px/1.2 var(--display); letter-spacing: -.01em; }
+.card p { margin: 0; color: var(--muted-fg); font-size: 15.5px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 9px; border-radius: 99px; margin-bottom: 10px; background: var(--muted); color: var(--muted-fg); }
+.p-ai { background: var(--ai-soft); color: var(--ai); }
+.p-brand { background: var(--brand-soft); color: var(--brand); }
+.p-warn { background: var(--warn-soft); color: var(--warn); }
+.p-danger { background: var(--danger-soft); color: var(--danger); }
+.p-blue { background: var(--blue-soft); color: var(--blue); }
+.code { font: 13.5px/1.6 var(--mono); background: var(--muted); border-radius: 14px; padding: 16px 18px; margin: 0; white-space: pre; color: var(--fg); overflow: hidden; }
+.code .k { color: var(--ai); } .code .s { color: var(--brand); } .code .c { color: var(--muted-fg); } .code .n { color: var(--warn); }
+.grid { display: grid; gap: 18px; }
+.g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); } .g5 { grid-template-columns: repeat(5, 1fr); }
+.big { font: 600 44px/1 var(--display); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.tag-line { margin-top: auto; font: 500 22px/1.35 var(--display); letter-spacing: -.01em; border-left: 4px solid var(--brand); padding: 4px 0 4px 18px; }
+.tag-line span { color: var(--muted-fg); }
+ul.ticks { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+ul.ticks li { padding-left: 28px; position: relative; font-size: 16px; }
+ul.ticks li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 14px; height: 14px; border-radius: 5px; background: var(--brand-soft); border: 1.5px solid var(--brand); }
+ul.ticks.x li::before { background: var(--danger-soft); border-color: var(--danger); }
+
+/* Scene 1 */
+.hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; flex: 1; }
+.stack-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 34px; }
+.stack-tags span { font: 500 13px var(--mono); border: 1px solid var(--border); background: var(--card); padding: 6px 12px; border-radius: 99px; color: var(--muted-fg); }
+.mock { position: relative; height: 560px; }
+.mock .card { position: absolute; }
+.slider { height: 6px; border-radius: 9px; background: var(--muted); position: relative; margin: 14px 0 6px; }
+.slider i { position: absolute; left: 0; top: 0; bottom: 0; width: 46%; border-radius: 9px; background: var(--brand); }
+.slider b { position: absolute; left: 46%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--card); border: 2px solid var(--brand); }
+.example { position: absolute; right: 0; bottom: -6px; font: 500 11px var(--mono); color: var(--muted-fg); letter-spacing: .08em; text-transform: uppercase; }
+
+/* Diagrams */
+.diagram { position: relative; flex: 1; }
+.node { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow); }
+.node h4 { margin: 0 0 4px; font: 600 19px/1.2 var(--display); letter-spacing: -.01em; }
+.node p { margin: 0; font-size: 14px; color: var(--muted-fg); line-height: 1.45; }
+.node .mono { font-size: 12.5px; color: var(--muted-fg); display: block; margin-top: 8px; line-height: 1.55; }
+.node.ai { border-color: var(--ai-border); }
+.node.hl { border-color: var(--brand); }
+.lane { position: absolute; left: 0; font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-fg); display: flex; align-items: center; gap: 10px; }
+.lane::after { content: ""; width: 1100px; height: 1px; background: var(--border); }
+svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+svg.wires path { fill: none; stroke: var(--muted-fg); stroke-width: 2; }
+svg.wires path.ai { stroke: var(--ai); }
+svg.wires path.brand { stroke: var(--brand); }
+svg.wires path.danger { stroke: var(--danger); stroke-dasharray: 6 6; }
+svg.wires text { font: 500 12px var(--mono); fill: var(--muted-fg); }
+
+/* Sandbox nesting */
+.nest { border: 1.5px solid var(--border); border-radius: 22px; padding: 18px 20px 20px; background: var(--card); }
+.nest .nest { background: var(--bg); margin-top: 14px; }
+.nest .nest .nest { background: var(--card); border-color: var(--brand); border-width: 2px; }
+.nest-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.nest-title h4 { margin: 0; font: 600 18px var(--display); }
+.nest-title code { font-size: 12.5px; color: var(--muted-fg); }
+.hdr { font: 12.5px/1.6 var(--mono); color: var(--muted-fg); margin-top: 8px; }
+.hdr b { color: var(--fg); font-weight: 500; }
+.exits { display: grid; gap: 9px; }
+.exit { display: grid; grid-template-columns: 1.05fr 1.25fr; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 11px 14px; }
+.exit span:first-child { font: 500 14px var(--mono); text-decoration: line-through; text-decoration-color: var(--danger); text-decoration-thickness: 2px; }
+.exit span:last-child { font-size: 14px; color: var(--muted-fg); }
+
+/* Pipeline row */
+.pipe { display: flex; align-items: stretch; gap: 0; }
+.pipe .card { flex: 1; padding: 18px; }
+.pipe .arrow { width: 34px; flex: none; display: grid; place-items: center; color: var(--muted-fg); font-size: 22px; }
+.pipe .card h3 { font-size: 18px; }
+.pipe .card p { font-size: 14px; }
+
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15.5px; }
+th { text-align: left; font: 500 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); padding: 0 16px 10px; }
+td { padding: 16px; border-top: 1px solid var(--border); vertical-align: top; }
+td:first-child { font-weight: 600; width: 30%; }
+td:nth-child(2) { color: var(--muted-fg); width: 22%; }
+tbody tr { background: var(--card); }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; flex: 1; }
+.timeline { display: grid; gap: 12px; }
+.day { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; }
+.day small { display: block; font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); }
+.day strong { font: 600 18px var(--display); }
+.day code { font-size: 14px; }
+.arrowtxt { color: var(--brand); font-weight: 600; }
+
+.loop { position: relative; width: 620px; height: 430px; }
+.callout { background: var(--ai-soft); border: 1px solid var(--ai-border); color: var(--fg); border-radius: 16px; padding: 14px 18px; font-size: 15px; }
+.callout b { color: var(--ai); }
+.close-big { font: 600 74px/1.02 var(--display); letter-spacing: -.035em; max-width: 16ch; }
+.close-big em { font-style: normal; color: var(--brand); }
+:root[data-theme="dark"] .close-big em { color: var(--brand-solid); }
+
+.hide-rail .rail { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <nav class="rail" aria-label="Chapters">
+    <div class="logo" aria-hidden="true">m</div>
+  </nav>
+  <div class="main">
+    <header class="top">
+      <div class="crumb" id="crumb"></div>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="keys"><kbd>←</kbd><kbd>→</kbd> page <kbd>D</kbd> theme <kbd>F</kbd> full screen</div>
+    </header>
+    <div class="scenes">
+
+<!-- 1 · Title -->
+<section class="scene" data-title="Artifacts" data-short="Intro">
+  <div class="hero">
+    <div>
+      <p class="eyebrow">Moneo · open-source personal finance · deep dive</p>
+      <h1>Artifacts</h1>
+      <p class="lede" style="margin-top:22px;font-size:24px">Pages and Home cards an AI builds from your real finances, and how Moneo runs AI-written code without trusting it.</p>
+      <div class="stack-tags">
+        <span>Next.js 16</span><span>React 19</span><span>Postgres</span><span>Vercel AI SDK</span><span>QuickJS · WASM</span><span>ECharts</span><span>Zod</span>
+      </div>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="card" style="left:20px;top:10px;width:420px">
+        <span class="pill p-ai">AI page</span>
+        <h3>Portfolio</h3>
+        <div class="big" style="margin-top:8px">€ 24,180</div>
+        <svg viewBox="0 0 360 90" style="width:100%;margin-top:14px"><path d="M0 70 C40 60 60 72 90 55 S150 30 180 42 240 18 270 26 330 8 360 12" fill="none" stroke="var(--brand)" stroke-width="3"/></svg>
+      </div>
+      <div class="card" style="left:150px;top:230px;width:400px">
+        <span class="pill p-brand">Home card · slider</span>
+        <h3>Extra savings</h3>
+        <p>+ €350 a month</p>
+        <div class="slider"><i></i><b></b></div>
+        <div class="big" style="font-size:36px;margin-top:12px">€ 41,900 <span style="font-size:15px;color:var(--muted-fg);font-family:var(--sans);letter-spacing:0">in 5 years</span></div>
+      </div>
+      <div class="card" style="left:0;top:420px;width:330px">
+        <span class="pill">Page</span>
+        <h3>Subscription radar</h3>
+        <p>4 schedules · yearly estimate</p>
+      </div>
+      <span class="example">Illustrative numbers</span>
+    </div>
+  </div>
+</section>
+
+<!-- 2 · What it is -->
+<section class="scene" data-title="What an artifact is" data-short="What">
+  <div class="head">
+    <p class="eyebrow">The feature</p>
+    <h2>One chat. One page. Any number of Home cards.</h2>
+    <p class="lede">An artifact is a small app built from your data. You describe it, Moneo builds it, and it refreshes every time you open it.</p>
+  </div>
+  <div class="grid g3" style="flex:1;align-items:start">
+    <div class="card" data-s="1">
+      <span class="pill p-ai">1 · Ask</span>
+      <h3>Describe it</h3>
+      <p>“Show my Scalable portfolio with an allocation donut.” The artifact gets its own chat with every normal chat tool, the mic and cancel.</p>
+      <div class="callout" style="margin-top:16px">The chat reads your data with the same read-only tools as Moneo's assistant, then hands a brief to a designer model.</div>
+    </div>
+    <div class="card" data-s="2">
+      <span class="pill p-blue">2 · Page</span>
+      <h3>A full interactive page</h3>
+      <p>HTML, CSS and JavaScript written by the model: charts, tables, what-if sliders. It runs in a sandbox that can't reach the network.</p>
+      <ul class="ticks" style="margin-top:16px"><li>ECharts, served by Moneo itself</li><li>Moneo's colours, light and dark</li><li>Every version kept</li></ul>
+    </div>
+    <div class="card" data-s="3">
+      <span class="pill p-brand">3 · Home cards</span>
+      <h3>Widgets that look native</h3>
+      <p>Any part of it becomes a card on Home, in four sizes. You preview a draft, then add it yourself. Moneo's own React draws it, so it's not an iframe.</p>
+      <ul class="ticks" style="margin-top:16px"><li>S · M · L · XL, checked at each size</li><li>Month switches, sliders, toggles</li><li>Sits next to the built-in widgets</li></ul>
+    </div>
+  </div>
+  <p class="tag-line" data-s="4">The model writes the design. <span>Every number comes from the app.</span></p>
+</section>
+
+<!-- 3 · The hard part -->
+<section class="scene" data-title="Why this is hard" data-short="Why hard">
+  <div class="head">
+    <p class="eyebrow">The problem</p>
+    <h2>AI-written code, next to your money</h2>
+    <p class="lede">Generating a pretty page is easy. Five things make it hard to do responsibly:</p>
+  </div>
+  <div class="grid g5" style="align-items:stretch">
+    <div class="card" data-s="1"><span class="pill p-brand">Correct</span><h3>Numbers can't be guessed</h3><p>Money is integer minor units with a currency. The model must never type an amount.</p></div>
+    <div class="card" data-s="2"><span class="pill p-blue">Current</span><h3>Open it next month</h3><p>It should show next month's numbers, not a snapshot from the day it was built.</p></div>
+    <div class="card" data-s="3"><span class="pill p-danger">Safe</span><h3>Treat the code as hostile</h3><p>The model reads your merchants and notes. A prompt injection in a transaction could steer it.</p></div>
+    <div class="card" data-s="4"><span class="pill p-warn">Private</span><h3>Local-first</h3><p>Moneo runs on 127.0.0.1. A generated page must have no way to send your data anywhere.</p></div>
+    <div class="card" data-s="5"><span class="pill p-ai">Native</span><h3>Feels like the app</h3><p>A Home card should look like Moneo built it, not like an embedded web page.</p></div>
+  </div>
+  <p class="tag-line" data-s="6">Each of these became one layer of the architecture. <span>Here's how they fit together.</span></p>
+</section>
+
+<!-- 4 · Architecture -->
+<section class="scene" data-title="Architecture" data-short="Architecture">
+  <div class="head" style="margin-bottom:18px">
+    <p class="eyebrow">Architecture</p>
+    <h2>Build once, render every time</h2>
+  </div>
+  <div class="diagram" style="flex:none;width:1396px;height:600px">
+    <div class="lane" style="top:0">Build · once per change</div>
+    <div class="lane" style="top:318px">View · every time it opens</div>
+
+    <div class="node" data-s="1" style="left:0;top:34px;width:190px;height:180px">
+      <span class="pill">Owner</span>
+      <h4>“Add a card with a savings slider”</h4>
+    </div>
+    <div class="node ai" data-s="1" style="left:236px;top:34px;width:270px;height:180px">
+      <span class="pill p-ai">Chat model</span>
+      <h4>Artifact chat</h4>
+      <p>Reads data with chat's tools, writes a brief and the queries.</p>
+      <span class="mono">write_page · write_card<br>card_preset · remove_card</span>
+    </div>
+    <div class="node ai" data-s="2" style="left:552px;top:34px;width:240px;height:180px">
+      <span class="pill p-ai">Designer model</span>
+      <h4>Writes the code</h4>
+      <p>Brief + a sample of live data → HTML for a page, TSX for a card.</p>
+    </div>
+    <div class="node" data-s="3" style="left:838px;top:34px;width:250px;height:180px">
+      <span class="pill p-warn">Verify gate</span>
+      <h4>Proves it works</h4>
+      <p>Parse, compile, render at every size with real data. Errors go back to the designer.</p>
+    </div>
+    <div class="node" data-s="4" style="left:1134px;top:34px;width:240px;height:180px">
+      <span class="pill p-blue">Postgres</span>
+      <h4>Code + queries</h4>
+      <p>Append-only versions. Never the numbers themselves.</p>
+    </div>
+
+    <div class="node" data-s="5" style="left:1134px;top:352px;width:240px;height:236px">
+      <span class="pill p-brand">Query runner</span>
+      <h4>Data, made by the app</h4>
+      <p>Resolves <code>@month_start</code> for today, checks AI data scopes, runs the same read-only finance code as chat.</p>
+    </div>
+    <div class="node" data-s="6" style="left:560px;top:352px;width:520px;height:108px">
+      <span class="pill p-blue">Page</span>
+      <h4>Frame route → double-sandboxed iframe</h4>
+      <p>Data injected as <code>window.MONEO_DATA</code>; CSP blocks every request.</p>
+    </div>
+    <div class="node" data-s="7" style="left:560px;top:480px;width:520px;height:108px">
+      <span class="pill p-brand">Card</span>
+      <h4>QuickJS → tree check → Moneo's React</h4>
+      <p>The card's code returns JSON; the app draws it with its own components.</p>
+    </div>
+    <div class="node" data-s="6" style="left:236px;top:352px;width:270px;height:236px">
+      <span class="pill">Your screen</span>
+      <h4>Page tab, gallery, Home grid</h4>
+      <p>Each card streams in on its own. One failure shows a message in that card only.</p>
+    </div>
+    <div class="node hl" data-s="8" style="left:0;top:352px;width:190px;height:236px;background:var(--brand-soft)">
+      <h4 style="font-size:20px">The model runs once. The data runs every time.</h4>
+    </div>
+
+    <svg class="wires" viewBox="0 0 1396 600" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted-fg)" stroke="none"/></marker>
+        <marker id="ahai" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--ai)" stroke="none"/></marker>
+        <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--brand)" stroke="none"/></marker>
+        <marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--danger)" stroke="none"/></marker>
+      </defs>
+      <path class="draw ai" data-s="1" d="M190 124 H234" marker-end="url(#ahai)"/>
+      <path class="draw ai" data-s="2" d="M506 124 H550" marker-end="url(#ahai)"/>
+      <path class="draw" data-s="3" d="M792 124 H836" marker-end="url(#ah)"/>
+      <path class="draw danger" data-s="3" d="M963 214 C963 268 672 268 672 216" marker-end="url(#ahd)"/>
+      <text data-s="3" x="740" y="284" style="fill:var(--danger)">errors · up to 3 tries</text>
+      <path class="draw" data-s="4" d="M1088 124 H1132" marker-end="url(#ah)"/>
+      <path class="draw brand" data-s="5" d="M1330 214 V350" marker-end="url(#ahb)"/>
+      <text data-s="5" x="1218" y="290">saved queries</text>
+      <path class="draw brand" data-s="6" d="M1134 406 H1082" marker-end="url(#ahb)"/>
+      <path class="draw brand" data-s="7" d="M1134 534 H1082" marker-end="url(#ahb)"/>
+      <path class="draw" data-s="6" d="M560 406 H508" marker-end="url(#ah)"/>
+      <path class="draw" data-s="7" d="M560 534 H508" marker-end="url(#ah)"/>
+    </svg>
+  </div>
+</section>
+
+<!-- 5 · Data contract -->
+<section class="scene" data-title="The data contract" data-short="Data">
+  <div class="head">
+    <p class="eyebrow">Layer 1 · Correct and current</p>
+    <h2>The AI never writes a number</h2>
+    <p class="lede">It saves <em>which data</em> a page needs, as queries. Moneo reruns them every time the page or card is shown.</p>
+  </div>
+  <div class="split">
+    <div style="display:grid;gap:16px;align-content:start">
+      <pre class="code" data-s="1"><span class="c">// saved with the page, not the result</span>
+{
+  <span class="k">"name"</span>: <span class="s">"thisMonth"</span>,
+  <span class="k">"source"</span>: <span class="s">"cashflow"</span>,
+  <span class="k">"input"</span>: {
+    <span class="k">"from"</span>: <span class="n">"@month_start"</span>,
+    <span class="k">"to"</span>: <span class="n">"@today"</span>,
+    <span class="k">"currencyCode"</span>: <span class="s">"EUR"</span>
+  }
+}</pre>
+      <div class="card" data-s="3">
+        <span class="pill p-brand">Guardrails</span>
+        <ul class="ticks">
+          <li>17 read-only sources, the same code as chat's tools, scopes checked on every view</li>
+          <li>Literal dates are refused unless the owner asked for a fixed period</li>
+          <li>Money arrives as exact <code>*_minor</code> strings; math uses <code>BigInt</code>, never parsed display text</li>
+          <li>A failed source returns <code>{ error }</code> and the page says so</li>
+        </ul>
+      </div>
+    </div>
+    <div style="display:grid;gap:12px;align-content:start">
+      <p class="eyebrow" data-s="2">Same page, opened on different days</p>
+      <div class="timeline">
+        <div class="day" data-s="2"><div><small>Opened</small><strong>7 Nov</strong></div><code>@month_start <span class="arrowtxt">→</span> 2026-11-01</code></div>
+        <div class="day" data-s="2"><div><small>Opened</small><strong>3 Dec</strong></div><code>@month_start <span class="arrowtxt">→</span> 2026-12-01</code></div>
+        <div class="day" data-s="2"><div><small>Card param</small><strong>Last month</strong></div><code>@param:month.from <span class="arrowtxt">→</span> 2026-10-01</code></div>
+      </div>
+      <div class="card" data-s="4" style="margin-top:6px">
+        <span class="pill p-blue">In the browser</span>
+        <pre class="code" style="background:transparent;padding:0;font-size:13px">window.MONEO_DATA = {
+  thisMonth: { spending_minor: <span class="s">"184250"</span>,
+               spending_formatted: <span class="s">"€1,842.50"</span>, … }
+}</pre>
+      </div>
+    </div>
+  </div>
+  <p class="tag-line" data-s="5">The model owns the presentation. <span>Moneo owns the numbers.</span></p>
+</section>
+
+<!-- 6 · Generate & verify -->
+<section class="scene" data-title="Generate and verify" data-short="Verify">
+  <div class="head">
+    <p class="eyebrow">Layer 2 · Never save something broken</p>
+    <h2>Two models, and a gate between them and your Home</h2>
+  </div>
+  <div class="split" style="grid-template-columns:740px 1fr">
+    <div class="loop">
+      <div class="node ai" data-s="1" style="left:0;top:0;width:250px;height:150px"><span class="pill p-ai">Chat model</span><h4>Plans</h4><p>Picks the data, writes a brief with exact field paths.</p></div>
+      <div class="node ai" data-s="1" style="left:330px;top:0;width:270px;height:150px"><span class="pill p-ai">Designer model</span><h4>Writes</h4><p>Gets the brief plus a real sample of the data, so it sees the true shape.</p></div>
+      <div class="node" data-s="2" style="left:330px;top:210px;width:270px;height:210px"><span class="pill p-warn">Check</span><h4>Proves it</h4>
+        <span class="mono">page: every inline script compiles (node:vm, never run)<br>card: TSX compiles · renders at S M L XL · sliders at min and max · every control present · tree passes</span></div>
+      <div class="node hl" data-s="3" style="left:0;top:270px;width:250px;height:150px"><span class="pill p-brand">Save</span><h4>New version</h4><p>Only now. A failed run keeps the current version.</p></div>
+      <svg class="wires" viewBox="0 0 620 430" preserveAspectRatio="none" aria-hidden="true">
+        <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted-fg)"/></marker>
+        <marker id="ah2d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--danger)"/></marker></defs>
+        <path class="draw" data-s="1" d="M250 75 H328" marker-end="url(#ah2)"/>
+        <path class="draw" data-s="2" d="M440 150 V208" marker-end="url(#ah2)"/>
+        <path class="draw danger" data-s="2" d="M600 300 C660 300 660 75 602 75" marker-end="url(#ah2d)"/>
+        <text data-s="2" x="656" y="186" style="fill:var(--danger)">errors</text>
+        <text data-s="2" x="656" y="202" style="fill:var(--danger)">up to 3×</text>
+        <path class="draw" data-s="3" d="M330 345 H252" marker-end="url(#ah2)"/>
+      </svg>
+    </div>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="card" data-s="4">
+        <span class="pill p-blue">Durable</span>
+        <h3>Close the tab, it keeps going</h3>
+        <ul class="ticks" style="margin-top:10px">
+          <li>Each request is a <code>chat_requests</code> row; <code>after()</code> keeps the run alive</li>
+          <li>Reopen and it shows as working, then the result</li>
+          <li>280 s budget, up to 16 tool steps</li>
+        </ul>
+      </div>
+      <div class="card" data-s="5">
+        <span class="pill p-danger">Races</span>
+        <h3>Cancel means cancel</h3>
+        <ul class="ticks" style="margin-top:10px">
+          <li><code>ensureActive()</code> right before every write</li>
+          <li>Unique version numbers: a parallel change gets “another change finished first”</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · Page sandbox -->
+<section class="scene" data-title="Sandboxing a page" data-short="Page sandbox">
+  <div class="head" style="margin-bottom:20px">
+    <p class="eyebrow">Layer 3 · Safe and private: pages</p>
+    <h2>A page can read your data, and nothing else</h2>
+  </div>
+  <div class="split" style="grid-template-columns:1.1fr 1fr">
+    <div class="nest" data-s="1" style="align-self:start">
+      <div class="nest-title"><h4>Moneo app</h4><code>127.0.0.1:3000/ai/artifacts/:id</code></div>
+      <div class="nest" data-s="2">
+        <div class="nest-title"><h4>Frame document</h4><code>/ai/artifacts/:id/frame</code></div>
+        <div class="hdr">Content-Security-Policy (header)<br><b>default-src 'none'</b> · <b>frame-src 'none'</b><br><b>sandbox allow-scripts</b> · frame-ancestors 'self'</div>
+        <div class="nest" data-s="3">
+          <div class="nest-title"><h4>Generated page</h4><code>iframe sandbox srcdoc</code></div>
+          <div class="hdr">opaque origin · no cookies · no storage · no parent DOM<br>
+          meta CSP: <b>default-src 'none'</b>; script-src 'unsafe-inline' <b>/artifact-lib/</b><br>
+          img-src data: blob: · form-action 'none'</div>
+          <pre class="code" style="margin-top:12px;font-size:12.5px;padding:12px 14px"><span class="k">&lt;script&gt;</span>window.MONEO_DATA = {…}<span class="c">  // fresh for today</span><span class="k">&lt;/script&gt;</span>
+<span class="k">&lt;style&gt;</span>/* Moneo tokens + kit, light/dark */<span class="k">&lt;/style&gt;</span>
+<span class="c">&lt;!-- the model's HTML --&gt;</span></pre>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;gap:12px;align-content:start">
+      <p class="eyebrow" data-s="4">Every way out, closed</p>
+      <div class="exits">
+        <div class="exit" data-s="4"><span>fetch() · XHR · WebSocket</span><span>default-src 'none'</span></div>
+        <div class="exit" data-s="4"><span>&lt;img src="evil?data"&gt;</span><span>images only from data: and blob:</span></div>
+        <div class="exit" data-s="4"><span>CDN &lt;script&gt;</span><span>scripts only inline or Moneo's /artifact-lib/</span></div>
+        <div class="exit" data-s="5"><span>&lt;form&gt; submit</span><span>form-action 'none'</span></div>
+        <div class="exit" data-s="5"><span>location = …, links, meta refresh</span><span>frame-src 'none' on the parent blocks the frame navigating</span></div>
+        <div class="exit" data-s="5"><span>window.open · top navigation</span><span>sandbox without allow-popups or top navigation</span></div>
+      </div>
+      <div class="callout" data-s="6"><b>Why two frames?</b> A page can't be trusted to keep its own policy. Only the parent's <code>frame-src</code> stops the child frame from navigating to a URL with your data in it, so the wrapper exists to hold that header.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · Cards pipeline -->
+<section class="scene" data-title="Cards are data, not DOM" data-short="Cards">
+  <div class="head">
+    <p class="eyebrow">Layer 4 · Native: Home cards</p>
+    <h2>A card's code returns JSON. Moneo draws it.</h2>
+    <p class="lede">Ten iframes on Home would be slow, can't share Moneo's components or theme, and never quite look native. So a card isn't a web page.</p>
+  </div>
+  <div class="pipe" style="margin-bottom:22px">
+    <div class="card" data-s="1"><span class="pill p-ai">Designer</span><h3>TSX</h3><p>A pure function of <code>{ data, params, size }</code>.</p></div>
+    <div class="arrow" data-s="2">→</div>
+    <div class="card" data-s="2"><span class="pill">sucrase</span><h3>Compile</h3><p>JSX becomes <code>h()</code> calls.</p></div>
+    <div class="arrow" data-s="3">→</div>
+    <div class="card" data-s="3" style="border-color:var(--warn)"><span class="pill p-warn">QuickJS · WASM</span><h3>Run in a sandbox</h3><p>Fresh runtime per render. 64 MB, 1 s deadline. No imports, fetch, timers.</p></div>
+    <div class="arrow" data-s="4">→</div>
+    <div class="card" data-s="4"><span class="pill p-danger">Tree check</span><h3>Allowlist</h3><p>Elements, attributes, CSS and Kit props, checked.</p></div>
+    <div class="arrow" data-s="5">→</div>
+    <div class="card" data-s="5" style="border-color:var(--brand)"><span class="pill p-brand">Moneo React</span><h3>Native card</h3><p>Our components, fonts and theme.</p></div>
+  </div>
+  <div class="grid g2" style="align-items:start">
+    <pre class="code" data-s="1"><span class="c">// written by the designer model</span>
+<span class="k">export default function</span> Card({ data, params, size }) {
+  <span class="k">const</span> extra = BigInt(params.extra);
+  <span class="k">const</span> total = BigInt(data.saved.net_minor) + extra * <span class="n">60n</span>;
+  <span class="k">return</span> &lt;div&gt;
+    &lt;Kit.Money minor={total.toString()} currency=<span class="s">"EUR"</span> /&gt;
+    &lt;Kit.Param name=<span class="s">"extra"</span> /&gt;
+    {size !== <span class="s">"S"</span> &amp;&amp; &lt;Kit.Chart type=<span class="s">"area"</span> … /&gt;}
+  &lt;/div&gt;;
+}</pre>
+    <pre class="code" data-s="4"><span class="c">// what leaves the sandbox: plain data</span>
+{ <span class="k">"type"</span>: <span class="s">"div"</span>, <span class="k">"props"</span>: {}, <span class="k">"children"</span>: [
+  { <span class="k">"type"</span>: <span class="s">"kit:Money"</span>,
+    <span class="k">"props"</span>: { <span class="k">"minor"</span>: <span class="s">"4190000"</span>, <span class="k">"currency"</span>: <span class="s">"EUR"</span> } },
+  { <span class="k">"type"</span>: <span class="s">"kit:Param"</span>, <span class="k">"props"</span>: { <span class="k">"name"</span>: <span class="s">"extra"</span> } },
+  { <span class="k">"type"</span>: <span class="s">"kit:Chart"</span>, … }
+]}
+<span class="c">// Kit is a Proxy: Kit.Money is just the string "kit:Money"</span></pre>
+  </div>
+</section>
+
+<!-- 9 · Tree check -->
+<section class="scene" data-title="The tree check" data-short="Tree check">
+  <div class="head">
+    <p class="eyebrow">Layer 4 · Defence in depth</p>
+    <h2>The sandbox stops code. The check stops markup.</h2>
+    <p class="lede">QuickJS can't touch the host, but the tree it returns is still untrusted: a stray <code>url()</code> in CSS is a request. So every node is checked before React sees it.</p>
+  </div>
+  <div class="grid g3" style="flex:1;align-items:start">
+    <div class="card" data-s="1"><span class="pill p-brand">Elements</span><h3>Allowlisted HTML and SVG</h3>
+      <ul class="ticks" style="margin-top:10px"><li>div, table, progress, svg, path, gradients, filters…</li><li>No a, img, script, form, iframe or <code>&lt;use&gt;</code></li><li>No event handlers</li></ul></div>
+    <div class="card" data-s="2"><span class="pill p-warn">Attributes &amp; CSS</span><h3>Nothing that loads</h3>
+      <ul class="ticks" style="margin-top:10px"><li>Only <code>url(#local-id)</code>, rewritten to the card's scope</li><li>url(), image-set(), @import refused; backslashes refused so escapes can't spell them</li><li>CSS parsed with PostCSS, every selector prefixed with the card, keyframes renamed</li></ul></div>
+    <div class="card" data-s="3"><span class="pill p-ai">Kit</span><h3>The only interactive parts</h3>
+      <ul class="ticks" style="margin-top:10px"><li>Money, Chart, Tabs, Param, Link, Style</li><li>Props parsed with Zod <code>.strict()</code>; unknown props refused</li><li>Kit.Link only goes to Moneo's own pages, by enum</li></ul></div>
+  </div>
+  <p class="tag-line" data-s="4">Errors aren't silent: <span>they go back to the designer, which fixes the card before it's ever saved.</span></p>
+</section>
+
+<!-- 10 · Interactivity -->
+<section class="scene" data-title="Two kinds of controls" data-short="Controls">
+  <div class="head">
+    <p class="eyebrow">Interactivity</p>
+    <h2>New data goes to the server. A what-if stays in your browser.</h2>
+  </div>
+  <div class="grid g2" style="flex:1;align-items:start">
+    <div class="card" data-s="1">
+      <span class="pill p-blue">Month switch · period · choice</span>
+      <h3>Needs different data</h3>
+      <div class="pipe" style="margin-top:16px">
+        <div class="card" style="box-shadow:none"><p><b style="color:var(--fg)">Click</b> “October”</p></div><div class="arrow">→</div>
+        <div class="card" style="box-shadow:none"><p class="mono" style="font-size:12.5px">GET /api/cards/:id<br>?p.month=2026-10</p></div><div class="arrow">→</div>
+        <div class="card" style="box-shadow:none"><p>queries · QuickJS · check</p></div>
+      </div>
+      <p style="margin-top:14px">The param resolves into the saved query's dates on the server.</p>
+    </div>
+    <div class="card" data-s="2" style="border-color:var(--brand)">
+      <span class="pill p-brand">Slider · toggle</span>
+      <h3>Same data, new maths</h3>
+      <div class="pipe" style="margin-top:16px">
+        <div class="card" style="box-shadow:none"><p><b style="color:var(--fg)">Drag</b> to €350</p></div><div class="arrow">→</div>
+        <div class="card" style="box-shadow:none"><p>QuickJS WASM, loaded in the browser on demand</p></div><div class="arrow">→</div>
+        <div class="card" style="box-shadow:none"><p>same tree check · zero requests</p></div>
+      </div>
+      <p style="margin-top:14px">The server sends the compiled code and data along with the card. The browser reruns it in the same sandbox, so it responds instantly.</p>
+    </div>
+  </div>
+  <p class="tag-line" data-s="3">One engine, one check, <span>on both sides of the wire.</span></p>
+</section>
+
+<!-- 11 · Speed -->
+<section class="scene" data-title="Making Home fast" data-short="Speed">
+  <div class="head">
+    <p class="eyebrow">Performance</p>
+    <h2>A sandbox on every render, and Home still feels instant</h2>
+  </div>
+  <div class="grid g3" style="align-items:start">
+    <div class="card" data-s="1"><span class="pill p-brand">Cache</span><h3>Keyed by the data itself</h3>
+      <pre class="code" style="margin-top:12px;font-size:12.5px">sha256([renderer, workspace,
+  cardVersion, { data, params, size }])</pre>
+      <p style="margin-top:12px">Same inputs, same tree, so a repeat view skips the sandbox. The data is in the key, so a cached card is never older than its data. 500-entry LRU.</p></div>
+    <div class="card" data-s="2"><span class="pill p-blue">Shared reads</span><h3>One query, many cards</h3>
+      <p style="margin-top:6px">Cards on one Home share a promise map, so five cards that need balances run that read once.</p></div>
+    <div class="card" data-s="3"><span class="pill p-ai">Streaming</span><h3>Each card on its own</h3>
+      <p style="margin-top:6px">Every card is its own Suspense boundary. A slow Scalable call delays one card, and an error becomes a message in that card instead of a broken Home.</p></div>
+  </div>
+</section>
+
+<!-- 12 · History & control -->
+<section class="scene" data-title="History and control" data-short="History">
+  <div class="head">
+    <p class="eyebrow">Ownership</p>
+    <h2>The AI proposes. You publish.</h2>
+    <p class="lede">Moneo keeps the history of anything that touches your money. Artifacts follow the same rule.</p>
+  </div>
+  <div class="grid g3" style="align-items:start">
+    <div class="card" data-s="1"><span class="pill p-blue">Versions</span><h3>Append-only</h3><p>Every page and card change is a new row in <code>artifact_versions</code> or <code>artifact_card_versions</code>. Nothing is edited in place.</p></div>
+    <div class="card" data-s="2"><span class="pill p-brand">Draft → Home</span><h3>Your button, not the model's</h3><p>A new card is a draft you preview at each size. <code>published_version</code> only moves when you press Add or Update, and Home never shows a draft's title.</p></div>
+    <div class="card" data-s="3"><span class="pill p-warn">Reverse path</span><h3>Clean exits</h3><p>Remove a card, delete an artifact, reset all data: they drop off Home and are covered by the workspace reset and isolation tests.</p></div>
+  </div>
+</section>
+
+<!-- 13 · Decisions -->
+<section class="scene" data-title="Decisions and trade-offs" data-short="Decisions">
+  <div class="head" style="margin-bottom:16px">
+    <p class="eyebrow">Decisions</p>
+    <h2>What I chose, and why</h2>
+  </div>
+  <table>
+    <thead><tr><th>Chose</th><th>Instead of</th><th>Because</th></tr></thead>
+    <tbody>
+      <tr data-s="1"><td>Save queries, rerun on view</td><td>Bake data into HTML</td><td>Pages stay current, and every number is app-made</td></tr>
+      <tr data-s="2"><td>Chat model + designer model</td><td>One model does it all</td><td>The planner keeps tools and history; the designer gets a focused brief and a real data sample</td></tr>
+      <tr data-s="3"><td>Verify, retry with errors, then save</td><td>Save and hope</td><td>A broken version never replaces a working one</td></tr>
+      <tr data-s="4"><td>Two sandboxed frames + CSP</td><td>One iframe</td><td>Only the parent's frame-src can stop the page navigating out with data</td></tr>
+      <tr data-s="5"><td>Cards as a JSON tree, drawn by our React</td><td>An iframe per card</td><td>Native look, one theme, cheap to have many on Home</td></tr>
+      <tr data-s="6"><td>QuickJS in WASM</td><td>eval, node:vm, Web Worker</td><td>Real isolation with memory and time limits, and the same engine on server and browser</td></tr>
+      <tr data-s="7"><td>ECharts from Moneo's node_modules</td><td>A CDN</td><td>Works offline, and the CSP can forbid every other origin</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 14 · Close -->
+<section class="scene" data-title="Takeaway" data-short="Close">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:34px">
+    <p class="eyebrow">Takeaway</p>
+    <div class="close-big" data-s="1">Let the model <em>design</em>.<br>Let the app own the <em>truth</em>.</div>
+    <div class="grid g3" style="max-width:1150px">
+      <div class="card" data-s="2"><h3>Numbers from code</h3><p>Saved queries, rerun every view.</p></div>
+      <div class="card" data-s="2"><h3>Code that can't leak</h3><p>CSP, sandboxed frames, QuickJS, an allowlist.</p></div>
+      <div class="card" data-s="2"><h3>Owner in control</h3><p>Verified versions, drafts, your publish button.</p></div>
+    </div>
+    <p class="mono" data-s="3" style="color:var(--muted-fg);font-size:16px">github.com/indkhan/Moneo · open source · runs on your own computer</p>
+  </div>
+</section>
+
+    </div>
+  </div>
+</div>
+<script>
+const scenes = [...document.querySelectorAll(".scene")];
+const rail = document.querySelector(".rail");
+let index = 0;
+
+scenes.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.innerHTML = `<b>${String(i + 1).padStart(2, "0")}</b>${s.dataset.short}`;
+  b.onclick = () => go(i);
+  rail.append(b);
+});
+
+// One page per scene: everything on it fades in by itself, in its data-s order, so only a scene change needs a key.
+function render() {
+  scenes.forEach((s, i) => s.classList.toggle("on", i === index));
+  const s = scenes[index];
+  const parts = [...s.querySelectorAll("[data-s]")];
+  parts.forEach(e => { e.classList.remove("shown"); e.style.transitionDelay = `${(+e.dataset.s - 1) * 90}ms`; });
+  requestAnimationFrame(() => requestAnimationFrame(() => parts.forEach(e => e.classList.add("shown"))));
+  [...rail.querySelectorAll("button")].forEach((b, i) => b.setAttribute("aria-current", i === index));
+  document.getElementById("crumb").innerHTML = `<strong>${String(index + 1).padStart(2, "0")}</strong> / ${scenes.length} · ${s.dataset.title}`;
+  document.getElementById("bar").style.width = `${((index + 1) / scenes.length) * 100}%`;
+  try { history.replaceState(null, "", `#${index + 1}`); } catch {}
+}
+function go(i) { index = Math.max(0, Math.min(scenes.length - 1, i)); render(); }
+function next() { if (index < scenes.length - 1) go(index + 1); }
+function prev() { if (index > 0) go(index - 1); }
+
+addEventListener("keydown", e => {
+  if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(scenes.length - 1);
+  else if (e.key.toLowerCase() === "d") setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  else if (e.key.toLowerCase() === "f") document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+  else if (e.key.toLowerCase() === "r") document.body.classList.toggle("hide-rail");
+});
+document.querySelector(".scenes").addEventListener("click", e => { if (!e.target.closest("button,a")) next(); });
+
+function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("moneo-deep-dive-theme", t); } catch {} }
+let saved = null; try { saved = localStorage.getItem("moneo-deep-dive-theme"); } catch {}
+setTheme(saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+
+function fit() {
+  const k = Math.min(innerWidth / 1600, innerHeight / 900);
+  document.getElementById("stage").style.transform = `translate(-50%, -50%) scale(${k})`;
+}
+addEventListener("resize", fit); fit();
+
+const m = /^#(\d+)/.exec(location.hash);
+go(m ? +m[1] - 1 : 0);
+</script>
+</body>
+</html>

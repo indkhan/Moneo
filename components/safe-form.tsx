@@ -15,7 +15,8 @@ export function SafeForm({ action, className, children }: { action: (state: Safe
     if (wasPending.current && !pending && !state.error) form.current?.reset();
     wasPending.current = pending;
   }, [pending, state.error]);
-  return <form ref={form} className={className} onSubmit={event => {
+  // action covers a press before hydration (React posts it to the server action); afterwards onSubmit handles it.
+  return <form ref={form} className={className} action={submit} onSubmit={event => {
     event.preventDefault();
     // The pressed button's name and value count, so one form can hold several choices.
     const data = new FormData(event.currentTarget, (event.nativeEvent as SubmitEvent).submitter);

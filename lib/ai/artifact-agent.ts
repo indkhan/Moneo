@@ -81,7 +81,12 @@ function otherOption(params: CardParam[], day: string, locale: string) {
 }
 
 const unfence = (text: string) => text.trim().replace(/^```[a-z]*\n/i, "").replace(/\n```$/, "").trim();
-const sample = (data: unknown) => { const json = JSON.stringify(data, null, 1); return json.length > 24000 ? `${json.slice(0, 24000)}\n… (truncated)` : json; };
+// Long lists keep their first items, so one big query can't push the others' shapes out of the designer's sample.
+const SAMPLE_ITEMS = 3;
+const shorten = (value: unknown): unknown => Array.isArray(value)
+  ? [...value.slice(0, SAMPLE_ITEMS).map(shorten), ...value.length > SAMPLE_ITEMS ? [`… ${value.length - SAMPLE_ITEMS} more`] : []]
+  : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, shorten(item)])) : value;
+const sample = (data: unknown) => { const json = JSON.stringify(shorten(data), null, 1); return json.length > 24000 ? `${json.slice(0, 24000)}\n… (truncated)` : json; };
 
 async function design(run: Run, system: string, prompt: string) {
   const model = await modelForSettings(run.context.settings, "artifacts");
