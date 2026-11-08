@@ -10,6 +10,7 @@ import { ScalableConnection } from "@/components/scalable-connection";
 import { AiUsage } from "./ai-usage";
 import { AiAccess } from "./ai-access";
 import { SetupSecrets } from "./setup-secrets";
+import { PhoneAccessSection } from "./phone-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
 
 export const metadata = { title: "Settings" };
@@ -53,6 +54,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <AiAccess message={query.chatgpt} />
           <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
           <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
+          <div id="phone" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={2} />}><PhoneAccessSection /></Suspense></div>
           <SetupSecrets />
         </section>
         <SettingsForm settings={settings} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
