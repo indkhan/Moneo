@@ -1,0 +1,5 @@
+Continue where you left off.
+
+---
+
+You stopped on an API rate limit, not on an error of yours. Continue where you left off, under the same brief and the same safety rules. State: steps 1-3 are committed through 9aadd01f, and step 4 is uncommitted in your worktree (29 changed files, including migration 202611080005 and the repayment, archive and cash-card work). Keep that work: check it, finish step 4, commit it in steps, then do steps 5 and 6, the doc update, all final checks and the final report. Your private Docker project moneo-nw is still running; remove it, its volumes and any copied .env, e2e/.auth.json and .qa when you finish. Commit whenever a step's tests pass, so a further interruption loses nothing.
