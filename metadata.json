@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6XNMAPP4TC3FK3YPMZMTCQC",
+  "strategy": "manual-commit",
+  "branch": "t3/moneo-feature-showcase-video",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/use-follow-output.ts",
+    "promo/demo/shots.mjs",
+    "promo/src/Promo.tsx",
+    "promo/src/timeline.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18,
+    "cache_creation_tokens": 16973,
+    "cache_read_tokens": 4692248,
+    "output_tokens": 8378,
+    "api_call_count": 9
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
