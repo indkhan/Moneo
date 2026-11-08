@@ -42,7 +42,10 @@ export function netWorthModel(evidence: NetWorthEvidence) {
   const firstReal = firstSyncedOn(valuations, scalable.knownIds);
   // Real reads of Scalable only: the current row isn't a read, its events are.
   const reads = valuations.filter(row => scalable.knownIds.has(row.item_id) && row.created_at < "9999");
-  const coveredFrom = balances.ledger.reduce<string | null>((first, row) => row.status === "posted" && (first === null || row.posted_on < first) ? row.posted_on : first, null);
+  // Before every account has data, a broker transfer's other side can't be on record, so it isn't called unresolved.
+  const firstPosted = new Map<string, string>();
+  for (const row of balances.ledger) if (row.status === "posted" && (!firstPosted.has(row.account_id) || row.posted_on < firstPosted.get(row.account_id)!)) firstPosted.set(row.account_id, row.posted_on);
+  const coveredFrom = [...firstPosted.values()].reduce<string | null>((latest, date) => latest === null || date > latest ? date : latest, null);
   const { windows, unresolved } = matchTransfers({ transfers: transfers.rows, legs, firstReal, reads, complete: transfers.complete, coveredFrom });
   const accounts = resolveBalances(balances.accounts, balances.snapshots, balances.ledger, balances.asOf, timeZone).filter(account => !account.archived_at);
   const active = items.filter(item => !item.removed_at);

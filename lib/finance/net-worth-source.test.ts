@@ -123,6 +123,15 @@ describe("own money between accounts, on every screen", () => {
     expect(netWorth(model.now).get("EUR")).toBe(160000n);
     expect(model.unresolved).toMatchObject([{ key: "broker:D", reason: "missing" }]);
   });
+
+  it("doesn't list a broker transfer from before every account has data: its other side can't be on record", async () => {
+    const broker = (provider_id: string, on_date: string) => ({ provider_id, type: "DEPOSIT", amount_minor: "13000", currency_code: "EUR", on_date, occurred_at: `${on_date}T00:00:00Z`, status: "SETTLED", is_cancellation: false, returns_provider_id: null, description: null });
+    tables.accounts.push({ id: "newer", name: "Newer", type: "checking", currency_code: "EUR", archived_at: null, version: 1 });
+    tables.transactions = [posting("a", "bank", "-100", "2024-12-05"), posting("b", "newer", "-100", "2025-11-09")];
+    tables.scalable_connections = [{ portfolio: { itemIds: [] }, transfers_backfilled_at: "2026-11-07T10:00:00Z" }];
+    tables.scalable_transfers = [broker("old", "2025-02-03"), broker("recent", "2026-01-10")];
+    expect((await load()).unresolved.map(row => row.key)).toEqual(["broker:recent"]);
+  });
 });
 
 describe("this month, split", () => {
