@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6XN0DV06WV9AYBCHXSWY9EC",
+  "strategy": "manual-commit",
+  "branch": "t3/moneo-feature-showcase-video",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "promo/.gitignore",
+    "promo/demo/index.mjs",
+    "promo/demo/recorder.mjs",
+    "promo/demo/seed.mjs",
+    "promo/demo/shot-call.mjs",
+    "promo/demo/shots.mjs",
+    "promo/demo/transcribe.mjs",
+    "promo/scripts/make-audio.mts",
+    "promo/src/Promo.tsx",
+    "promo/src/call-words.json",
+    "promo/src/kit.tsx",
+    "promo/src/scenes/Budget.tsx",
+    "promo/src/scenes/Build.tsx",
+    "promo/src/scenes/Call.tsx",
+    "promo/src/scenes/Everything.tsx",
+    "promo/src/scenes/Hook.tsx",
+    "promo/src/scenes/Own.tsx",
+    "promo/src/scenes/Plan.tsx",
+    "promo/src/scenes/Power.tsx",
+    "promo/src/scenes/See.tsx",
+    "promo/src/scenes/Trade.tsx",
+    "promo/src/timeline.ts",
+    "promo/tsconfig.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 28,
+    "cache_creation_tokens": 62007,
+    "cache_read_tokens": 6370416,
+    "output_tokens": 38324,
+    "api_call_count": 14
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

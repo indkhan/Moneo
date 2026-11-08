@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6XN0DV06WV9AYBCHXSWY9EC",
+  "session_id": "624ac06d-f3ae-4b4f-a66b-79860a0ed349",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-08T13:19:22.6101066Z",
+  "branch": "t3/moneo-feature-showcase-video",
+  "checkpoints_count": 1,
+  "save_step_count": 2,
+  "files_touched": [
+    "promo/.gitignore",
+    "promo/demo/index.mjs",
+    "promo/demo/recorder.mjs",
+    "promo/demo/seed.mjs",
+    "promo/demo/shot-call.mjs",
+    "promo/demo/shots.mjs",
+    "promo/demo/transcribe.mjs",
+    "promo/scripts/make-audio.mts",
+    "promo/src/Promo.tsx",
+    "promo/src/call-words.json",
+    "promo/src/kit.tsx",
+    "promo/src/scenes/Budget.tsx",
+    "promo/src/scenes/Build.tsx",
+    "promo/src/scenes/Call.tsx",
+    "promo/src/scenes/Everything.tsx",
+    "promo/src/scenes/Hook.tsx",
+    "promo/src/scenes/Own.tsx",
+    "promo/src/scenes/Plan.tsx",
+    "promo/src/scenes/Power.tsx",
+    "promo/src/scenes/See.tsx",
+    "promo/src/scenes/Trade.tsx",
+    "promo/src/timeline.ts",
+    "promo/tsconfig.json"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "73ce266f2771",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 28,
+    "cache_creation_tokens": 62007,
+    "cache_read_tokens": 6370416,
+    "output_tokens": 38324,
+    "api_call_count": 14
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}
