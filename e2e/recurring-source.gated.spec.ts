@@ -69,7 +69,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   const disabled=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} (disabled)`,exact:true})});
   await expect(disabled).toContainText("Not used in forecast");
   await expect(disabled).toContainText("-EUR 10.00");
-  await expect(forecast).toContainText("EUR 1000.00");await expect(forecast).not.toContainText("EUR 990.00");
+  await expect(forecast).toContainText("EUR 1,000.00");await expect(forecast).not.toContainText("EUR 990.00");
   await page.goto(sourceUrls[2]);await detail.getByRole("button",{name:"Undo verified link",exact:true}).click();
   await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible({timeout:30_000});
   await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-1000"');

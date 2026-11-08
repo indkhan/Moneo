@@ -111,7 +111,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await page.locator("article").filter({ has: page.getByRole("heading", { name: "Checking", exact: true }) }).getByText("Update balance", { exact: true }).click();
       await page.getByLabel("Checking balance", { exact: true }).fill("1000.00");
       await page.getByLabel("Checking balance", { exact: true }).locator("..").getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("EUR 1000.00", { exact: true }).first()).toBeVisible();
+      await expect(page.getByText("EUR 1,000.00", { exact: true }).first()).toBeVisible();
     });
 
     await test.step("ask a grounded AI question", async () => {
@@ -137,7 +137,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await expect(
         page.getByText("Available to spend", { exact: true }),
       ).toBeVisible();
-      await expect(page.getByText("EUR 1000.00", { exact: true }).first()).toBeVisible();
+      await expect(page.getByText("EUR 1,000.00", { exact: true }).first()).toBeVisible();
     });
 
     await test.step("complete Deep Analysis (mocked completion)", async () => {

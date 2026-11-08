@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { describeMissingInputs, formatMoney, formatInputAmount } from "./format";
 
 describe("formatMoney", () => {
-  it("uses locale separators without rounding exact accounting units or changing form serialization", () => {
-    expect(formatMoney("9007199254740993", "EUR", "de-DE")).toBe("EUR 90071992547409,93");
+  it("uses locale grouping and decimals without rounding exact accounting units or changing form serialization", () => {
+    expect(formatMoney("9007199254740993", "EUR", "de-DE")).toBe("EUR 90.071.992.547.409,93");
     expect(formatMoney(-1n, "IQD", "de-DE")).toBe("-IQD 0,001");
     expect(formatMoney(123n, "JPY", "de-DE")).toBe("JPY 123");
     expect(formatInputAmount(-1n, "IQD")).toBe("-0.001");

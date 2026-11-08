@@ -99,7 +99,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       expect(generated.cadence).toBe(cadence); expect(generated.schedule_anchor_on).toBe(anchor);
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected); await expect(forecast).not.toContainText("Forecast unavailable");
       await page.goto("/money/recurring"); await page.getByText(/^Already decided/).click(); await candidate.getByRole("button", {name: /^Not recurring/}).click(); await expect(candidate).toContainText("Dismissed");
-      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2000.00");
+      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2,000.00");
       await page.goto("/money/recurring"); await page.getByText(/^Already decided/).click(); await candidate.getByRole("button", {name: /^Confirm (?!recurring)/}).click(); await candidate.getByRole("button", {name: "Confirm recurring",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
       const review = page.getByRole("region", {name: "Occurrence reconciliation"});
       const [{version}] = await db`select version from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
@@ -122,7 +122,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await page.goto("/money/recurring"); await expect(page.getByRole("heading", {name: "Payments behind a confirmed schedule changed",exact: true})).toBeVisible();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("Forecast unavailable");
       await reviewBookedBalances();
-      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2000.00");
+      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2,000.00");
       await page.goto(`/money/transactions?transaction=${ids[2]}`); await detail.getByRole("button", {name: "Undo verified link",exact: true}).click();
       await expect(detail.getByRole("heading", {name: "Verified transfer",exact: true})).toBeVisible();
       await page.goto("/money/recurring"); await expect(candidate).toContainText("Confirmed");
@@ -131,7 +131,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       // Paid today for a future slot: provenance-only Plan toggles must not pay it twice.
       const schedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0`,exact:true})});
       await schedule.getByRole("button",{name:/^Disable /}).click();
-      await expect(forecast).toContainText("EUR 2000.00");
+      await expect(forecast).toContainText("EUR 2,000.00");
       const disabledSchedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0 (disabled)`,exact:true})});
       await disabledSchedule.getByRole("button",{name:/^Enable /}).click();
       await expect(schedule.getByRole("button",{name:/^Disable /})).toBeVisible();

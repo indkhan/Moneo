@@ -41,7 +41,7 @@ it("renders a grouped dense ledger with exact subtotals, chips and a sticky head
   expect(html).toContain("sticky top-0");
   expect(html).toContain("Groceries");
   expect(html).toContain("2 transactions");
-  expect(html).toContain("−EUR 90071992547410.00"); // -9007199254740993 + -7, exact
+  expect(html).toContain("−EUR 90,071,992,547,410.00"); // -9007199254740993 + -7, exact
   expect(html).toContain("Remove filter Posted");
   expect(html).toContain("Remove filter At least -EUR 10.00");
   expect(html).toContain("3 transactions");
@@ -53,7 +53,7 @@ it("renders a grouped dense ledger with exact subtotals, chips and a sticky head
 
 it("drawer uses plain labels, exact money and readable correction history", async () => {
   const html = renderToStaticMarkup(await TransactionDrawer({ id: id(1), query: "", linkSearch: "", accountNames: { [id(50)]: "Checking" }, categories: tables.categories as never, merchants: [] }));
-  expect(html).toContain("-EUR 90071992547409.93");
+  expect(html).toContain("-EUR 90,071,992,547,409.93");
   expect(html).not.toContain("minor units");
   expect(html).toContain("Posted · Regular");
   expect(html).toContain("Category: Groceries → Dining");

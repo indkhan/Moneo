@@ -61,6 +61,6 @@ it("shows the synced Scalable portfolio with a link to manage the connection on 
   const { default: AccountsPage } = await import("./page");
   const html = renderToStaticMarkup(await AccountsPage());
   expect(html).toContain("Scalable Capital");
-  expect(html).toContain("12345.00");
+  expect(html).toContain("12,345.00");
   expect(html).toContain('href="/import#scalable"');
 });

@@ -66,7 +66,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     await review.getByRole("combobox", { name: "Payment", exact: true }).selectOption("full");
     await review.getByRole("button", { name: "Mark fully paid", exact: true }).click();
     await expect(review).toContainText("recorded full settlement");
-    await page.goto("/plan"); await expect(forecast).toContainText("EUR 1000.00");
+    await page.goto("/plan"); await expect(forecast).toContainText("EUR 1,000.00");
     expect((await db`select count(*)::int as count from public.recurring_occurrence_settlements where workspace_id=${workspace!}`)[0].count).toBe(2);
     expect((await db`select amount_minor::text from public.transactions where id=${transaction}`)[0].amount_minor).toBe("-4000");
     const salaryAccount = randomUUID(), salaryTransaction = randomUUID();
@@ -86,7 +86,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     await expect(page.getByRole("region", { name: "Confirmed payments and income" })).toContainText(salaryLabel, { timeout: 30_000 });
     const [generated] = await db`select id,version from public.financial_assumptions where workspace_id=${workspace!} and name=${salaryLabel} and source='recurring_confirmed'`;
     expect(generated).toBeDefined();
-    await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3000.00"); await expect(forecast).not.toContainText("EUR 4000.00");
+    await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3,000.00"); await expect(forecast).not.toContainText("EUR 4,000.00");
     await page.goto("/money/recurring");
     if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
     await review.getByRole("combobox", { name: "Schedule", exact: true }).selectOption(`${generated.id}:${generated.version}`);
@@ -96,11 +96,11 @@ test("explicit partial/full occurrence association changes the forecast once and
     await review.getByRole("button", { name: "Mark fully paid", exact: true }).click();
     const salarySettlement = review.getByRole("listitem").filter({ hasText: salaryLabel });
     await expect(salarySettlement).toContainText("recorded full settlement");
-    await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3000.00");
+    await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3,000.00");
     await page.goto("/money/recurring");
     await salarySettlement.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(salarySettlement).toContainText("undone");
-    await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3000.00"); await expect(forecast).not.toContainText("EUR 4000.00");
+    await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3,000.00"); await expect(forecast).not.toContainText("EUR 4,000.00");
     expect((await db`select count(*)::int as count from public.recurring_occurrence_settlements where workspace_id=${workspace!}`)[0].count).toBe(3);
 
   } finally {

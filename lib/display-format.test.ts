@@ -4,8 +4,8 @@ import { displayFormat } from "./display-format";
 it("follows the locale for dates and money", () => {
   expect(displayFormat("en-GB").date("2026-11-04")).toBe("4 Nov 2026");
   expect(displayFormat("de-DE").longDate("2026-11-04")).toBe("4. November 2026");
-  expect(displayFormat("en-GB").money(123456n, "EUR")).toBe("EUR 1234.56");
-  expect(displayFormat("de-DE").money(123456n, "EUR")).toBe("EUR 1234,56");
+  expect(displayFormat("en-GB").money(123456n, "EUR")).toBe("EUR 1,234.56");
+  expect(displayFormat("de-DE").money(123456n, "EUR")).toBe("EUR 1.234,56");
 });
 
 it("keeps a calendar day fixed and shows a timestamp in the workspace timezone", () => {

@@ -81,7 +81,7 @@ it("flags an account that runs short and suggests a move from the account with t
   const [insight] = buildInsights({ ...base, locale: "en-GB", accountShortfalls: shortfalls }, DEFAULT_INSIGHT_PREFERENCES);
   expect(insight).toMatchObject({ type: "cash_shortfall", title: "N26 Main runs short", href: "/plan?account=main",
     move: { fromAccountId: "holiday", toAccountId: "main", amountMinor: "30000", date: "2026-11-03" } });
-  expect(insight.detail).toContain("Moving EUR 300.00 from Holiday reserve, which has EUR 1000.00 to spare, would cover it.");
+  expect(insight.detail).toContain("Moving EUR 300.00 from Holiday reserve, which has EUR 1,000.00 to spare, would cover it.");
   expect(accountShortfalls([{ accountId: "main", amountMinor: -30000n, shortfallMinor: 30000n, firstShortfallDate: "2026-11-03" },
     { accountId: "savings", amountMinor: 20000n, shortfallMinor: 0n, firstShortfallDate: null }], names)[0].donor).toBeNull();
 });

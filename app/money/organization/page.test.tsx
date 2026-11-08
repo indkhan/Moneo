@@ -22,7 +22,7 @@ beforeEach(()=>{vi.resetAllMocks();calls.length=0;vi.mocked(loadOrganizationSugg
 it('renders persisted exact preview, explicit approval, coverage limits and manual fallback',async()=>{
  vi.mocked(requireWorkspace).mockResolvedValue({supabase:client({review:true}),workspace:{id:id(10),locale:'en-US',timezone:'UTC'}} as never);
  const html=renderToStaticMarkup(await Page({searchParams:Promise.resolve({review:id(30)})}));
- expect(html).toContain('Northstar purchase');expect(html).toContain('90071992547409.93');expect(html).toContain('Groceries');
+ expect(html).toContain('Northstar purchase');expect(html).toContain('90,071,992,547,409.93');expect(html).toContain('Groceries');
  expect(html).toContain('Explicit approval required');expect(html).toContain('2,000 recent posted entries');expect(html).toContain('Manual correction in Transactions');
  expect(html).toContain('Merchant: unassigned → Northstar Market');expect(html).toContain('Category: uncategorized → Groceries');
  for(const table of ['transactions','organization_reviews','organization_rules'])expect(calls).toContainEqual([table,'workspace_id',id(10)]);
