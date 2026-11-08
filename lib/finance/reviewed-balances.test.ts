@@ -21,9 +21,9 @@ it("invalidates covered evidence after corrections or removal rather than silent
   expect(result(reviewed, [{ ...row, amount_minor: "-200" }]).status).toBe("ambiguous");
   expect(result(reviewed, []).status).toBe("ambiguous");
 });
-it("ignores undone reconciliation snapshots and retains conflicting boundary ambiguity", () => {
+it("ignores undone reconciliation snapshots and says when two reviews of one moment disagree", () => {
   const undone = { ...reviewed, undone_at: "2026-10-06T13:00:00Z" };
   expect(result(undone).status).toBe("missing");
   const s = { ...reviewed, covered_transactions: [] };
-  expect(resolveBalances([account], [reviewed, s], [row], "2026-10-06T14:00:00Z")[0].balance.status).toBe("ambiguous");
+  expect(resolveBalances([account], [reviewed, s], [row], "2026-10-06T14:00:00Z")[0].balance).toMatchObject({ status: "current", conflicts: [{}], warnings: [expect.stringContaining("most recently recorded")] });
 });

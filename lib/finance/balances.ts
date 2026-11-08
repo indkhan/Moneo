@@ -24,8 +24,11 @@ export function balanceReviewRows(ledger: BalanceTransaction[], accountId: strin
     .map(coveredTransaction).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+// What point in the day a balance describes. A date-only closing balance means the same whichever source row carried it,
+// so overlapping imports of one statement agree; a reviewed or after-transaction boundary is defined by its evidence.
 function boundaryEvidence(snapshot: BalanceSnapshot) {
-  return JSON.stringify([snapshot.boundary_kind ?? "date_only", snapshot.source_transaction_id ?? null,
+  if ((snapshot.boundary_kind ?? "date_only") === "date_only") return "date_only";
+  return JSON.stringify([snapshot.boundary_kind, snapshot.source_transaction_id ?? null,
     [...(snapshot.covered_transactions ?? [])].map(row => coveredTransaction({ ...row, account_id: snapshot.account_id, status: "posted" })).sort((a, b) => a.id.localeCompare(b.id))]);
 }
 
@@ -34,29 +37,32 @@ function exactMinor(value: string | number): bigint {
   return BigInt(value);
 }
 
-export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin", sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>,
-  // Display-only views may settle same-moment conflicts (e.g. overlapping statement imports) with the most recently recorded balance.
-  { preferLatestRecorded = false } = {}) {
+/** Newest financial moment first; records of the same moment settle on the most recently recorded one, whatever order they were read in. */
+export const latestSnapshotFirst = (a: BalanceSnapshot, b: BalanceSnapshot) => Date.parse(b.as_of) - Date.parse(a.as_of)
+  || (Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "") || 0) || (b.id ?? "").localeCompare(a.id ?? "");
+/** Records of the same moment that say something different from the chosen one. */
+export const conflictingSnapshots = (snapshot: BalanceSnapshot, candidates: BalanceSnapshot[]) => candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of)
+  && (item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== exactMinor(snapshot.amount_minor) || boundaryEvidence(item) !== boundaryEvidence(snapshot)));
+
+export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin", sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>) {
   const today = calendarDate(asOf, timeZone);
   const resolved = accounts.map(account => {
     const candidates = snapshots.filter(snapshot => snapshot.account_id === account.id && !snapshot.undone_at && Number.isFinite(Date.parse(snapshot.as_of)) && Date.parse(snapshot.as_of) <= Date.parse(asOf))
-      .sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of) || (preferLatestRecorded ? Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "") || 0 : 0));
+      .sort(latestSnapshotFirst);
     const snapshot = candidates[0];
     const balance = { amount_minor: null as string | null, snapshot_amount_minor: null as string | null,
       estimated_amount_minor: null as string | null, currency_code: account.currency_code,
       snapshot_currency_code: snapshot?.currency_code ?? null, as_of: snapshot?.as_of ?? null,
       evaluated_at: asOf, provenance: snapshot?.provenance ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
-      warnings: [] as string[], reconciled_rows: 0, unconfirmed_rows: 0, snapshot_valid: false };
+      warnings: [] as string[], reconciled_rows: 0, unconfirmed_rows: 0, snapshot_valid: false,
+      conflicts: [] as { amount_minor: string; currency_code: string; recorded_at: string | null; provenance: string }[] };
     if (!snapshot) { balance.warnings.push("No dated balance at or before the evaluation time"); return { ...account, balance }; }
     try {
       const amount = exactMinor(snapshot.amount_minor);
       balance.snapshot_amount_minor = amount.toString();
       if (snapshot.currency_code !== account.currency_code) throw new Error("Snapshot currency differs from account currency");
-      const ties = candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of));
-      if (ties.some(item => item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== amount || boundaryEvidence(item) !== boundaryEvidence(snapshot))) {
-        if (!preferLatestRecorded) throw new Error("Conflicting snapshots have no evidenced financial order");
-        balance.warnings.push("Conflicting balances on the same date; using the most recently recorded one");
-      }
+      balance.conflicts = conflictingSnapshots(snapshot, candidates).map(item => ({ amount_minor: exactMinor(item.amount_minor).toString(), currency_code: item.currency_code, recorded_at: item.created_at ?? null, provenance: item.provenance }));
+      if (balance.conflicts.length) balance.warnings.push("Conflicting balances on the same date; using the most recently recorded one");
       balance.snapshot_valid = true;
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
       // Balances entered for today record the moment they were observed; past-dated ones start at local midnight.

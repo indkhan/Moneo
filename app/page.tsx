@@ -91,8 +91,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const ai = await aiPromise;
   // A bank sync imports into the account with the bank's name and currency, as on the Accounts page.
   const synced = new Set((bankAccounts.data ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
-  const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata, { preferLatestRecorded: true }).filter(account => !account.archived_at);
+  const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata).filter(account => !account.archived_at);
   const accountNames = new Map(accounts.map(account => [account.id, account.name]));
+  const conflicted = accounts.filter(account => account.balance.conflicts.length > 0);
   const fxRates = rates.data ?? [];
 
   // Net worth: dated balances and valuations converted with the latest rate on or before each observation.
@@ -174,6 +175,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
+        {conflicted.length > 0 && <p className="text-xs text-warning">Two balances disagree for {conflicted.map(account => account.name).join(", ")}; using the most recently recorded one. <Link href="/money/accounts" className="underline">See both</Link></p>}
         {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
