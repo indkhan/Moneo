@@ -10,6 +10,7 @@ vi.mock("@/lib/finance/model", () => ({ evaluatePlanForWorkspace: vi.fn() }));
 vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvidence: async () => ({}) }));
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null, loadAgentBriefing: async () => null }));
 vi.mock("./manual-balance-form", () => ({ ManualBalanceForm: () => null }));
+vi.mock("./home-notices", () => ({ HomeNotices: () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/components/intent-link", () => ({ IntentLink: "a" }));
 // The grid is a client component; here it only lays its widgets out in order so their server content can be resolved.

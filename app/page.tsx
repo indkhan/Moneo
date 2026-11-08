@@ -10,6 +10,7 @@ import { BUILTIN_WIDGETS, cardIdFromKey, homeLayout, isBuiltinWidget, sizeOption
 import { CardSkeleton, HomeCard, type HomeCardRow } from "@/components/cards/home-card";
 import { cardSize, type CardSize } from "@/lib/cards/sizes";
 import { HomeGrid } from "./home-grid";
+import { HomeNotices } from "./home-notices";
 import type { QueryShared } from "@/lib/ai/artifact-data";
 import { IntentLink } from "@/components/intent-link";
 import { redirect } from "next/navigation";
@@ -169,8 +170,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
-        {valuations.outdated.length > 0 && <p className="text-xs text-muted-foreground">{describeOutdated(valuations.outdated, fullDate)}</p>}
-        {syncProblems.length > 0 && <p className="text-xs text-warning">{syncProblems.join(" ")} <Link href="/settings" className="underline">Open Settings</Link></p>}
         {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
@@ -222,6 +221,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
 
   return (
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+      <HomeNotices notices={[...(valuations.outdated.length ? [{ text: describeOutdated(valuations.outdated, fullDate), href: "/money/wealth", action: "See Wealth" }] : []), ...syncProblems.map(text => ({ text, href: "/settings", action: "Open Settings" }))]} />
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{display.weekday(today)} · {display.longDate(today)}</p><h1 className="page-title">Overview</h1></div>
         {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
