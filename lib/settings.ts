@@ -13,6 +13,7 @@ export const AI_AGENTS = {
   imports: { label: "Import mapping", model: "gpt-6-luna" },
   organize: { label: "Organization suggestions", model: "gpt-6-luna" },
   artifacts: { label: "Artifact builder", model: "gpt-6.1-sol" },
+  titles: { label: "Chat titles", model: "gpt-6-luna" },
   // Typed as a model like the others, but a blank one follows the chat model (see modelIdFor).
   voice_call: { label: "Voice call", model: "gpt-6.1-sol" },
 } as const;

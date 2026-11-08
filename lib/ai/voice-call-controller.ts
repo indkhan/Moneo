@@ -1,7 +1,8 @@
 import type { ChatAnswer, ChatStreamEvent } from "./use-chat-request";
 
 export type CallCaption = { id: number; role: "user" | "assistant"; text: string };
-export type CallTask = { requestId: string; text: string; step: string; status: "running" | "done" | "failed" | "canceled"; delegationId: string | null; cards: string[] };
+/** text is what the user said, which the model and the voice work from; title is its short name for the screen. */
+export type CallTask = { requestId: string; text: string; title?: string; step: string; status: "running" | "done" | "failed" | "canceled"; delegationId: string | null; cards: string[] };
 export type CallAsk = (payload: { conversationId: string; requestId: string; message: string; context: Record<string, unknown> }, onEvent: (event: ChatStreamEvent) => void)
   => Promise<{ ok: boolean; status?: number; body: { error?: string } & Partial<ChatAnswer> }>;
 
@@ -291,6 +292,7 @@ export class VoiceCallController {
     const via = () => this.tasks.find(item => item.requestId === requestId)?.delegationId ?? null;
     try {
       const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context }, event => {
+        if (event.type === "title") return this.update(requestId, { title: event.title });
         // A stopped request's last progress notes are not shown or said.
         if (event.type !== "tool" || event.state !== "running" || this.tasks.find(item => item.requestId === requestId)?.status === "canceled") return;
         if (event.name === "call_replace_task") this.replaced((event.input as { requestId?: unknown } | undefined)?.requestId);

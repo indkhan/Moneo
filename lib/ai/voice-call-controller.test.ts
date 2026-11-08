@@ -42,6 +42,19 @@ it("turns each delegation into a call request with the words since the previous 
   expect(call.captions).toEqual([{ id: 1, role: "user", text: "How much at Netto this month?And when is rent due?" }]);
 });
 
+it("shows a task's title while the model and the voice keep working from what the user said", async () => {
+  const { call, asks, sent, say, delegate, answer, wait } = setup();
+  say("hey so um how much at Netto"); delegate("d1");
+  expect(call.tasks[0].title).toBeUndefined();
+  asks[0][1]({ type: "title", title: "Netto spending" });
+  expect(call.tasks[0]).toMatchObject({ text: "hey so um how much at Netto", title: "Netto spending", status: "running" });
+  say("and rent"); delegate("d2");
+  expect(asks[1][0].context).toMatchObject({ runningTasks: [{ text: "hey so um how much at Netto" }] });
+  await answer("hey so um how much at Netto", "42 euros");
+  await wait(6000);
+  expect(JSON.stringify(sent)).toContain('Result for \\"hey so um how much at Netto\\"');
+});
+
 it("says the first finished result first, then the next once Moneo has said it", async () => {
   const { sent, say, delegate, answer, wait, moneoTalks, onAnswer } = setup();
   say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");

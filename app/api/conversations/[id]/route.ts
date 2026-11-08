@@ -29,7 +29,7 @@ export async function PATCH(request: Request, route: Context) {
   const { id, context } = found;
   const parsed = z.object({ title: conversationTitleSchema }).strict().safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Enter a title of 1 to 120 characters" }, { status: 400 });
-  const result = await context.supabase.from("conversations").update({ title: parsed.data.title })
+  const result = await context.supabase.from("conversations").update({ title: parsed.data.title, title_settled: true })
     .eq("workspace_id", context.workspace.id).eq("id", id).is("deleted_at", null).select("id,title,created_at").maybeSingle();
   if (result.error) return Response.json({ error: "Could not rename conversation. Try again." }, { status: 500 });
   if (!result.data) return Response.json({ error: "Conversation unavailable" }, { status: 404 });

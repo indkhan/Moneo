@@ -11,6 +11,7 @@ export type ChatStreamEvent =
   | { type: "plan"; steps: string[] }
   | { type: "steered"; steers: { id: string; content: string }[] }
   | { type: "delta"; text: string }
+  | { type: "title"; title: string }
   | ({ type: "answer" } & ChatAnswer)
   | { type: "result"; status: number; body: unknown };
 

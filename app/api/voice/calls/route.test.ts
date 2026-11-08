@@ -69,7 +69,7 @@ it("saves the call under the workspace and summarizes it after responding", asyn
 it("creates the conversation of a new chat whose call asked nothing", async () => {
   conversation = null;
   expect((await POST(request({ ...record, tasks: [] }))).status).toBe(201);
-  expect(inserts[0]).toEqual(["conversations", { id: conversationId, workspace_id: "workspace", title: "How much at Netto?" }]);
+  expect(inserts[0]).toEqual(["conversations", { id: conversationId, workspace_id: "workspace", title: "Voice call" }]);
   expect(inserts[1][0]).toBe("voice_calls");
 });
 it("treats a repeated save of the same call as done, without a second summary", async () => {

@@ -10,11 +10,11 @@ import { listAccounts, getBalances, cashflow, searchTransactions, listGoals, eva
 import { startFinancialReview } from "@/lib/finance/start-review";
 // The model run is mocked as one async call returning the final text and steps; streamText wraps it.
 type Run = { text: string; usage?: unknown; steps?: unknown[] };
-const { generateText } = vi.hoisted(() => ({ generateText: vi.fn(async (options: { tools: unknown; stopWhen?: unknown; instructions?: string; messages?: unknown }): Promise<Run> => { void options; return { text: "Evidence reviewed" }; }) }));
+const { generateObject, generateText } = vi.hoisted(() => ({ generateObject: vi.fn(async (): Promise<{ object: { title: string; vague: boolean } }> => ({ object: { title: "Spending explained", vague: false } })), generateText: vi.fn(async (options: { tools: unknown; stopWhen?: unknown; instructions?: string; messages?: unknown }): Promise<Run> => { void options; return { text: "Evidence reviewed" }; }) }));
 // Keys come from the stubbed env only; the synthetic Supabase URL must not be fetched.
 vi.mock("@/lib/service-keys", () => ({ serviceKey: async (name: string) => process.env[name.toUpperCase()] || undefined }));
 vi.mock("@/lib/finance/investigation-reader", async original => ({ ...await original<typeof import("@/lib/finance/investigation-reader")>(), investigationDetail: vi.fn(async () => ({ synthetic: "detail" })) }));
-vi.mock("ai", () => ({ tool: (value: unknown) => value, stepCountIs: (value: number) => value, streamText: (options: Parameters<typeof generateText>[0]) => {
+vi.mock("ai", () => ({ generateObject, tool: (value: unknown) => value, stepCountIs: (value: number) => value, streamText: (options: Parameters<typeof generateText>[0]) => {
   const run = generateText(options);
   run.catch(() => {});
   return { fullStream: (async function* () { const { text } = await run; yield { type: "text-delta", text }; yield { type: "finish-step" }; })(),
@@ -339,13 +339,59 @@ it("switches to spoken call mode and offers call_replace_task only for this call
   expect(options.instructions).toContain("live voice call");
   const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
   await expect(tools.call_replace_task.execute({ requestId: "00000000-0000-4000-8000-000000000009" }, {})).rejects.toThrow("Only the latest request");
-  expect(vi.mocked(modelForSettings).mock.lastCall?.[1]).toBe("voice_call");
+  expect(vi.mocked(modelForSettings).mock.calls.filter(call => call[1] !== "titles").at(-1)?.[1]).toBe("voice_call");
   await post(undefined);
-  expect(vi.mocked(modelForSettings).mock.lastCall?.[1]).toBe("chat");
+  expect(vi.mocked(modelForSettings).mock.calls.filter(call => call[1] !== "titles").at(-1)?.[1]).toBe("chat");
   expect(vi.mocked(generateText).mock.calls[1][0].instructions).not.toContain("live voice call");
   expect(vi.mocked(generateText).mock.calls[1][0].tools).not.toHaveProperty("call_replace_task");
 });
 
+const streamed = async (body: Record<string, unknown>) => {
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", headers: { Accept: "application/x-ndjson" }, body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "hey so can you explain my spending", ...body }) }));
+  return (await response.text()).trim().split("\n").map(line => JSON.parse(line) as { type: string; title?: string });
+};
+const conversationWrites = async (row: unknown) => {
+  const context = await requireWorkspace();
+  const writes: { insert: unknown[]; update: unknown[] } = { insert: [], update: [] };
+  const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: [], error: null }), maybeSingle: async () => ({ data: row, error: null }),
+    insert: async (values: unknown) => { writes.insert.push(values); return { error: null }; }, update: (values: unknown) => { writes.update.push(values); return query; },
+    then: (resolve: (value: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve) };
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
+  return writes;
+};
+it("titles a typed chat and streams the title before the result", async () => {
+  const writes = await conversationWrites(null);
+  const events = await streamed({});
+  expect(writes.insert[0]).toMatchObject({ title: "hey so can you explain my spending" });
+  expect(writes.update).toContainEqual({ title: "Spending explained", title_settled: true });
+  expect(events.findIndex(event => event.type === "title")).toBeLessThan(events.findIndex(event => event.type === "result"));
+  expect(events.find(event => event.type === "title")?.title).toBe("Spending explained");
+});
+it("leaves a settled chat's title alone", async () => {
+  const writes = await conversationWrites({ id: "c", title_settled: true });
+  expect((await streamed({})).some(event => event.type === "title")).toBe(false);
+  expect(generateObject).not.toHaveBeenCalled();
+  expect(writes.update).toEqual([]);
+});
+it("never titles an artifact's chat", async () => {
+  await conversationWrites({ id: "c", artifact_id: "00000000-0000-4000-8000-000000000007" });
+  await streamed({});
+  expect(generateObject).not.toHaveBeenCalled();
+});
+it("calls a chat started by a call Voice call, and titles each task without touching the chat", async () => {
+  const writes = await conversationWrites(null);
+  const events = await streamed({ context: { via: "call" } });
+  expect(writes.insert[0]).toMatchObject({ title: "Voice call" });
+  expect(writes.update).toEqual([]);
+  expect(events.find(event => event.type === "title")?.title).toBe("Spending explained");
+});
+it("still answers when the title can't be written", async () => {
+  generateObject.mockRejectedValueOnce(new Error("down"));
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const events = await streamed({});
+  expect(events.some(event => event.type === "title")).toBe(false);
+  expect(events.at(-1)).toMatchObject({ type: "result", status: 200 });
+});
 it("keeps running and publishes the answer after the client goes away", async () => {
   let release!: () => void;
   vi.mocked(generateText).mockImplementationOnce(async () => { await new Promise<void>(resolve => { release = resolve; }); return { text: "Saved while you were away" }; });

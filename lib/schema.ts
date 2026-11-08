@@ -645,6 +645,8 @@ export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   title: text("title").notNull(),
+  // False while the title is a stand-in Moneo may still replace; a rename settles it.
+  titleSettled: boolean("title_settled").default(false).notNull(),
   // Set for an artifact's own chat, which stays out of the chat list.
   artifactId: uuid("artifact_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -653,6 +655,7 @@ export const conversations = pgTable("conversations", {
   foreignKey({ name: "conversations_artifact_fkey", columns: [table.artifactId, table.workspaceId], foreignColumns: [artifacts.id, artifacts.workspaceId] }).onDelete("cascade"),
   uniqueIndex("conversations_artifact").on(table.artifactId).where(sql`${table.artifactId} is not null`),
   index("conversations_workspace_live").on(table.workspaceId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} is null`),
+  index("conversations_title_unsettled").on(table.createdAt.desc()).where(sql`not ${table.titleSettled} and ${table.deletedAt} is null and ${table.artifactId} is null`),
 ]);
 
 export const messages = pgTable("messages", {

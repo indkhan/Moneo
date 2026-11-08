@@ -120,7 +120,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       live.set({ onAnswer: undefined });
       void fetch("/api/voice/calls", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: live.callId, conversationId, durationSeconds: seconds, transcript,
-          tasks: controller.tasks.slice(-30).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300), status: task.status })) }) })
+          tasks: controller.tasks.slice(-30).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300), ...(task.title && { title: task.title }), status: task.status })) }) })
         .then(response => { if (response.ok) finished?.(); }, () => {});
     }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
