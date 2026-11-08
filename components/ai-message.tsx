@@ -2,7 +2,7 @@
 
 import { isValidElement, useState } from "react";
 import Link from "next/link";
-import Markdown from "react-markdown";
+import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Plugin } from "unified";
 import type { Root } from "mdast";
@@ -41,27 +41,35 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
   }}>{copied ? "Copied" : "Copy code"}</button></div><pre>{children}</pre></div>;
 }
 
-export function AiMessage({ content }: { content: string }) {
-  return <div className="ai-markdown"><Markdown remarkPlugins={[remarkGfm, appLinks]} skipHtml components={{
-    // A reply sits inside a page that already has its h1.
-    h1: ({ children }) => <h2>{children}</h2>,
-    img: () => null,
-    pre: ({ children }) => {
-      const code = isValidElement<{ className?: string; children?: unknown }>(children) ? children.props : null;
-      if (code?.className?.includes("language-moneo-chart") && typeof code.children === "string") return <ChatChart source={code.children} />;
-      const proposalId = code?.className?.includes("language-moneo-proposal") && typeof code.children === "string" ? /^[0-9a-f-]{36}$/i.exec(code.children.trim())?.[0] : undefined;
-      if (proposalId) return <IouCard id={proposalId} />;
-      if (code?.className?.includes("language-moneo-proposals") && typeof code.children === "string") return <ProposalGroup source={code.children} />;
-      if (code?.className?.includes("language-moneo-decision") && typeof code.children === "string") return <DecisionCard source={code.children} />;
-      return <CodeBlock>{children}</CodeBlock>;
-    },
-    table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
-    a: ({ href, children }) => {
-      if (!href) return <span>{children}</span>;
-      // App paths navigate client-side; anything else opens in a new tab.
-      if (href.startsWith("/") && !href.startsWith("//")) return <Link href={href}>{children}</Link>;
-      // External links are shown as text only; answers never link off the app.
-      return <span>{children}</span>;
-    },
-  }}>{content}</Markdown></div>;
+// Outside the component: new functions on each render would make React remount everything in a reply,
+// so a tapped card would flash "Loading…" and lose its place whenever the page refreshes.
+const remarkPlugins = [remarkGfm, appLinks];
+const components: Components = {
+  // A reply sits inside a page that already has its h1.
+  h1: ({ children }) => <h2>{children}</h2>,
+  img: () => null,
+  pre: ({ children }) => {
+    const code = isValidElement<{ className?: string; children?: unknown }>(children) ? children.props : null;
+    if (code?.className?.includes("language-moneo-chart") && typeof code.children === "string") return <ChatChart source={code.children} />;
+    const proposalId = code?.className?.includes("language-moneo-proposal") && typeof code.children === "string" ? /^[0-9a-f-]{36}$/i.exec(code.children.trim())?.[0] : undefined;
+    if (proposalId) return <IouCard id={proposalId} />;
+    if (code?.className?.includes("language-moneo-proposals") && typeof code.children === "string") return <ProposalGroup source={code.children} />;
+    if (code?.className?.includes("language-moneo-decision") && typeof code.children === "string") return <DecisionCard source={code.children} />;
+    return <CodeBlock>{children}</CodeBlock>;
+  },
+  table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
+  a: ({ href, children }) => {
+    if (!href) return <span>{children}</span>;
+    // App paths navigate client-side; anything else opens in a new tab.
+    if (href.startsWith("/") && !href.startsWith("//")) return <Link href={href}>{children}</Link>;
+    // External links are shown as text only; answers never link off the app.
+    return <span>{children}</span>;
+  },
+};
+
+/** A link the model is still writing would show as raw text and a long URL until its last character arrives. */
+const withoutUnfinishedLink = (text: string) => text.replace(/\[[^\]\n]*(\]\([^)\n]*)?$/, "");
+
+export function AiMessage({ content, streaming = false }: { content: string; streaming?: boolean }) {
+  return <div className="ai-markdown"><Markdown remarkPlugins={remarkPlugins} skipHtml components={components}>{streaming ? withoutUnfinishedLink(content) : content}</Markdown></div>;
 }

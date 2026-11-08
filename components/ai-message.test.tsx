@@ -72,3 +72,14 @@ it("groups several proposal cards with an Add all button and ignores invalid gro
   expect(html.match(/Loading…/g)).toHaveLength(3);
   expect(renderToStaticMarkup(<AiMessage content={'```moneo-proposals\n["not-an-id","x"]\n```'} />)).not.toContain("Add all");
 });
+
+it("hides a link the model is still writing, and only while it streams", () => {
+  const partial = "Done.\n\n[View spending details](/money/investigations?query=%7B%22ver";
+  const streaming = renderToStaticMarkup(<AiMessage content={partial} streaming />);
+  expect(streaming).toContain("Done.");
+  expect(streaming).not.toContain("View spending");
+  expect(streaming).not.toContain("investigations");
+  expect(renderToStaticMarkup(<AiMessage content="Done. [View spending" streaming />)).not.toContain("View spending");
+  expect(renderToStaticMarkup(<AiMessage content={partial} />)).toContain("View spending details");
+  expect(renderToStaticMarkup(<AiMessage content="[View](/money/transactions) now" streaming />)).toContain('href="/money/transactions"');
+});
