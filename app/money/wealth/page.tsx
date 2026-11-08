@@ -13,7 +13,7 @@ import { describeOutdated, formatMoney as formatCurrency } from "@/lib/finance/f
 import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
-import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
+import { currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
 
 export const metadata = { title: "Wealth" };
 
@@ -35,15 +35,16 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const [items, accounts, assumptions, pending, events, evidence, scalable] = await Promise.all([
+  const [items, accounts, assumptions, pending, events, evidence, scalable, calculatedHistory] = await Promise.all([
     loadWealthItems(supabase, workspace.id, true),
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
     supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspace.id).eq("status", "pending").order("posted_on", { ascending: false }).limit(100),
     loadWealthEvents(db, workspace.id),
     loadBalanceEvidence(db, workspace.id),
-    supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
+    supabase.from("scalable_connections").select("status, last_synced_at, portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    loadScalableHistory(db, workspace.id),
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
   const active = items.filter(item => !item.removed_at);
@@ -51,9 +52,11 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     pending: (pending.data ?? []).map(item => ({ id: item.id, currency_code: item.currency_code, label: `${item.description} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.posted_on}` })), today, currency: workspace.display_currency, locale: workspace.locale };
   const itemById = new Map(items.map(item => [item.id, item]));
 
-  const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone,
+  const allValuations = valuationHistory(events, items);
+  const calculated = { rows: calculatedHistory.rows, before: firstSyncedOn(allValuations, calculatedHistory.knownIds) };
+  const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone, calculated,
     accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots: evidence.snapshots, ledger: evidence.ledger,
-    valuations: valuationHistory(events, items), removedOn: removedOn(items, workspace.timezone) });
+    valuations: allValuations, removedOn: removedOn(items, workspace.timezone) });
   // Today uses the balances Accounts and Overview show and the same valuations, so the totals match theirs.
   const resolved = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, undefined, { preferLatestRecorded: true }).filter(account => !account.archived_at);
   const valuations = wealthEvidence(active, today);
@@ -69,13 +72,14 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const scalableIds = new Set(portfolio?.itemIds ?? []), knownIds = new Set([...(portfolio?.knownItemIds ?? []), ...scalableIds]);
   const scalableHistory = (() => {
     if (!portfolio) return [];
-    const valuations = valuationHistory(events, items).filter(row => knownIds.has(row.item_id));
-    // Daily from the first synced value, at most a year back.
-    const yearAgo = new Date(Date.parse(today) - 365 * 86400000).toISOString().slice(0, 10);
-    const from = valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today) < yearAgo ? yearAgo : valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today);
+    const valuations = allValuations.filter(row => knownIds.has(row.item_id));
+    // Daily from the first synced value.
+    const from = valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today);
     return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations, removedOn: removedOn(items, workspace.timezone) })
       .flatMap(point => { const value = point.assets.get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value }]; });
   })();
+  // The days before that, worked out from Scalable's transactions and prices back to the first trade.
+  const scalableCalculated = portfolio && calculated.before ? calculated.rows.filter(row => row.on_date < calculated.before! && row.currency_code === portfolio.currency) : [];
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
@@ -105,7 +109,8 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     </section>
 
     {portfolio && <ScalableInvestments portfolio={portfolio} positions={active.filter(item => scalableIds.has(item.id) && item.kind === "holding").sort((a, b) => Number(BigInt(b.amount_minor) - BigInt(a.amount_minor)))}
-      history={scalableHistory} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} />}
+      history={[...scalableCalculated.map(row => ({ date: row.on_date, value: BigInt(row.total_minor) })), ...scalableHistory]} calculatedBefore={scalableCalculated.length ? calculated.before : null}
+      historyFailed={scalable.data?.history_status === "failed" && !scalableCalculated.length} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} />}
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>
 

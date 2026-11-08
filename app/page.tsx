@@ -33,7 +33,7 @@ import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
-import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
+import { currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
 import { Phone } from "lucide-react";
@@ -68,7 +68,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const reviewPromise = loadReview(supabase, workspace);
   // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems, calculatedHistory] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -85,6 +85,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
     loadSyncProblems(supabase, workspace.id),
+    loadScalableHistory(supabase, workspace.id),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   const ai = await aiPromise;
@@ -127,8 +128,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
 
   // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (issue #158).
+  // Days before Scalable's first sync use its calculated value, so a portfolio connected this month is not a gain.
+  const allValuations = valuationHistory(wealthEvents, allWealth);
   const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
-    snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger });
+    snapshots: balanceEvidence.snapshots, valuations: allValuations, removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger,
+    calculated: { rows: calculatedHistory.rows, before: firstSyncedOn(allValuations, calculatedHistory.knownIds) } });
   // Today's point is the headline's own inputs, so the chart ends on the number above it.
   series[series.length - 1] = currentNetWorth(today, accounts, valuations.included.map(valuation => ({ ...valuation, debt: kinds.get(valuation.id) === "debt" })));
   const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
