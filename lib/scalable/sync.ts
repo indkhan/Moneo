@@ -16,6 +16,8 @@ export async function syncScalable(connectionId: string, workspaceId: string) {
   try {
     const { timezone } = await loadWorkspaceSettings(db, workspaceId);
     const previous = await db.from("scalable_connections").select("portfolio").eq("workspace_id", workspaceId).not("portfolio", "is", null);
+    // Taken before reading: two syncs can finish in the opposite order, and the older read must not win.
+    const fetchedAt = new Date().toISOString();
     const { snapshot, extras, access } = await withScalable(connectionId, workspaceId, async mcp => {
       // Activity and watchlist are extras: a failure there never stops the valuation sync.
       // So are the access level the chat uses to offer trading, and only a known level is saved.
@@ -28,7 +30,7 @@ export async function syncScalable(connectionId: string, workspaceId: string) {
     });
     const { items, portfolio } = scalableWealth(snapshot, workspaceId, calendarDate(new Date(), timezone));
     const known = new Set([...(previous.data ?? []).flatMap(row => { const ids = (row.portfolio as ScalableExtras | null); return [...(ids?.knownItemIds ?? []), ...(ids?.itemIds ?? [])]; }), ...items.map(item => item.id)]);
-    const { data, error } = await db.rpc("sync_scalable_wealth", { p_connection_id: connectionId, p_items: items, p_portfolio: { ...portfolio, ...extras, knownItemIds: [...known] } });
+    const { data, error } = await db.rpc("sync_scalable_wealth", { p_connection_id: connectionId, p_items: items, p_portfolio: { ...portfolio, ...extras, knownItemIds: [...known] }, p_fetched_at: fetchedAt });
     if (error) throw new Error(error.message);
     if (access) {
       const saved = await db.from("scalable_connections").update({ trading_access: access }).eq("id", connectionId);

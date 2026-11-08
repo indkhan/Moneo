@@ -34,14 +34,20 @@ export function scalableItemId(workspaceId: string, key: string) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-export type ScalableWealthItem = { id: string; kind: "holding" | "asset"; name: string; currency_code: string; amount_minor: string;
-  quantity_text: string | null; unit_price_text: string | null; cost_basis_minor: string | null; as_of: string };
+export type ScalableWealthItem = { id: string; kind: "holding" | "asset" | "debt"; name: string; currency_code: string; amount_minor: string;
+  quantity_text: string | null; unit_price_text: string | null; cost_basis_minor: string | null; as_of: string; annual_rate_text?: string; monthly_payment_minor?: string };
 
 /**
- * Wealth records for one Scalable portfolio on `asOf`: each security at quantity × live price,
- * plus uninvested cash and crypto as assets. Their sum is Scalable's own portfolio total (to the cent).
+ * Wealth records for one Scalable portfolio on `asOf`: each security at quantity × live price, plus uninvested cash and
+ * crypto as assets. An asset can't be negative, so negative cash is kept as zero cash plus a debt of the same size.
+ * Their sum should be Scalable's own portfolio total; `differenceMinor` says if it isn't, and `unsupported` names anything
+ * these records can't represent, so neither passes silently.
  */
 export function scalableWealth({ holdings, overview, cash }: ScalableSnapshot, workspaceId: string, asOf: string, currency = "EUR") {
+  const unsupported = holdings.holdings.flatMap(holding => [
+    ...(holding.position.filled < 0 ? [`${holding.name} is a short position, which isn't counted.`] : []),
+    ...(holding.position.filled > 0 && holding.currentQuote.currency !== currency ? [`${holding.name} is priced in ${holding.currentQuote.currency}, so it doesn't add up with the ${currency} total.`] : []),
+  ]);
   const items: ScalableWealthItem[] = holdings.holdings.filter(holding => holding.position.filled > 0).map(holding => {
     const quantity = decimalText(holding.position.filled), price = decimalText(holding.currentQuote.midPrice), code = holding.currentQuote.currency;
     return { id: scalableItemId(workspaceId, `isin:${holding.isin}`), kind: "holding", name: Array.from(holding.name).slice(0, 120).join(""), currency_code: code,
@@ -53,9 +59,12 @@ export function scalableWealth({ holdings, overview, cash }: ScalableSnapshot, w
   const coins = holdings.cryptoHoldings.filter(coin => (coin.position?.filled ?? 0) > 0).map(coin => coin.name);
   if (overview.valuation.crypto > 0) items.push(asset("crypto", `Scalable crypto${coins.length ? ` (${coins.join(", ")})` : ""}`.slice(0, 120), overview.valuation.crypto));
   items.push(asset("cash", "Scalable cash", cash.cash.cashBalance));
+  if (cash.cash.cashBalance < 0) items.push({ id: scalableItemId(workspaceId, "cash-owed"), kind: "debt", name: "Scalable cash owed", currency_code: currency, amount_minor: minor(cash.cash.cashBalance, currency).toString(),
+    quantity_text: null, unit_price_text: null, cost_basis_minor: null, as_of: asOf, annual_rate_text: "0", monthly_payment_minor: "0" });
+  const totalMinor = minor(overview.valuation.total, currency);
   const portfolio = {
     currency, asOf, valuedAt: overview.timestamps?.valuationTimestampUtc ?? null,
-    totalMinor: minor(overview.valuation.total, currency).toString(), securitiesMinor: minor(overview.valuation.securities, currency).toString(),
+    totalMinor: totalMinor.toString(), differenceMinor: (totalMinor - items.reduce((sum, item) => sum + BigInt(item.amount_minor), 0n)).toString(), unsupported, securitiesMinor: minor(overview.valuation.securities, currency).toString(),
     cryptoMinor: minor(overview.valuation.crypto, currency).toString(), cashMinor: minor(cash.cash.cashBalance, currency).toString(),
     performance: overview.performance.flatMap(entry => entry.simpleAbsoluteReturn === null ? [] : [{ timeframe: entry.timeframe, returnMinor: minor(entry.simpleAbsoluteReturn, currency).toString() }]),
   };
@@ -68,4 +77,5 @@ export type ScalableExtras = {
   /** Every item id a sync ever wrote, so the value chart keeps positions that were sold since. */
   knownItemIds?: string[]; itemIds?: string[];
 };
-export type ScalablePortfolio = ReturnType<typeof scalableWealth>["portfolio"] & ScalableExtras;
+// A portfolio saved before these fields existed has none of them.
+export type ScalablePortfolio = Omit<ReturnType<typeof scalableWealth>["portfolio"], "differenceMinor" | "unsupported"> & Partial<Pick<ReturnType<typeof scalableWealth>["portfolio"], "differenceMinor" | "unsupported">> & ScalableExtras;
