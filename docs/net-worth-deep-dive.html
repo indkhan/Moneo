@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moneo Net Worth Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Moneo's own tokens (app/globals.css), light and dark. */
+:root {
+  --bg: #f4f3ee; --card: #ffffff; --fg: #141413; --muted: #ecebe5; --muted-fg: #5c5d58; --border: #e2e0d8;
+  --brand: #4a6400; --brand-soft: #f0f7dc; --brand-solid: #cbf26b; --brand-ink: #141413;
+  --ai: #5b45c9; --ai-soft: #f1eeff; --ai-border: #d6cffb;
+  --warn: #a8441c; --warn-soft: #fff1ea; --danger: #b42318; --danger-soft: #fef3f2;
+  --blue: #2a78d6; --blue-soft: #eaf2fc;
+  --shadow: 0 1px 0 rgba(20,20,19,.03), 0 18px 40px -28px rgba(20,20,19,.28);
+  --sans: "Geist", ui-sans-serif, system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, Consolas, monospace;
+  --display: "Bricolage Grotesque", "Geist", sans-serif;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #0f1011; --card: #16171a; --fg: #eeece6; --muted: #1d1e22; --muted-fg: #a3a39e; --border: #24262a;
+  --brand: #cbf26b; --brand-soft: #1c2410; --brand-solid: #cbf26b; --brand-ink: #141413;
+  --ai: #b8a6ff; --ai-soft: #1a1922; --ai-border: #3d3760;
+  --warn: #ff9a76; --warn-soft: #2a1b14; --danger: #ff7a6b; --danger-soft: #2e1614;
+  --blue: #6aa8f0; --blue-soft: #14202e;
+  --shadow: 0 1px 0 rgba(0,0,0,.2), 0 18px 40px -28px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; }
+body { font: 17px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+code, .mono { font-family: var(--mono); }
+
+/* A fixed 1600×900 stage, scaled to the window, so it records the same at any size. */
+#stage { position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px; transform-origin: center; display: flex; background: var(--bg); transition: background .3s; }
+
+/* Left rail, like Moneo's main navigation. */
+.rail { width: 96px; flex: none; display: flex; flex-direction: column; align-items: center; padding: 22px 0; gap: 4px; border-right: 1px solid var(--border); }
+.logo { width: 44px; height: 44px; border-radius: 50%; background: var(--brand-solid); color: var(--brand-ink); display: grid; place-items: center; font: 700 22px var(--display); margin-bottom: 14px; }
+.rail button { all: unset; cursor: pointer; width: 76px; padding: 6px 0 5px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted-fg); font-size: 10.5px; line-height: 1.15; text-align: center; }
+.rail button b { font: 500 12px var(--mono); width: 26px; height: 22px; border-radius: 8px; display: grid; place-items: center; }
+.rail button:hover { color: var(--fg); }
+.rail button[aria-current="true"] { background: var(--muted); color: var(--fg); }
+.rail button[aria-current="true"] b { background: var(--fg); color: var(--bg); }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.top { height: 72px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 52px; border-bottom: 1px solid var(--border); }
+.crumb { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); }
+.crumb strong { color: var(--fg); font-weight: 500; }
+.progress { flex: 1; height: 4px; border-radius: 9px; background: var(--muted); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--brand); border-radius: 9px; transition: width .4s ease; }
+.keys { font-size: 12px; color: var(--muted-fg); display: flex; gap: 10px; align-items: center; }
+kbd { font: 500 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; background: var(--card); color: var(--fg); }
+
+.scenes { position: relative; flex: 1; }
+.scene { position: absolute; inset: 0; padding: 40px 52px 36px; display: none; flex-direction: column; }
+.scene.on { display: flex; animation: enter .45s ease both; }
+@keyframes enter { from { opacity: 0; transform: translateY(10px); } }
+
+/* Step reveals: anything with data-s shows once the scene reaches that step. */
+[data-s] { opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s ease; }
+[data-s].shown { opacity: 1; transform: none; }
+svg [data-s] { transform: none; }
+.draw { stroke-dasharray: 600; stroke-dashoffset: 600; transition: stroke-dashoffset .8s ease, opacity .2s; }
+.draw.shown { stroke-dashoffset: 0; }
+
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-fg); margin: 0 0 10px; }
+h1, h2 { font-family: var(--display); letter-spacing: -.025em; margin: 0; font-weight: 600; }
+h1 { font-size: 92px; line-height: .98; }
+h2 { font-size: 46px; line-height: 1.05; margin-bottom: 8px; }
+.lede { font-size: 21px; color: var(--muted-fg); max-width: 60ch; margin: 0; }
+.head { margin-bottom: 26px; }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 22px 24px; box-shadow: var(--shadow); }
+.card h3 { margin: 0 0 6px; font: 600 21px/1.2 var(--display); letter-spacing: -.01em; }
+.card p { margin: 0; color: var(--muted-fg); font-size: 15.5px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 9px; border-radius: 99px; margin-bottom: 10px; background: var(--muted); color: var(--muted-fg); }
+.p-ai { background: var(--ai-soft); color: var(--ai); }
+.p-brand { background: var(--brand-soft); color: var(--brand); }
+.p-warn { background: var(--warn-soft); color: var(--warn); }
+.p-danger { background: var(--danger-soft); color: var(--danger); }
+.p-blue { background: var(--blue-soft); color: var(--blue); }
+.code { font: 13.5px/1.6 var(--mono); background: var(--muted); border-radius: 14px; padding: 16px 18px; margin: 0; white-space: pre; color: var(--fg); overflow: hidden; }
+.code .k { color: var(--ai); } .code .s { color: var(--brand); } .code .c { color: var(--muted-fg); } .code .n { color: var(--warn); }
+.grid { display: grid; gap: 18px; }
+.g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); } .g5 { grid-template-columns: repeat(5, 1fr); }
+.big { font: 600 44px/1 var(--display); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.tag-line { margin-top: auto; font: 500 22px/1.35 var(--display); letter-spacing: -.01em; border-left: 4px solid var(--brand); padding: 4px 0 4px 18px; }
+.tag-line span { color: var(--muted-fg); }
+ul.ticks { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+ul.ticks li { padding-left: 28px; position: relative; font-size: 16px; }
+ul.ticks li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 14px; height: 14px; border-radius: 5px; background: var(--brand-soft); border: 1.5px solid var(--brand); }
+ul.ticks.x li::before { background: var(--danger-soft); border-color: var(--danger); }
+
+/* Scene 1 */
+.hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; flex: 1; }
+.stack-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 34px; }
+.stack-tags span { font: 500 13px var(--mono); border: 1px solid var(--border); background: var(--card); padding: 6px 12px; border-radius: 99px; color: var(--muted-fg); }
+.mock { position: relative; height: 560px; }
+.mock .card { position: absolute; }
+.slider { height: 6px; border-radius: 9px; background: var(--muted); position: relative; margin: 14px 0 6px; }
+.slider i { position: absolute; left: 0; top: 0; bottom: 0; width: 46%; border-radius: 9px; background: var(--brand); }
+.slider b { position: absolute; left: 46%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--card); border: 2px solid var(--brand); }
+.example { position: absolute; right: 0; bottom: -6px; font: 500 11px var(--mono); color: var(--muted-fg); letter-spacing: .08em; text-transform: uppercase; }
+
+/* Diagrams */
+.diagram { position: relative; flex: 1; }
+.node { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow); }
+.node h4 { margin: 0 0 4px; font: 600 19px/1.2 var(--display); letter-spacing: -.01em; }
+.node p { margin: 0; font-size: 14px; color: var(--muted-fg); line-height: 1.45; }
+.node .mono { font-size: 12.5px; color: var(--muted-fg); display: block; margin-top: 8px; line-height: 1.55; }
+.node.ai { border-color: var(--ai-border); }
+.node.hl { border-color: var(--brand); }
+.lane { position: absolute; left: 0; font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-fg); display: flex; align-items: center; gap: 10px; }
+.lane::after { content: ""; width: 1100px; height: 1px; background: var(--border); }
+svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+svg.wires path { fill: none; stroke: var(--muted-fg); stroke-width: 2; }
+svg.wires path.ai { stroke: var(--ai); }
+svg.wires path.brand { stroke: var(--brand); }
+svg.wires path.danger { stroke: var(--danger); stroke-dasharray: 6 6; }
+svg.wires text { font: 500 12px var(--mono); fill: var(--muted-fg); }
+
+/* Sandbox nesting */
+.nest { border: 1.5px solid var(--border); border-radius: 22px; padding: 18px 20px 20px; background: var(--card); }
+.nest .nest { background: var(--bg); margin-top: 14px; }
+.nest .nest .nest { background: var(--card); border-color: var(--brand); border-width: 2px; }
+.nest-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.nest-title h4 { margin: 0; font: 600 18px var(--display); }
+.nest-title code { font-size: 12.5px; color: var(--muted-fg); }
+.hdr { font: 12.5px/1.6 var(--mono); color: var(--muted-fg); margin-top: 8px; }
+.hdr b { color: var(--fg); font-weight: 500; }
+.exits { display: grid; gap: 9px; }
+.exit { display: grid; grid-template-columns: 1.05fr 1.25fr; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 11px 14px; }
+.exit span:first-child { font: 500 14px var(--mono); text-decoration: line-through; text-decoration-color: var(--danger); text-decoration-thickness: 2px; }
+.exit span:last-child { font-size: 14px; color: var(--muted-fg); }
+
+/* Pipeline row */
+.pipe { display: flex; align-items: stretch; gap: 0; }
+.pipe .card { flex: 1; padding: 18px; }
+.pipe .arrow { width: 34px; flex: none; display: grid; place-items: center; color: var(--muted-fg); font-size: 22px; }
+.pipe .card h3 { font-size: 18px; }
+.pipe .card p { font-size: 14px; }
+
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15.5px; }
+th { text-align: left; font: 500 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); padding: 0 16px 10px; }
+td { padding: 16px; border-top: 1px solid var(--border); vertical-align: top; }
+td:first-child { font-weight: 600; width: 30%; }
+td:nth-child(2) { color: var(--muted-fg); width: 22%; }
+tbody tr { background: var(--card); }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; flex: 1; }
+.timeline { display: grid; gap: 12px; }
+.day { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; }
+.day small { display: block; font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); }
+.day strong { font: 600 18px var(--display); }
+.day code { font-size: 14px; }
+.arrowtxt { color: var(--brand); font-weight: 600; }
+
+.loop { position: relative; width: 620px; height: 430px; }
+.callout { background: var(--ai-soft); border: 1px solid var(--ai-border); color: var(--fg); border-radius: 16px; padding: 14px 18px; font-size: 15px; }
+.callout b { color: var(--ai); }
+.close-big { font: 600 74px/1.02 var(--display); letter-spacing: -.035em; max-width: 16ch; }
+.close-big em { font-style: normal; color: var(--brand); }
+:root[data-theme="dark"] .close-big em { color: var(--brand-solid); }
+
+/* Small tables inside cards */
+table.mini { margin-top: 8px; font-size: 14.5px; }
+table.mini th { padding: 0 10px 5px; text-align: right; }
+table.mini td { padding: 5px 10px; width: auto; text-align: right; color: var(--fg); font-family: var(--mono); font-weight: 400; }
+table.mini td:first-child { text-align: left; font-family: var(--sans); width: 46%; color: var(--muted-fg); }
+table.mini tr.sum td { font-weight: 600; color: var(--fg); background: var(--brand-soft); }
+table.mini td.warn { color: var(--warn); } table.mini td.good { color: var(--brand); }
+table.paths td { padding: 9px 0; width: auto; font-weight: 400; color: var(--muted-fg); font-size: 14px; }
+table.paths td:first-child { width: 58%; color: var(--fg); }
+table.paths code { font-size: 13px; }
+tbody tr[data-s] td:first-child { width: 28%; }
+.scene[data-short="Problems"] td { padding-top: 12px; padding-bottom: 12px; }
+
+.hide-rail .rail { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <nav class="rail" aria-label="Chapters">
+    <div class="logo" aria-hidden="true">m</div>
+  </nav>
+  <div class="main">
+    <header class="top">
+      <div class="crumb" id="crumb"></div>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="keys"><kbd>←</kbd><kbd>→</kbd> page <kbd>D</kbd> theme <kbd>F</kbd> full screen</div>
+    </header>
+    <div class="scenes">
+
+<!-- 1 · Title -->
+<section class="scene" data-title="Net worth" data-short="Intro">
+  <div class="hero">
+    <div>
+      <p class="eyebrow">Moneo · open-source personal finance · deep dive</p>
+      <h1>Net worth</h1>
+      <p class="lede" style="margin-top:22px;font-size:24px">How Moneo works out what you own, today and on the days before it, and how it keeps that number honest when banks and brokers disagree.</p>
+      <div class="stack-tags">
+        <span>Integer money</span><span>Bank ledger</span><span>Dated values</span><span>Scalable replay</span><span>Own transfers</span><span>Always-on checks</span>
+      </div>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="card" style="left:20px;top:50px;width:540px;height:430px">
+        <span class="pill">Home</span>
+        <h3>Net worth</h3>
+        <div class="big" style="margin-top:8px">€ 5,550.00</div>
+        <p style="margin-top:8px;font-size:17px"><span style="color:var(--warn)">-€120.00</span> money in and out · <span style="color:var(--brand)">+€85.00</span> investments</p>
+        <svg viewBox="0 0 480 170" style="width:100%;margin-top:22px"><path d="M0 130 L45 122 L90 126 L135 100 L180 104 L225 82 L270 88 L315 60 L360 66 L405 40 L450 44 L480 30" fill="none" stroke="var(--brand)" stroke-width="3"/></svg>
+      </div>
+      <span class="example" style="right:28px;bottom:52px">Illustrative numbers</span>
+    </div>
+  </div>
+</section>
+
+<!-- 2 · The idea -->
+<section class="scene" data-title="The idea" data-short="Idea">
+  <div class="head">
+    <p class="eyebrow">The idea</p>
+    <h2>Everything you own, minus everything you owe</h2>
+    <p class="lede">Code adds it up from your records, in whole cents. The AI can explain the number; code produces it.</p>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr) 44px 1.15fr;align-items:stretch">
+    <div class="card" data-s="1"><span class="pill p-blue">Accounts</span><div class="big" style="font-size:34px;margin:6px 0 10px">€ 2,550</div><p>Bank accounts and cash you told Moneo about.</p></div>
+    <div class="card" data-s="2"><span class="pill p-brand">Investments</span><div class="big" style="font-size:34px;margin:6px 0 10px">€ 3,200</div><p>Scalable holdings and cash, plus investments you add by hand.</p></div>
+    <div class="card" data-s="3"><span class="pill p-ai">Lent and other assets</span><div class="big" style="font-size:34px;margin:6px 0 10px">€ 500</div><p>Money someone owes you, and other assets such as a car.</p></div>
+    <div class="card" data-s="4"><span class="pill p-warn">Debts</span><div class="big" style="font-size:34px;margin:6px 0 10px">-€ 700</div><p>Loans and money you owe people.</p></div>
+    <div data-s="5" style="display:grid;place-items:center;font:600 34px var(--display);color:var(--muted-fg)">=</div>
+    <div class="card" data-s="5" style="border-color:var(--brand);background:var(--brand-soft)"><span class="pill p-brand">Net worth</span><div class="big" style="font-size:42px;margin:6px 0 10px">€ 5,550</div><p>The same calculation on every screen.</p></div>
+  </div>
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card" data-s="6"><h3>Only what's recorded</h3><p>Moneo counts what it has evidence of. Money at another bank or cash at home counts once you add it.</p></div>
+    <div class="card" data-s="7"><h3>Never a silent guess</h3><p>An unknown input is left out and named. If two balances conflict, Moneo uses the most recently recorded one and tells you.</p></div>
+    <div class="card" data-s="8"><h3>History stays</h3><p>Corrections add to the record. Source rows and earlier versions are kept, and changes can be undone.</p></div>
+  </div>
+  <p class="tag-line" data-s="9">One question, one calculation: <span>what can the records prove on this date?</span></p>
+</section>
+
+<!-- 3 · Evidence -->
+<section class="scene" data-title="Where the numbers come from" data-short="Evidence">
+  <div class="head" style="margin-bottom:18px">
+    <p class="eyebrow">The evidence</p>
+    <h2>Five kinds of evidence, each with one job</h2>
+    <p class="lede">Each keeps its own date and source, so any figure can be traced back to what produced it.</p>
+  </div>
+  <table>
+    <thead><tr><th>Record</th><th>Comes from</th><th>What it proves</th></tr></thead>
+    <tbody>
+      <tr data-s="1"><td>Transactions</td><td>Statements, bank sync, you</td><td>Money moved on this date. Only posted rows count, so pending card payments never change the balance.</td></tr>
+      <tr data-s="2"><td>Balance observations</td><td>Bank sync, statements, you</td><td>This balance was stated on this date, by the bank, a statement or you. Each is saved with its own date and type.</td></tr>
+      <tr data-s="3"><td>Dated values</td><td>Scalable sync, you</td><td>This holding or asset was worth this much on this date, including when it was removed.</td></tr>
+      <tr data-s="4"><td>Scalable transfers</td><td>Scalable, once per transfer</td><td>Money moved in or out of the broker. Each one has Scalable's own ID, and returned withdrawals stay linked to their return.</td></tr>
+      <tr data-s="5"><td>Calculated history</td><td>Worked out by Moneo</td><td>Your portfolio's value on days before its first sync. Kept apart from real records and labelled as calculated.</td></tr>
+    </tbody>
+  </table>
+  <p class="tag-line" data-s="6">Recorded facts and calculated values are stored apart, <span>and calculated days are labelled.</span></p>
+</section>
+
+<!-- 4 · Today -->
+<section class="scene" data-title="The number today" data-short="Today">
+  <div class="head">
+    <p class="eyebrow">Today's number</p>
+    <h2>Last known balance, plus what happened since</h2>
+    <p class="lede">An account's balance is its latest balance observation, moved by every posted transaction after it.</p>
+  </div>
+  <div class="split" style="flex:none">
+    <div class="timeline">
+      <div class="day" data-s="1"><div><small>Mon</small><strong>Bank says</strong></div><div><code>€ 2,600.00</code> balance observation</div></div>
+      <div class="day" data-s="2"><div><small>Tue</small><strong>Posted</strong></div><div><code>-€ 40.00</code> groceries</div></div>
+      <div class="day" data-s="3"><div><small>Wed</small><strong>Posted</strong></div><div><code>-€ 10.00</code> phone bill</div></div>
+      <div class="day" data-s="4"><div><small>Wed</small><strong>Pending</strong></div><div><code>-€ 25.00</code> card hold, not counted until it posts</div></div>
+      <div class="day" data-s="5" style="border-color:var(--brand);background:var(--brand-soft)"><div><small>Today</small><strong>Balance</strong></div><div><code>€ 2,550.00</code></div></div>
+    </div>
+    <div class="grid" style="align-content:start">
+      <div class="card" data-s="6"><span class="pill p-brand">Older values</span><h3>Stay counted, and say so</h3><p>A value from Friday still counts on Sunday. Wealth names it as not from today, so a late sync never makes money vanish.</p></div>
+      <div class="card" data-s="7"><span class="pill p-warn">Future dates</span><h3>Don't count yet</h3><p>A value dated in the future stays out and is named as not counted.</p></div>
+      <div class="card" data-s="8"><span class="pill p-blue">Agreeing records</span><h3>Two sources, one fact</h3><p>The same date and amount, describing the same point in the day, is agreement. Different amounts are a conflict: Moneo uses the most recently recorded one and tells you.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · The graph -->
+<section class="scene" data-title="Every day on the graph" data-short="Graph">
+  <div class="head">
+    <p class="eyebrow">The graph</p>
+    <h2>Each past day is worked out the same way</h2>
+    <p class="lede">The graph uses the same balance rules as the headline, so it isn't surer of a past day than the records are.</p>
+  </div>
+  <div class="pipe">
+    <div class="card" data-s="1"><span class="pill p-blue">Step 1</span><h3>Accounts</h3><p>Latest observation on or before that day, moved by later postings. Earlier days are worked back from the first one.</p></div>
+    <div class="arrow" data-s="2">→</div>
+    <div class="card" data-s="2"><span class="pill p-brand">Step 2</span><h3>Values</h3><p>The value in force that day: nothing before it existed, and zero once sold or removed. An undone addition never counted.</p></div>
+    <div class="arrow" data-s="3">→</div>
+    <div class="card" data-s="3"><span class="pill">Step 3</span><h3>Portfolio</h3><p>Before Scalable's first real sync, the calculated value. From that sync on, only real ones.</p></div>
+    <div class="arrow" data-s="4">→</div>
+    <div class="card" data-s="4" style="border-color:var(--brand)"><span class="pill p-brand">Step 4</span><h3>Own transfers</h3><p>Money moving between your own accounts stays counted once while it travels.</p></div>
+  </div>
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card" data-s="5"><h3>Ends on the headline</h3><p>Today's point uses the same inputs as the number above it, so in your display currency the two match.</p></div>
+    <div class="card" data-s="6"><h3>Starts where accounts start</h3><p>Values alone would look like a jump when bank history begins. The Scalable chart on Wealth goes back further.</p></div>
+    <div class="card" data-s="7"><h3>Shows uncertainty</h3><p>If a day's balance can't be proven, it's marked uncertain instead of drawn as a confident number.</p></div>
+  </div>
+  <p class="tag-line" data-s="8">Home's daily graph and Wealth's month-end table <span>read the same points.</span></p>
+</section>
+
+<!-- 6 · Own transfers -->
+<section class="scene" data-title="Moving your own money" data-short="Transfers">
+  <div class="head" style="margin-bottom:18px">
+    <p class="eyebrow">Own transfers</p>
+    <h2>Moving your own money doesn't change what you own</h2>
+    <p class="lede">The two sides of a transfer between your tracked accounts often land on different days. Money in transit counts as yours, once.</p>
+  </div>
+  <div class="split" style="flex:none">
+    <div class="card" data-s="1">
+      <span class="pill p-brand">Money in transit</span>
+      <h3>€500 from your bank to Scalable</h3>
+      <table class="mini"><thead><tr><th></th><th>Mon</th><th>Tue</th><th>Wed</th></tr></thead><tbody>
+        <tr><td>Bank</td><td>3,000</td><td>2,500</td><td>2,500</td></tr>
+        <tr><td>Scalable</td><td>1,500</td><td>1,500</td><td>1,500</td></tr>
+        <tr><td>Overlap removed</td><td class="warn">-500</td><td>0</td><td>0</td></tr>
+        <tr class="sum"><td>Net worth</td><td>4,000</td><td>4,000</td><td>4,000</td></tr>
+      </tbody></table>
+      <p style="margin-top:10px">Scalable records it on Monday, and the bank pays on Tuesday. Until the bank side arrives, today's total can run high by that amount, and the transfer shows as unresolved. Once it lands, Monday corrects itself. No record is rewritten.</p>
+    </div>
+    <div class="card" data-s="2">
+      <span class="pill p-ai">Returned withdrawal</span>
+      <h3>A withdrawal bounces back</h3>
+      <table class="mini"><thead><tr><th></th><th>Mon</th><th>Tue</th><th>Wed</th></tr></thead><tbody>
+        <tr><td>Scalable's records</td><td>1,000</td><td>500</td><td>1,000</td></tr>
+        <tr><td>On the way back</td><td>0</td><td class="good">+500</td><td>0</td></tr>
+        <tr class="sum"><td>Shown on both charts</td><td>1,000</td><td>1,000</td><td>1,000</td></tr>
+      </tbody></table>
+      <p style="margin-top:10px">Scalable marks the return with the withdrawal's own ID, <code>RETURN-&lt;id&gt;</code>. The records stay, but no dip appears.</p>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:18px">
+    <div class="card" data-s="3"><h3>How the sides are matched</h3><p>Opposite amounts, same currency, up to 3 days apart, in accounts proven yours by IBAN or the bank's own wording. Exactly one candidate.</p></div>
+    <div class="card" data-s="4"><h3>If it isn't clear</h3><p>Two possible matches, or a side that doesn't arrive within the window, stay listed as unresolved on Wealth. Moneo doesn't guess.</p></div>
+    <div class="card" data-s="5"><h3>Other banks, fees, currency</h3><p>A transfer to a bank Moneo doesn't track leaves net worth on its own date. Fees and exchange-rate differences are real changes.</p></div>
+  </div>
+</section>
+
+<!-- 7 · Scalable -->
+<section class="scene" data-title="Your Scalable portfolio" data-short="Scalable">
+  <div class="head">
+    <p class="eyebrow">Investments</p>
+    <h2>Replaying your history from your first trade</h2>
+    <p class="lede">Each sync records today's real value. For earlier days, Moneo replays your transactions and past prices in the background until one run passes.</p>
+  </div>
+  <div class="pipe">
+    <div class="card" data-s="1"><span class="pill">Read</span><h3>Every transaction</h3><p>Settled trades and cash moves, each counted once. Read-only tools only.</p></div>
+    <div class="arrow" data-s="2">→</div>
+    <div class="card" data-s="2"><span class="pill">Replay</span><h3>Day by day</h3><p>What you held and your cash on each day, in exact decimals.</p></div>
+    <div class="arrow" data-s="3">→</div>
+    <div class="card" data-s="3"><span class="pill">Price</span><h3>Latest known price</h3><p>Never interpolated. A trade's own price, without fees, also counts as a known price that day.</p></div>
+    <div class="arrow" data-s="4">→</div>
+    <div class="card" data-s="4" style="border-color:var(--brand)"><span class="pill p-brand">Check</span><h3>Land on today</h3><p>Shares must match to within a millionth, and cash within €1. Otherwise nothing is saved.</p></div>
+  </div>
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card" data-s="5"><span class="pill p-blue">Crypto</span><h3>Really ETP shares</h3><p>Scalable holds crypto as shares of an exchange-traded product. Moneo values those shares at their own price, because Scalable's coin figure shrinks over time.</p></div>
+    <div class="card" data-s="6"><span class="pill p-warn">Older prices</span><h3>Less detail further back</h3><p>Scalable's price charts get coarser with age, and are monthly beyond a year. The chart notes this, and older parts move in steps.</p></div>
+    <div class="card" data-s="7"><span class="pill p-brand">Real syncs</span><h3>Parts add up</h3><p>Negative cash stays negative, the parts are checked against Scalable's total, and market moves show the date they happened.</p></div>
+  </div>
+  <p class="tag-line" data-s="8">Matching today proves where the replay ends, and the first real sync tests one more point. <span>Days in between stay labelled as calculated.</span></p>
+</section>
+
+<!-- 8 · Over time -->
+<section class="scene" data-title="Things that change over time" data-short="Life cycle">
+  <div class="head" style="margin-bottom:18px">
+    <p class="eyebrow">Life cycle</p>
+    <h2>Each thing you own counts only while you own it</h2>
+    <p class="lede">Past days use the state that was true then. Undo and archiving are the deliberate exceptions.</p>
+  </div>
+  <table>
+    <thead><tr><th>What happens</th><th>Effect</th><th>How Moneo treats it</th></tr></thead>
+    <tbody>
+      <tr data-s="1"><td>You sell, then rebuy later</td><td>Shares count as zero in between</td><td>The sale cash counts in between, and the shares don't, so nothing counts twice.</td></tr>
+      <tr data-s="2"><td>You undo adding something</td><td>As if never added</td><td>It disappears from past days too. Removing a real asset only counts from its removal date.</td></tr>
+      <tr data-s="3"><td>You link an asset to an account</td><td>Counted once</td><td>The account's balance takes over from the link's date, and the old value stops.</td></tr>
+      <tr data-s="4"><td>You lend money</td><td>No change</td><td>The money leaves your bank and appears as "Lent to" on the same day.</td></tr>
+      <tr data-s="5"><td>You get repaid</td><td>Repaid amount: no change</td><td>Each repayment is tied to one bank payment and dated by it. A payment can't settle more than its amount, a cancelled one can't be used, and a bank correction or undo asks you again.</td></tr>
+      <tr data-s="6"><td>You withdraw cash</td><td>No change once accepted</td><td>A card offers to add it to your Cash account. Until you accept, it counts as money that left. After spending, you update the balance whenever you like.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 9 · Fresh -->
+<section class="scene" data-title="Staying up to date" data-short="Fresh">
+  <div class="head">
+    <p class="eyebrow">Staying up to date</p>
+    <h2>Old numbers first, fresh numbers when they land</h2>
+    <p class="lede">Opening Moneo never waits on a bank. The page shows what's saved, then updates by itself once a sync finishes.</p>
+  </div>
+  <div class="grid g3">
+    <div class="card" data-s="1"><span class="pill p-brand">When you open it</span><h3>Sync on open and return</h3><p>Scalable at most every 15 minutes, and each bank at most hourly, because you're present.</p></div>
+    <div class="card" data-s="2"><span class="pill">In the background</span><h3>Hourly job, about once a day each</h3><p>Catches up after the computer was asleep. Scalable runs if its values aren't from today.</p></div>
+    <div class="card" data-s="3"><span class="pill p-blue">Per connection</span><h3>Syncs don't clash</h3><p>Each connection is claimed in the database, one at a time. An older result can't overwrite a newer one, and a renewed login token can't be used twice.</p></div>
+  </div>
+  <div class="split" style="margin-top:22px;flex:none">
+    <div class="card" data-s="4">
+      <h3>Bank data you can trust</h3>
+      <ul class="ticks" style="margin-top:12px">
+        <li>The bank's balance is saved even when no new transaction arrives</li>
+        <li>Banks without transaction IDs compare how many identical rows the bank and Moneo each have, in a period both fully cover, so repeats aren't re-added and real second payments aren't lost</li>
+        <li>Unclear overlaps go to review instead of being guessed</li>
+      </ul>
+    </div>
+    <div class="card" data-s="5">
+      <h3>A sync only counts when it landed</h3>
+      <ul class="ticks" style="margin-top:12px">
+        <li>Reaching the bank doesn't count as success until the rows are in your ledger</li>
+        <li>A failed import never shows as a successful sync</li>
+        <li>A request that fails before reaching the bank is reported too</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · Checks -->
+<section class="scene" data-title="Checks that keep running" data-short="Checks">
+  <div class="head" style="margin-bottom:18px">
+    <p class="eyebrow">Trust</p>
+    <h2>The numbers keep checking each other</h2>
+    <p class="lede">After each sync, Moneo compares independent records. Each piece of evidence raises one notice, not a new one each sync.</p>
+  </div>
+  <div class="grid g5">
+    <div class="card" data-s="1"><h3>Bank adds up</h3><p>Two balance observations of the same type, at a clear point in the day, differ by exactly the postings between them.</p></div>
+    <div class="card" data-s="2"><h3>Scalable adds up</h3><p>Holdings, crypto and cash add up to Scalable's own total.</p></div>
+    <div class="card" data-s="3"><h3>History meets reality</h3><p>The last calculated day is compared with the first real sync.</p></div>
+    <div class="card" data-s="4"><h3>Transfers pair up</h3><p>Every own transfer has one other side, or is shown as unresolved.</p></div>
+    <div class="card" data-s="5"><h3>Imports landed</h3><p>A failed import can't publish a successful status.</p></div>
+  </div>
+  <div class="split" style="margin-top:20px;flex:none">
+    <div class="card" data-s="6">
+      <span class="pill p-brand">Guaranteed by automated tests</span>
+      <ul class="ticks" style="margin-top:6px">
+        <li>A matched transfer between tracked accounts is counted once on every day</li>
+        <li>A returned withdrawal changes nothing</li>
+        <li>Importing the same row twice leaves every balance agreeing</li>
+        <li>With one currency, today's point equals the headline</li>
+        <li>Home, Wealth and chat agree on the same data</li>
+        <li>A loan and its repaid amount don't change net worth</li>
+      </ul>
+    </div>
+    <div class="card" data-s="7">
+      <span class="pill p-warn">Deliberately not alarms</span>
+      <ul class="ticks x" style="margin-top:6px">
+        <li>Negative balances: an overdraft or a fee can be real</li>
+        <li>Exact match with Scalable's returns: its periods and rounding differ</li>
+        <li>A transfer taking longer than 3 days: weekends and reversals happen, so it stays listed as unresolved, without an alarm</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 11 · When wrong -->
+<section class="scene" data-title="When something is wrong" data-short="Problems">
+  <div class="head" style="margin-bottom:18px">
+    <p class="eyebrow">Problems</p>
+    <h2>A clean page, and nothing hidden</h2>
+    <p class="lede">Passing issues come and go in the corner. Problems that change the number stay on it until they are fixed.</p>
+  </div>
+  <table>
+    <thead><tr><th>Problem</th><th>On Home</th><th>Where the detail stays</th></tr></thead>
+    <tbody>
+      <tr data-s="1"><td>A value isn't from today</td><td>Passing message, once per change</td><td>Wealth names each item and its date</td></tr>
+      <tr data-s="2"><td>A sync failed or a login ended</td><td>Passing message, once per change</td><td>Settings shows the connection and what to do</td></tr>
+      <tr data-s="3"><td>Something can't be counted</td><td>On the card, until fixed</td><td>"Not counted" names the item</td></tr>
+      <tr data-s="4"><td>An account has no balance</td><td>On the card, until fixed</td><td>A button to fix it</td></tr>
+      <tr data-s="5"><td>Calculated history failed its check</td><td>A quiet line on the card</td><td>Wealth says the chart starts at the first sync</td></tr>
+      <tr data-s="6"><td>A check found a mismatch</td><td>Passing message, once per change</td><td>Wealth lists it with its evidence until resolved</td></tr>
+      <tr data-s="7"><td>Two balances conflict</td><td>On the card, until fixed</td><td>Accounts shows both, and which one is used</td></tr>
+      <tr data-s="8"><td>A transfer is unresolved</td><td>Nothing, unless it changes the total</td><td>Wealth lists it until its other side is found</td></tr>
+      <tr data-s="9"><td>A past day can't be proven</td><td>Marked on the graph</td><td>Hovering that day says why</td></tr>
+    </tbody>
+  </table>
+  <p class="tag-line" data-s="10">The passing message waits 15 seconds, <span>so a problem the sync fixes in that time doesn't flash up.</span></p>
+</section>
+
+<!-- 12 · Everywhere -->
+<section class="scene" data-title="The same answer everywhere" data-short="Everywhere">
+  <div class="head">
+    <p class="eyebrow">Every screen</p>
+    <h2>One calculation, wherever you ask</h2>
+    <p class="lede">Screens read the total from one source. The AI quotes that total, and can only do further sums on top of it.</p>
+  </div>
+  <div class="diagram" style="flex:none;width:1396px;height:290px">
+    <div class="node hl" data-s="1" style="left:0;top:50px;width:380px;height:190px;background:var(--brand-soft)"><span class="pill p-brand">One source</span><h4 style="font-size:24px">Net worth calculation</h4><p style="font-size:15px;margin-top:6px">Current and past totals, what was left out, and how fresh each input is.</p></div>
+    <div class="node" data-s="2" style="left:640px;top:0;width:240px;height:125px"><span class="pill">Home</span><h4>Headline and graph</h4></div>
+    <div class="node" data-s="2" style="left:900px;top:0;width:240px;height:125px"><span class="pill">Wealth</span><h4>Totals and tables</h4></div>
+    <div class="node ai" data-s="3" style="left:1160px;top:0;width:236px;height:125px"><span class="pill p-ai">Chat</span><h4>Any date you ask about</h4></div>
+    <div class="node ai" data-s="3" style="left:640px;top:150px;width:240px;height:125px"><span class="pill p-ai">Voice</span><h4>The same figures</h4></div>
+    <div class="node ai" data-s="3" style="left:900px;top:150px;width:496px;height:125px"><span class="pill p-ai">Artifacts</span><h4>Your own pages and Home cards</h4></div>
+    <svg class="wires" viewBox="0 0 1396 290" preserveAspectRatio="none" aria-hidden="true">
+      <path class="draw brand" data-s="2" d="M380 145 H570"/>
+      <path class="draw brand" data-s="2" d="M570 62 V212"/>
+      <path class="draw brand" data-s="2" d="M570 62 H638"/>
+      <path class="draw brand" data-s="2" d="M570 212 H638"/>
+    </svg>
+  </div>
+  <div class="grid g3" style="margin-top:20px">
+    <div class="card" data-s="5"><span class="pill p-brand">This month</span><h3>Split in two</h3><p>Money in and out, and investments, so spending and markets are kept apart. Moving your own money is neither.</p></div>
+    <div class="card" data-s="6"><span class="pill p-blue">Available to spend</span><h3>Only money you have</h3><p>Starts from your opening cash, not income that is only expected. The plan uses the same balance rules.</p></div>
+    <div class="card" data-s="7"><span class="pill p-warn">Debts</span><h3>Keep forecasting</h3><p>A debt's last known amount carries forward, with its payments. It asks for an update only when the evidence runs out.</p></div>
+  </div>
+</section>
+
+<!-- 13 · Decisions -->
+<section class="scene" data-title="Decisions and trade-offs" data-short="Decisions">
+  <div class="head" style="margin-bottom:16px">
+    <p class="eyebrow">Decisions</p>
+    <h2>What we chose, and why</h2>
+  </div>
+  <table>
+    <thead><tr><th>Chose</th><th>Instead of</th><th>Because</th></tr></thead>
+    <tbody>
+      <tr data-s="1"><td>Money in transit is yours</td><td>Letting it dip or double</td><td>A transfer isn't a gain or a loss. Past the 3-day window it stays visible as unresolved</td></tr>
+      <tr data-s="2"><td>Hide returned withdrawals on charts</td><td>Showing a temporary drop</td><td>The money came back. The records stay, so the truth is still there</td></tr>
+      <tr data-s="3"><td>Match by proof</td><td>Matching any equal amount</td><td>A friend's €400 on the same day mustn't look like your own transfer</td></tr>
+      <tr data-s="4"><td>Apply transfer rules when reading</td><td>Rebuilding history on new statements</td><td>Nothing is rewritten, and old prices aren't lost to a re-run</td></tr>
+      <tr data-s="5"><td>Calculated days kept apart</td><td>Backdating them as real records</td><td>Your record of events stays real, and estimates stay labelled</td></tr>
+      <tr data-s="6"><td>Replay must land on today</td><td>Saving the best attempt</td><td>A chart that starts later beats a confident wrong past</td></tr>
+      <tr data-s="7"><td>A card for each cash withdrawal</td><td>Moving it to Cash automatically</td><td>Only you know if the cash was kept, and proposals are always cards</td></tr>
+      <tr data-s="8"><td>Keep the ledger model</td><td>Full double-entry accounting</td><td>It fits one owner, and shared rules keep it correct</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 14 · Limits -->
+<section class="scene" data-title="What it can't know" data-short="Limits">
+  <div class="head">
+    <p class="eyebrow">Limits</p>
+    <h2>What Moneo can't know, and where to read the code</h2>
+    <p class="lede">Better to say this plainly than to imply a precision the records don't have.</p>
+  </div>
+  <div class="split" style="flex:none">
+    <div class="card" data-s="1">
+      <h3>Known limits</h3>
+      <ul class="ticks x" style="margin-top:12px">
+        <li>Money you never recorded isn't counted, and purchases count as spent even if they keep their value</li>
+        <li>Cash you spend only changes when you update the balance</li>
+        <li>Moneo relies on the bank's data, so it can't see a bank mistake that still adds up</li>
+        <li>Calculated days use the prices Scalable provides, monthly further back, in euros only; otherwise the chart starts at the first sync</li>
+        <li>A new bank or hand-added item can still look like a gain in the month it appears (#167)</li>
+        <li>The graph shows one display currency for now, while the headline converts (#158)</li>
+        <li>Archiving an account removes it from past days too</li>
+      </ul>
+    </div>
+    <div class="card" data-s="2">
+      <h3>Where to read the code</h3>
+      <table class="paths"><tbody>
+        <tr><td><code>app/money/wealth/net-worth.ts</code></td><td>The graph and its points</td></tr>
+        <tr><td><code>lib/finance/balances.ts</code></td><td>Resolving a balance</td></tr>
+        <tr><td><code>lib/finance/wealth.ts</code></td><td>Which values count</td></tr>
+        <tr><td><code>lib/finance/own-transfers.ts</code></td><td>Proving money is yours</td></tr>
+        <tr><td><code>lib/finance/iou.ts</code></td><td>Lending and repayment</td></tr>
+        <tr><td><code>lib/scalable/history.ts</code></td><td>The replay and its check</td></tr>
+        <tr><td><code>lib/scalable/history-job.ts</code></td><td>When the replay runs</td></tr>
+        <tr><td><code>lib/scalable/sync.ts</code></td><td>Real Scalable values</td></tr>
+        <tr><td><code>app/api/sync/open/route.ts</code></td><td>Sync on open</td></tr>
+        <tr><td><code>workflows/bank-sync.ts</code></td><td>Bank sync and import</td></tr>
+        <tr><td><code>app/home-notices.tsx</code></td><td>Passing messages</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+</section>
+
+<!-- 15 · Close -->
+<section class="scene" data-title="Takeaway" data-short="Close">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:34px">
+    <p class="eyebrow">Takeaway</p>
+    <div class="close-big" data-s="1">One number, <em>built from your records</em>, on every screen.</div>
+    <div class="grid g3" style="max-width:1250px">
+      <div class="card" data-s="2"><h3>Honest about the past</h3><p>Each day is worked out from evidence, with calculated days labelled and uncertain days marked.</p></div>
+      <div class="card" data-s="2"><h3>Calm about moving money</h3><p>Matched transfers, bounced withdrawals and slow banks don't change what you own.</p></div>
+      <div class="card" data-s="2"><h3>Loud only when it matters</h3><p>The numbers check each other, and a real mismatch stays visible until it's resolved.</p></div>
+    </div>
+    <p class="mono" data-s="3" style="color:var(--muted-fg);font-size:16px">github.com/indkhan/Moneo · open source · runs on your own computer</p>
+  </div>
+</section>
+
+    </div>
+  </div>
+</div>
+<script>
+const scenes = [...document.querySelectorAll(".scene")];
+const rail = document.querySelector(".rail");
+let index = 0;
+
+scenes.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.innerHTML = `<b>${String(i + 1).padStart(2, "0")}</b>${s.dataset.short}`;
+  b.onclick = () => go(i);
+  rail.append(b);
+});
+
+// One page per scene: everything on it fades in by itself, in its data-s order, so only a scene change needs a key.
+function render() {
+  scenes.forEach((s, i) => s.classList.toggle("on", i === index));
+  const s = scenes[index];
+  const parts = [...s.querySelectorAll("[data-s]")];
+  parts.forEach(e => { e.classList.remove("shown"); e.style.transitionDelay = `${(+e.dataset.s - 1) * 90}ms`; });
+  requestAnimationFrame(() => requestAnimationFrame(() => parts.forEach(e => e.classList.add("shown"))));
+  [...rail.querySelectorAll("button")].forEach((b, i) => b.setAttribute("aria-current", i === index));
+  document.getElementById("crumb").innerHTML = `<strong>${String(index + 1).padStart(2, "0")}</strong> / ${scenes.length} · ${s.dataset.title}`;
+  document.getElementById("bar").style.width = `${((index + 1) / scenes.length) * 100}%`;
+  try { history.replaceState(null, "", `#${index + 1}`); } catch {}
+}
+function go(i) { index = Math.max(0, Math.min(scenes.length - 1, i)); render(); }
+function next() { if (index < scenes.length - 1) go(index + 1); }
+function prev() { if (index > 0) go(index - 1); }
+
+addEventListener("keydown", e => {
+  if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(scenes.length - 1);
+  else if (e.key.toLowerCase() === "d") setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  else if (e.key.toLowerCase() === "f") document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+  else if (e.key.toLowerCase() === "r") document.body.classList.toggle("hide-rail");
+});
+document.querySelector(".scenes").addEventListener("click", e => { if (!e.target.closest("button,a")) next(); });
+
+function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("moneo-deep-dive-theme", t); } catch {} }
+let saved = null; try { saved = localStorage.getItem("moneo-deep-dive-theme"); } catch {}
+setTheme(saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+
+function fit() {
+  const k = Math.min(innerWidth / 1600, innerHeight / 900);
+  document.getElementById("stage").style.transform = `translate(-50%, -50%) scale(${k})`;
+}
+addEventListener("resize", fit); fit();
+
+const m = /^#(\d+)/.exec(location.hash);
+go(m ? +m[1] - 1 : 0);
+</script>
+</body>
+</html>
