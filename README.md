@@ -110,7 +110,7 @@ Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days
 1. In Scalable on the web, go to **Profile → Security → Agentic Investing** and turn on access (read-only is enough).
 2. In Moneo, click **Connect Scalable Capital** under **Settings → Keys and connections** (also on the Import page) and log in to Scalable (with 2FA in the Scalable app).
 
-Moneo then reads your holdings, totals and cash every day and shows the portfolio on Wealth. No keys are needed.
+Moneo then reads your holdings, totals and cash every day and shows the portfolio on Wealth. No keys are needed. It also keeps Scalable's own record of your deposits and withdrawals, read in full once after connecting, so money moving between your bank and Scalable counts once on every day of the net worth chart, and a withdrawal that bounced back looks as if the money stayed.
 
 Soon after the first sync, a background job works out your portfolio's past value from your Scalable transactions and past prices, so its chart reaches back to your first trade and connecting a portfolio doesn't look like a gain in net worth. Those days are an estimate, saved apart from your real records: prices further than a year back are monthly. Moneo only saves them if replaying your transactions lands on the shares and cash you hold today; otherwise the chart simply starts at your first sync, and it tries again the next day. Disconnecting keeps them, like your synced values, and resetting all data clears them.
 

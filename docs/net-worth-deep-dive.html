@@ -211,7 +211,7 @@ tbody tr[data-s] td:first-child { width: 28%; }
         <span class="pill">Home</span>
         <h3>Net worth</h3>
         <div class="big" style="margin-top:8px">€ 5,550.00</div>
-        <p style="margin-top:8px;font-size:17px"><span style="color:var(--warn)">-€120.00</span> money in and out · <span style="color:var(--brand)">+€85.00</span> investments</p>
+        <p style="margin-top:8px;font-size:17px"><span style="color:var(--warn)">-€120.00</span> money in and out · <span style="color:var(--brand)">+€85.00</span> investments · +€500.00 newly added</p>
         <svg viewBox="0 0 480 170" style="width:100%;margin-top:22px"><path d="M0 130 L45 122 L90 126 L135 100 L180 104 L225 82 L270 88 L315 60 L360 66 L405 40 L450 44 L480 30" fill="none" stroke="var(--brand)" stroke-width="3"/></svg>
       </div>
       <span class="example" style="right:28px;bottom:52px">Illustrative numbers</span>
@@ -358,7 +358,7 @@ tbody tr[data-s] td:first-child { width: 28%; }
     <div class="arrow" data-s="2">→</div>
     <div class="card" data-s="2"><span class="pill">Replay</span><h3>Day by day</h3><p>What you held and your cash on each day, in exact decimals.</p></div>
     <div class="arrow" data-s="3">→</div>
-    <div class="card" data-s="3"><span class="pill">Price</span><h3>Latest known price</h3><p>Never interpolated. A trade's own price, without fees, also counts as a known price that day.</p></div>
+    <div class="card" data-s="3"><span class="pill">Price</span><h3>Latest known price</h3><p>Never interpolated. A trade's own price also counts as a known price that day; Scalable's list includes fees in it.</p></div>
     <div class="arrow" data-s="4">→</div>
     <div class="card" data-s="4" style="border-color:var(--brand)"><span class="pill p-brand">Check</span><h3>Land on today</h3><p>Shares must match to within a millionth, and cash within €1. Otherwise nothing is saved.</p></div>
   </div>
@@ -375,7 +375,7 @@ tbody tr[data-s] td:first-child { width: 28%; }
   <div class="head" style="margin-bottom:18px">
     <p class="eyebrow">Life cycle</p>
     <h2>Each thing you own counts only while you own it</h2>
-    <p class="lede">Past days use the state that was true then. Undo and archiving are the deliberate exceptions.</p>
+    <p class="lede">Past days use the state that was true then. Undoing an addition is the deliberate exception.</p>
   </div>
   <table>
     <thead><tr><th>What happens</th><th>Effect</th><th>How Moneo treats it</th></tr></thead>
@@ -386,6 +386,8 @@ tbody tr[data-s] td:first-child { width: 28%; }
       <tr data-s="4"><td>You lend money</td><td>No change</td><td>The money leaves your bank and appears as "Lent to" on the same day.</td></tr>
       <tr data-s="5"><td>You get repaid</td><td>Repaid amount: no change</td><td>Each repayment is tied to one bank payment and dated by it. A payment can't settle more than its amount, a cancelled one can't be used, and a bank correction or undo asks you again.</td></tr>
       <tr data-s="6"><td>You withdraw cash</td><td>No change once accepted</td><td>A card offers to add it to your Cash account. Until you accept, it counts as money that left. After spending, you update the balance whenever you like.</td></tr>
+      <tr data-s="7"><td>You archive an account</td><td>Depends on your answer</td><td>It stays in past days until its archive date. If it holds money, Moneo first asks: moved to another account, taken as cash, or gone.</td></tr>
+      <tr data-s="8"><td>You add a bank or item</td><td>In the total, not a gain</td><td>This month's change shows it apart as newly added.</td></tr>
     </tbody>
   </table>
 </section>
@@ -427,7 +429,7 @@ tbody tr[data-s] td:first-child { width: 28%; }
   <div class="head" style="margin-bottom:18px">
     <p class="eyebrow">Trust</p>
     <h2>The numbers keep checking each other</h2>
-    <p class="lede">After each sync, Moneo compares independent records. Each piece of evidence raises one notice, not a new one each sync.</p>
+    <p class="lede">Whenever the numbers are read, Moneo compares independent records. Each piece of evidence is one entry, until a correction fixes it.</p>
   </div>
   <div class="grid g5">
     <div class="card" data-s="1"><h3>Bank adds up</h3><p>Two balance observations of the same type, at a clear point in the day, differ by exactly the postings between them.</p></div>
@@ -505,7 +507,7 @@ tbody tr[data-s] td:first-child { width: 28%; }
     </svg>
   </div>
   <div class="grid g3" style="margin-top:20px">
-    <div class="card" data-s="5"><span class="pill p-brand">This month</span><h3>Split in two</h3><p>Money in and out, and investments, so spending and markets are kept apart. Moving your own money is neither.</p></div>
+    <div class="card" data-s="5"><span class="pill p-brand">This month</span><h3>Split in three</h3><p>Money in and out, investments, and newly added, so spending and markets stay apart and something new isn't a gain. Moving your own money is none of them.</p></div>
     <div class="card" data-s="6"><span class="pill p-blue">Available to spend</span><h3>Only money you have</h3><p>Starts from your opening cash, not income that is only expected. The plan uses the same balance rules.</p></div>
     <div class="card" data-s="7"><span class="pill p-warn">Debts</span><h3>Keep forecasting</h3><p>A debt's last known amount carries forward, with its payments. It asks for an update only when the evidence runs out.</p></div>
   </div>
@@ -527,7 +529,9 @@ tbody tr[data-s] td:first-child { width: 28%; }
       <tr data-s="5"><td>Calculated days kept apart</td><td>Backdating them as real records</td><td>Your record of events stays real, and estimates stay labelled</td></tr>
       <tr data-s="6"><td>Replay must land on today</td><td>Saving the best attempt</td><td>A chart that starts later beats a confident wrong past</td></tr>
       <tr data-s="7"><td>A card for each cash withdrawal</td><td>Moving it to Cash automatically</td><td>Only you know if the cash was kept, and proposals are always cards</td></tr>
-      <tr data-s="8"><td>Keep the ledger model</td><td>Full double-entry accounting</td><td>It fits one owner, and shared rules keep it correct</td></tr>
+      <tr data-s="8"><td>Ask before archiving an account with money</td><td>Dropping it from the total</td><td>Only you know where it went, and the answer becomes ordinary records</td></tr>
+      <tr data-s="9"><td>Newly added apart from the month's change</td><td>Counting it as a gain or leaving it out</td><td>It's yours, so the total has it, but you didn't earn it this month</td></tr>
+      <tr data-s="10"><td>Keep the ledger model</td><td>Full double-entry accounting</td><td>It fits one owner, and shared rules keep it correct</td></tr>
     </tbody>
   </table>
 </section>
@@ -547,9 +551,8 @@ tbody tr[data-s] td:first-child { width: 28%; }
         <li>Cash you spend only changes when you update the balance</li>
         <li>Moneo relies on the bank's data, so it can't see a bank mistake that still adds up</li>
         <li>Calculated days use the prices Scalable provides, monthly further back, in euros only; otherwise the chart starts at the first sync</li>
-        <li>A new bank or hand-added item can still look like a gain in the month it appears (#167)</li>
         <li>The graph shows one display currency for now, while the headline converts (#158)</li>
-        <li>Archiving an account removes it from past days too</li>
+        <li>A cash machine card is offered for 30 days; older cash is yours to set as a balance</li>
       </ul>
     </div>
     <div class="card" data-s="2">
@@ -558,6 +561,9 @@ tbody tr[data-s] td:first-child { width: 28%; }
         <tr><td><code>app/money/wealth/net-worth.ts</code></td><td>The graph and its points</td></tr>
         <tr><td><code>lib/finance/balances.ts</code></td><td>Resolving a balance</td></tr>
         <tr><td><code>lib/finance/wealth.ts</code></td><td>Which values count</td></tr>
+        <tr><td><code>lib/finance/net-worth-source.ts</code></td><td>The one calculation every screen reads</td></tr>
+        <tr><td><code>lib/finance/transit.ts</code></td><td>Counting moved money once</td></tr>
+        <tr><td><code>lib/finance/net-worth-checks.ts</code></td><td>The checks</td></tr>
         <tr><td><code>lib/finance/own-transfers.ts</code></td><td>Proving money is yours</td></tr>
         <tr><td><code>lib/finance/iou.ts</code></td><td>Lending and repayment</td></tr>
         <tr><td><code>lib/scalable/history.ts</code></td><td>The replay and its check</td></tr>

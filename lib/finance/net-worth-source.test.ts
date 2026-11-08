@@ -84,7 +84,7 @@ describe("one source", () => {
   it("lets every balance reader agree when one statement row was imported twice", async () => {
     const copies = [snapshot("bank", "100000", "2026-10-01T00:00:00Z", { id: "a", provenance: "import:a:row:1", source_transaction_id: "s1", created_at: "2026-10-02T00:00:00Z" }), snapshot("bank", "100000", "2026-10-01T00:00:00Z", { id: "b", provenance: "import:b:row:9", source_transaction_id: "s2", created_at: "2026-10-03T00:00:00Z" })];
     tables.balance_snapshots = copies;
-    const accounts = tables.accounts as never[];
+    const accounts = tables.accounts as { id: string; name: string; currency_code: string }[];
     const strict = resolveBalances(accounts, copies as never[], [], `${TODAY}T12:00:00Z`, "UTC")[0].balance;
     const review = buildReviewEvidence(accounts, copies as never[], [], TODAY, TODAY, { asOf: `${TODAY}T12:00:00Z`, ledger: [], timeZone: "UTC" });
     expect(strict).toMatchObject({ amount_minor: "100000", status: "stale", conflicts: [] });
@@ -151,6 +151,13 @@ describe("this month, split", () => {
     tables.transactions = [posting("pay", "bank", "-6000", "2026-11-02", { kind: "transfer" })];
     const split = (await load()).monthSplit("EUR")!;
     expect(split).toMatchObject({ investmentsMinor: 59000n, moneyMinor: 0n, newlyAddedMinor: 0n, changeMinor: 59000n });
+  });
+
+  it("doesn't treat a transfer the broker's value doesn't show as an investment loss", async () => {
+    const fund = item("car", "Car", "asset", "100000", "2026-10-01");
+    tables.wealth_items = [fund]; tables.wealth_events = [event(fund, "2026-10-01T10:00:00Z")];
+    tables.scalable_transfers = [{ provider_id: "D", type: "DEPOSIT", amount_minor: "7700", currency_code: "EUR", on_date: "2026-11-07", occurred_at: "2026-11-07T10:00:00Z", status: "SETTLED", is_cancellation: false, returns_provider_id: null, description: null }];
+    expect((await load()).monthSplit("EUR")).toMatchObject({ investmentsMinor: 0n, moneyMinor: 0n, changeMinor: 0n });
   });
 
   it("keeps a loan and its bank payment out of newly added: they net out in money in and out", async () => {

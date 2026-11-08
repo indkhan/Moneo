@@ -8,7 +8,7 @@ import { describeMissingInputs, formatMoney } from "./format";
 import { convertFx } from "./fx";
 import { parseIouName } from "./iou";
 import { loadTransferLegs } from "./own-transfers";
-import { matchTransfers, transitOn, type BrokerTransfer } from "./transit";
+import { brokerShownOn, matchTransfers, transitOn, type BrokerTransfer } from "./transit";
 import { loadWealthItems, wealthEvidence } from "./wealth";
 
 // One source for net worth: every screen, the chat and the voice call read totals from here, so they can't disagree.
@@ -96,7 +96,12 @@ export function netWorthModel(evidence: NetWorthEvidence) {
       if (first) newlyAddedMinor += first.accountValues!.get(account.id)!;
       else if (account.archived_at === null || account.archived_at === undefined) { const live = accounts.find(item => item.id === account.id)?.balance.amount_minor; if (live) newlyAddedMinor += BigInt(live); }
     }
-    const movedIntoBroker = transfers.rows.filter(row => row.currency_code === currency && row.status === "SETTLED" && !row.is_cancellation && row.on_date > base && row.on_date <= today).reduce((sum, row) => sum + BigInt(row.amount_minor), 0n);
+    // Only money the broker's value already shows: a portfolio that is newly added this month, or a transfer no read has seen, isn't in it.
+    const brokerCounted = !!firstReal && (firstReal <= base || portfolioBefore);
+    const movedIntoBroker = !brokerCounted ? 0n : transfers.rows.filter(row => {
+      const shown = brokerShownOn(row, firstReal, reads);
+      return row.currency_code === currency && row.status === "SETTLED" && !row.is_cancellation && !!shown && shown > base && shown <= today;
+    }).reduce((sum, row) => sum + BigInt(row.amount_minor), 0n);
     const investmentsMinor = investing(today) - investing(base) - movedIntoBroker - newInvestingMinor;
     const changeMinor = totalChangeMinor - newlyAddedMinor;
     return { base, baseMinor: netWorth(basePoint).get(currency) ?? 0n, totalChangeMinor, changeMinor, moneyMinor: changeMinor - investmentsMinor, investmentsMinor, newlyAddedMinor };
