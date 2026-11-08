@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
 import { consentValidUntil, enableBankingErrorMessage, psuFrom, serviceDb } from "@/lib/bank/server";
 import { BANK_REDIRECT_URL } from "@/lib/bank/return-listener";
+import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 
 const bodySchema = z.object({ aspspName: z.string().trim().min(1).max(200), country: z.string().regex(/^[A-Z]{2}$/) }).strict();
 
@@ -11,6 +12,7 @@ const bodySchema = z.object({ aspspName: z.string().trim().min(1).max(200), coun
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
+  if (fromRemoteDevice(request.headers)) return NextResponse.json({ error: connectOnComputer("The bank login") }, { status: 409 });
   if (!(await enableBankingConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY) return NextResponse.json({ error: "Bank sync is not configured" }, { status: 503 });
   const body = bodySchema.safeParse(await request.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: "Choose a bank" }, { status: 400 });

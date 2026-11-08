@@ -43,3 +43,11 @@ it("keeps the generic message for errors that are not from Enable Banking", asyn
   startAuthorization.mockRejectedValue(new Error("socket hang up"));
   expect((await (await connect()).json()).error).toBe("The bank connection could not be started");
 });
+
+it("sends a bank login from a phone back to the computer without starting anything", async () => {
+  const response = await POST(new Request("http://127.0.0.1:3000/api/bank/connect", { method: "POST", headers: { "x-forwarded-host": "pc.example.ts.net" }, body: JSON.stringify({ aspspName: "Revolut", country: "DE" }) }));
+  expect(response.status).toBe(409);
+  expect((await response.json()).error).toMatch(/computer running Moneo/);
+  expect(serviceDb).not.toHaveBeenCalled();
+  expect(startAuthorization).not.toHaveBeenCalled();
+});
