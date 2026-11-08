@@ -55,7 +55,7 @@ test("Wealth counts calculated days in net worth only where bank data is known, 
   await expect(table.getByRole("table")).toContainText("Nothing recorded");
   const panel = page.getByRole("region", { name: "Scalable Capital" });
   await expect(panel).toContainText("are calculated from your transactions and past prices");
-  await expect(panel).toContainText("further than a year back are monthly, and crypto is estimated");
+  await expect(panel).toContainText("further than a year back are monthly.");
   await expect(panel.getByRole("img", { name: /Scalable portfolio value/ })).toBeVisible();
   await expect(panel).not.toContainText("since then");
   // Calculated days are not real records: the source history lists only what was saved.
