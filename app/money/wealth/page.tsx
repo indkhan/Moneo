@@ -117,7 +117,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
 
     {portfolio && <ScalableInvestments portfolio={portfolio} positions={active.filter(item => scalableIds.has(item.id) && item.kind === "holding").sort((a, b) => Number(BigInt(b.amount_minor) - BigInt(a.amount_minor)))}
       history={[...scalableCalculated.map(row => ({ date: row.on_date, value: withReturns(row.on_date, BigInt(row.total_minor), row.currency_code) })), ...scalableHistory]} calculatedBefore={scalableCalculated.length ? calculated.before : null}
-      historyFailed={scalable.data?.history_status === "failed" && !scalableCalculated.length} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} />}
+      historyFailed={scalable.data?.history_status === "failed"} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} />}
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>
 

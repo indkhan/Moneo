@@ -3,7 +3,7 @@ import { formatMoney } from "@/lib/finance/format";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
 
 // Scalable's own returns per timeframe, shortest first; the rest are left out.
-const TIMEFRAMES = [["INTRADAY", "Today"], ["ONE_WEEK", "1 week"], ["ONE_MONTH", "1 month"], ["THREE_MONTHS", "3 months"], ["YEAR_TO_DATE", "This year"], ["ONE_YEAR", "1 year"], ["MAX", "All time"]] as const;
+const TIMEFRAMES = [["INTRADAY", "Latest market day"], ["ONE_WEEK", "1 week"], ["ONE_MONTH", "1 month"], ["THREE_MONTHS", "3 months"], ["YEAR_TO_DATE", "This year"], ["ONE_YEAR", "1 year"], ["MAX", "All time"]] as const;
 
 /** The synced Scalable portfolio: total, split, and Scalable's own returns. */
 export function ScalablePortfolioView({ portfolio, locale }: { portfolio: ScalablePortfolio; locale?: string }) {

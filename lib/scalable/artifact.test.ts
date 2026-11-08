@@ -25,7 +25,7 @@ describe("Scalable data for artifacts", () => {
     const result = await scalablePortfolio(context("snapshot"));
     expect(live).not.toHaveBeenCalled();
     expect(result).toMatchObject({ dataFrom: "last_sync", syncedAt: "2026-11-06T16:05:00Z", totalMinor: "1250000", cashMinor: "50000",
-      returns: [{ period: "Today", returnMinor: "-2000" }, { period: "All time", returnMinor: "150000" }],
+      returns: [{ period: "Latest market day", returnMinor: "-2000" }, { period: "All time", returnMinor: "150000" }],
       positions: [{ name: "MSCI World", shares: "100", priceMinor: "12000", valueMinor: "1200000", costMinor: "1000000", gainMinor: "200000", gainPercent: 20 }] });
     expect(await scalableWatchlist(context("snapshot"))).toEqual({ dataFrom: "last_sync", syncedAt: "2026-11-06T16:05:00Z", items: portfolio.watchlist });
   });

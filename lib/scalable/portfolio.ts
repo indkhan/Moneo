@@ -14,7 +14,7 @@ export const holdingsSchema = z.object({
 });
 export const overviewSchema = z.object({
   valuation: z.object({ total: money, securities: money.default(0), crypto: money.default(0) }),
-  timestamps: z.object({ valuationTimestampUtc: z.string() }).partial().optional(),
+  timestamps: z.object({ valuationTimestampUtc: z.string(), inventoryTimestampUtc: z.string() }).partial().optional(),
   performance: z.array(z.object({ timeframe: z.string(), simpleAbsoluteReturn: money.nullable() })).default([]),
 });
 export const cashSchema = z.object({ cash: z.object({ cashBalance: money }) });
@@ -63,7 +63,8 @@ export function scalableWealth({ holdings, overview, cash }: ScalableSnapshot, w
     quantity_text: null, unit_price_text: null, cost_basis_minor: null, as_of: asOf, annual_rate_text: "0", monthly_payment_minor: "0" });
   const totalMinor = minor(overview.valuation.total, currency);
   const portfolio = {
-    currency, asOf, valuedAt: overview.timestamps?.valuationTimestampUtc ?? null,
+    // asOf: the day these holdings were read. valuedAt: when the market prices are from. inventoryAt: when Scalable counted the holdings.
+    currency, asOf, valuedAt: overview.timestamps?.valuationTimestampUtc ?? null, inventoryAt: overview.timestamps?.inventoryTimestampUtc ?? null,
     totalMinor: totalMinor.toString(), differenceMinor: (totalMinor - items.reduce((sum, item) => sum + BigInt(item.amount_minor), 0n)).toString(), unsupported, securitiesMinor: minor(overview.valuation.securities, currency).toString(),
     cryptoMinor: minor(overview.valuation.crypto, currency).toString(), cashMinor: minor(cash.cash.cashBalance, currency).toString(),
     performance: overview.performance.flatMap(entry => entry.simpleAbsoluteReturn === null ? [] : [{ timeframe: entry.timeframe, returnMinor: minor(entry.simpleAbsoluteReturn, currency).toString() }]),
@@ -78,4 +79,4 @@ export type ScalableExtras = {
   knownItemIds?: string[]; itemIds?: string[];
 };
 // A portfolio saved before these fields existed has none of them.
-export type ScalablePortfolio = Omit<ReturnType<typeof scalableWealth>["portfolio"], "differenceMinor" | "unsupported"> & Partial<Pick<ReturnType<typeof scalableWealth>["portfolio"], "differenceMinor" | "unsupported">> & ScalableExtras;
+export type ScalablePortfolio = Omit<ReturnType<typeof scalableWealth>["portfolio"], "differenceMinor" | "unsupported" | "inventoryAt"> & Partial<Pick<ReturnType<typeof scalableWealth>["portfolio"], "differenceMinor" | "unsupported" | "inventoryAt">> & ScalableExtras;
