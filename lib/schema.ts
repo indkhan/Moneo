@@ -208,6 +208,7 @@ export const scalableConnections = pgTable("scalable_connections", {
   tokenVersion: integer("token_version").notNull().default(0),
   refreshClaimedUntil: timestamp("refresh_claimed_until", { withTimezone: true }),
   portfolioFetchedAt: timestamp("portfolio_fetched_at", { withTimezone: true }),
+  transfersBackfilledAt: timestamp("transfers_backfilled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("scalable_connections_workspace_idx").on(table.workspaceId),
@@ -220,6 +221,30 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_portfolio_check", sql`${table.portfolio} is null or jsonb_typeof(${table.portfolio}) = 'object'`),
   check("scalable_connections_history_status_check", sql`${table.historyStatus} in ('ok','failed')`),
   check("scalable_connections_history_error_check", sql`char_length(${table.historyError}) <= 1000`),
+]);
+
+// Money Scalable says moved in or out of the broker, once per its own ID (202611080006). Read-time rules decide how charts show it.
+export const scalableTransfers = pgTable("scalable_transfers", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  providerId: text("provider_id").notNull(),
+  type: text("type").notNull(),
+  amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+  currencyCode: text("currency_code").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  onDate: date("on_date").notNull(),
+  status: text("status").notNull(),
+  isCancellation: boolean("is_cancellation").notNull().default(false),
+  description: text("description"),
+  returnsProviderId: text("returns_provider_id"),
+  revision: integer("revision").notNull().default(1),
+  revisions: jsonb("revisions").notNull().default(sql`'[]'::jsonb`),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.providerId] }),
+  index("scalable_transfers_date").on(table.workspaceId, table.onDate),
+  check("scalable_transfers_type_check", sql`${table.type} in ('DEPOSIT','WITHDRAWAL')`),
+  check("scalable_transfers_amount_minor_check", sql`${table.amountMinor} <> 0`),
+  check("scalable_transfers_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
 ]);
 
 // A loan repayment tied to one bank payment, in the state it had when accepted (202611080005).

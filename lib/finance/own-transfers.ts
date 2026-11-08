@@ -4,6 +4,7 @@ import { z } from "zod";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { loadWorkspaceSettings } from "@/lib/settings";
+import type { BankLeg } from "./transit";
 
 // Money moved between the owner's own accounts is a transfer, never income or spending.
 // Detection is deterministic and IBAN-only: a row's counterparty IBAN is one of the owner's
@@ -31,7 +32,7 @@ export type TransferCandidate = {
 // Without an IBAN, only the bank's own wording proves own money: a cash machine, or Scalable Capital
 // once the owner connected Scalable (their withdrawals arrive without the broker's IBAN).
 const CASH = /\b(bargeldauszahlung|bargeldeinzahlung|geldautomat|cash withdrawal|atm withdrawal|cash deposit)\b/i;
-const SCALABLE = /\bscalable capital\b/i;
+const SCALABLE = /\bscalable capital\b/i, SCALABLE_LABEL = /\bscalable\b/i;
 export type NamedAccount = "cash" | "scalable";
 export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital" };
 export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string, string> }; // IBAN → account id / identifier id
@@ -164,6 +165,17 @@ async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary
 }
 
 export const loadTransferCandidates = (db: SupabaseClient, workspaceId: string) => loadRows(db, workspaceId, "ordinary");
+
+/** Own-transfer rows as sides of a transfer: what proves the broker is the other side, and whether a tracked account of the owner's is. */
+export async function loadTransferLegs(db: SupabaseClient, workspaceId: string): Promise<BankLeg[]> {
+  const [rows, own, identifiers] = await Promise.all([loadRows(db, workspaceId, "transfer"), loadOwnAccounts(db, workspaceId),
+    db.from("own_account_identifiers").select("iban, label").eq("workspace_id", workspaceId)]);
+  if (identifiers.error) throw new Error(identifiers.error.message);
+  const brokerIbans = new Set((identifiers.data ?? []).filter(row => SCALABLE_LABEL.test(row.label)).map(row => row.iban as string));
+  return rows.map(row => ({ id: row.id, accountId: row.accountId, amountMinor: row.amountMinor, currencyCode: row.currencyCode, postedOn: row.postedOn, transferId: row.transferId ?? null, text: row.text,
+    provesBroker: row.ibans.some(iban => brokerIbans.has(iban)) || SCALABLE.test(`${row.counterparty ?? ""} ${row.text ?? ""}`),
+    ownAccount: row.ibans.some(iban => own.tracked.has(iban) && own.tracked.get(iban) !== row.accountId) }));
+}
 
 /** Every posted leg, whatever its review state, so a lone leg can see whether its other side exists. */
 async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]> {

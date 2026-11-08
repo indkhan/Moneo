@@ -113,6 +113,9 @@ begin
   if to_regclass(format('%I.scalable_connections',app_schema)) is not null then
     insert into public.scalable_connections(workspace_id,client_id,redirect_uri) values(seed_ws,'synthetic','http://localhost/callback');
   end if;
+  if to_regclass(format('%I.scalable_transfers',app_schema)) is not null then
+    insert into public.scalable_transfers(workspace_id,provider_id,type,amount_minor,currency_code,occurred_at,on_date,status) values(seed_ws,'P1','DEPOSIT',100,'EUR','2026-10-01T00:00:00Z','2026-10-01','SETTLED');
+  end if;
   if to_regclass(format('%I.iou_repayments',app_schema)) is not null then
     insert into public.iou_repayments(workspace_id,item_id,transaction_id,wealth_event_id,applied_minor,currency_code,transaction_amount_minor,transaction_posted_on,request_id)
       values(seed_ws,md5('wealth_items'||seed_ws)::uuid,md5('transactions'||seed_ws)::uuid,md5('wealth_events'||seed_ws)::uuid,1,'EUR',100,'2026-10-01',gen_random_uuid());
