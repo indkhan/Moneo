@@ -13,7 +13,7 @@ export function reviewNetWorth(accountTotals: Record<string, string | null>, wea
   const dated = wealthEvidence(wealth, today);
   const currencies = [...new Set([...Object.keys(accountTotals), ...wealth.filter(row => !row.linked_account_id).map(row => row.currency_code)])];
   return Object.fromEntries(currencies.map(currency => {
-    if (accountTotals[currency] === null || wealth.some(row => !row.linked_account_id && row.currency_code === currency && row.as_of !== today)) return [currency, null];
+    if (accountTotals[currency] === null || wealth.some(row => !row.linked_account_id && row.currency_code === currency && row.as_of > today)) return [currency, null];
     const total = BigInt(accountTotals[currency] ?? "0") + dated.included.filter(row => row.currencyCode === currency).reduce((sum, row) => sum + row.amountMinor, 0n);
     return [currency, total.toString()];
   }));

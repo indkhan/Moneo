@@ -49,10 +49,17 @@ it("keeps a loan to or from a person in current net worth from the day it was ma
     .toMatchObject({ included: [{ id: "loan", amountMinor: 100000n }, { id: "owed", amountMinor: -500n }], missingInputs: [] });
 });
 
-it("keeps linked accounts out of additional net worth and flags historical evidence", () => {
+it("keeps linked accounts out of additional net worth and counts an older valuation while flagging it", () => {
   const base = { id: "asset", name: "Asset", amount_minor: "10000", currency_code: "EUR", as_of: "2026-10-02", linked_account_id: null };
-  expect(wealthEvidence([base, { ...base, id: "holding", linked_account_id: "investment" }, { ...base, id: "old", as_of: "2026-10-01" }], "2026-10-02"))
-    .toMatchObject({ included: [{ id: "asset", amountMinor: 10000n }], excludedLinked: ["holding"], missingInputs: ["valuation:old:historical"] });
+  expect(wealthEvidence([base, { ...base, id: "holding", linked_account_id: "investment" }, { ...base, id: "old", name: "Old", as_of: "2026-10-01" }], "2026-10-02"))
+    .toMatchObject({ included: [{ id: "asset", amountMinor: 10000n }, { id: "old", amountMinor: 10000n }], excludedLinked: ["holding"], missingInputs: [],
+      outdated: [{ id: "old", name: "Old", asOf: "2026-10-01" }] });
+});
+
+it("does not change the counted total when the day rolls over before a sync lands", () => {
+  const holding = { id: "etf", name: "ETF", amount_minor: "117188", currency_code: "EUR", as_of: "2026-11-07", linked_account_id: null };
+  const total = (today: string) => wealthEvidence([holding], today).included.reduce((sum, row) => sum + row.amountMinor, 0n);
+  expect(total("2026-11-08")).toBe(total("2026-11-07"));
 });
 
 it("does not use a canceled pending authorization to suppress a debt payment", () => {

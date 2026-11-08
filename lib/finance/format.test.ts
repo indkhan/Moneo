@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeMissingInputs, formatMoney, formatInputAmount } from "./format";
+import { describeMissingInputs, describeOutdated, formatMoney, formatInputAmount } from "./format";
 
 describe("formatMoney", () => {
   it("uses locale separators without rounding exact accounting units or changing form serialization", () => {
@@ -98,5 +98,17 @@ describe("describeMissingInputs", () => {
     expect(describeMissingInputs([`balance:${id}:missing`, `balance:${id}`, `available-balance:${id}`], new Map([[id, "Checking"]]))).toEqual(["Checking needs a current balance"]);
     expect(describeMissingInputs([`balance:${id}:stale`])).toEqual(["An account has an out-of-date balance"]);
     expect(describeMissingInputs(["rate:USD->EUR for Wallet", "Unresolved overlap"])).toEqual(["Wallet needs a USD to EUR exchange rate", "Unresolved overlap"]);
+  });
+  it("keeps each future valuation apart by name so the count stays true", () => {
+    expect(describeMissingInputs(["valuation:a:future", "valuation:b:future"], new Map([["a", "Gold"], ["b", "Flat"]]))).toEqual(["Gold is dated in the future", "Flat is dated in the future"]);
+    expect(describeMissingInputs(["valuation:a:future"])).toEqual(["A valuation is dated in the future"]);
+  });
+});
+
+describe("describeOutdated", () => {
+  it("gives the count and every name, grouped by date, newest first", () => {
+    expect(describeOutdated([{ name: "Flat", asOf: "2026-03-01" }, { name: "ETF", asOf: "2026-11-07" }, { name: "Gold", asOf: "2026-11-07" }]))
+      .toBe("3 valuations are not from today and use their last known value: ETF, Gold (2026-11-07); Flat (2026-03-01)");
+    expect(describeOutdated([{ name: "ETF", asOf: "2026-11-07" }], date => `7 Nov (${date})`)).toBe("1 valuation is not from today and uses its last known value: ETF (7 Nov (2026-11-07))");
   });
 });

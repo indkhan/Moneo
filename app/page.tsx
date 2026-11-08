@@ -18,7 +18,7 @@ import { getSupabaseConfig } from "@/lib/env";
 import { convertFx, minorDigits } from "@/lib/finance/fx";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
-import { describeMissingInputs } from "@/lib/finance/format";
+import { describeMissingInputs, describeOutdated } from "@/lib/finance/format";
 import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
@@ -121,7 +121,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const kinds = new Map(wealthItems.map(item => [item.id, item.kind]));
   for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, kinds.get(valuation.id) === "debt" ? "debts" : "assets");
   const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
-  const missing = describeMissingInputs(missingInputs);
+  const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
 
   // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (issue #158).
   const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
@@ -167,6 +167,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
+        {valuations.outdated.length > 0 && <p className="text-xs text-muted-foreground">{describeOutdated(valuations.outdated, fullDate)}</p>}
         {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />

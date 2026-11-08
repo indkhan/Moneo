@@ -26,8 +26,8 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   const html = renderToStaticMarkup(await WealthPage());
   vi.useRealTimers();
   expect(html).toContain("Net worth (EUR)");
-  // The account rolls forward like on Accounts (50.00 - 10.00); the loan valued in May is outdated and left out, as on Overview.
-  expect(html).toContain("EUR 60.00");
+  // The account rolls forward like on Accounts (50.00 - 10.00); the loan valued in May is older but still counts, as on Overview.
+  expect(html).toContain("EUR 45.00");
   expect(html).toMatch(/Accounts<\/dt><dd[^>]*>EUR 40.00/);
   expect(html).toContain("<polyline");
   expect(html).toContain("2025-10-31");
@@ -35,9 +35,9 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   expect(html).toContain("Debts");
   expect(html).not.toContain("How this was calculated");
   expect(html).toContain("Undo Index fund change"); expect(html).toContain("Remove Car loan (keep history)");
-  // Debts are owed in plain amounts, and the outdated loan is named as left out rather than dropped silently.
+  // Debts are owed in plain amounts, and the older loan is named as not from today.
   expect(html).toContain("Amount you still owe (EUR)"); expect(html).toContain('value="15.00"');
-  expect(html).toContain("Older valuations left out"); expect(html).toContain("-EUR 15.00"); expect(html).toContain('href="#item-loan"');
+  expect(html).toContain("1 valuation is not from today and uses its last known value: Car loan (2026-05-"); expect(html).toContain("-EUR 15.00");
   expect(html).toContain("Net worth by month"); expect(html).toContain(">Today<");
 });
 
