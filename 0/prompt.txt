@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b8dnxvx7x</task-id>
+<tool-use-id>toolu_016oHKQMAGfb7Y5QnSNTAf7k</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\e4b9319d8f659e7e\960c24e5-426c-4270-afc6-2ee88b69ffac\tasks\b8dnxvx7x.output</output-file>
+<status>failed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-ebb24ccb; PORT=3100 npm start &gt; "$TEMP/moneo-phone-test.log" 2&gt;&amp;1" failed with exit code 127</summary>
+</task-notification>
