@@ -1,0 +1,44 @@
+Think from a normal user perspective who is a bit technical what would he prefer? Would he really prefer thin to download or would he prefer the third option which is the funnel like when I download tailscale in my phone? Will the application run in that? But it is a new whole application that he has to download. So as per that third seems a bit easier so I'm just not sure which one is the best option to go with
+
+---
+
+But then does it mean that he will need to have a VPN
+
+---
+
+no lets go with private tailscale plan it well how are we ging to have it that our current desktop applciation does nto schange so it does not create problme for the banks and scalalble and chatgpt sign in but it works on my phone and tablet give me a summary of how will it work
+
+---
+
+Another thing is that this tail scale thing is optional so it does not come on default. The user goes in setting and turns it on if he wants to use the application from his phone or iPad
+
+
+What do you mean that one of those connect buttons on a phone word send you that localhost page? It should be like you are having the application the way it is on a laptop but on your phone so I think it should work as well it should not tell you to open only on your computer
+
+yes i approve all the changes the only thing is build it from user perspective that they only get these thngs if they want it and then the process is simple to continue
+
+---
+
+dont start lets talk first how it will work
+
+---
+
+Okay, so my idea is that for example ChatGPT right so chat GPT is there already logged in for the laptop or computer and the thing is from his phone it should work directly using that thing which is running on his laptop so that when he asks query or something it goes through the signing thing the same thing with scalable that the scalable is connected through his laptop but when he can see that data through his phone as well and not only can he see it he can also update it or something like the syncing thing for the banks or scalable should work but the thing i don't get is why does he need the phone thing i thought that it should feel like if he is doing something in his phone it should feel like it's being done in his laptop how t3 code works that you ask it something and it does it both places and all of that so that a phone is not a separate thing or she on my phone I can use the terminal and all the same way it should be like on this phone the iPad itself is as if he is using their you know what I mean so let's talk about it and find the best solution
+
+---
+
+yes and private tailscale 
+
+so take a fresh look and then tell me if there is any problme with this plan and if none thne give me the implmentation steps and all
+
+---
+
+I mean, yeah, it is a laptop but like T three code I leave this laptop on so that is fine and some users might have something that they can use as I said the things which are not there should not go to backlog but they should go to GitHub issues I would say first rebase the code base now and then we'll see third problem is not that big of a thing That's still fine if I lose my phone this would not be my biggest concern or fifth is an application whole application thing not the phone thing so don't forget about that the tail scale limit it's not there then install it and start testing it I'm giving you the access to install it on the laptop and do the whole thing and once you are done with all the things then let me know and I will download it on my phone and tablet but for the users who don't want it on their phone and tablet their normal application should not get any worse it should be the same at the same speed and all of that this thing only gets added if you want it
+
+---
+
+backlog is removed check the latest agents.md
+
+---
+
+tailscale is there for my laptop with my signin and all
