@@ -70,3 +70,9 @@ it("does not sign anyone out during an auth outage", async () => {
   expect((await proxy(new NextRequest("http://localhost:3000/plan"))).headers.get("location")).toBeNull();
   expect(signIn).not.toHaveBeenCalled();
 });
+
+it("refuses public Funnel traffic before the owner's automatic sign-in", async () => {
+  const response = await proxy(new NextRequest("https://pc.example.ts.net/plan", { headers: { "tailscale-funnel-request": "?1" } }));
+  expect(response.status).toBe(403);
+  expect(createServerClient).not.toHaveBeenCalled();
+});

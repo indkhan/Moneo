@@ -4,8 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hasSupabase } from "@/lib/env";
 
 // Self-hosted Moneo has one owner and no sign-in screen: without a session, the proxy signs the
-// owner in with the login `npm run setup` wrote to .env. The app is only reachable on this computer.
+// owner in with the login `npm run setup` wrote to .env. The app is only reachable on this computer
+// and, once the owner turns on phone access, their own Tailscale devices. Tailscale marks anything
+// arriving from the public internet through Funnel; that must never reach the automatic sign-in.
 export async function proxy(request: NextRequest) {
+  if (request.headers.has("tailscale-funnel-request")) return new NextResponse("Moneo is private to your own devices.", { status: 403 });
   let response = NextResponse.next({ request });
   // Unconfigured checkouts have no backend to refresh against; let the Home
   // setup state and health endpoint describe the missing configuration.
