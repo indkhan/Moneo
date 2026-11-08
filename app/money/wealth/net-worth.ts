@@ -145,4 +145,14 @@ export async function loadScalableHistory(db: SupabaseClient, workspaceId: strin
   return { rows, knownIds: scalableKnownIds((connections.data ?? []).map(row => row.portfolio)) };
 }
 
+/** What Scalable's records added up to on the first day they exist, to compare with the last calculated day. */
+export function firstRealValue(valuations: Valuation[], knownIds: Set<string>, before: string | null, currency: string) {
+  if (!before) return null;
+  const onDay = valuations.filter(row => knownIds.has(row.item_id) && row.as_of === before && row.currency_code === currency);
+  if (!onDay.length) return null;
+  const latest = new Map<string, Valuation>();
+  for (const row of onDay) if (!latest.has(row.item_id) || row.created_at >= latest.get(row.item_id)!.created_at) latest.set(row.item_id, row);
+  return { date: before, minor: [...latest.values()].reduce((sum, row) => sum + BigInt(row.amount_minor), 0n) };
+}
+
 export const removedOn = (items: WealthItem[], timeZone: string) => new Map(items.filter(item => item.removed_at).map(item => [item.id, calendarDate(item.removed_at!, timeZone)]));

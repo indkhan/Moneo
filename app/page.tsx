@@ -33,10 +33,12 @@ import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
-import { currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
+import { checksNotice, loadImportStates, netWorthFindings } from "@/lib/finance/net-worth-checks";
+import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
 import { Phone } from "lucide-react";
+import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
@@ -68,7 +70,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const reviewPromise = loadReview(supabase, workspace);
   // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems, calculatedHistory] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems, calculatedHistory, imports, portfolios] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -86,6 +88,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
     loadSyncProblems(supabase, workspace.id),
     loadScalableHistory(supabase, workspace.id),
+    loadImportStates(supabase, workspace.id),
+    supabase.from("scalable_connections").select("portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   const ai = await aiPromise;
@@ -140,6 +144,10 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // The change needs last month's end on record; without it there is nothing to compare with.
   const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
   const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
+  const portfolio = (portfolios.data?.portfolio ?? null) as ScalablePortfolio | null;
+  const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports,
+    lastCalculated: calculatedHistory.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, firstSyncedOn(allValuations, calculatedHistory.knownIds), portfolio?.currency ?? displayCurrency) });
+  const checkNotice = checksNotice(findings);
   const { date: fullDate, monthYear: monthLabel } = display;
   const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
   const dateTile = (date: string) => ({ month: display.shortMonth(date), day: date.slice(8, 10) });
@@ -227,7 +235,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
 
   return (
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
-      <HomeNotices notices={[...(valuations.outdated.length ? [{ text: describeOutdated(valuations.outdated, fullDate), href: "/money/wealth", action: "See Wealth" }] : []), ...syncProblems.map(text => ({ text, href: "/settings", action: "Open Settings" }))]} />
+      <HomeNotices notices={[...(valuations.outdated.length ? [{ text: describeOutdated(valuations.outdated, fullDate), href: "/money/wealth", action: "See Wealth" }] : []), ...syncProblems.map(text => ({ text, href: "/settings", action: "Open Settings" })), ...(checkNotice ? [{ text: checkNotice, href: "/money/wealth", action: "See Wealth" }] : [])]} />
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{display.weekday(today)} · {display.longDate(today)}</p><h1 className="page-title">Overview</h1></div>
         {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}

@@ -13,7 +13,9 @@ import { describeOutdated, formatMoney as formatCurrency } from "@/lib/finance/f
 import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
-import { currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
+import { NetWorthProblems } from "./net-worth-problems";
+import { loadImportStates, netWorthFindings } from "@/lib/finance/net-worth-checks";
+import { currentNetWorth, dayRange, firstRealValue, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
 
 export const metadata = { title: "Wealth" };
 
@@ -35,7 +37,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const [items, accounts, assumptions, pending, events, evidence, scalable, calculatedHistory] = await Promise.all([
+  const [items, accounts, assumptions, pending, events, evidence, scalable, calculatedHistory, imports] = await Promise.all([
     loadWealthItems(supabase, workspace.id, true),
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
@@ -45,6 +47,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     supabase.from("scalable_connections").select("status, last_synced_at, portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     loadScalableHistory(db, workspace.id),
+    loadImportStates(db, workspace.id),
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
   const active = items.filter(item => !item.removed_at);
@@ -78,6 +81,8 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations, removedOn: removedOn(items, workspace.timezone) })
       .flatMap(point => { const value = point.assets.get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value }]; });
   })();
+  const findings = netWorthFindings({ accounts: resolved, snapshots: evidence.snapshots, ledger: evidence.ledger, timeZone: workspace.timezone, locale: workspace.locale, portfolio, imports,
+    lastCalculated: calculated.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, calculated.before, portfolio?.currency ?? "EUR") });
   // The days before that, worked out from Scalable's transactions and prices back to the first trade.
   const scalableCalculated = portfolio && calculated.before ? calculated.rows.filter(row => row.on_date < calculated.before! && row.currency_code === portfolio.currency) : [];
 
@@ -106,6 +111,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
       {unbalanced > 0 && <p className="text-sm">{unbalanced} account{unbalanced === 1 ? " has" : "s have"} no usable balance and {unbalanced === 1 ? "is" : "are"} left out. <Link href="/money/accounts" className="font-medium text-brand underline">Review account balances</Link></p>}
       {!currencies.length && !active.length && <div className="rounded-xl border border-border bg-card p-6 text-sm"><p className="font-medium">Add your first item</p><p className="mt-1 text-muted-foreground">Net worth is your accounts plus investments and assets, minus debts. Start with one below.</p></div>}
       {!currencies.length && active.length > 0 && <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations count today yet.</p>}
+      <NetWorthProblems findings={findings} />
     </section>
 
     {portfolio && <ScalableInvestments portfolio={portfolio} positions={active.filter(item => scalableIds.has(item.id) && item.kind === "holding").sort((a, b) => Number(BigInt(b.amount_minor) - BigInt(a.amount_minor)))}
