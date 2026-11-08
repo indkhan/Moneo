@@ -68,7 +68,8 @@ test("dated observations remain visible and explicit booked confirmation reloads
     const [saved] = await db`select amount_minor::text,boundary_kind,covered_transactions,actor_id from public.balance_snapshots where account_id=${account} order by created_at desc,id desc`;
     expect(saved).toMatchObject({amount_minor: "9650", boundary_kind: "reviewed_activity", actor_id: user}); expect(saved.covered_transactions).toHaveLength(1);
     const plan = await evaluatePlanForWorkspace(admin, {id: workspace!, display_currency: "EUR", timezone: "UTC"}, 30);
-    expect(plan.input.missingInputs?.some(input => input.includes("principal valuation is historical"))).toBe(true);
+    // A principal dated earlier keeps forecasting, carried through its scheduled payments.
+    expect(plan.input.missingInputs?.some(input => input.includes("principal"))).toBe(false);
     await card.getByText("Update balance", {exact: true}).click();
     await card.getByText("Manual balance history and undo", {exact: true}).click();
     await card.getByRole("button", {name: "Undo balance", exact: true}).click();

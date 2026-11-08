@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
-import { currentOn, debtPayments, loadWealthItems, wealthEvidence, type WealthItem } from "@/lib/finance/wealth";
+import { carriedDebtPayments, currentOn, loadWealthItems, wealthEvidence, type WealthItem } from "@/lib/finance/wealth";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { describeOutdated, formatMoney as formatCurrency } from "@/lib/finance/format";
 import { NetWorthChart } from "@/app/net-worth-chart";
@@ -58,7 +58,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots: evidence.snapshots, ledger: evidence.ledger,
     valuations: allValuations, removedOn: removedOn(items, workspace.timezone) });
   // Today uses the balances Accounts and Overview show and the same valuations, so the totals match theirs.
-  const resolved = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, undefined, { preferLatestRecorded: true }).filter(account => !account.archived_at);
+  const resolved = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone).filter(account => !account.archived_at);
   const valuations = wealthEvidence(active, today);
   const now = currentNetWorth(today, resolved, valuations.included.map(valuation => ({ ...valuation, debt: itemById.get(valuation.id)?.kind === "debt" })));
   series[series.length - 1] = now;
@@ -121,7 +121,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
           <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows.filter(item => item.as_of <= today))].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
         <div className="divide-y divide-border rounded-xl border border-border bg-card">{rows.map(item => {
-          const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, 365) : []; } catch { return null; } })();
+          const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? carriedDebtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on, asOf: item.as_of }, today, 365) : []; } catch { return null; } })();
           return <article key={item.id} id={`item-${item.id}`} className="scroll-mt-24 space-y-2 px-5 py-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-medium">{item.name}</h3>
               <p className="font-mono font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
