@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6XWMHEG2B06WA3273CBK1QN",
+  "strategy": "manual-commit",
+  "branch": "t3/scalable-value-history",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/cron/scalable-history/route.test.ts",
+    "app/api/cron/scalable-history/route.ts",
+    "lib/scalable/history-job.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 25730,
+    "cache_read_tokens": 1208942,
+    "output_tokens": 23187,
+    "api_call_count": 5
+  },
+  "redaction": {
+    "replacements": 3,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
