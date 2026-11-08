@@ -8,8 +8,8 @@ These are defaults. The developer's instructions override them; if a rule confli
 
 ## Non-negotiables
 
-- **Local-first.** Everything listens on `127.0.0.1`. Data leaves the machine only for services the owner set up (AI provider, Enable Banking, Scalable). New features must work fully offline from the cloud except those calls.
-- **One owner, no accounts.** The proxy signs the owner in automatically; there is no sign-up or sign-in screen. Anything that exposes Moneo beyond this computer must add a login first.
+- **Local-first.** Everything listens on `127.0.0.1`; optional phone access is Tailscale forwarding to it (`lib/phone-access.ts`). Data leaves the machine only for services the owner set up (AI provider, Enable Banking, Scalable). New features must work fully offline from the cloud except those calls.
+- **One owner, no accounts.** The proxy signs the owner in automatically; there is no sign-up or sign-in screen. Private access from the owner's own Tailscale devices needs no login; anything public must add one first.
 - **Financial truth comes from code and data, never from AI guesses.** Money is integer minor units (`bigint`) with an explicit currency. The AI explains and proposes; every write it suggests is a card the owner accepts.
 - **History is kept.** Preserve source records, corrections, history and undo when changing financial data flows.
 - **Open source.** No secrets, private statements or personal data in the repo (`npm run check:privacy` runs before tests and lint).
@@ -66,10 +66,11 @@ Use npm (`package-lock.json` is authoritative).
 
 Each outside service sends the browser back to a different address. Keep these in mind before changing ports, hosts or remote access:
 
-- **Sign in with ChatGPT** (`lib/ai/chatgpt.ts`): OpenAI only accepts the loopback `http://127.0.0.1:<PORT>/api/ai/chatgpt/callback`. It can only be completed in a browser on the computer running Moneo; from another device the redirect lands on that device's own 127.0.0.1 and fails. Tokens are stored, so once signed in on the computer, chat works from any device.
-- **Enable Banking** (`lib/bank/return-listener.ts`): production apps need an `https://` redirect registered in the Enable Banking app. Moneo uses `https://localhost:3443/api/bank/callback` (a local listener with a cert from `npm run setup`) which forwards to `NEXT_PUBLIC_APP_URL`. A remote device needs its own https URL (e.g. a tunnel's `https://…/api/bank/callback`) registered as an extra redirect URL.
-- **Scalable Capital** (`lib/scalable/server.ts`): dynamic client registration with `NEXT_PUBLIC_APP_URL/api/scalable/callback`. `localhost` registers freely; any other host must be on Scalable's allowlist, so connect from the computer.
-- **Supabase** (`NEXT_PUBLIC_SUPABASE_URL`, `127.0.0.1:54321`): only the server should call it. Anything that sends the browser there (e.g. chat attachment signed URLs in `app/api/chat/attachments/route.ts`) breaks on other devices.
+- **Sign in with ChatGPT** (`lib/ai/chatgpt.ts`): OpenAI only accepts the loopback `http://127.0.0.1:<PORT>/api/ai/chatgpt/callback`, so sign-in happens on the computer running Moneo. Tokens are stored there, so chat works from any device afterwards.
+- **Enable Banking** (`lib/bank/return-listener.ts`): production apps need an `https://` redirect registered in the Enable Banking app. Moneo uses `https://localhost:3443/api/bank/callback` (a local listener with a cert from `npm run setup`), which forwards to `NEXT_PUBLIC_APP_URL`.
+- **Scalable Capital** (`lib/scalable/server.ts`): dynamic client registration with `NEXT_PUBLIC_APP_URL/api/scalable/callback`. `localhost` registers freely; other hosts need Scalable's allowlist (it rejects `*.ts.net`).
+- **Supabase** (`NEXT_PUBLIC_SUPABASE_URL`, `127.0.0.1:54321`): only the server may call it; never send the browser there, or it breaks on other devices.
+- **Phone and tablet** (`*.ts.net` through Tailscale Serve): the laptop's addresses above never change. The three logins refuse to start from a remote device (`lib/remote-device.ts`) and say to use the computer; everything else, including sync, works from there.
 - **Voice** needs a secure context (https or localhost) for the microphone.
 
 ## Database changes

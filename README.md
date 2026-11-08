@@ -112,9 +112,21 @@ Moneo then reads your holdings, totals and cash every day and shows the portfoli
 
 Artifact Pages and Home cards can show your Scalable portfolio, recent activity and watchlist. By default they use the last sync, the same figures as Wealth. Turn on **Live Scalable data in artifacts** in Settings → AI and your data to read Scalable each time one opens; that also allows quotes, charts and news for any security, but loads slower and needs Scalable to be reachable.
 
+### Use it from your phone or tablet (optional)
+
+Your phone becomes another screen on the Moneo running on this computer: same data, same ChatGPT, bank and Scalable connections. It is off until you turn it on, and nothing changes on this computer.
+
+1. Go to **Settings → Keys and connections → Phone and tablet** and click **Turn on**. Moneo tells you if it needs [Tailscale](https://tailscale.com/download) installed, a sign-in, or one approval for secure addresses.
+2. On your phone or tablet, install Tailscale and sign in with the same account.
+3. Scan the code in Settings, then choose **Add to Home Screen**.
+
+Only devices in your Tailscale account can reach Moneo, and they get in without a password, so don't add other people to it. Leave Tailscale Funnel off: Moneo refuses traffic from the public internet.
+
+Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address.
+
 ## Good to know
 
-- Moneo only listens on `127.0.0.1`, so other devices on your network can't open it.
+- Moneo only listens on `127.0.0.1`, so other devices on your network can't open it unless you turn on [phone and tablet access](#use-it-from-your-phone-or-tablet-optional).
 - Your data lives in the Docker volumes `moneo_db-data` and `moneo_storage-data`. `docker compose down` keeps them; **`docker compose down -v` deletes all your data**.
 - If ports 54321 or 54322 are already in use, add `API_PORT=` and `DB_PORT=` with free ports to `.env` and run `npm run setup` again.
 
