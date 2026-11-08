@@ -1,9 +1,11 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { loadFont as loadDisplay } from "@remotion/google-fonts/BricolageGrotesque";
 import { loadFont as loadSans } from "@remotion/google-fonts/Geist";
 import { loadFont as loadMono } from "@remotion/google-fonts/GeistMono";
-import { BEAT, type CamKey } from "./timeline";
+import rec from "./rec.json";
+import words from "./call-words.json";
+import { BEAT, type Clip } from "./timeline";
 
 const display = loadDisplay("normal", { weights: ["500", "600", "700"], subsets: ["latin"] }).fontFamily;
 const sans = loadSans("normal", { weights: ["400", "500", "600"], subsets: ["latin"] }).fontFamily;
@@ -14,21 +16,12 @@ export const font = { display, sans, mono };
 // Moneo's dark theme, copied from app/globals.css.
 export const c = {
   bg: "#0f1011",
-  card: "#16171a",
   fg: "#eeece6",
-  muted: "#1d1e22",
   mutedFg: "#a3a39e",
   subtle: "#85867f",
-  border: "#24262a",
-  input: "#2a2c30",
   lime: "#cbf26b",
   ai: "#b8a6ff",
-  aiSoft: "#1a1922",
-  aiBorder: "#3d3760",
-  successSoft: "#1c2410",
-  warning: "#ff9a76",
   danger: "#ff7a6b",
-  chartOut: "#5b5d62",
 };
 
 export const OUT = Easing.bezier(0.16, 1, 0.3, 1);
@@ -46,14 +39,6 @@ export const ramp = (t: number, from: number, to: number, easing: (x: number) =>
   interpolate(t, [from, to], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing });
 export const pop = (t: number, at: number, beats = 0.6) => ramp(t, at, at + beats, BACK);
 export const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
-
-const euros = new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" });
-const wholeEuros = new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-export const money = (value: number) => euros.format(value);
-export const whole = (value: number) => wholeEuros.format(value);
-
-/** A voice-like level from 0 to 1. */
-export const voice = (t: number) => Math.max(0, 0.5 + 0.28 * Math.sin(t * 8) + 0.22 * Math.sin(t * 13 + 1) + 0.16 * Math.sin(t * 3.3 + 2));
 
 /** A shake that dies away after a hit. */
 export const shake = (t: number, at: number, size = 14) => {
@@ -85,23 +70,6 @@ export function Slam({ word, bg = c.lime, color = c.bg, beats = 1 }: { word: str
   </Shot>;
 }
 
-/** A virtual camera over a 1920x1080 canvas: snaps between framings and blurs while it moves. */
-export function Camera({ keys, children, style }: { keys: CamKey[]; children: ReactNode; style?: CSSProperties }) {
-  const t = useB();
-  const at = (time: number) => {
-    let { x, y, z } = keys[0];
-    for (const key of keys.slice(1)) {
-      const p = ramp(time, key.b, key.b + (key.d ?? 0.5), SNAP);
-      x = lerp(x, key.x, p); y = lerp(y, key.y, p); z = lerp(z, key.z, p);
-    }
-    return { x, y, z };
-  };
-  const now = at(t), before = at(t - 0.04);
-  const speed = Math.hypot(now.x - before.x, now.y - before.y) * now.z + Math.abs(now.z - before.z) * 500;
-  const blur = Math.min(16, speed * 0.16);
-  return <div style={{ position: "absolute", left: 0, top: 0, width: 1920, height: 1080, transformOrigin: "0 0", transform: `translate(960px, 540px) scale(${now.z}) translate(${-now.x}px, ${-now.y}px)`, filter: blur > 0.5 ? `blur(${blur}px)` : undefined, ...style }}>{children}</div>;
-}
-
 /** Rises into place at a beat. */
 export function Rise({ at, by = 40, beats = 0.7, style, children }: { at: number; by?: number; beats?: number; style?: CSSProperties; children: ReactNode }) {
   const t = useB();
@@ -115,66 +83,63 @@ export function Pop({ at, from = 0.7, style, children }: { at: number; from?: nu
   return <div style={{ ...style, opacity: ramp(t, at, at + 0.12), transform: `scale(${lerp(from, 1, pop(t, at))})` }}>{children}</div>;
 }
 
-export function Card({ style, children }: { style?: CSSProperties; children: ReactNode }) {
-  return <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 20, padding: 32, fontFamily: font.sans, color: c.fg, ...style }}>{children}</div>;
+/** Picks the recorded frame showing at a moment of a shot. */
+function frameAt(shot: keyof typeof rec, seconds: number) {
+  const times = rec[shot].t;
+  let low = 0, high = times.length - 1;
+  while (low < high) { const middle = Math.ceil((low + high) / 2); if (times[middle] <= seconds) low = middle; else high = middle - 1; }
+  return `rec/${shot}/${String(low).padStart(5, "0")}.jpg`;
 }
 
-export function Eyebrow({ style, children }: { style?: CSSProperties; children: ReactNode }) {
-  return <div style={{ fontFamily: font.mono, fontSize: 19, letterSpacing: "0.08em", textTransform: "uppercase", color: c.subtle, ...style }}>{children}</div>;
-}
-
-/** A pointer that darts between waypoints and sends a shockwave where it clicks. */
-export function Cursor({ path, clicks = [], size = 44 }: { path: { t: number; x: number; y: number }[]; clicks?: number[]; size?: number }) {
+/** A line of text over footage, on a scrim so it reads over any screen. */
+function Say({ text, from }: { text: string; from: number }) {
   const t = useB();
-  const times = path.map(point => point.t);
-  const at = (values: number[]) => interpolate(t, times, values, { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: SNAP });
-  const x = at(path.map(point => point.x)), y = at(path.map(point => point.y));
-  const pressed = clicks.some(click => t >= click && t < click + 0.25);
-  return <div style={{ position: "absolute", inset: 0, zIndex: 20, pointerEvents: "none", opacity: ramp(t, times[0] - 0.2, times[0]) }}>
-    {clicks.map(click => {
-      const p = ramp(t, click, click + 1);
-      return t >= click && p < 1 ? <div key={click} style={{ position: "absolute", left: x - 90, top: y - 90, width: 180, height: 180, borderRadius: "50%", border: `5px solid ${c.lime}`, opacity: 1 - p, transform: `scale(${0.1 + p * 1.6})` }} /> : null;
-    })}
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ position: "absolute", left: x - size * 0.18, top: y - size * 0.14, transform: `scale(${pressed ? 0.78 : 1})`, filter: "drop-shadow(0 6px 10px rgb(0 0 0 / .55))" }}>
-      <path d="M5 3l14 8.2-6.1 1.4L9.6 19z" fill="#fff" stroke="#0f1011" strokeWidth="1.3" strokeLinejoin="round" />
-    </svg>
-  </div>;
+  const p = pop(t, from, 0.5);
+  return <>
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 320, background: "linear-gradient(transparent, rgb(8 8 9 / .92) 70%)", opacity: ramp(t, from, from + 0.1) }} />
+    <div style={{ position: "absolute", left: 70, right: 70, bottom: 56, fontFamily: font.display, fontWeight: 600, fontSize: 84, lineHeight: 1.05, letterSpacing: "-0.04em", color: c.fg, opacity: ramp(t, from, from + 0.08), transform: `translateY(${(1 - p) * 30}px) scale(${lerp(1.04, 1, p)})`, transformOrigin: "0 100%" }}>{text}</div>
+  </>;
 }
 
-/** Text that hits word by word from a beat. */
-export function Words({ text, at, per = 0.5, highlight, style }: { text: string; at: number; per?: number; highlight?: string[]; style?: CSSProperties }) {
+/** One cut of real screen recording, with its camera move. */
+export function Footage({ clip }: { clip: Clip }) {
   const t = useB();
-  return <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", ...style }}>{text.split(" ").map((word, index) => {
-    const start = at + index * per, p = pop(t, start, 0.45);
-    return <span key={index} style={{ opacity: ramp(t, start, start + 0.08), display: "inline-block", transform: `scale(${lerp(1.5, 1, p)})`, marginRight: "0.26em", color: highlight?.includes(word) ? c.lime : undefined }}>{word}</span>;
-  })}</div>;
+  const shot = clip.shot as keyof typeof rec;
+  const seconds = clip.src + (t - clip.from) * BEAT * clip.rate;
+  const p = ramp(t, clip.from, clip.to, value => value);
+  const start = clip.cam ?? { x: 960, y: 540, z: 1 }, end = clip.cam?.to ?? start;
+  const z = lerp(start.z, end.z, p), half = [960 / z, 540 / z];
+  const x = Math.min(1920 - half[0], Math.max(half[0], lerp(start.x, end.x, p))), y = Math.min(1080 - half[1], Math.max(half[1], lerp(start.y, end.y, p)));
+  // Each cut arrives with a short snap of zoom.
+  const snap = 1 + 0.09 * (1 - ramp(t, clip.from, clip.from + 0.6));
+  return <Shot from={clip.from} to={clip.to} flash={0.28}>
+    {clip.phone
+      ? <div style={{ position: "absolute", left: "50%", top: 40, width: 460, height: 1000, marginLeft: -230, borderRadius: 54, border: "6px solid #2a2c30", overflow: "hidden", background: c.bg }}><Img src={staticFile(frameAt(shot, seconds))} style={{ width: "100%" }} /></div>
+      : <div style={{ position: "absolute", left: 0, top: 0, width: 1920, height: 1080, transformOrigin: "0 0", transform: `translate(960px, 540px) scale(${z * snap}) translate(${-x}px, ${-y}px)` }}><Img src={staticFile(frameAt(shot, seconds))} style={{ width: 1920, height: 1080 }} /></div>}
+    {clip.say && <Say text={clip.say} from={clip.from} />}
+    {clip.tag && <div style={{ position: "absolute", right: 56, top: 48, padding: "12px 24px", borderRadius: 14, background: c.lime, color: c.bg, fontFamily: font.mono, fontSize: 32, opacity: ramp(t, clip.from, clip.from + 0.1) }}>{clip.tag}</div>}
+  </Shot>;
 }
 
-export function typed(text: string, t: number, at: number, per: number) {
-  return text.slice(0, Math.max(0, Math.floor((t - at) / per)));
-}
+const FIX: Record<string, string> = { "D": "Da", "Agino": "Gino", "di": "Da", "Geno": "Gino", "€1800": "€1,800" };
 
-/** A smooth line through points, the same curve for every chart. */
-export function smoothPath(points: [number, number][]) {
-  let path = `M${points[0][0]},${points[0][1]}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const [p0, p1, p2, p3] = [points[Math.max(0, i - 1)], points[i], points[i + 1], points[Math.min(points.length - 1, i + 2)]];
-    path += `C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
-  }
-  return path;
-}
-
-/** Moneo's call orb, driven by a level and two tones like components/voice-call.tsx. */
-export function Orb({ size, level, spin, a, b }: { size: number; level: number; spin: number; a: string; b: string }) {
-  const core = size * 0.62;
-  return <div style={{ position: "relative", width: size, height: size, display: "grid", placeItems: "center" }}>
-    <div style={{ position: "absolute", inset: "2%", borderRadius: "50%", background: `radial-gradient(circle, ${a}, transparent 68%)`, opacity: 0.5, transform: `scale(${1 + level * 0.5})` }} />
-    <div style={{ position: "absolute", inset: "10%", borderRadius: "50%", border: `2px solid ${a}66`, transform: `scale(${1 + level * 0.3})` }} />
-    <div style={{ position: "relative", width: core, height: core, borderRadius: "50%", overflow: "hidden", transform: `scale(${1 + level * 0.14})`, boxShadow: `inset 0 -10px 30px rgb(0 0 0 / .18), 0 14px 60px -14px ${a}` }}>
-      <div style={{ position: "absolute", inset: "-25%", filter: "blur(10px)", background: `conic-gradient(from ${90 + spin}deg, ${a}, ${b}, ${a})` }} />
-      <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "radial-gradient(circle at 32% 28%, rgb(255 255 255 / .5), transparent 48%)" }} />
+/** The real words of the call, lighting up as they are spoken, on Whisper's timing of the recording. */
+export function CallCaption({ clip }: { clip: Clip }) {
+  const t = useB();
+  if (t < clip.from || t >= clip.to) return null;
+  const seconds = clip.src + (t - clip.from) * BEAT * clip.rate;
+  const srcEnd = clip.src + (clip.to - clip.from) * BEAT * clip.rate;
+  const said = words.filter(word => word.who === clip.voice && word.start >= clip.src - 0.2 && word.start < srcEnd);
+  const color = clip.voice === "moneo" ? c.lime : c.fg;
+  return <>
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 400, background: "linear-gradient(transparent, rgb(8 8 9 / .94) 62%)" }} />
+    <div style={{ position: "absolute", left: 90, right: 90, bottom: 56 }}>
+      <div style={{ fontFamily: font.mono, fontSize: 30, letterSpacing: "0.08em", textTransform: "uppercase", color: clip.voice === "moneo" ? c.lime : c.ai, marginBottom: 12 }}>{clip.voice === "moneo" ? "Moneo" : "You"}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", fontFamily: font.display, fontWeight: 600, fontSize: said.length > 12 ? 58 : 76, lineHeight: 1.08, letterSpacing: "-0.035em", color }}>
+        {said.map((word, index) => <span key={index} style={{ marginRight: "0.26em", opacity: seconds >= word.start ? 1 : 0.22 }}>{FIX[word.word] ?? word.word}</span>)}
+      </div>
     </div>
-  </div>;
+  </>;
 }
 
 const LOGO_M = "M50 142V62q0-11 8-6l38 56 38-56q8-5 8 6v80";

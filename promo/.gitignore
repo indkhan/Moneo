@@ -1,3 +1,6 @@
 node_modules/
 out/
 public/moneo-promo-track.wav
+public/rec/
+demo/.voices/
+src/rec.json
