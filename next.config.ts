@@ -3,6 +3,8 @@ import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // `npm run dev` also answers phone access through Tailscale.
+  allowedDevOrigins: ["**.ts.net"],
   // Reuse visited pages briefly too, so returning to Overview needs no server round trip.
   // Server actions invalidate affected pages; external updates appear within 30 seconds.
   experimental: { staleTimes: { dynamic: 30, static: 30 } },
