@@ -1,0 +1,24 @@
+{
+  "name": "moneo-promo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "The Moneo launch video, made with Remotion. All figures in it are sample data.",
+  "scripts": {
+    "dev": "remotion studio",
+    "audio": "node scripts/make-audio.mts",
+    "render": "npm run audio && remotion render MoneoPromo out/moneo-promo.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.541",
+    "@remotion/google-fonts": "4.0.541",
+    "lucide-react": "^0.468.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.541"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.8.0"
+  },
+  "type": "module"
+}
