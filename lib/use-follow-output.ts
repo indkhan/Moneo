@@ -26,7 +26,11 @@ export function useFollowOutput(end: RefObject<HTMLElement | null>, changes: Dep
     };
     const target = scroller ?? window;
     target.addEventListener("scroll", measure, { passive: true });
-    return () => target.removeEventListener("scroll", measure);
+    // Cards and charts in a reply finish loading after it renders; growing content is new output too.
+    const content = end.current?.parentElement;
+    const growth = new ResizeObserver(() => { if (following.current) end.current?.scrollIntoView({ block: "end" }); });
+    if (content) growth.observe(content);
+    return () => { target.removeEventListener("scroll", measure); growth.disconnect(); };
   }, [end, resetKey]);
   useEffect(() => {
     if (following.current) end.current?.scrollIntoView({ block: "end" });

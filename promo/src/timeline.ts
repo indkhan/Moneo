@@ -49,8 +49,8 @@ export const SCENES_DATA = {
     { shot: "tour", from: 6, to: 8, src: 15.6, rate: 1.7, cam: { x: 960, y: 540, z: 1.15, to: { x: 960, y: 420, z: 1.3 } }, say: "Banks and Scalable, synced." },
   ] } as Scene,
   ask: { word: "Ask it.", bg: "lime", beats: 8, clips: [
-    { shot: "chat", from: 1, to: 3.5, src: 1.6, rate: 2, cam: { x: 1152, y: 540, z: 1.9 } },
-    { shot: "chat", from: 3.5, to: 8, src: 3.75, rate: 4.4, cam: { x: 1250, y: 520, z: 1.2, to: { x: 1250, y: 520, z: 1.35 } }, say: "Real answers from your records." },
+    { shot: "chat", from: 1, to: 3.5, src: 1.3, rate: 2, cam: { x: 1152, y: 540, z: 1.9 } },
+    { shot: "chat", from: 3.5, to: 8, src: 3.5, rate: 5.75, cam: { x: 1250, y: 520, z: 1.2, to: { x: 1250, y: 520, z: 1.35 } }, say: "Real answers from your records." },
   ] } as Scene,
   budget: { word: "Budget it.", bg: "fg", beats: 5, clips: [
     { shot: "budget", from: 1, to: 5, src: 0.4, rate: 3, cam: { x: 900, y: 560, z: 1.3, to: { x: 900, y: 620, z: 1.5 } }, say: "Limits that keep up on their own." },
@@ -68,10 +68,10 @@ export const SCENES_DATA = {
     { shot: "homecard", from: 17, to: 22, src: 0.7, rate: 1.45, cam: { x: 700, y: 420, z: 1.55, to: { x: 700, y: 430, z: 1.75 } }, say: "Now it lives on your Home." },
   ] } as Scene,
   trade: { word: "Trade it.", bg: "ai", beats: 13, clips: [
-    { shot: "trade", from: 1, to: 3, src: 1.3, rate: 2, cam: { x: 1152, y: 540, z: 1.9 } },
-    { shot: "trade", from: 3, to: 4.5, src: 3.05, rate: 14, cam: { x: 1250, y: 540, z: 1.05 } },
-    { shot: "trade", from: 4.5, to: 7, src: 12, rate: 4, cam: { x: 1290, y: 520, z: 1.45 }, say: "Scalable previews the order." },
-    { shot: "trade", from: 7, to: 13, src: 16.4, rate: 1.13, cam: { x: 1000, y: 680, z: 1.85 }, say: "Only your tap sends it.", click: 17.25 },
+    { shot: "trade", from: 1, to: 3, src: 1.7, rate: 1.9, cam: { x: 1152, y: 540, z: 1.9 } },
+    { shot: "trade", from: 3, to: 4.5, src: 3.48, rate: 17, cam: { x: 1250, y: 540, z: 1.05 } },
+    { shot: "trade", from: 4.5, to: 7, src: 14.45, rate: 4, cam: { x: 1290, y: 520, z: 1.45 }, say: "Scalable previews the order." },
+    { shot: "trade", from: 7, to: 13, src: 19, rate: 1, cam: { x: 1000, y: 690, z: 1.85 }, say: "Only your tap sends it.", click: 19.93 },
   ] } as Scene,
   power: { word: "Power it.", bg: "fg", beats: 6, clips: [
     { shot: "settings", from: 1, to: 6, src: 0.3, rate: 0.9, cam: { x: 800, y: 470, z: 1.8, to: { x: 720, y: 500, z: 2.3 } }, say: "Use the ChatGPT plan you already have.", click: 1.78 },

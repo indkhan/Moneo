@@ -91,7 +91,7 @@ export function Promo() {
     {allClips.filter(clip => clip.voice).map((clip, index) => {
       const voice = voices.find(item => item.who === clip.voice)!;
       return <Sequence key={index} from={Math.round(clip.start * BEAT * fps)} durationInFrames={Math.round((clip.end - clip.start) * BEAT * fps)}>
-        <Audio src={staticFile(`rec/call/${voice.file}`)} trimBefore={Math.max(0, Math.round((clip.src - voice.offset) * fps))} playbackRate={clip.rate} volume={1.5} />
+        <Audio src={staticFile(`rec/call/${voice.file}`)} trimBefore={Math.max(0, Math.round((clip.src - voice.offset) * fps))} playbackRate={clip.rate} volume={1.2} />
       </Sequence>;
     })}
   </AbsoluteFill>;

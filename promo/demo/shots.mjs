@@ -141,7 +141,7 @@ const shots = {
     rec.mark("buy");
     await tap(page, card.getByRole("button", { name: /^Buy/ }));
     await card.getByText(/Order sent to Scalable/).waitFor({ timeout: 30_000 }); rec.mark("sent-order");
-    await page.waitForTimeout(1800);
+    await page.waitForTimeout(3200);
     await rec.stop(); await snap(page, "trade-done");
   },
   async settings(session) {
