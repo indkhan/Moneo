@@ -112,6 +112,8 @@ Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days
 
 Moneo then reads your holdings, totals and cash every day and shows the portfolio on Wealth. No keys are needed.
 
+Soon after the first sync, a background job works out your portfolio's past value from your Scalable transactions and past prices, so its chart reaches back to your first trade and connecting a portfolio doesn't look like a gain in net worth. Those days are an estimate, saved apart from your real records: prices further than a year back are monthly, and crypto follows a matching crypto ETP. Moneo only saves them if replaying your transactions lands on the shares, coins and cash you hold today; otherwise the chart simply starts at your first sync, and it tries again the next day. Disconnecting keeps them, like your synced values, and resetting all data clears them.
+
 Artifact Pages and Home cards can show your Scalable portfolio, recent activity and watchlist. By default they use the last sync, the same figures as Wealth. Turn on **Live Scalable data in artifacts** in Settings → AI and your data to read Scalable each time one opens; that also allows quotes, charts and news for any security, but loads slower and needs Scalable to be reachable.
 
 ### Use it from your phone or tablet (optional)
