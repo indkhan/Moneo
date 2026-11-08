@@ -78,8 +78,8 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
         <ul className="space-y-1.5" aria-label="Tasks">
           {call.tasks.slice(-6).map(task => <li key={task.requestId} className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card py-1.5 pr-1 pl-3.5 text-sm">
             <TaskIcon status={task.status} />
-            <span className="min-w-0 flex-1"><span className="block truncate font-medium">{task.text}</span><span className={`block text-xs ${task.status === "failed" ? "text-danger" : "text-muted-foreground"}`}>{task.step}</span></span>
-            {(task.status === "running" || call.unsaid.has(task.requestId)) && <button type="button" onClick={() => void call.cancel(task.requestId)} aria-label={`Stop “${task.text}”`} className="grid size-11 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ai"><X className="size-4" aria-hidden="true" /></button>}
+            <span className="min-w-0 flex-1"><span className="block truncate font-medium">{task.title ?? (task.status === "running" ? <><span aria-hidden="true" className="my-1 block h-3 w-40 max-w-full rounded bg-muted motion-safe:animate-pulse" /><span className="sr-only">{task.text}</span></> : task.text)}</span><span className={`block text-xs first-letter:uppercase ${task.status === "failed" ? "text-danger" : "text-muted-foreground"}`}>{task.step}</span></span>
+            {(task.status === "running" || call.unsaid.has(task.requestId)) && <button type="button" onClick={() => void call.cancel(task.requestId)} aria-label={`Stop “${task.title ?? task.text}”`} className="grid size-11 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ai"><X className="size-4" aria-hidden="true" /></button>}
           </li>)}
         </ul>
       </div>}

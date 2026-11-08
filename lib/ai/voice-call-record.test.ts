@@ -51,20 +51,28 @@ beforeEach(() => { vi.clearAllMocks(); vi.spyOn(console, "error").mockImplementa
 it("writes the generated summary onto this workspace's call", async () => {
   vi.mocked(generateText).mockResolvedValue({ text: "- Asked about Netto\n- Added lunch" } as never);
   const { supabase, query } = client();
-  await summarizeCall(supabase, { workspaceId: "w", callId: id, transcript: valid.transcript as never, model: async () => ({ modelId: "m" }) as never });
+  await summarizeCall(supabase, { workspaceId: "w", callId: id, conversationId: "c", transcript: valid.transcript as never, model: async () => ({ modelId: "m" }) as never });
   expect(vi.mocked(generateText).mock.calls[0][0]).toMatchObject({ prompt: "User: hi", maxOutputTokens: 400 });
   expect(update).toHaveBeenCalledWith({ summary: "- Asked about Netto\n- Added lunch", summary_status: "done" });
   expect(query.eq.mock.calls).toEqual([["workspace_id", "w"], ["id", id]]);
 });
+it("names a chat with no settled title from the same reply, before the summary shows", async () => {
+  vi.mocked(generateText).mockResolvedValue({ text: "Title: Rent and grocery check.\n- Asked about rent" } as never);
+  const { supabase, query } = client();
+  await summarizeCall(supabase, { workspaceId: "w", callId: id, conversationId: "c", transcript: valid.transcript as never, model: async () => ({}) as never });
+  expect(update.mock.calls.map(call => call[0])).toEqual([{ title: "Rent and grocery check", title_settled: true }, { summary: "- Asked about rent", summary_status: "done" }]);
+  expect(query.eq.mock.calls).toContainEqual(["title_settled", false]);
+  expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1);
+});
 it("marks the call failed when the model errors", async () => {
   vi.mocked(generateText).mockRejectedValue(new Error("down"));
   const { supabase } = client();
-  await summarizeCall(supabase, { workspaceId: "w", callId: id, transcript: valid.transcript as never, model: async () => ({}) as never });
+  await summarizeCall(supabase, { workspaceId: "w", callId: id, conversationId: "c", transcript: valid.transcript as never, model: async () => ({}) as never });
   expect(update).toHaveBeenCalledWith({ summary: null, summary_status: "failed" });
 });
 it("marks the call failed when the model says nothing useful", async () => {
   vi.mocked(generateText).mockResolvedValue({ text: "I cannot." } as never);
   const { supabase } = client();
-  await summarizeCall(supabase, { workspaceId: "w", callId: id, transcript: valid.transcript as never, model: async () => ({}) as never });
+  await summarizeCall(supabase, { workspaceId: "w", callId: id, conversationId: "c", transcript: valid.transcript as never, model: async () => ({}) as never });
   expect(update).toHaveBeenCalledWith({ summary: null, summary_status: "failed" });
 });

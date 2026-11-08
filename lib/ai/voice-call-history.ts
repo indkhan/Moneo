@@ -60,7 +60,7 @@ export async function loadCalls(supabase: SupabaseClient, workspace: string, con
       call: {
         id: row.id, durationSeconds: row.duration_seconds, summary: row.summary, summaryStatus: row.summary_status,
         transcript: transcript.success ? transcript.data : [],
-        unfinished: tasks.filter(task => task.status === "running").map(task => ({ text: task.text, status: status.get(task.requestId) ?? "running" })),
+        unfinished: tasks.filter(task => task.status === "running").map(task => ({ text: task.title ?? task.text, status: status.get(task.requestId) ?? "running" })),
         cards: (cards?.data ?? []).filter(card => own.has(card.chat_request_id as string)).map(card => card.id as string),
         exchanges: (messages?.data ?? []).filter(message => own.has((message.request_id ?? message.reply_to) as string))
           .map(({ id, role, content, created_at }) => ({ id, role, content, created_at } as CallExchange)),
