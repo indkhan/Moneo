@@ -122,7 +122,7 @@ Your phone becomes another screen on the Moneo running on this computer: same da
 
 Only devices in your Tailscale account can reach Moneo, and they get in without a password, so don't add other people to it. Leave Tailscale Funnel off: Moneo refuses traffic from the public internet.
 
-Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address.
+Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, start Docker and run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address.
 
 ## Good to know
 

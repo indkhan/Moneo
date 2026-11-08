@@ -1,7 +1,7 @@
 "use server";
 
 import { requireWorkspace } from "@/lib/auth";
-import { turnOffPhoneAccess, turnOnPhoneAccess, type PhoneAccess } from "@/lib/phone-access";
+import { TailscaleError, turnOffPhoneAccess, turnOnPhoneAccess, type PhoneAccess } from "@/lib/phone-access";
 
 export type PhoneAccessState = PhoneAccess & { error?: string };
 
@@ -10,7 +10,7 @@ async function attempt(change: () => Promise<PhoneAccess>, previous: PhoneAccess
   try { return await change(); }
   catch (error) {
     console.error("phone access failed", error instanceof Error ? error.message : "unknown error");
-    return { ...previous, error: "Tailscale could not make that change. Open Tailscale, check it is connected, and try again." };
+    return { ...previous, error: error instanceof TailscaleError ? `Tailscale said: ${error.message}` : "Tailscale could not make that change. Open Tailscale, check it is connected, and try again." };
   }
 }
 

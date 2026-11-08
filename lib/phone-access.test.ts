@@ -33,7 +33,14 @@ it("reports each stage from what Tailscale says", async () => {
   answers["status --json"] = { missing: true };
   expect(await phoneAccess()).toEqual({ state: "not_installed" });
   answers["status --json"] = { out: "failed to connect to local tailscaled", code: 1 };
-  expect(await phoneAccess()).toEqual({ state: "signed_out", link: null });
+  expect(await phoneAccess()).toEqual({ state: "disconnected", forwarding: false });
+  answers["status --json"] = { out: JSON.stringify({ BackendState: "Stopped", Self: { DNSName: `${HOST}.` } }) };
+  answers["serve status --json"] = { out: serving("http://127.0.0.1:3000") };
+  expect(await phoneAccess()).toEqual({ state: "disconnected", forwarding: true });
+  answers["serve status --json"] = { out: "{}" };
+  expect(await phoneAccess()).toEqual({ state: "disconnected", forwarding: false });
+  answers["status --json"] = { out: JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "https://login.tailscale.com/a/1", Self: { DNSName: "" } }) };
+  expect(await phoneAccess()).toEqual({ state: "signed_out", link: "https://login.tailscale.com/a/1" });
   answers["status --json"] = { out: JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "", Self: { DNSName: "" } }) };
   expect(await phoneAccess()).toEqual({ state: "signed_out", link: null });
   answers["status --json"] = { out: running };
@@ -79,4 +86,17 @@ it("turns off Moneo's own forward", async () => {
   answers["serve status --json"] = { out: serving("http://127.0.0.1:3000") };
   await turnOffPhoneAccess();
   expect(calls()).toContain("serve --https=443 off");
+});
+
+it("treats a port shared with another path as someone else's, since turning off clears the port", async () => {
+  answers["status --json"] = { out: running };
+  answers["serve status --json"] = { out: JSON.stringify({ Web: { [`${HOST}:443`]: { Handlers: { "/": { Proxy: "http://127.0.0.1:3000" }, "/other": { Proxy: "http://127.0.0.1:9999" } } } } }) };
+  expect(await phoneAccess()).toEqual({ state: "busy" });
+});
+
+it("passes on Tailscale's own reason when it refuses", async () => {
+  answers["status --json"] = { out: running };
+  answers["serve status --json"] = { out: "{}" };
+  answers["serve --bg --https=443 http://127.0.0.1:3000"] = { out: "Access denied: serve config denied\nUse sudo", code: 1 };
+  await expect(turnOnPhoneAccess()).rejects.toThrow("Access denied: serve config denied");
 });

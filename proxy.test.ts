@@ -76,3 +76,9 @@ it("refuses public Funnel traffic before the owner's automatic sign-in", async (
   expect(response.status).toBe(403);
   expect(createServerClient).not.toHaveBeenCalled();
 });
+
+it("still refuses public Funnel traffic on the Workflow routes", () => {
+  const url = "/.well-known/workflow/v1/flow";
+  expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url, headers: { "tailscale-funnel-request": "?1" } })).toBe(true);
+  expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url })).toBe(false);
+});

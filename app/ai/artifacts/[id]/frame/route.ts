@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactDocument, artifactFrameCsp, artifactQueriesSchema, runArtifactQueries } from "@/lib/ai/artifact-data";
 import { calendarDate } from "@/lib/finance/calendar";
+import { requestOrigin } from "@/lib/remote-device";
 
 const querySchema = z.object({
   v: z.coerce.number().int().min(1).optional(),
@@ -32,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!artifact.data || !version.data) return problem("This page could not be found.", 404);
   const queries = artifactQueriesSchema.safeParse(version.data.queries);
   const data = await runArtifactQueries(queries.success ? queries.data : [], context, calendarDate(new Date(), context.settings.timezone));
-  const origin = new URL(request.url).origin;
+  const origin = requestOrigin(request);
   return new Response(artifactDocument(version.data.html, data, { theme, origin }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": artifactFrameCsp(origin), "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
   });
