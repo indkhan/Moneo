@@ -79,6 +79,76 @@ test("archiving an account with money asks what happened to it, and moving it ke
   await expect(page.getByRole("textbox", { name: `Name of ${target}`, exact: true }).locator("xpath=ancestor::*[self::article or self::li or self::section][1]")).toContainText("EUR 300.00");
 });
 
+async function seedAccount(workspace: string, name: string, minor: number) {
+  const [account] = await db`insert into public.accounts(workspace_id,name,currency_code,type) values(${workspace},${name},'EUR','checking') returning id`;
+  await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind) values(${workspace},${account.id},${minor},'EUR',${`${day(-10)}T00:00:00Z`},'synthetic','date_only')`;
+  return account.id as string;
+}
+async function archive(page: Page, name: string, choice: string) {
+  await page.goto("/money/accounts");
+  const card = page.getByRole("article", { name, exact: true });
+  await card.getByText("More", { exact: true }).click();
+  await card.getByRole("button", { name: `Archive ${name}`, exact: true }).click();
+  await card.getByRole("radio", { name: choice }).check();
+  await card.getByRole("button", { name: "Archive account", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Archived accounts/ }).locator("xpath=..").getByRole("textbox", { name: `Name of ${name}`, exact: true })).toBeVisible({ timeout: 30_000 });
+}
+const clearCash = (workspace: string) => db`update public.accounts set archived_at=now() where workspace_id=${workspace} and type='cash' and archived_at is null`;
+
+test("archiving as cash makes a Cash account holding the money, and gone records it as having left", async ({ page }) => {
+  test.setTimeout(150_000);
+  const workspace = await workspaceId(), suffix = randomUUID().slice(0, 8);
+  await clearCash(workspace);
+  const cashName = `Going to cash ${suffix}`, goneName = `Gone bank ${suffix}`;
+  const toCash = await seedAccount(workspace, cashName, 12000), gone = await seedAccount(workspace, goneName, 3400);
+
+  await archive(page, cashName, "I took it out as cash");
+  const [cash] = await db`select id from public.accounts where workspace_id=${workspace} and type='cash' and archived_at is null`;
+  expect(await db`select amount_minor::text,kind,transfer_id is not null linked from public.transactions where account_id in (${toCash},${cash.id}) order by amount_minor`)
+    .toEqual([{ amount_minor: "-12000", kind: "transfer", linked: true }, { amount_minor: "12000", kind: "transfer", linked: true }]);
+  await expect(page.getByRole("article", { name: "Cash", exact: true })).toContainText("EUR 120.00");
+
+  await archive(page, goneName, "It's gone");
+  expect(await db`select amount_minor::text,kind,transfer_id from public.transactions where account_id=${gone}`).toEqual([{ amount_minor: "-3400", kind: "ordinary", transfer_id: null }]);
+  const [closed] = await db`select archived_at from public.accounts where id=${gone}`;
+  expect(closed.archived_at).not.toBeNull();
+});
+
+test("a cash machine card adds the money to Cash once, counts nothing until accepted, and moves a later typed balance", async ({ page }) => {
+  test.setTimeout(150_000);
+  const workspace = await workspaceId(), suffix = randomUUID().slice(0, 8);
+  await clearCash(workspace);
+  const bank = await seedAccount(workspace, `Cash machine bank ${suffix}`, 50000);
+  const raise = async (amount: number, date: string) => {
+    const [row] = await db`insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind) values(${workspace},${bank},${date},${`Bargeldauszahlung ${suffix} ${amount}`},${-amount},'EUR','posted','transfer') returning id`;
+    const title = `EUR ${amount / 100} from a cash machine ${suffix}: add it to your Cash account?`;
+    await db`insert into public.agent_proposals(workspace_id,agent,kind,conflict_key,confidence,title,detail,evidence,payload) values(${workspace},'chat','cash_withdrawal',${`cash_withdrawal:${row.id}`},90,${title},'Until you add it, it counts as money that left.',${db.json({ facts: [], transactions: [], links: [] })},${db.json({ transactionId: row.id, amountMinor: String(amount), currencyCode: "EUR", date })})`;
+    return title;
+  };
+  const accept = async (title: string, label: string) => {
+    await page.goto("/");
+    const card = page.getByRole("region", { name: "Cash withdrawal proposal" }).filter({ hasText: title });
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    await card.getByRole("button", { name: `${label}: ${title}`, exact: true }).click();
+    // The card shows the decision at once, so the saved state is what proves it landed.
+    await expect.poll(async () => (await db`select status from public.agent_proposals where workspace_id=${workspace} and title=${title}`)[0].status, { timeout: 30_000 }).toBe("accepted");
+  };
+  const cashBalance = async () => { await page.goto("/money/accounts"); return page.getByRole("article", { name: "Cash", exact: true }); };
+
+  // No Cash account yet: accepting makes one, and the withdrawal is the money in it.
+  await accept(await raise(4000, day(-4)), "Create Cash account and add");
+  const [cash] = await db`select id from public.accounts where workspace_id=${workspace} and type='cash' and archived_at is null`;
+  await expect(await cashBalance()).toContainText("EUR 40.00");
+  const rows = await db`select amount_minor::text,kind from public.transactions where account_id=${cash.id}`;
+  expect(rows).toEqual([{ amount_minor: "4000", kind: "transfer" }]);
+
+  // The owner typed a balance after that; a second, older-dated withdrawal must still add to it.
+  await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,created_at) values(${workspace},${cash.id},3000,'EUR',${`${day(-1)}T08:00:00Z`},'manual','date_only',now())`;
+  await accept(await raise(1500, day(-3)), "Add to cash");
+  await expect(await cashBalance()).toContainText("EUR 45.00");
+  expect(await db`select count(*)::int n from public.transactions where account_id=${cash.id}`).toEqual([{ n: 2 }]);
+});
+
 test("a repeated bank row can be resolved from review without posting twice, and undone", async ({ page }) => {
   test.setTimeout(120_000);
   const workspace = await workspaceId(), suffix = randomUUID().slice(0, 8);

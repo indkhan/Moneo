@@ -62,9 +62,14 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
     const today = calendarDate(new Date(evidence.asOf), workspace.timezone);
     let targetId = plan.target?.id ?? null;
     if (plan.createCash) {
-      const created = await supabase.from("accounts").upsert({ id: stableId(`${requestId}:cash`), workspace_id: workspace.id, name: "Cash", type: "cash", currency_code: account.currency_code }, { onConflict: "id" }).select("id").single();
-      if (created.error) throw new Error(created.error.message);
-      targetId = created.data.id as string;
+      // Keyed by this request, so pressing again after a failure finds the same account.
+      targetId = stableId(`${requestId}:cash`);
+      const existing = await supabase.from("accounts").select("id").eq("id", targetId).maybeSingle();
+      if (existing.error) throw new Error(existing.error.message);
+      if (!existing.data) {
+        const created = await supabase.from("accounts").insert({ id: targetId, workspace_id: workspace.id, name: "Cash", type: "cash", currency_code: account.currency_code });
+        if (created.error) throw new Error(created.error.message);
+      }
       // A new account counts from a balance; the money moved in today is what's in it.
       const dayBefore = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
       const opening = await supabase.rpc("record_manual_balance", { p_account_id: targetId, p_amount_minor: "0", p_date: dayBefore, p_reviewed: false, p_covered_transactions: null, p_expected_snapshot_id: null, p_expected_version: 0, p_request_id: stableId(`${requestId}:opening`) });
