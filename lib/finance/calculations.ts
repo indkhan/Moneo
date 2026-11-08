@@ -72,9 +72,13 @@ type ForecastDay = {
   conservativeByAccount: Record<string, bigint>;
 };
 
+// The cash there is right now, before anything scheduled today (days[0] is the expected end of today).
+// A what-if the owner is trying out today counts: that is them acting now, not money still expected.
+type ForecastOpening = { date: string; conservativeMinor: bigint; conservativeByAccount: Record<string, bigint> };
+
 type ForecastResult =
   | { status: "unavailable"; missingInputs: string[] }
-  | { status: "available"; days: ForecastDay[] };
+  | { status: "available"; opening: ForecastOpening; days: ForecastDay[] };
 
 function parseDate(date: string): number {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`Invalid date: ${date}`);
@@ -106,6 +110,9 @@ export function forecastDaily(input: ForecastInput): ForecastResult {
     const initial = account.availableMinor ?? account.balanceMinor! - (account.pendingHoldMinor ?? 0n);
     return [account.id, { expected: initial, conservative: initial, optimistic: initial }];
   }));
+  const conservativeByAccount = Object.fromEntries([...balances].map(([id, balance]) => [id, balance.conservative]));
+  for (const event of input.scenarioEvents ?? []) if (event.date === input.startDate) conservativeByAccount[event.accountId] += event.conservativeMinor ?? event.expectedMinor;
+  const opening: ForecastOpening = { date: input.startDate, conservativeMinor: Object.values(conservativeByAccount).reduce((sum, amount) => sum + amount, 0n), conservativeByAccount };
   const days: ForecastDay[] = [];
   for (let offset = 0; offset < input.horizonDays; offset++) {
     const date = new Date(start + offset * 86400000).toISOString().slice(0, 10);
@@ -125,7 +132,7 @@ export function forecastDaily(input: ForecastInput): ForecastResult {
       conservativeByAccount,
     });
   }
-  return { status: "available", days };
+  return { status: "available", opening, days };
 }
 
 export function availableToSpend(input: ForecastInput):
@@ -134,7 +141,8 @@ export function availableToSpend(input: ForecastInput):
   const forecast = forecastDaily(input);
   if (forecast.status === "unavailable") return forecast;
   const protectedMinor = (input.workspaceBufferMinor ?? 0n) + input.accounts.reduce((sum, account) => sum + (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n), 0n);
-  const limitingDay = forecast.days.reduce((lowest, day) => day.conservativeMinor < lowest.conservativeMinor ? day : lowest);
+  // Money you only expect to receive today can't be spent before it arrives, so the opening cash counts as a day too.
+  const limitingDay = forecast.days.reduce<Pick<ForecastDay, "date" | "conservativeMinor">>((lowest, day) => day.conservativeMinor < lowest.conservativeMinor ? day : lowest, forecast.opening);
   return { status: "available", amountMinor: limitingDay.conservativeMinor - protectedMinor, limitingDate: limitingDay.date };
 }
 
@@ -169,15 +177,16 @@ export function accountLiquidity(input: ForecastInput) {
   if (aggregate.status === "unavailable") return aggregate;
   const accounts = input.accounts.map(account => {
     const protectedMinor = (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n);
-    const limitingDay = forecast.days.reduce((lowest, day) =>
-      day.conservativeByAccount[account.id] < lowest.conservativeByAccount[account.id] ? day : lowest);
+    const limitingDay = forecast.days.reduce<Pick<ForecastDay, "date" | "conservativeByAccount">>((lowest, day) =>
+      day.conservativeByAccount[account.id] < lowest.conservativeByAccount[account.id] ? day : lowest, forecast.opening);
     const amountMinor = limitingDay.conservativeByAccount[account.id] - protectedMinor;
-    const firstShortfallDate = forecast.days.find(day => day.conservativeByAccount[account.id] < protectedMinor)?.date ?? null;
+    const firstShortfallDate = [forecast.opening, ...forecast.days].find(day => day.conservativeByAccount[account.id] < protectedMinor)?.date ?? null;
     return { accountId: account.id, amountMinor, protectedMinor, limitingDate: limitingDay.date,
       spendableMinor: amountMinor < aggregate.amountMinor ? amountMinor : aggregate.amountMinor,
       spendingLimitingDate: amountMinor <= aggregate.amountMinor ? limitingDay.date : aggregate.limitingDate,
       shortfallMinor: amountMinor < 0n ? -amountMinor : 0n, firstShortfallDate,
-      supportingEvents: [...input.events, ...(input.scenarioEvents ?? [])].filter(event =>
+      // When today's opening cash is the low point, no scheduled event explains it.
+      supportingEvents: limitingDay === forecast.opening ? [] : [...input.events, ...(input.scenarioEvents ?? [])].filter(event =>
         event.accountId === account.id && event.date >= input.startDate && event.date <= limitingDay.date),
     };
   });
