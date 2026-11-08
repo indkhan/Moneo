@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moneo Phone Access Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Moneo's own tokens (app/globals.css), light and dark. */
+:root {
+  --bg: #f4f3ee; --card: #ffffff; --fg: #141413; --muted: #ecebe5; --muted-fg: #5c5d58; --border: #e2e0d8;
+  --brand: #4a6400; --brand-soft: #f0f7dc; --brand-solid: #cbf26b; --brand-ink: #141413;
+  --ai: #5b45c9; --ai-soft: #f1eeff; --ai-border: #d6cffb;
+  --warn: #a8441c; --warn-soft: #fff1ea; --danger: #b42318; --danger-soft: #fef3f2;
+  --blue: #2a78d6; --blue-soft: #eaf2fc;
+  --shadow: 0 1px 0 rgba(20,20,19,.03), 0 18px 40px -28px rgba(20,20,19,.28);
+  --sans: "Geist", ui-sans-serif, system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, Consolas, monospace;
+  --display: "Bricolage Grotesque", "Geist", sans-serif;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #0f1011; --card: #16171a; --fg: #eeece6; --muted: #1d1e22; --muted-fg: #a3a39e; --border: #24262a;
+  --brand: #cbf26b; --brand-soft: #1c2410; --brand-solid: #cbf26b; --brand-ink: #141413;
+  --ai: #b8a6ff; --ai-soft: #1a1922; --ai-border: #3d3760;
+  --warn: #ff9a76; --warn-soft: #2a1b14; --danger: #ff7a6b; --danger-soft: #2e1614;
+  --blue: #6aa8f0; --blue-soft: #14202e;
+  --shadow: 0 1px 0 rgba(0,0,0,.2), 0 18px 40px -28px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; }
+body { font: 17px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+code, .mono { font-family: var(--mono); }
+
+/* A fixed 1600×900 stage, scaled to the window, so it records the same at any size. */
+#stage { position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px; transform-origin: center; display: flex; background: var(--bg); transition: background .3s; }
+
+/* Left rail, like Moneo's main navigation. */
+.rail { width: 96px; flex: none; display: flex; flex-direction: column; align-items: center; padding: 22px 0; gap: 4px; border-right: 1px solid var(--border); }
+.logo { width: 44px; height: 44px; border-radius: 50%; background: var(--brand-solid); color: var(--brand-ink); display: grid; place-items: center; font: 700 22px var(--display); margin-bottom: 14px; }
+.rail button { all: unset; cursor: pointer; width: 76px; padding: 6px 0 5px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted-fg); font-size: 10.5px; line-height: 1.15; text-align: center; }
+.rail button b { font: 500 12px var(--mono); width: 26px; height: 22px; border-radius: 8px; display: grid; place-items: center; }
+.rail button:hover { color: var(--fg); }
+.rail button[aria-current="true"] { background: var(--muted); color: var(--fg); }
+.rail button[aria-current="true"] b { background: var(--fg); color: var(--bg); }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.top { height: 72px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 52px; border-bottom: 1px solid var(--border); }
+.crumb { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); }
+.crumb strong { color: var(--fg); font-weight: 500; }
+.progress { flex: 1; height: 4px; border-radius: 9px; background: var(--muted); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--brand); border-radius: 9px; transition: width .4s ease; }
+.keys { font-size: 12px; color: var(--muted-fg); display: flex; gap: 10px; align-items: center; }
+kbd { font: 500 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; background: var(--card); color: var(--fg); }
+
+.scenes { position: relative; flex: 1; }
+.scene { position: absolute; inset: 0; padding: 40px 52px 36px; display: none; flex-direction: column; }
+.scene.on { display: flex; animation: enter .45s ease both; }
+@keyframes enter { from { opacity: 0; transform: translateY(10px); } }
+
+/* Step reveals: anything with data-s shows once the scene reaches that step. */
+[data-s] { opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s ease; }
+[data-s].shown { opacity: 1; transform: none; }
+svg [data-s] { transform: none; }
+.draw { stroke-dasharray: 600; stroke-dashoffset: 600; transition: stroke-dashoffset .8s ease, opacity .2s; }
+.draw.shown { stroke-dashoffset: 0; }
+
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-fg); margin: 0 0 10px; }
+h1, h2 { font-family: var(--display); letter-spacing: -.025em; margin: 0; font-weight: 600; }
+h1 { font-size: 92px; line-height: .98; }
+h2 { font-size: 46px; line-height: 1.05; margin-bottom: 8px; }
+.lede { font-size: 21px; color: var(--muted-fg); max-width: 60ch; margin: 0; }
+.head { margin-bottom: 26px; }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 22px 24px; box-shadow: var(--shadow); }
+.card h3 { margin: 0 0 6px; font: 600 21px/1.2 var(--display); letter-spacing: -.01em; }
+.card p { margin: 0; color: var(--muted-fg); font-size: 15.5px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 9px; border-radius: 99px; margin-bottom: 10px; background: var(--muted); color: var(--muted-fg); }
+.p-ai { background: var(--ai-soft); color: var(--ai); }
+.p-brand { background: var(--brand-soft); color: var(--brand); }
+.p-warn { background: var(--warn-soft); color: var(--warn); }
+.p-danger { background: var(--danger-soft); color: var(--danger); }
+.p-blue { background: var(--blue-soft); color: var(--blue); }
+.code { font: 13.5px/1.6 var(--mono); background: var(--muted); border-radius: 14px; padding: 16px 18px; margin: 0; white-space: pre; color: var(--fg); overflow: hidden; }
+.code .k { color: var(--ai); } .code .s { color: var(--brand); } .code .c { color: var(--muted-fg); } .code .n { color: var(--warn); }
+.grid { display: grid; gap: 18px; }
+.g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); } .g5 { grid-template-columns: repeat(5, 1fr); }
+.big { font: 600 44px/1 var(--display); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.tag-line { margin-top: auto; font: 500 22px/1.35 var(--display); letter-spacing: -.01em; border-left: 4px solid var(--brand); padding: 4px 0 4px 18px; }
+.tag-line span { color: var(--muted-fg); }
+ul.ticks { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+ul.ticks li { padding-left: 28px; position: relative; font-size: 16px; }
+ul.ticks li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 14px; height: 14px; border-radius: 5px; background: var(--brand-soft); border: 1.5px solid var(--brand); }
+ul.ticks.x li::before { background: var(--danger-soft); border-color: var(--danger); }
+
+/* Scene 1 */
+.hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; flex: 1; }
+.stack-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 34px; }
+.stack-tags span { font: 500 13px var(--mono); border: 1px solid var(--border); background: var(--card); padding: 6px 12px; border-radius: 99px; color: var(--muted-fg); }
+.mock { position: relative; height: 560px; }
+.mock .card { position: absolute; }
+.slider { height: 6px; border-radius: 9px; background: var(--muted); position: relative; margin: 14px 0 6px; }
+.slider i { position: absolute; left: 0; top: 0; bottom: 0; width: 46%; border-radius: 9px; background: var(--brand); }
+.slider b { position: absolute; left: 46%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--card); border: 2px solid var(--brand); }
+.example { position: absolute; right: 0; bottom: -6px; font: 500 11px var(--mono); color: var(--muted-fg); letter-spacing: .08em; text-transform: uppercase; }
+
+/* Diagrams */
+.diagram { position: relative; flex: 1; }
+.node { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow); }
+.node h4 { margin: 0 0 4px; font: 600 19px/1.2 var(--display); letter-spacing: -.01em; }
+.node p { margin: 0; font-size: 14px; color: var(--muted-fg); line-height: 1.45; }
+.node .mono { font-size: 12.5px; color: var(--muted-fg); display: block; margin-top: 8px; line-height: 1.55; }
+.node.ai { border-color: var(--ai-border); }
+.node.hl { border-color: var(--brand); }
+.lane { position: absolute; left: 0; font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted-fg); display: flex; align-items: center; gap: 10px; }
+.lane::after { content: ""; width: 1100px; height: 1px; background: var(--border); }
+svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+svg.wires path { fill: none; stroke: var(--muted-fg); stroke-width: 2; }
+svg.wires path.ai { stroke: var(--ai); }
+svg.wires path.brand { stroke: var(--brand); }
+svg.wires path.danger { stroke: var(--danger); stroke-dasharray: 6 6; }
+svg.wires text { font: 500 12px var(--mono); fill: var(--muted-fg); }
+
+/* Sandbox nesting */
+.nest { border: 1.5px solid var(--border); border-radius: 22px; padding: 18px 20px 20px; background: var(--card); }
+.nest .nest { background: var(--bg); margin-top: 14px; }
+.nest .nest .nest { background: var(--card); border-color: var(--brand); border-width: 2px; }
+.nest-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.nest-title h4 { margin: 0; font: 600 18px var(--display); }
+.nest-title code { font-size: 12.5px; color: var(--muted-fg); }
+.hdr { font: 12.5px/1.6 var(--mono); color: var(--muted-fg); margin-top: 8px; }
+.hdr b { color: var(--fg); font-weight: 500; }
+.exits { display: grid; gap: 9px; }
+.exit { display: grid; grid-template-columns: 1.05fr 1.25fr; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 11px 14px; }
+.exit span:first-child { font: 500 14px var(--mono); text-decoration: line-through; text-decoration-color: var(--danger); text-decoration-thickness: 2px; }
+.exit span:last-child { font-size: 14px; color: var(--muted-fg); }
+
+/* Pipeline row */
+.pipe { display: flex; align-items: stretch; gap: 0; }
+.pipe .card { flex: 1; padding: 18px; }
+.pipe .arrow { width: 34px; flex: none; display: grid; place-items: center; color: var(--muted-fg); font-size: 22px; }
+.pipe .card h3 { font-size: 18px; }
+.pipe .card p { font-size: 14px; }
+
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15.5px; }
+th { text-align: left; font: 500 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); padding: 0 16px 10px; }
+td { padding: 16px; border-top: 1px solid var(--border); vertical-align: top; }
+td:first-child { font-weight: 600; width: 30%; }
+td:nth-child(2) { color: var(--muted-fg); width: 22%; }
+tbody tr { background: var(--card); }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; flex: 1; }
+.timeline { display: grid; gap: 12px; }
+.day { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; }
+.day small { display: block; font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-fg); }
+.day strong { font: 600 18px var(--display); }
+.day code { font-size: 14px; }
+.arrowtxt { color: var(--brand); font-weight: 600; }
+
+.loop { position: relative; width: 620px; height: 430px; }
+.callout { background: var(--ai-soft); border: 1px solid var(--ai-border); color: var(--fg); border-radius: 16px; padding: 14px 18px; font-size: 15px; }
+.callout b { color: var(--ai); }
+.close-big { font: 600 74px/1.02 var(--display); letter-spacing: -.035em; max-width: 16ch; }
+.close-big em { font-style: normal; color: var(--brand); }
+:root[data-theme="dark"] .close-big em { color: var(--brand-solid); }
+
+.hide-rail .rail { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <nav class="rail" aria-label="Chapters">
+    <div class="logo" aria-hidden="true">m</div>
+  </nav>
+  <div class="main">
+    <header class="top">
+      <div class="crumb" id="crumb"></div>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="keys"><kbd>←</kbd><kbd>→</kbd> page <kbd>D</kbd> theme <kbd>F</kbd> full screen</div>
+    </header>
+    <div class="scenes">
+
+<!-- 1 · Title -->
+<section class="scene" data-title="Phone access" data-short="Intro">
+  <div class="hero">
+    <div>
+      <p class="eyebrow">Moneo · open-source personal finance · deep dive</p>
+      <h1>Phone access</h1>
+      <p class="lede" style="margin-top:22px;font-size:24px">How a phone or tablet becomes another screen on the Moneo running on your computer, without putting your money on the internet.</p>
+      <div class="stack-tags">
+        <span>Tailscale Serve</span><span>WireGuard</span><span>Next.js 16</span><span>HTTPS</span><span>Add to Home Screen</span>
+      </div>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="card" style="left:30px;top:40px;width:470px;height:300px">
+        <span class="pill">Laptop · runs Moneo</span>
+        <h3>Net worth</h3>
+        <div class="big" style="margin-top:8px">€ 24,180</div>
+        <svg viewBox="0 0 400 90" style="width:100%;margin-top:18px"><path d="M0 70 C50 60 70 72 110 55 S170 30 210 42 270 18 300 26 370 8 400 12" fill="none" stroke="var(--brand)" stroke-width="3"/></svg>
+      </div>
+      <div class="card" style="left:360px;top:190px;width:190px;height:350px;border-radius:30px;border:2px solid var(--fg)">
+        <span class="pill p-brand">Phone</span>
+        <h3>Net worth</h3>
+        <div class="big" style="font-size:30px;margin-top:8px">€ 24,180</div>
+        <svg viewBox="0 0 140 70" style="width:100%;margin-top:18px"><path d="M0 55 C20 48 30 56 50 42 S80 22 95 30 120 10 140 8" fill="none" stroke="var(--brand)" stroke-width="3"/></svg>
+        <p style="margin-top:18px">Same data, same screen</p>
+      </div>
+      <span class="example">Illustrative numbers</span>
+    </div>
+  </div>
+</section>
+
+<!-- 2 · The idea -->
+<section class="scene" data-title="The idea" data-short="Idea">
+  <div class="head">
+    <p class="eyebrow">The idea</p>
+    <h2>One Moneo. More screens.</h2>
+    <p class="lede">Nothing runs on the phone. It shows the Moneo on your computer, so there is nothing to copy, sync or sign in to again.</p>
+  </div>
+  <div class="diagram" style="flex:none;width:1396px;height:500px">
+    <div class="node" data-s="1" style="left:0;top:20px;width:290px;height:130px"><span class="pill">Laptop browser</span><h4>localhost:3000</h4><p>Exactly as it always was.</p></div>
+    <div class="node" data-s="2" style="left:0;top:180px;width:290px;height:130px"><span class="pill p-brand">Phone</span><h4>Home-screen icon</h4><p>Opens your private address.</p></div>
+    <div class="node" data-s="2" style="left:0;top:340px;width:290px;height:130px"><span class="pill p-brand">Tablet</span><h4>Home-screen icon</h4><p>Same address, and it can rotate.</p></div>
+    <div class="node hl" data-s="3" style="left:480px;top:120px;width:380px;height:250px;background:var(--brand-soft)">
+      <span class="pill p-brand">Your computer</span>
+      <h4 style="font-size:26px">Moneo</h4>
+      <p style="font-size:16px;margin-top:8px">Every page, question and sync runs here. A phone sends the same request a laptop tab would, and gets the same answer.</p>
+    </div>
+    <div class="node" data-s="4" style="left:1050px;top:20px;width:346px;height:130px"><span class="pill p-blue">On your computer</span><h4>Your database</h4><p>Postgres in Docker, never copied anywhere.</p></div>
+    <div class="node ai" data-s="4" style="left:1050px;top:180px;width:346px;height:130px"><span class="pill p-ai">Already signed in</span><h4>ChatGPT or API key</h4><p>The phone uses the computer's sign-in.</p></div>
+    <div class="node" data-s="4" style="left:1050px;top:340px;width:346px;height:130px"><span class="pill p-warn">Already connected</span><h4>Banks and Scalable</h4><p>Sync runs on the computer, from any screen.</p></div>
+    <svg class="wires" viewBox="0 0 1396 500" preserveAspectRatio="none" aria-hidden="true">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted-fg)"/></marker></defs>
+      <path class="draw" data-s="1" d="M290 85 C390 85 390 190 478 190" marker-end="url(#ah)"/>
+      <path class="draw" data-s="2" d="M290 245 H478" marker-end="url(#ah)"/>
+      <path class="draw" data-s="2" d="M290 405 C390 405 390 300 478 300" marker-end="url(#ah)"/>
+      <path class="draw" data-s="4" d="M860 190 C960 190 960 85 1048 85" marker-end="url(#ah)"/>
+      <path class="draw" data-s="4" d="M860 245 H1048" marker-end="url(#ah)"/>
+      <path class="draw" data-s="4" d="M860 300 C960 300 960 405 1048 405" marker-end="url(#ah)"/>
+    </svg>
+  </div>
+</section>
+
+<!-- 3 · The route -->
+<section class="scene" data-title="The route" data-short="Route">
+  <div class="head">
+    <p class="eyebrow">The route</p>
+    <h2>Moneo never opens a door</h2>
+    <p class="lede">It still listens only on <code>127.0.0.1</code>. Tailscale is the one thing that accepts the connection, and only from your own devices.</p>
+  </div>
+  <div class="pipe" style="margin-top:6px">
+    <div class="card" data-s="1"><span class="pill p-brand">Phone</span><h3>Your address</h3><p>The browser or home-screen icon opens <code style="overflow-wrap:anywhere">https://your-pc.<wbr>your-tailnet.<wbr>ts.net</code>.</p></div>
+    <div class="arrow" data-s="2">→</div>
+    <div class="card" data-s="2"><span class="pill">Tailscale app</span><h3>Encrypted tunnel</h3><p>A WireGuard tunnel from the phone to the computer, from any network.</p></div>
+    <div class="arrow" data-s="3">→</div>
+    <div class="card" data-s="3"><span class="pill">Tailscale Serve</span><h3>HTTPS on your computer</h3><p>Ends HTTPS there and forwards to Moneo, keeping the address the phone asked for.</p></div>
+    <div class="arrow" data-s="4">→</div>
+    <div class="card" data-s="4" style="border-color:var(--brand)"><span class="pill p-brand">Moneo</span><h3>127.0.0.1:3000</h3><p>Handles the request like any other, and pages use the address the device asked for.</p></div>
+    <div class="arrow" data-s="5">→</div>
+    <div class="card" data-s="5"><span class="pill p-blue">Docker</span><h3>127.0.0.1:54321</h3><p>Only Moneo's server talks to the database and file storage.</p></div>
+  </div>
+  <div class="grid g3" style="margin-top:26px">
+    <div class="card" data-s="6"><span class="pill p-brand">Works anywhere</span><h3>No router changes</h3><p>Home Wi-Fi or mobile data. No ports forwarded, no public address.</p></div>
+    <div class="card" data-s="6"><span class="pill p-brand">Real HTTPS</span><h3>The microphone is allowed</h3><p>Browsers only allow voice calls on secure pages, and installing to the home screen works best there too.</p></div>
+    <div class="card" data-s="6"><span class="pill p-brand">Streaming</span><h3>Replies still arrive live</h3><p>Measured through Serve: each line of a test stream arrived within a few milliseconds.</p></div>
+  </div>
+  <p class="tag-line" data-s="7">The one command behind all of it: <code style="font-size:19px">tailscale serve --bg --https=443 http://127.0.0.1:3000</code></p>
+</section>
+
+<!-- 4 · The switch -->
+<section class="scene" data-title="Turning it on" data-short="Switch">
+  <div class="head">
+    <p class="eyebrow">Turning it on</p>
+    <h2>One button that finds the next step</h2>
+    <p class="lede">Settings → Keys and connections → Phone and tablet. Each press asks Tailscale where things stand and shows only what is missing.</p>
+  </div>
+  <div class="pipe">
+    <div class="card" data-s="1"><span class="pill">Default</span><h3>Off</h3><p>One line and a <b>Turn on</b> button. Tailscale isn't needed, and nothing else appears.</p></div>
+    <div class="arrow" data-s="2">→</div>
+    <div class="card" data-s="2"><span class="pill p-warn">If needed</span><h3>Install Tailscale</h3><p>A download link, then <b>Check again</b>.</p></div>
+    <div class="arrow" data-s="3">→</div>
+    <div class="card" data-s="3"><span class="pill p-warn">If needed</span><h3>Sign in</h3><p>A sign-in link from Tailscale itself.</p></div>
+    <div class="arrow" data-s="4">→</div>
+    <div class="card" data-s="4"><span class="pill p-warn">Once ever</span><h3>Allow secure addresses</h3><p>Tailscale's approval page for HTTPS on your devices.</p></div>
+    <div class="arrow" data-s="5">→</div>
+    <div class="card" data-s="5" style="border-color:var(--brand)"><span class="pill p-brand">On</span><h3>Scan the code</h3><p>Your address as a QR code, with the three phone steps beside it.</p></div>
+  </div>
+  <div class="split" style="margin-top:26px;flex:none">
+    <div class="card" data-s="6">
+      <h3>On the phone or tablet</h3>
+      <ul class="ticks" style="margin-top:12px">
+        <li>Install Tailscale and sign in with the same account</li>
+        <li>Scan the code in Settings</li>
+        <li>Choose Add to Home Screen</li>
+      </ul>
+    </div>
+    <div class="card" data-s="7">
+      <h3>Moneo keeps no copy of this setting</h3>
+      <ul class="ticks" style="margin-top:12px">
+        <li>Tailscale remembers it, and Settings reads it live</li>
+        <li><b>Turn off</b> removes Moneo's forward and leaves other apps alone</li>
+        <li>If another app already uses that address, Moneo says so and leaves it alone</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · A question from the phone -->
+<section class="scene" data-title="A question from the phone" data-short="In use">
+  <div class="head">
+    <p class="eyebrow">In use</p>
+    <h2>You ask on the phone. The laptop does the work.</h2>
+    <p class="lede">Your sign-in lives on the computer, so nothing about your AI plan, bank or broker is ever on the phone.</p>
+  </div>
+  <div class="timeline">
+    <div class="day" data-s="1"><div><small>Step 1</small><strong>Phone</strong></div><div>You ask “How much did I spend on food this month?”</div></div>
+    <div class="day" data-s="2"><div><small>Step 2</small><strong>Tunnel</strong></div><div>The message travels through Tailscale to Moneo on your computer.</div></div>
+    <div class="day" data-s="3"><div><small>Step 3</small><strong>Moneo</strong></div><div>Moneo reads your own records and calls the AI with the ChatGPT sign-in or API key saved on the computer.</div></div>
+    <div class="day" data-s="4"><div><small>Step 4</small><strong>Phone</strong></div><div>The reply streams back. If the phone locks, the computer finishes the reply and saves it.</div></div>
+    <div class="day" data-s="5"><div><small>Everywhere</small><strong>Database</strong></div><div>Edits, accepted cards and syncs land in the same database, so every screen has them. Pressing Sync on the phone runs the sync on the computer.</div></div>
+  </div>
+  <div class="callout" data-s="6" style="margin-top:20px"><b>Not a live mirror yet.</b> A chat streams to the screen that asked. Another open screen shows it after reopening or refreshing the chat, and other open pages can take up to 30 seconds. Tracked in issue #166.</div>
+</section>
+
+<!-- 6 · Three sign-ins -->
+<section class="scene" data-title="The three sign-ins" data-short="Sign-ins">
+  <div class="head" style="margin-bottom:18px">
+    <p class="eyebrow">The three sign-ins</p>
+    <h2>Connected once, on the computer</h2>
+    <p class="lede">Each service sends the browser back to one fixed address on the computer. The laptop's addresses didn't change, so none of these flows did.</p>
+  </div>
+  <table>
+    <thead><tr><th>Service</th><th>Returns to</th><th>From the phone</th></tr></thead>
+    <tbody>
+      <tr data-s="1"><td>Sign in with ChatGPT</td><td><code>http://127.0.0.1:3000/…</code></td><td>Chat works with the computer's sign-in. OpenAI only allows that loopback address, so a new sign-in starts on the computer.</td></tr>
+      <tr data-s="2"><td>Enable Banking</td><td><code>https://localhost:3443/…</code></td><td>Data and Sync work. A bank login returns to the computer, so connecting or reconnecting starts there.</td></tr>
+      <tr data-s="3"><td>Scalable Capital</td><td><code>http://localhost:3000/…</code></td><td>Data and Sync work. Scalable rejected a <code>*.ts.net</code> address when tested, so connecting starts on the computer.</td></tr>
+    </tbody>
+  </table>
+  <div class="grid g2" style="margin-top:24px">
+    <div class="card" data-s="4"><span class="pill p-warn">Without a guard</span><h3>A dead page and a half-made connection</h3><p>The phone would try to return to its own <code>localhost</code>, which has no Moneo on it.</p></div>
+    <div class="card" data-s="5"><span class="pill p-brand">With the guard</span><h3>A clear message, and nothing started</h3><p>Moneo recognizes a <code>*.ts.net</code> request and says to open Moneo on the computer for that one step.</p></div>
+  </div>
+</section>
+
+<!-- 7 · Who can get in -->
+<section class="scene" data-title="Who can get in" data-short="Security">
+  <div class="head">
+    <p class="eyebrow">Who can get in</p>
+    <h2>No password, so the network has to be the lock</h2>
+    <p class="lede">Moneo signs its one owner in automatically. That is only safe if nobody else can reach it.</p>
+  </div>
+  <div class="grid g3">
+    <div class="card" data-s="1"><span class="pill p-brand">Layer 1</span><h3>Your devices only</h3><p>Serve answers devices on your Tailscale network, so keep that network to yourself. There is no public address to find or attack.</p></div>
+    <div class="card" data-s="2"><span class="pill p-brand">Layer 2</span><h3>Public traffic refused</h3><p>If Tailscale Funnel is ever turned on, it marks each request. Moneo's proxy refuses those before the automatic sign-in.</p></div>
+    <div class="card" data-s="3"><span class="pill p-brand">Layer 3</span><h3>Local services stay local</h3><p>Moneo, the database and storage still bind to <code>127.0.0.1</code>. Other devices on your Wi-Fi can't open them.</p></div>
+  </div>
+  <div class="split" style="margin-top:22px;flex:none">
+    <div class="card" data-s="4">
+      <h3>What Tailscale can and can't see</h3>
+      <ul class="ticks" style="margin-top:12px">
+        <li>The tunnel is encrypted between your own devices</li>
+        <li>HTTPS ends on your computer, not on a server in between</li>
+        <li>The address appears in public certificate logs; no data does</li>
+      </ul>
+    </div>
+    <div class="card" data-s="5">
+      <h3>What this leaves to you</h3>
+      <ul class="ticks x" style="margin-top:12px">
+        <li>Everyone on your Tailscale network gets straight in, so don't add other people</li>
+        <li>A lost phone has access until you remove it in Tailscale</li>
+        <li>Keep a screen lock on your devices</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · If you never turn it on -->
+<section class="scene" data-title="If you never turn it on" data-short="Opt-in">
+  <div class="head">
+    <p class="eyebrow">If you never turn it on</p>
+    <h2>Nothing else changes</h2>
+    <p class="lede">The feature had to be invisible to anyone who only uses Moneo on their computer.</p>
+  </div>
+  <div class="grid g2">
+    <div class="card" data-s="1">
+      <span class="pill p-brand">Added for everyone</span>
+      <h3>Small and measured</h3>
+      <ul class="ticks" style="margin-top:12px">
+        <li>One card in Settings, loaded separately so it can't hold up the page</li>
+        <li>A Tailscale status check on Settings only: about 100 ms when installed</li>
+        <li>One header check per request in the proxy</li>
+      </ul>
+    </div>
+    <div class="card" data-s="2">
+      <span class="pill p-blue">Not added</span>
+      <h3>Nothing running in the background</h3>
+      <ul class="ticks" style="margin-top:12px">
+        <li>No Tailscale requirement</li>
+        <li>No background jobs, new ports or database changes</li>
+        <li>No new code in the browser for the QR code; it's drawn on the server</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grid g2" style="margin-top:22px">
+    <div class="card" data-s="3"><span class="pill">Fixed along the way</span><h3>Chat attachments go through Moneo</h3><p>They used to open from storage on <code>127.0.0.1</code>, which only exists on the computer. Now they're served by the app, on every device.</p></div>
+    <div class="card" data-s="4"><span class="pill">Fixed along the way</span><h3>The installed app can rotate</h3><p>The portrait lock is gone, so a tablet can use Moneo in landscape.</p></div>
+  </div>
+</section>
+
+<!-- 9 · Decisions -->
+<section class="scene" data-title="Decisions and trade-offs" data-short="Decisions">
+  <div class="head" style="margin-bottom:16px">
+    <p class="eyebrow">Decisions</p>
+    <h2>What I chose, and why</h2>
+  </div>
+  <table>
+    <thead><tr><th>Chose</th><th>Instead of</th><th>Because</th></tr></thead>
+    <tbody>
+      <tr data-s="1"><td>Private Tailscale</td><td>A public link with a password</td><td>A two-minute install beats putting a finance app's login page on the internet</td></tr>
+      <tr data-s="2"><td>Tailscale</td><td>Same Wi-Fi only</td><td>Works from anywhere, with HTTPS for voice, and other people on the Wi-Fi can't get in</td></tr>
+      <tr data-s="3"><td>Run it on your computer</td><td>A cloud server</td><td>Your financial data stays on your machine</td></tr>
+      <tr data-s="4"><td>Tailscale holds the setting</td><td>A saved setting in Moneo</td><td>One source of truth, so Settings can't disagree with what's really running</td></tr>
+      <tr data-s="5"><td>Start logins on the computer</td><td>Pasting a return address on the phone</td><td>You connect once, and a clumsy copy-and-paste isn't worth it for something so rare</td></tr>
+      <tr data-s="6"><td>Keep the laptop's addresses</td><td>Move Moneo to the new address</td><td>Existing ChatGPT, bank and Scalable connections keep working untouched</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 10 · Close -->
+<section class="scene" data-title="Takeaway" data-short="Close">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:34px">
+    <p class="eyebrow">Takeaway</p>
+    <div class="close-big" data-s="1">Your phone is <em>another screen</em>.<br>Your computer stays <em>the app</em>.</div>
+    <div class="grid g3" style="max-width:1150px">
+      <div class="card" data-s="2"><h3>Only if you want it</h3><p>Off by default, one button to turn on or off.</p></div>
+      <div class="card" data-s="2"><h3>Private by design</h3><p>Your own devices only, with no public address.</p></div>
+      <div class="card" data-s="2"><h3>Keep the computer on</h3><p>It must be awake with Moneo running. After a restart, start Moneo again; auto-start is issue #165.</p></div>
+    </div>
+    <p class="mono" data-s="3" style="color:var(--muted-fg);font-size:16px">github.com/indkhan/Moneo · open source · runs on your own computer</p>
+  </div>
+</section>
+
+    </div>
+  </div>
+</div>
+<script>
+const scenes = [...document.querySelectorAll(".scene")];
+const rail = document.querySelector(".rail");
+let index = 0;
+
+scenes.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.innerHTML = `<b>${String(i + 1).padStart(2, "0")}</b>${s.dataset.short}`;
+  b.onclick = () => go(i);
+  rail.append(b);
+});
+
+// One page per scene: everything on it fades in by itself, in its data-s order, so only a scene change needs a key.
+function render() {
+  scenes.forEach((s, i) => s.classList.toggle("on", i === index));
+  const s = scenes[index];
+  const parts = [...s.querySelectorAll("[data-s]")];
+  parts.forEach(e => { e.classList.remove("shown"); e.style.transitionDelay = `${(+e.dataset.s - 1) * 90}ms`; });
+  requestAnimationFrame(() => requestAnimationFrame(() => parts.forEach(e => e.classList.add("shown"))));
+  [...rail.querySelectorAll("button")].forEach((b, i) => b.setAttribute("aria-current", i === index));
+  document.getElementById("crumb").innerHTML = `<strong>${String(index + 1).padStart(2, "0")}</strong> / ${scenes.length} · ${s.dataset.title}`;
+  document.getElementById("bar").style.width = `${((index + 1) / scenes.length) * 100}%`;
+  try { history.replaceState(null, "", `#${index + 1}`); } catch {}
+}
+function go(i) { index = Math.max(0, Math.min(scenes.length - 1, i)); render(); }
+function next() { if (index < scenes.length - 1) go(index + 1); }
+function prev() { if (index > 0) go(index - 1); }
+
+addEventListener("keydown", e => {
+  if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(scenes.length - 1);
+  else if (e.key.toLowerCase() === "d") setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  else if (e.key.toLowerCase() === "f") document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+  else if (e.key.toLowerCase() === "r") document.body.classList.toggle("hide-rail");
+});
+document.querySelector(".scenes").addEventListener("click", e => { if (!e.target.closest("button,a")) next(); });
+
+function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("moneo-deep-dive-theme", t); } catch {} }
+let saved = null; try { saved = localStorage.getItem("moneo-deep-dive-theme"); } catch {}
+setTheme(saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+
+function fit() {
+  const k = Math.min(innerWidth / 1600, innerHeight / 900);
+  document.getElementById("stage").style.transform = `translate(-50%, -50%) scale(${k})`;
+}
+addEventListener("resize", fit); fit();
+
+const m = /^#(\d+)/.exec(location.hash);
+go(m ? +m[1] - 1 : 0);
+</script>
+</body>
+</html>
