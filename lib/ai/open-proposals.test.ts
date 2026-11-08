@@ -21,7 +21,7 @@ it("reads only this workspace's open cards outside agent runs, oldest first", as
   const { calls, db } = fakeDb({ agent_proposals: [] });
   expect(await openStandaloneProposals(db, "w")).toEqual([]);
   expect(calls).toEqual(expect.arrayContaining([["agent_proposals", "eq", "workspace_id", "w"], ["agent_proposals", "is", "run_id", null],
-    ["agent_proposals", "in", "status", ["proposed", "failed"]], ["agent_proposals", "in", "kind", ["iou_create", "iou_settle", "transaction_create", "balance_set", "recurring_edit", "own_transfer"]],
+    ["agent_proposals", "in", "status", ["proposed", "failed"]], ["agent_proposals", "in", "kind", ["iou_create", "iou_settle", "transaction_create", "balance_set", "recurring_edit", "own_transfer", "cash_withdrawal"]],
     ["agent_proposals", "order", "created_at"]]));
 });
 

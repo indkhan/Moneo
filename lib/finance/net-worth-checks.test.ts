@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bankBalanceFindings, brokerFindings, checksNotice, historyBoundaryFindings, importFindings } from "./net-worth-checks";
+import { bankBalanceFindings, brokerFindings, checksNotice, historyBoundaryFindings, importFindings, repaymentFindings } from "./net-worth-checks";
 import { calendarDayBoundary } from "./calendar";
 
 const timeZone = "Europe/Berlin";
@@ -58,6 +58,22 @@ describe("imports landing", () => {
     expect(importFindings([row("a", "failed", "2026-11-01")])).toMatchObject([{ key: "import:a" }]);
     expect(importFindings([row("a", "failed", "2026-11-01"), row("b", "completed", "2026-11-02")])).toEqual([]);
     expect(importFindings([row("b", "completed", "2026-10-31"), row("a", "failed", "2026-11-01")])).toHaveLength(1);
+  });
+});
+
+describe("repayments standing on a bank payment", () => {
+  const link = { id: "r", transaction_id: "t", applied_minor: "5000", currency_code: "EUR", transaction_amount_minor: "6000", transaction_posted_on: "2026-10-05" };
+  const row = (over = {}) => ({ id: "t", account_id: "bank", amount_minor: "6000", currency_code: "EUR", posted_on: "2026-10-05", status: "posted", ...over });
+  it("stays quiet while the payment is as it was", () => {
+    expect(repaymentFindings([link], [row()])).toEqual([]);
+    expect(repaymentFindings([{ ...link, undone_at: "2026-11-01" }], [])).toEqual([]);
+  });
+  it("asks again when the bank changes or removes the payment", () => {
+    expect(repaymentFindings([link], [row({ amount_minor: "5000" })])).toMatchObject([{ key: "repayment:r", repaymentId: "r" }]);
+    expect(repaymentFindings([link], [row({ posted_on: "2026-10-06" })])).toMatchObject([{ repaymentId: "r" }]);
+    expect(repaymentFindings([link], [])).toMatchObject([{ key: "repayment:r", repaymentId: undefined }]);
+    expect(repaymentFindings([{ ...link, transaction_id: null }], [])).toHaveLength(1);
+    expect(repaymentFindings([link], [row({ status: "pending" })])).toMatchObject([{ repaymentId: undefined }]);
   });
 });
 

@@ -7,7 +7,7 @@ import type { BalanceSnapshot, BalanceTransaction } from "./balances";
 // one entry for as long as it's unresolved, and it goes away by itself once a correction fixes the records. Nothing here
 // changes a number. Deliberately not findings: negative balances, differences from Scalable's returns, slow transfers.
 
-export type Discrepancy = { key: string; kind: "bank_balance" | "broker_parts" | "history_boundary" | "import"; title: string; detail: string; href: string };
+export type Discrepancy = { key: string; kind: "bank_balance" | "broker_parts" | "history_boundary" | "import" | "repayment"; title: string; detail: string; href: string; repaymentId?: string };
 
 export const BOOKED_BALANCE_TYPES = new Set(["CLBD", "ITBD"]);
 const BROKER_TOLERANCE_MINOR = 100n; // Rounding across positions can't reach a euro.
@@ -77,11 +77,32 @@ export function importFindings(imports: { id: string; filename: string; status: 
     .map(row => ({ key: `import:${row.id}`, kind: "import", href: "/import", title: `${row.filename} didn't finish importing`, detail: "Its rows aren't in your numbers. The next sync retries a bank import; a file can be imported again." }));
 }
 
+export type RepaymentLink = { id: string; transaction_id: string | null; applied_minor: string; currency_code: string; transaction_amount_minor: string; transaction_posted_on: string; undone_at?: string | null };
+
+/** A repayment stands on a bank payment in a known state. If the payment changed or went, the owner decides again. */
+export function repaymentFindings(links: RepaymentLink[], ledger: BalanceTransaction[], locale?: string): Discrepancy[] {
+  const rows = new Map(ledger.map(row => [row.id, row]));
+  return links.flatMap(link => {
+    if (link.undone_at) return [];
+    const row = link.transaction_id ? rows.get(link.transaction_id) : undefined;
+    if (row && row.status === "posted" && row.currency_code === link.currency_code && BigInt(row.canonical_amount_minor ?? row.amount_minor) === BigInt(link.transaction_amount_minor) && row.posted_on === link.transaction_posted_on) return [];
+    return [{ key: `repayment:${link.id}`, kind: "repayment" as const, href: "/money/wealth#wealth-history", repaymentId: row?.status === "posted" ? link.id : undefined,
+      title: "The bank changed a payment you counted as a loan repayment",
+      detail: `It repaid ${formatMoney(link.applied_minor, link.currency_code, locale)}. ${row?.status === "posted" ? "If it still stands, keep it; otherwise undo it in the Wealth history." : "That payment is gone, so undo the repayment in the Wealth history."}` }];
+  });
+}
+
+export async function loadRepaymentLinks(db: SupabaseClient, workspaceId: string): Promise<RepaymentLink[]> {
+  const { data, error } = await db.from("iou_repayments").select("id, transaction_id, applied_minor::text, currency_code, transaction_amount_minor::text, transaction_posted_on, undone_at").eq("workspace_id", workspaceId).is("undone_at", null).limit(2000);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as RepaymentLink[];
+}
+
 export type FindingsInput = {
   accounts: { id: string; name: string; currency_code: string }[]; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; timeZone: string; locale?: string;
   portfolio: Parameters<typeof brokerFindings>[0];
   lastCalculated: Parameters<typeof historyBoundaryFindings>[0]; firstReal: Parameters<typeof historyBoundaryFindings>[1]; movedOnBoundaryMinor?: bigint;
-  imports: Parameters<typeof importFindings>[0];
+  imports: Parameters<typeof importFindings>[0]; repayments?: RepaymentLink[];
 };
 
 /** Every check, in the order the owner reads them. */
@@ -90,6 +111,7 @@ export const netWorthFindings = (input: FindingsInput): Discrepancy[] => [
   ...brokerFindings(input.portfolio, input.locale),
   ...historyBoundaryFindings(input.lastCalculated, input.firstReal, input.movedOnBoundaryMinor, input.locale),
   ...importFindings(input.imports),
+  ...repaymentFindings(input.repayments ?? [], input.ledger, input.locale),
 ];
 
 /** Imports that didn't land, for the checks above. */

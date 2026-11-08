@@ -7,7 +7,7 @@ function fakeDb(rows: Rows) {
   const updates: { table: string; row: unknown }[] = [];
   const from = (table: string) => {
     const query: Record<string, unknown> = {};
-    for (const name of ["select", "eq", "is", "in", "gte", "order", "limit"]) query[name] = () => query;
+    for (const name of ["select", "eq", "is", "in", "gte", "order", "limit", "not"]) query[name] = () => query;
     query.update = (row: unknown) => { updates.push({ table, row }); return query; };
     query.insert = (row: unknown) => { inserts.push({ table, row }); const list = Array.isArray(row) ? row : [row]; const result = { data: list.map((_, index) => ({ id: `new-${index}`, title: (list[index] as { title: string }).title })), error: null };
       return { select: () => ({ ...result, single: async () => ({ data: result.data[0], error: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve) }) }; };

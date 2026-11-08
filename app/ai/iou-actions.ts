@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { STANDALONE_KINDS, cardTransactions, type CardTransaction } from "@/lib/ai/open-proposals";
 import { transactionAccountOptions } from "@/lib/ai/transaction-proposals";
+import { cashAccountOptions } from "@/lib/ai/cash-proposals";
 import { TRADE_KINDS, type TradeReview } from "@/lib/scalable/orders";
 
 export type ChatProposal = { id: string; kind: string; title: string; detail: string; status: string; result: { error?: string; href?: string; createdAccount?: boolean; unknown?: boolean; reference?: string | null } | null;
@@ -23,5 +24,6 @@ export async function loadIouProposal(id: string): Promise<ChatProposal | null> 
   const proposal = { ...row, transactions: cardTransactions(evidence) };
   // Only an open expense card needs the accounts it can be paid from.
   const open = proposal.status === "proposed" || proposal.status === "failed";
+  if (proposal.kind === "cash_withdrawal" && open) return { ...proposal, ...await cashAccountOptions(supabase, workspace.id, payload) };
   return proposal.kind === "transaction_create" && open ? { ...proposal, ...await transactionAccountOptions(supabase, workspace.id, payload) } : proposal;
 }

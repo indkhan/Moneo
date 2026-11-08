@@ -60,8 +60,9 @@ export function loanPayouts(loans: LoanStart[], transactions: IouTransaction[]) 
  * Bank transactions that look like a repayment: they name the person, move money the right way
  * (in for money lent, out for money borrowed), match the currency and come on or after the IOU's date.
  * Each transaction goes to the open IOU whose remaining amount is closest; partial payments count.
+ * `counted` is how much of each transaction already went against a loan: only what is left can go again.
  */
-export function repaymentMatches(items: IouItem[], transactions: IouTransaction[]): RepaymentMatch[] {
+export function repaymentMatches(items: IouItem[], transactions: IouTransaction[], counted: Map<string, bigint> = new Map()): RepaymentMatch[] {
   const open = items.flatMap(item => {
     const parsed = parseIouName(item.name);
     const owed = BigInt(item.amount_minor);
@@ -71,24 +72,26 @@ export function repaymentMatches(items: IouItem[], transactions: IouTransaction[
   const matches: RepaymentMatch[] = [];
   for (const transaction of transactions) {
     const amount = BigInt(transaction.amount_minor);
+    const left = abs(amount) - (counted.get(transaction.id) ?? 0n);
+    if (left <= 0n) continue;
     const candidates = open.filter(entry => entry.item.currency_code === transaction.currency_code && transaction.posted_on >= entry.item.as_of
       && (entry.direction === "lent" ? amount > 0n : amount < 0n) && mentions(transaction.description, entry.person));
     if (!candidates.length) continue;
-    const gap = (owed: bigint) => abs(owed - abs(amount));
+    const gap = (owed: bigint) => abs(owed - left);
     const best = candidates.reduce((a, b) => gap(b.owed) < gap(a.owed) ? b : a);
     matches.push({ itemId: best.item.id, transactionId: transaction.id, person: best.person, direction: best.direction,
-      owedMinor: best.owed.toString(), appliedMinor: (abs(amount) < best.owed ? abs(amount) : best.owed).toString() });
+      owedMinor: best.owed.toString(), appliedMinor: (left < best.owed ? left : best.owed).toString() });
   }
   return matches;
 }
 
-/** The record after a repayment, or null when it settles the IOU in full (the item is then removed). */
-export function settledRecord(item: IouItem & { annual_rate_text: string | null; monthly_payment_minor: string | null }, appliedMinor: string, today: string) {
-  const lent = item.kind === "asset";
-  const left = BigInt(item.amount_minor) + (lent ? -BigInt(appliedMinor) : BigInt(appliedMinor));
-  if (lent ? left <= 0n : left >= 0n) return null;
-  return { ...iouRecord({ direction: lent ? "lent" : "borrowed", person: parseIouName(item.name)!.person, amountMinor: abs(left).toString(), currencyCode: item.currency_code, date: today }),
-    annual_rate_text: item.annual_rate_text, monthly_payment_minor: item.monthly_payment_minor };
+/** How much of each bank transaction already went against a loan, while the repayment stands. */
+export async function loadCountedRepayments(supabase: SupabaseClient, workspaceId: string) {
+  const { data, error } = await supabase.from("iou_repayments").select("transaction_id, applied_minor::text").eq("workspace_id", workspaceId).is("undone_at", null).not("transaction_id", "is", null).limit(2000);
+  if (error) throw new Error(error.message);
+  const counted = new Map<string, bigint>();
+  for (const row of data ?? []) counted.set(row.transaction_id, (counted.get(row.transaction_id) ?? 0n) + BigInt(row.applied_minor));
+  return counted;
 }
 
 /**

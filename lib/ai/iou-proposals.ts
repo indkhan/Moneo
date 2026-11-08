@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
-import { iouCreateSchema, repaymentMatches, type IouItem } from "@/lib/finance/iou";
+import { iouCreateSchema, loadCountedRepayments, repaymentMatches, type IouItem } from "@/lib/finance/iou";
 import { wealthAmount } from "@/lib/finance/wealth";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
@@ -57,7 +57,7 @@ export async function proposeRepayments({ supabase, workspace, chatRequestId }: 
   const recent = await supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspace.id).eq("status", "posted")
     .gte("posted_on", since).order("posted_on", { ascending: false }).limit(2000);
   if (recent.error) throw new Error(recent.error.message);
-  const matches = repaymentMatches(items, recent.data ?? []);
+  const matches = repaymentMatches(items, recent.data ?? [], await loadCountedRepayments(supabase, workspace.id));
   if (!matches.length) return [];
   const keys = matches.map(match => `iou_settle:${match.itemId}:${match.transactionId}`);
   const known = await supabase.from("agent_proposals").select("conflict_key").eq("workspace_id", workspace.id).is("run_id", null).in("conflict_key", keys);

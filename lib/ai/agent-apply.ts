@@ -1,8 +1,8 @@
 import type { requireWorkspace } from "@/lib/auth";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { payloadSchemas, type ProposalKind } from "@/lib/ai/agent-team";
-import { calendarDate } from "@/lib/finance/calendar";
-import { iouCreateSchema, iouRecord, iouSettleSchema, parseIouName, settledRecord } from "@/lib/finance/iou";
+import { iouCreateSchema, iouRecord, iouSettleSchema } from "@/lib/finance/iou";
+import { applyCashWithdrawal } from "@/lib/ai/cash-proposals";
 import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
 import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recurring-proposals";
@@ -14,7 +14,7 @@ import { ownTransferPayloadSchema } from "@/lib/finance/own-transfers";
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel" | "own_transfer"; payload: unknown };
+export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel" | "own_transfer" | "cash_withdrawal"; payload: unknown };
 /** Choices made on the card itself: the account a chat expense is paid from, or what the person set when confirming a recurring payment. */
 export type DecideOptions = { accountId?: string; recurring?: Partial<ScheduleFields> };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
@@ -63,23 +63,15 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
     }
     case "iou_settle": {
       const payload = iouSettleSchema.parse(proposal.payload);
-      const [item, transaction] = await Promise.all([
-        supabase.from("wealth_items").select("id, kind, name, currency_code, amount_minor::text, as_of, version, removed_at, linked_account_id, annual_rate_text, monthly_payment_minor::text")
-          .eq("workspace_id", workspace.id).eq("id", payload.itemId).is("removed_at", null).maybeSingle(),
-        supabase.from("transactions").select("id, amount_minor::text, currency_code").eq("workspace_id", workspace.id).eq("id", payload.transactionId).maybeSingle(),
-      ]);
-      if (item.error || !item.data || !parseIouName(item.data.name)) throw new Error("This loan changed or was removed since the repayment was found");
-      const paid = transaction.data ? BigInt(transaction.data.amount_minor) : 0n;
-      const lent = item.data.kind === "asset";
-      if (transaction.data?.currency_code !== item.data.currency_code || (lent ? paid <= 0n : paid >= 0n) || BigInt(payload.appliedMinor) > (paid < 0n ? -paid : paid))
-        throw new Error("The transaction no longer matches this repayment");
-      const next = settledRecord(item.data, payload.appliedMinor, calendarDate(new Date(), workspace.timezone));
-      const { error } = await supabase.rpc("edit_wealth_item", { p_id: item.data.id, p_expected_version: item.data.version, p_record: next ?? {}, p_remove: next === null, p_request_id: proposal.id });
+      // Links the payment to the loan in one audited step: posted money only, never more than the receipt, dated by the bank.
+      const { error } = await supabase.rpc("apply_iou_repayment", { p_item_id: payload.itemId, p_transaction_id: payload.transactionId, p_applied_minor: payload.appliedMinor, p_request_id: proposal.id });
       if (error) throw new Error(error.message);
       return { href: "/money/wealth", undo: "Undo from the Wealth history" };
     }
     case "transaction_create":
       return applyTransactionProposal(context, proposal.id, proposal.payload, options.accountId);
+    case "cash_withdrawal":
+      return applyCashWithdrawal(context, proposal.id, proposal.payload, options.accountId);
     case "balance_set":
       return applyBalanceProposal(context, proposal.id, proposal.payload);
     case "recurring_edit":

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { cashWithdrawals } from "./own-transfers";
 import { findOwnTransfers, normalizeIban, ownNameSuggestions, sourceIbans, type TransferCandidate } from "./own-transfers";
 
 const CURRENT = "DE89370400440532013000", SAVINGS = "DE02120300000000202051", ELSEWHERE = "DE75512108001245126199";
@@ -102,5 +103,16 @@ describe("IBAN parsing", () => {
     expect(normalizeIban("de89 3704 0044 0532 0130 00")).toBe(CURRENT);
     expect(normalizeIban("Rent October")).toBeNull();
     expect(sourceIbans({ counterparty_iban: SAVINGS, description: "Savings", amount: "-5" })).toEqual([SAVINGS]);
+  });
+});
+
+describe("cash machine withdrawals", () => {
+  const row = (over = {}) => ({ id: "a", postedOn: "2026-11-01", amountMinor: -10000n, text: "Bargeldauszahlung Sparkasse", transferId: null, ...over });
+  it("offers a card for each recent withdrawal, once", () => {
+    expect(cashWithdrawals([row()], "2026-11-08").map(item => item.id)).toEqual(["a"]);
+    expect(cashWithdrawals([row()], "2026-11-08", new Set(["a"]))).toEqual([]);
+  });
+  it("leaves out deposits, other wording, linked rows and old withdrawals", () => {
+    expect(cashWithdrawals([row({ amountMinor: 100n }), row({ text: "Coffee" }), row({ transferId: "b" }), row({ postedOn: "2026-09-01" })], "2026-11-08")).toEqual([]);
   });
 });
