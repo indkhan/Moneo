@@ -71,7 +71,7 @@ test("archiving an account with money asks what happened to it, and moving it ke
   await article.getByRole("radio", { name: "I moved it to another of my accounts" }).check();
   await article.getByRole("combobox").last().selectOption({ label: target });
   await article.getByRole("button", { name: "Archive account", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Archived accounts" }).or(page.getByRole("heading", { name: /Archived accounts/ })).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("region", { name: "Archived accounts" }).getByRole("textbox", { name: `Name of ${name}`, exact: true })).toBeVisible({ timeout: 30_000 });
   // Linked rows, equal and opposite, with the money now in the other account.
   const rows = await db`select amount_minor::text,kind,transfer_id is not null linked from public.transactions where account_id in (${accounts[0].id},${accounts[1].id}) order by amount_minor`;
   expect(rows).toEqual([{ amount_minor: "-25000", kind: "transfer", linked: true }, { amount_minor: "25000", kind: "transfer", linked: true }]);
@@ -91,7 +91,7 @@ async function archive(page: Page, name: string, choice: string) {
   await card.getByRole("button", { name: `Archive ${name}`, exact: true }).click();
   await card.getByRole("radio", { name: choice }).check();
   await card.getByRole("button", { name: "Archive account", exact: true }).click();
-  await expect(page.getByRole("heading", { name: /Archived accounts/ }).locator("xpath=..").getByRole("textbox", { name: `Name of ${name}`, exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("region", { name: "Archived accounts" }).getByRole("textbox", { name: `Name of ${name}`, exact: true })).toBeVisible({ timeout: 30_000 });
 }
 const clearCash = (workspace: string) => db`update public.accounts set archived_at=now() where workspace_id=${workspace} and type='cash' and archived_at is null`;
 
