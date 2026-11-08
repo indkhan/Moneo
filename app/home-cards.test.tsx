@@ -10,7 +10,7 @@ vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvid
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null, loadAgentBriefing: async () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/lib/finance/dashboard-spending", () => ({ loadHomeSpending: async () => ({}) }));
-vi.mock("@/lib/finance/wealth", () => ({ loadWealthItems: async () => [], wealthEvidence: () => ({ included: [], missingInputs: [], sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07", recordBasis: "manual_wealth" }, []) }) }));
+vi.mock("@/lib/finance/wealth", () => ({ loadWealthItems: async () => [], wealthEvidence: () => ({ included: [], missingInputs: [], outdated: [], sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07", recordBasis: "manual_wealth" }, []) }) }));
 vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({ accounts: [], snapshots: [], ledger: [], asOf: "2026-10-07T12:00:00Z" }) }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "synthetic", timezone: "UTC", display_currency: "EUR", locale: "en" }, settings: {}, supabase: { from: (table: string) => {
   // Only the live card comes back from the cards read, as if the other one was deleted.

@@ -10,15 +10,16 @@ vi.mock("@/lib/finance/model", () => ({ evaluatePlanForWorkspace: vi.fn() }));
 vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvidence: async () => ({}) }));
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null, loadAgentBriefing: async () => null }));
 vi.mock("./manual-balance-form", () => ({ ManualBalanceForm: () => null }));
+vi.mock("./home-notices", () => ({ HomeNotices: () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/components/intent-link", () => ({ IntentLink: "a" }));
 // The grid is a client component; here it only lays its widgets out in order so their server content can be resolved.
 vi.mock("./home-grid", () => ({ HomeGrid: ({ items, widgets }: { items: string[]; widgets: Record<string, ReactNode> }) => items.map(key => React.createElement("div", { key }, widgets[key])) }));
 vi.mock("@/lib/finance/tools", async original => ({ ...await original<typeof import("@/lib/finance/tools")>(), cashflow: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), unavailable: "Synthetic period" }) }));
-vi.mock("@/lib/finance/wealth", () => ({ loadWealthItems: async () => [], wealthEvidence: () => ({ included: [], missingInputs: [], sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07", recordBasis: "manual_wealth" }, []) }) }));
+vi.mock("@/lib/finance/wealth", () => ({ loadWealthItems: async () => [], wealthEvidence: () => ({ included: [], missingInputs: [], outdated: [], sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07", recordBasis: "manual_wealth" }, []) }) }));
 vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({ accounts: [{ id: "checking", name: "Checking", currency_code: "EUR" }, { id: "savings", name: "Savings", currency_code: "EUR" }], snapshots: [], ledger: [], asOf: "2026-10-07T12:00:00Z" }) }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "synthetic", timezone: "UTC", display_currency: "EUR", locale: "en" }, settings: {}, supabase: { from: () => {
-  const q = { select: () => q, eq: () => q, order: () => q, is: () => q, not: () => q, range: async () => ({ data: [], error: null }), limit: () => q, maybeSingle: async () => ({ data: { items: ["planning", "upcoming"] }, error: null }), then: (resolve: (data: unknown) => unknown) => resolve({ data: [], count: 0, error: null }) }; return q;
+  const q = { select: () => q, eq: () => q, in: () => q, order: () => q, is: () => q, not: () => q, range: async () => ({ data: [], error: null }), limit: () => q, maybeSingle: async () => ({ data: { items: ["planning", "upcoming"] }, error: null }), then: (resolve: (data: unknown) => unknown) => resolve({ data: [], count: 0, error: null }) }; return q;
 } } }) }));
 const input: ForecastInput = { startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR", accounts: [
   { id: "checking", balanceMinor: 10000n, currencyCode: "EUR" }, { id: "savings", balanceMinor: 100000n, currencyCode: "EUR" }], events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Recurring bill", source: "confirmed" }] };

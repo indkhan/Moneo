@@ -9,7 +9,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
 import { currentOn, debtPayments, loadWealthItems, wealthEvidence, type WealthItem } from "@/lib/finance/wealth";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
-import { formatMoney as formatCurrency } from "@/lib/finance/format";
+import { describeOutdated, formatMoney as formatCurrency } from "@/lib/finance/format";
 import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
@@ -54,15 +54,14 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone,
     accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots: evidence.snapshots, ledger: evidence.ledger,
     valuations: valuationHistory(events, items), removedOn: removedOn(items, workspace.timezone) });
-  // Today uses the balances Accounts and Overview show and only valuations that count today, so the totals match theirs.
+  // Today uses the balances Accounts and Overview show and the same valuations, so the totals match theirs.
   const resolved = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, undefined, { preferLatestRecorded: true }).filter(account => !account.archived_at);
-  const now = currentNetWorth(today, resolved, wealthEvidence(active, today).included.map(valuation => ({ ...valuation, debt: itemById.get(valuation.id)?.kind === "debt" })));
+  const valuations = wealthEvidence(active, today);
+  const now = currentNetWorth(today, resolved, valuations.included.map(valuation => ({ ...valuation, debt: itemById.get(valuation.id)?.kind === "debt" })));
   series[series.length - 1] = now;
   const unbalanced = resolved.filter(account => account.balance.amount_minor === null).length;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
-  const outdated = active.filter(item => !item.linked_account_id && !currentOn(item, today));
-  const dated = outdated.length;
   const chartPoints = (currency: string) => series.flatMap(point => { const value = netWorth(point).get(currency); return value === undefined ? [] : [{ date: point.date, value }]; });
   const history = params.history === "all" ? events : events.slice(0, HISTORY);
   // Scalable's synced positions, cash and crypto get their own panel; they still count in net worth like any valuation.
@@ -99,7 +98,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
             <tbody>{series.map(point => { const value = netWorth(point).get(currency); return <tr key={point.date} className="border-b border-border last:border-0"><th scope="row" className="py-1.5 text-left font-normal">{point.date === today ? "Today" : point.date}</th><td className="py-1.5 text-right font-mono tabular-nums">{value === undefined ? "Nothing recorded" : formatMoney(value, currency)}</td></tr>; })}</tbody></table>
         </details>
       </div>; })}
-      {dated > 0 && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-4 py-3 text-sm"><p>Older valuations left out of today&apos;s net worth: <span className="font-mono tabular-nums">{[...sum(outdated)].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</span></p><a href={`#item-${outdated[0].id}`} className="inline-flex min-h-11 items-center font-medium text-brand underline">Review valuations</a></div>}
+      {valuations.outdated.length > 0 && <p className="text-xs text-muted-foreground">{describeOutdated(valuations.outdated)}</p>}
       {unbalanced > 0 && <p className="text-sm">{unbalanced} account{unbalanced === 1 ? " has" : "s have"} no usable balance and {unbalanced === 1 ? "is" : "are"} left out. <Link href="/money/accounts" className="font-medium text-brand underline">Review account balances</Link></p>}
       {!currencies.length && !active.length && <div className="rounded-xl border border-border bg-card p-6 text-sm"><p className="font-medium">Add your first item</p><p className="mt-1 text-muted-foreground">Net worth is your accounts plus investments and assets, minus debts. Start with one below.</p></div>}
       {!currencies.length && active.length > 0 && <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations count today yet.</p>}
@@ -115,13 +114,13 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
       if (!rows.length) return null;
       return <section key={kind} aria-label={title} className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
-          <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows.filter(item => currentOn(item, today)))].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
+          <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows.filter(item => item.as_of <= today))].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
         <div className="divide-y divide-border rounded-xl border border-border bg-card">{rows.map(item => {
           const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, 365) : []; } catch { return null; } })();
           return <article key={item.id} id={`item-${item.id}`} className="scroll-mt-24 space-y-2 px-5 py-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-medium">{item.name}</h3>
               <p className="font-mono font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
-            <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : currentOn(item, today) ? "" : " · Outdated, not in current net worth"}</p>
+            <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : item.as_of > today ? " · Dated in the future, not in net worth" : currentOn(item, today) ? "" : " · Not from today, last known value"}</p>
             {item.cost_basis_minor !== null && (() => { const gain = BigInt(item.amount_minor) - BigInt(item.cost_basis_minor); const cost = BigInt(item.cost_basis_minor);
               return <p className={`text-xs ${gain > 0n ? "text-success" : gain < 0n ? "text-danger" : "text-muted-foreground"}`}>{gain > 0n ? "+" : ""}{formatMoney(gain, item.currency_code)}{cost > 0n ? ` (${gain > 0n ? "+" : ""}${(Number(gain * 10000n / cost) / 100).toFixed(1)}%)` : ""} since bought for {formatMoney(cost, item.currency_code)}</p>; })()}
             {item.kind === "debt" && (payments === null ? <p className="text-xs text-warning">Update the next repayment date and principal to project payments.</p> : payments.length > 0 && <ul className="space-y-0.5 text-xs text-muted-foreground">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} left</li>)}</ul>)}

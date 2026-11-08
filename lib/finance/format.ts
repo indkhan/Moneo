@@ -38,12 +38,19 @@ export function describeMissingInputs(keys: string[], names: Map<string, string>
     if (kind === "rate") return `An account needs a ${rest.join(":").replace("->", " to ")} exchange rate`;
     if (kind === "currency") return `Currency ${rest[0]} is not supported`;
     if (kind === "fx") return rest.length > 1 && rest[0] !== "scenario" ? `${label(rest[1])} needs an exchange rate` : "An exchange rate is missing";
-    if (kind === "valuation") return rest[1] === "future" ? "A valuation is dated in the future" : "A valuation is not from today";
+    if (kind === "valuation") return `${names.get(rest[0]) ?? "A valuation"} is dated in the future`;
     if (kind === "debt") return `A debt ${rest.slice(1).join(":") || "needs repayment terms"}`;
     if (kind === "occurrence") return `${rest[0]} on ${rest[1]}: evidence changed, review the association`;
     return key;
   };
   return [...new Set(keys.map(describe))];
+}
+
+/** The note beside a total that counts older valuations: how many, which, and from when. */
+export function describeOutdated(items: { name: string; asOf: string }[], date: (value: string) => string = value => value): string {
+  const dates = [...new Set(items.map(item => item.asOf))].sort().reverse();
+  const groups = dates.map(asOf => `${items.filter(item => item.asOf === asOf).map(item => item.name).join(", ")} (${date(asOf)})`);
+  return `${items.length} ${items.length === 1 ? "valuation is not from today and uses its" : "valuations are not from today and use their"} last known value: ${groups.join("; ")}`;
 }
 
 export function formatInputAmount(amountMinor: bigint | string | number, currencyCode: string): string {

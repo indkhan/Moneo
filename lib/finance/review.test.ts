@@ -73,10 +73,11 @@ it("attributes a linked refund to the original purchase category in its own post
   expect(report.categories[0]).toMatchObject({ id: "food", spendingMinor: "-500" });
 });
 
-it("combines current standalone wealth with account totals once and keeps historical or foreign currency evidence unknown", () => {
+it("combines standalone wealth with account totals once, counts older values and keeps future or foreign currency evidence unknown", () => {
   const item = { id: "asset", name: "Asset", amount_minor: "5000", currency_code: "EUR", as_of: "2026-10-02", linked_account_id: null };
   expect(reviewNetWorth({ EUR: "10000", USD: null }, [item, { ...item, id: "linked", linked_account_id: "account" }], "2026-10-02")).toEqual({ EUR: "15000", USD: null });
-  expect(reviewNetWorth({ EUR: "10000" }, [{ ...item, as_of: "2026-10-01" }], "2026-10-02")).toEqual({ EUR: null });
+  expect(reviewNetWorth({ EUR: "10000" }, [{ ...item, as_of: "2026-10-01" }], "2026-10-02")).toEqual({ EUR: "15000" });
+  expect(reviewNetWorth({ EUR: "10000" }, [{ ...item, as_of: "2026-10-03" }], "2026-10-02")).toEqual({ EUR: null });
 });
 
 it("keeps unrelated category uncertainty out of an otherwise complete budget", () => {

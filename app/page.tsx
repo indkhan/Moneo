@@ -10,6 +10,7 @@ import { BUILTIN_WIDGETS, cardIdFromKey, homeLayout, isBuiltinWidget, sizeOption
 import { CardSkeleton, HomeCard, type HomeCardRow } from "@/components/cards/home-card";
 import { cardSize, type CardSize } from "@/lib/cards/sizes";
 import { HomeGrid } from "./home-grid";
+import { HomeNotices } from "./home-notices";
 import type { QueryShared } from "@/lib/ai/artifact-data";
 import { IntentLink } from "@/components/intent-link";
 import { redirect } from "next/navigation";
@@ -18,7 +19,8 @@ import { getSupabaseConfig } from "@/lib/env";
 import { convertFx, minorDigits } from "@/lib/finance/fx";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
-import { describeMissingInputs } from "@/lib/finance/format";
+import { describeMissingInputs, describeOutdated } from "@/lib/finance/format";
+import { loadSyncProblems } from "@/lib/sync-problems";
 import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
@@ -66,7 +68,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const reviewPromise = loadReview(supabase, workspace);
   // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, syncProblems] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -82,6 +84,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
+    loadSyncProblems(supabase, workspace.id),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   const ai = await aiPromise;
@@ -121,7 +124,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const kinds = new Map(wealthItems.map(item => [item.id, item.kind]));
   for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, kinds.get(valuation.id) === "debt" ? "debts" : "assets");
   const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
-  const missing = describeMissingInputs(missingInputs);
+  const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
 
   // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (issue #158).
   const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
@@ -218,6 +221,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
 
   return (
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+      <HomeNotices notices={[...(valuations.outdated.length ? [{ text: describeOutdated(valuations.outdated, fullDate), href: "/money/wealth", action: "See Wealth" }] : []), ...syncProblems.map(text => ({ text, href: "/settings", action: "Open Settings" }))]} />
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{display.weekday(today)} · {display.longDate(today)}</p><h1 className="page-title">Overview</h1></div>
         {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
