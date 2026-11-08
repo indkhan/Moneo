@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { requireWorkspace } from "@/lib/auth";
 import { balanceReviewRows, loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
+import { closingTargets } from "@/lib/finance/account-closing";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { addAccountSafely, undoBalanceSafely, undoMoneyMetadataSafely } from "./actions";
 import { AddAccountPanel } from "./add-account-panel";
@@ -92,7 +93,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
       {saved === `balance:${account.id}` || saved === `account:${account.id}` ? <p role="status" className="mb-2 px-2 text-sm text-success">{saved.startsWith("balance") ? `Balance saved for ${account.name}.` : `${account.name} saved.`}</p> : null}
       <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1 basis-80">
-          <AccountForm key={`${account.id}:${account.version}`} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
+          <AccountForm key={`${account.id}:${account.version}`} moneyLeft={account.balance.amount_minor !== null && BigInt(account.balance.amount_minor) !== 0n ? formatMoney(account.balance.amount_minor, account.currency_code, locale) : null} targets={closingTargets(account, accounts).map(({ id, name, type }) => ({ id, name, type }))} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
           <p className="mt-1 flex flex-wrap items-center gap-x-3 px-2 text-xs text-muted-foreground">
             <span>{account.currency_code}</span>
             {account.archived_at ? <span>Archived</span> : null}

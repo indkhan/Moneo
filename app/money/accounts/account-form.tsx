@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { editAccount, updateBalance } from "./actions";
 import { accountTypes } from "./naming";
+import { ArchiveQuestion } from "./archive-question";
 
 
 type Account = { id: string; name: string; type: string; version: number; archived_at: string | null };
@@ -14,9 +15,10 @@ const Hidden = ({ account, requestId }: { account: Account; requestId: string })
 const ErrorText = ({ error }: { error?: string }) => error ? <p role="alert" className="w-full text-sm text-danger">{error}</p> : null;
 
 // Inline rename/type: the name looks like text until focused. Archive keeps all history.
-export function AccountForm({ account, requestId }: { account: Account; requestId: string }) {
+export function AccountForm({ account, requestId, moneyLeft, targets = [] }: { account: Account; requestId: string; moneyLeft?: string | null; targets?: { id: string; name: string; type?: string }[] }) {
   const [state, action, pending] = useActionState(editAccount, {});
   const [edited, setEdited] = useState(false);
+  const [asking, setAsking] = useState(false);
   return <form action={action} onChange={() => setEdited(true)} className="flex min-w-0 flex-wrap items-center gap-2">
     <Hidden account={account} requestId={requestId} />
     <input aria-label={`Name of ${account.name}`} name="name" defaultValue={account.name} required maxLength={120}
@@ -24,9 +26,10 @@ export function AccountForm({ account, requestId }: { account: Account; requestI
     <select aria-label={`Type of ${account.name}`} name="type" defaultValue={account.type} className={quiet}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select>
     {edited && <button disabled={pending} aria-label={`Save changes to ${account.name}`} className={quiet} name="operation" value="edit">{pending ? "Saving…" : "Save changes"}</button>}
     <details className="relative"><summary className={`${quiet} inline-flex cursor-pointer list-none items-center`}>More</summary>
-      <button disabled={pending} className={`${quiet} absolute right-0 z-10 mt-1 whitespace-nowrap border border-border bg-card shadow-sm`} name="operation" value={account.archived_at ? "restore" : "archive"} aria-label={`${account.archived_at ? "Restore" : "Archive"} ${account.name}. History is kept.`}>{account.archived_at ? "Restore account" : "Archive account"}</button>
+      {moneyLeft && !account.archived_at ? <button type="button" onClick={() => setAsking(true)} className={`${quiet} absolute right-0 z-10 mt-1 whitespace-nowrap border border-border bg-card shadow-sm`} aria-label={`Archive ${account.name}`}>Archive account</button> : <button disabled={pending} className={`${quiet} absolute right-0 z-10 mt-1 whitespace-nowrap border border-border bg-card shadow-sm`} name="operation" value={account.archived_at ? "restore" : "archive"} aria-label={`${account.archived_at ? "Restore" : "Archive"} ${account.name}. History is kept.`}>{account.archived_at ? "Restore account" : "Archive account"}</button>}
     </details>
     <ErrorText error={state.error} />
+    {asking && moneyLeft && <ArchiveQuestion account={account} amount={moneyLeft} targets={targets} requestId={requestId} onCancel={() => setAsking(false)} />}
   </form>;
 }
 

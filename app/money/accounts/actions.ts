@@ -11,13 +11,23 @@ import { reviewedCoverage } from "@/app/balance-input";
 import { accountTypes } from "./naming";
 import { minorDigits } from "@/lib/finance/fx";
 import { linkOwnTransfers, normalizeIban } from "@/lib/finance/own-transfers";
+import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
+import { closingAnswerSchema, closingPlan } from "@/lib/finance/account-closing";
+import { stableId } from "@/lib/import/row";
 
 const version = z.coerce.number().int().min(1).max(2147483646);
 const accountType = z.enum(accountTypes);
 
 export async function editAccount(_state: { error?: string }, form: FormData): Promise<{ error?: string }> {
   try {
-  const { supabase } = await requireWorkspace();
+  const { supabase, workspace } = await requireWorkspace();
+  // Asked again here, not only in the form: archiving can't drop money from net worth without an answer.
+  if (form.get("operation") === "archive") {
+    const evidence = await loadBalanceEvidence(supabase, workspace.id);
+    const account = resolveBalances(evidence.accounts.filter(row => row.id === form.get("accountId")), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
+    if (account?.balance.status === "ambiguous") throw new Error("Settle this account's balance before archiving it");
+    if (account && BigInt(account.balance.amount_minor ?? "0") !== 0n) throw new Error("This account still holds money. Say what happens to it first.");
+  }
   const patch = form.get("operation") === "archive" ? { archived: true }
     : form.get("operation") === "restore" ? { archived: false }
     : { name: z.string().trim().min(1).max(120).parse(form.get("name")), type: accountType.parse(form.get("type")) };
@@ -31,6 +41,60 @@ export async function editAccount(_state: { error?: string }, form: FormData): P
   }
   revalidatePath("/", "layout");
   redirect(`/money/accounts?saved=account:${String(form.get("accountId"))}#account-${String(form.get("accountId"))}`);
+}
+
+/**
+ * Archives an account that still holds money, after the owner said where it went. Each row uses the same audited tools as
+ * by hand, keyed by this request, so pressing again after a failure can't add the money twice. Restoring the account
+ * leaves these rows in place; each can be undone from its transaction.
+ */
+export async function archiveWithAnswer(_state: { error?: string }, form: FormData): Promise<{ error?: string }> {
+  const accountId = String(form.get("accountId"));
+  try {
+    const { supabase, workspace } = await requireWorkspace();
+    const requestId = z.uuid().parse(form.get("requestId"));
+    const answer = closingAnswerSchema.parse({ outcome: form.get("outcome"), ...(form.get("targetAccountId") ? { targetAccountId: form.get("targetAccountId") } : {}) });
+    const evidence = await loadBalanceEvidence(supabase, workspace.id);
+    const account = resolveBalances(evidence.accounts.filter(row => row.id === accountId), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
+    if (!account || account.archived_at) throw new Error("Account not found");
+    if (account.balance.amount_minor === null) throw new Error("Settle this account's balance before archiving it");
+    const plan = closingPlan(account, BigInt(account.balance.amount_minor), answer, evidence.accounts);
+    const today = calendarDate(new Date(evidence.asOf), workspace.timezone);
+    let targetId = plan.target?.id ?? null;
+    if (plan.createCash) {
+      const created = await supabase.from("accounts").upsert({ id: stableId(`${requestId}:cash`), workspace_id: workspace.id, name: "Cash", type: "cash", currency_code: account.currency_code }, { onConflict: "id" }).select("id").single();
+      if (created.error) throw new Error(created.error.message);
+      targetId = created.data.id as string;
+      // A new account counts from a balance; the money moved in today is what's in it.
+      const dayBefore = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+      const opening = await supabase.rpc("record_manual_balance", { p_account_id: targetId, p_amount_minor: "0", p_date: dayBefore, p_reviewed: false, p_covered_transactions: null, p_expected_snapshot_id: null, p_expected_version: 0, p_request_id: stableId(`${requestId}:opening`) });
+      if (opening.error) throw new Error(opening.error.message);
+    }
+    const post = async (target: string, row: { amountMinor: bigint; description: string }, part: string) => {
+      const { data, error } = await supabase.rpc("create_manual_transaction", { p_account_id: target, p_posted_on: today, p_description: row.description, p_amount_minor: row.amountMinor.toString(), p_status: "posted", p_category_id: null, p_note: "Added when archiving an account", p_request_id: stableId(`${requestId}:${part}`) });
+      if (error) throw new Error(error.message);
+      const saved = await supabase.from("transactions").select("id, kind, version").eq("id", data.id).single();
+      if (saved.error) throw new Error(saved.error.message);
+      return saved.data as { id: string; kind: string; version: number };
+    };
+    const out = await post(accountId, plan.out, "out");
+    if (plan.into && targetId) {
+      const into = await post(targetId, plan.into, "in");
+      if (out.kind === "ordinary" && into.kind === "ordinary") {
+        const linked = await supabase.rpc("link_transactions", { p_operation: "transfer", p_primary_id: plan.into.amountMinor > 0n ? out.id : into.id, p_expected_version: plan.into.amountMinor > 0n ? out.version : into.version,
+          p_other_id: plan.into.amountMinor > 0n ? into.id : out.id, p_other_version: plan.into.amountMinor > 0n ? into.version : out.version, p_fx_rate_id: null, p_fees: [], p_request_id: stableId(`${requestId}:link`) });
+        if (linked.error) throw new Error(linked.error.message);
+      }
+    }
+    const fresh = await supabase.from("accounts").select("version").eq("id", accountId).single();
+    if (fresh.error) throw new Error(fresh.error.message);
+    const { error } = await supabase.rpc("edit_money_metadata", { p_entity_type: "account", p_id: accountId, p_expected_version: fresh.data.version, p_patch: { archived: true }, p_request_id: stableId(`${requestId}:archive`) });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    return { error: error instanceof z.ZodError ? "Choose what happened to the money" : error instanceof Error ? error.message : "Could not archive this account" };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/money/accounts?saved=account:${accountId}#account-${accountId}`);
 }
 
 export async function undoMoneyMetadata(form: FormData) {
