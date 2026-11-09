@@ -1,11 +1,11 @@
 // Smoke test for both configured and unconfigured environments.
 //
-// What it proves: the app boots, reports configuration status, signs the owner in without a
+// What it proves: the app boots, reports configuration status, opens signed in without a
 // sign-in page, and renders the key entry routes without making OpenAI requests.
 import { test, expect } from "@playwright/test";
 
 test.describe("core journey smoke (no session, no live AI)", () => {
-  test("home signs the owner in automatically, or explains how to finish setup", async ({ page, request }) => {
+  test("home opens signed in, or explains how to finish setup", async ({ page, request }) => {
     const openAiCalls: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("api.openai.com")) openAiCalls.push(request.url());

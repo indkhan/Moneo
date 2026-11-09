@@ -1,5 +1,5 @@
 // Most useful deterministic Playwright test for Moneo's core journey
-// (prompt.md §46) that can run WITHOUT Supabase credentials or OpenAI.
+// that can run WITHOUT Supabase credentials or OpenAI.
 //
 // Why this slice: CSV/XLSX import with AI-proposed mapping → Preview →
 // Continue / Correct / Cancel (§4–§5) is the highest-priority, highest-risk
