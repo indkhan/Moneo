@@ -5,7 +5,7 @@ import {expect, it} from "vitest";
 import {resolveReviewRequest} from "./review-request";
 
 it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("freezes owned request identity and fences durable budgets to the elected running worker", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), {max: 1, connection: {application_name: "qa_mne019_request_gate"}, onnotice: () => {}});
   const schema = `qa_request_${randomUUID().replaceAll("-", "")}`, owner = randomUUID(), other = randomUUID();

@@ -14,6 +14,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:db": "node scripts/test-db.mjs",
+    "qa:server": "node scripts/qa-server.mjs",
+    "qa:auth": "node scripts/e2e-auth.mjs",
+    "qa:reset": "node scripts/e2e-auth.mjs --reset",
     "check:privacy": "node scripts/check-private-data.mjs",
     "pretest": "npm run check:privacy",
     "prelint": "npm run check:privacy"

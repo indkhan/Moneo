@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
 const rollback = new Error("Successful rollback");

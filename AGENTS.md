@@ -23,8 +23,8 @@ These are defaults. The developer's instructions override them; if a rule confli
 
 ## Safety
 
-- Never run tests or experiments against the owner's workspace. Browser tests use the QA user (`scripts/e2e-auth.mjs`) or disposable users they create and remove.
-- Never delete the Docker volumes (`docker compose down -v`) or drop the database: that is the owner's financial history.
+- Never run tests or experiments against the owner's backend (`.env`, Docker project `moneo`, app on port 3000). Tests use the separate test backend below, as its QA user or disposable users they create and remove.
+- Never delete the `moneo` Docker volumes (`docker compose down -v`) or drop its database: that is the owner's financial history. The test backend is disposable: `docker compose -p moneo-qa down -v` then `npm run setup -- --qa` starts it fresh.
 - Never change `JWT_SECRET`, `POSTGRES_PASSWORD` or `BANK_TOKEN_ENCRYPTION_KEY` in an existing `.env`; keys, sessions and stored bank and ChatGPT tokens stop working.
 - Never commit `.env*` (except `.env.example`), `.data/`, `e2e/.auth.json` or `.qa/`.
 - Only kill processes you started, or ones you verified by port and working directory. Never kill by name.
@@ -51,6 +51,15 @@ Use npm (`package-lock.json` is authoritative).
 - Unit: `npm test` · Lint: `npm run lint` · Build: `npm run build` · Bundle budget: `npm run check:bundle` (after a build)
 - Database: `npm run test:db` (needs the backend from `npm run setup`)
 - E2E: `npm run test:e2e` (see `e2e/README.md`)
+
+## Test backend
+
+Everything that needs a database or a running app is tested against `moneo-qa`, never the owner's setup:
+
+- **Backend:** Docker project `moneo-qa` (ports 54521/54522), secrets in the git-ignored `.env.qa` (one shared copy in `~/.moneo/qa.env`, so every worktree uses the same stack). Create, upgrade or copy it into a new worktree with `npm run setup -- --qa`; then `npm run qa:auth` creates the QA user and saves `e2e/.auth.json`.
+- **App:** `npm run qa:server` runs this checkout on http://localhost:3100 against `.env.qa`, building into `.next-qa`, with bank access off and a placeholder AI key that every provider rejects, so nothing costs money. `npm run test:e2e` starts it on its own and refuses to run against any server that would sign tests in as the owner.
+- **Reset:** `npm run qa:reset` empties the QA workspace. Each spec should still set up the state it needs rather than rely on what earlier runs left behind.
+- `npm run test:db` and the `supabase/tests/*.mjs` scripts read `.env.qa` only.
 
 ## Project map
 

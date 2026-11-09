@@ -5,7 +5,7 @@ import {expect, it} from "vitest";
 import {resolveReviewRequest} from "./review-request";
 
 it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("elects only one synthesis caller when two database transactions overlap", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), {max: 2, connection: {application_name: "qa_mne019_reservation_race"}, onnotice: () => {}});
   const nonce = randomUUID(), schema = `qa_reservation_${nonce.replaceAll("-", "")}`, marker = `mne019-reservation:${nonce}`;

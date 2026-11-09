@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import postgres from "postgres";
 import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 3, connect_timeout: 10, onnotice: () => {} });
 const schema = `moneo_reservation_qa_${randomUUID().replaceAll("-", "")}`;

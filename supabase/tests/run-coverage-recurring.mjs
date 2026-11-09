@@ -20,7 +20,7 @@ const candidate = "202610070017_coverage_recurring.sql";
 const git = spawnSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"});
 assert.equal(git.status, 0);
 const head = git.stdout.trim();
-if (existsSync(".env")) process.loadEnvFile(".env");
+if (existsSync(".env.qa")) process.loadEnvFile(".env.qa");
 assert(process.env.SUPABASE_DB_URL && process.env.NEXT_PUBLIC_SUPABASE_URL, "Configured synthetic SQL prerequisites required");
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const schema = `mne014_${randomUUID().replaceAll("-", "")}`;

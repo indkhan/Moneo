@@ -36,7 +36,8 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       const auth = createServerClient(url, key, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => { for (const value of values) cookies.set(value.name, value.value); } } });
       const signedIn = await auth.auth.signInWithPassword({ email, password });
       expect(signedIn.error).toBeNull();
-      const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
+      // Inherits the base URL from playwright.config.ts, so it can only reach the QA server.
+      const context = await browser.newContext();
       contexts.push(context);
       await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
       sessions.push(auth);

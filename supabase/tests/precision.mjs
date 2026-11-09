@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const endpoint = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const project = endpoint.hostname.split(".")[0];

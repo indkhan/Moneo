@@ -2,13 +2,22 @@
 // backend, applies pending migrations and creates the single owner account. Safe to rerun
 // after every `git pull`; existing secrets and data are kept.
 //   npm run setup
+// `npm run setup -- --qa` sets up the separate test backend instead: Docker project moneo-qa with its
+// own volumes and ports, secrets in .env.qa, no background jobs. Tests use only that one.
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createHmac, randomBytes } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import postgres from "postgres";
 
-const ENV = ".env";
+const qa = process.argv.includes("--qa");
+const ENV = qa ? ".env.qa" : ".env";
+// Every checkout shares one test backend, so its secrets live once in the home folder too; a new
+// worktree picks them up instead of making new ones that no longer match the Docker volumes.
+const SHARED_QA = join(homedir(), ".moneo", "qa.env");
+if (qa && !existsSync(ENV) && existsSync(SHARED_QA)) copyFileSync(SHARED_QA, ENV);
 if (!existsSync(ENV)) copyFileSync(".env.example", ENV);
 let text = readFileSync(ENV, "utf8");
 const read = key => text.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1].trim().replace(/^"(.*)"$/, "$1") ?? "";
@@ -37,15 +46,18 @@ if (generated.includes("JWT_SECRET") || !read("SUPABASE_SERVICE_ROLE_KEY")) {
   write("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", jwt("anon", read("JWT_SECRET")));
   write("SUPABASE_SERVICE_ROLE_KEY", jwt("service_role", read("JWT_SECRET")));
 }
+if (qa) { ensure("API_PORT", () => "54521"); ensure("DB_PORT", () => "54522"); }
 const apiPort = read("API_PORT") || "54321", dbPort = read("DB_PORT") || "54322";
 write("NEXT_PUBLIC_SUPABASE_URL", `http://127.0.0.1:${apiPort}`);
 write("SUPABASE_DB_URL", `postgresql://postgres:${read("POSTGRES_PASSWORD")}@127.0.0.1:${dbPort}/postgres`);
-ensure("NEXT_PUBLIC_APP_URL", () => "http://localhost:3000");
+if (qa) write("NEXT_PUBLIC_APP_URL", "http://localhost:3100");
+else ensure("NEXT_PUBLIC_APP_URL", () => "http://localhost:3000");
 ensure("BANK_TOKEN_ENCRYPTION_KEY", () => randomBytes(32).toString("base64"));
 ensure("CRON_SECRET", () => secret());
 ensure("MONEO_OWNER_EMAIL", () => "owner@moneo.local");
 ensure("MONEO_OWNER_PASSWORD", () => secret(24));
 writeFileSync(ENV, text);
+if (qa) { mkdirSync(dirname(SHARED_QA), { recursive: true }); writeFileSync(SHARED_QA, text); }
 if (generated.length) console.log(`Generated in .env: ${generated.join(", ")}`);
 
 try {
@@ -57,7 +69,7 @@ try {
   process.exit(1);
 }
 console.log("Starting the database and services (the first run downloads a few GB and takes several minutes)…");
-execFileSync("docker", ["compose", "up", "--detach", "--wait"], { stdio: "inherit" });
+execFileSync("docker", ["compose", ...(qa ? ["-p", "moneo-qa", "--env-file", ENV] : []), "up", "--detach", "--wait"], { stdio: "inherit" });
 
 // Same history table as the Supabase CLI, so `supabase migration` commands keep working.
 const db = postgres(read("SUPABASE_DB_URL"), { max: 1, onnotice: () => {} });
@@ -92,6 +104,10 @@ console.log(response.ok ? "Created the owner account." : "Owner account exists."
 // Enable Banking only accepts https:// return addresses, so the bank sends you back to
 // https://localhost:3443. mkcert (the tool Next.js uses for local HTTPS) makes a certificate that
 // only this computer trusts; the first run may ask you to allow it.
+if (qa) {
+  console.log("The test backend is ready (.env.qa). Next: npm run qa:auth, then npm run test:e2e or npm run test:db.");
+  process.exit(0);
+}
 try {
   // Browsers only: skip the Java keystore, which needs admin rights and which Moneo does not use.
   process.env.TRUST_STORES = "system,nss";

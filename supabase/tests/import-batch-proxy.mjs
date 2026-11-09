@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, mkdirSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import postgres from "postgres";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const origin = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const connection = new URL(process.env.SUPABASE_DB_URL);

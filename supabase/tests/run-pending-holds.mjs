@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
 import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
 const schema = `mne006_qa_${Date.now()}`;

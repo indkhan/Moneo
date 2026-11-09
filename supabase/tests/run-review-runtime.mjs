@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import postgres from "postgres";
 import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
 import { reviewRuntimeRaces } from "./review-runtime-races.mjs";
-if (existsSync(".env")) process.loadEnvFile(".env");
+if (existsSync(".env.qa")) process.loadEnvFile(".env.qa");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL required for disposable-schema SQL acceptance");
 const db = postgres(process.env.SUPABASE_DB_URL, {max: 3, connect_timeout: 10, onnotice: () => {}});
 const schema = `mne020_${randomUUID().replaceAll("-", "")}`;

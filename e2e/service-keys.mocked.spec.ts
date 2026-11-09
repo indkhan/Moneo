@@ -71,7 +71,10 @@ test("ChatGPT or OpenRouter chat stays available while voice shows a missing-key
   await expect(toast).toHaveCount(0);
   await page.getByRole("button", { name: "Talk: record a voice message" }).click();
   await expect(toast).toBeVisible();
+  // The sample button only knows voice is off once the status has loaded.
+  const status = page.waitForResponse("**/api/ai/status");
   await page.goto("/settings");
+  await status;
   await page.clock.install();
   await page.getByRole("button", { name: "Play sample" }).click();
   await expect(toast).toBeVisible();

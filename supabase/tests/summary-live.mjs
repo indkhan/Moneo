@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 assert(process.env.CRON_SECRET, "Configure CRON_SECRET in the local app and test environment");
 const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
@@ -14,7 +14,7 @@ const user = randomUUID(), recoveryPath = `.qa/summary-${user}.json`;
 mkdirSync(".qa", { recursive: true });
 let workspace;
 async function cron() {
-  const response = await fetch("http://localhost:3000/api/cron/summaries", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
+  const response = await fetch("http://localhost:3100/api/cron/summaries", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
   assert.equal(response.status, 200, "Authenticated cron must dispatch successfully");
   return response.json();
 }
