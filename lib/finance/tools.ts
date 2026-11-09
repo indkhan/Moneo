@@ -78,20 +78,33 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
 export async function searchTransactions(input: unknown, context?: FinanceContext) {
   const { query, from, to, minAmountMinor, maxAmountMinor, limit } = searchInput.parse(input);
   const { supabase, workspace } = context ?? await requireWorkspace();
-  let request = supabase.from("transactions")
-    .select("id, account_id, category_id, merchant_id, posted_on, description, amount_minor::text, currency_code, status, kind, review_reasons, version")
-    .eq("workspace_id", workspace.id);
-  if (query) request = request.ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`);
-  if (from) request = request.gte("posted_on", from);
-  if (to) request = request.lte("posted_on", to);
-  // Amount bounds apply to the absolute amount, so spending (negative) and income match alike.
-  if (minAmountMinor || maxAmountMinor) {
-    const low = minAmountMinor ?? "0", high = maxAmountMinor ?? "999999999999999999";
-    request = request.or(`and(amount_minor.gte.${low},amount_minor.lte.${high}),and(amount_minor.gte.-${high},amount_minor.lte.-${low})`);
-  }
-  const { data, error } = await request.order("posted_on", { ascending: false }).limit(limit);
-  if (error) throw error;
-  const parents = data ?? [];
+  const filtered = () => {
+    let request = supabase.from("transactions")
+      .select("id, account_id, category_id, merchant_id, posted_on, description, amount_minor::text, currency_code, status, kind, review_reasons, version")
+      .eq("workspace_id", workspace.id);
+    if (from) request = request.gte("posted_on", from);
+    if (to) request = request.lte("posted_on", to);
+    // Amount bounds apply to the absolute amount, so spending (negative) and income match alike.
+    if (minAmountMinor || maxAmountMinor) {
+      const low = minAmountMinor ?? "0", high = maxAmountMinor ?? "999999999999999999";
+      request = request.or(`and(amount_minor.gte.${low},amount_minor.lte.${high}),and(amount_minor.gte.-${high},amount_minor.lte.-${low})`);
+    }
+    return request.order("posted_on", { ascending: false });
+  };
+  // Text matches come first; descriptions merely similar to the query ("Venji" for "Venjalin Ravindran") fill the rest.
+  const [exact, similar] = await Promise.all([
+    (query ? filtered().ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`) : filtered()).limit(limit),
+    query ? supabase.rpc("similar_transaction_ids", { p_workspace_id: workspace.id, p_query: query, p_limit: limit }) : null,
+  ]);
+  if (exact.error) throw exact.error;
+  if (similar?.error) throw similar.error;
+  const exactIds = new Set((exact.data ?? []).map(row => row.id));
+  const similarIds = ((similar?.data ?? []) as { id: string }[]).map(row => row.id).filter(id => !exactIds.has(id));
+  const room = limit - exactIds.size;
+  const close = room > 0 && similarIds.length ? await filtered().in("id", similarIds).limit(room) : null;
+  if (close?.error) throw close.error;
+  const data = [...(exact.data ?? []).map(row => ({ ...row, match: "text" as const })), ...(close?.data ?? []).map(row => ({ ...row, match: "similar_name" as const }))];
+  const parents = data;
   type EffectiveSearchRow = { id: string; parent_transaction_id: string; amount_minor: string; currency_code: string; status: string; kind: string; review_reasons: string[] };
   const effective: EffectiveSearchRow[] = [];
   if (parents.length) for (let offset = 0; ; offset += 500) {
