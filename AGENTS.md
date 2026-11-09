@@ -98,6 +98,8 @@ Run the smallest relevant test while iterating. Before finishing, run `npm test`
 - Break the work into steps and commit each one; a big task is several commits.
 - Write commit messages in plain language: what changed and why.
 - Deferred work gets their issue created on github.
+- Stacked PRs: before merging a PR that another open PR is based on, change the dependent PR's base to `main`; deleting the merged branch otherwise closes it.
+- Long agent prompts and plans don't get committed; if guidance must persist, put the rule in AGENTS.md.
 - suggest edits in agents.md if there was something that is changed or needs to be there in agents.md but only suggest when it is actually needed dont suggest just for suggesting.(only for prs)
 
 ## Context
