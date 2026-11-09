@@ -48,7 +48,7 @@ Use npm (`package-lock.json` is authoritative).
 - Install: `npm ci`
 - Backend: `npm run setup` (writes `.env` secrets, starts Docker, applies migrations, creates the owner; safe to rerun)
 - Dev: `npm run dev` (http://localhost:3000)
-- Unit: `npm test` · Lint: `npm run lint` · Build: `npm run build`
+- Unit: `npm test` · Lint: `npm run lint` · Build: `npm run build` · Bundle budget: `npm run check:bundle` (after a build)
 - Database: `npm run test:db` (needs the backend from `npm run setup`)
 - E2E: `npm run test:e2e` (see `e2e/README.md`)
 

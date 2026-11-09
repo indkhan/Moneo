@@ -6,6 +6,7 @@
     "setup": "node scripts/setup.mjs",
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
