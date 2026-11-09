@@ -1,3 +1,2 @@
-*.sql text eol=lf
-docker/** text eol=lf
-docker-compose.yml text eol=lf
+* text=auto eol=lf
+*.png binary
