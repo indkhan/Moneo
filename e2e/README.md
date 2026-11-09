@@ -27,6 +27,10 @@ Use one worker: several specs change the same QA workspace and its preferences. 
 - `*.provider.spec.ts` call the real AI model, so they cost money. They run only with `E2E_REAL_AI=1`; `npm run test:e2e` leaves them out.
 - `review-runtime.config.ts` and `review-investigation.config.ts` run the real Workflow engine against local synthetic database and model servers (ports 3040/3041), including a server restart mid-review: `npx playwright test --config e2e/review-runtime.config.ts`.
 
+## Nightly
+
+`npm run qa:nightly -- --install` schedules the whole suite for 03:00 every day (a Windows scheduled task that starts as soon as possible if the PC was off). It runs every spec twice on a production build of `origin/main`, in its own worktree in `~/.moneo/nightly`, and keeps one GitHub issue, "Nightly browser suite is failing", up to date. A night with Docker off or port 3100 busy is skipped quietly; the log is `~/.moneo/nightly.log`.
+
 A skipped spec is not a pass: it means a prerequisite (backend, QA session, service key) is missing.
 
 ## Scalable

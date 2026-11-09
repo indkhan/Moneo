@@ -17,6 +17,7 @@
     "qa:server": "node scripts/qa-server.mjs",
     "qa:auth": "node scripts/e2e-auth.mjs",
     "qa:reset": "node scripts/e2e-auth.mjs --reset",
+    "qa:nightly": "node scripts/nightly-e2e.mjs",
     "check:privacy": "node scripts/check-private-data.mjs",
     "pretest": "npm run check:privacy",
     "prelint": "npm run check:privacy"
