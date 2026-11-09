@@ -33,6 +33,7 @@ import { investmentTools } from "@/lib/ai/investment-tools";
 import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live";
 import { titleChatTurn } from "@/lib/ai/chat-title";
 import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
+import { ownerBrief } from "@/lib/ai/owner-brief";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -108,6 +109,8 @@ export async function POST(request: Request) {
   const chatTitle = writeChatTitle().catch(() => null);
   // Scalable tools exist only with a live connection and the accounts scope; they read Scalable at call time.
   const scalablePromise = settings.ai_data_scopes.includes("accounts") ? activeScalableConnection(workspace.id).catch(() => null) : Promise.resolve(null);
+  // What an assistant would already know: accounts, people with open loans, recurring payments.
+  const briefPromise = ownerBrief(context).catch(error => { console.error("owner brief failed", error); return null; });
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
   // The run belongs to its saved request, not this connection: only an explicit cancel stops it, noticed before each model step.
   const stop = new AbortController();
@@ -211,13 +214,13 @@ export async function POST(request: Request) {
     const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
-      iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
+      iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the date and amount of the matching transfer when transactions_search found one; otherwise the user's exact amount, person and currency.",
         inputSchema: iouInputSchema, execute: async input => {
           const created = await proposeIou({ ...await requireWorkspace(), chatRequestId: requestId }, input, [...earlierCards, ...proposalCards]);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: `A card with Add and Dismiss is shown to the user below your answer.${created.replaced ? " It replaces the earlier card for this loan, which was dismissed." : ""} Say it is waiting for their approval; do not repeat the details.` };
         } }),
-      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, with the exact amount, currency and date from the user or document.",
+      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, not per line item, with the exact amount, currency and date from the user or document. For an attachment, read the merchant, total, currency and date printed on it, tell the user what you read and what you couldn't, and never guess an unreadable amount.",
         inputSchema: transactionInputSchema, execute: async input => {
           const created = await proposeTransaction({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
@@ -254,13 +257,15 @@ export async function POST(request: Request) {
     const scalableTools = scalableConnection ? investmentTools({ connectionId: scalableConnection.id, tradingAccess: scalableConnection.tradingAccess, message, priorUserText, onCard: id => tradeCards.push(id),
       evidence: read => aiEvidence(["accounts"], read), context: async () => ({ ...await requireWorkspace(), chatRequestId: requestId }) }) : {};
     const artifactBrief = briefingPromise ? await briefingPromise : null;
+    const owner = await briefPromise;
+    for (const scope of owner?.scopes ?? []) readScopes.add(scope);
     const result = streamText({
       model,
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
       maxOutputTokens: 3000,
       // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
       providerOptions: { openai: { reasoningEffort: "low" } },
-      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
+      instructions: `${SYSTEM_PROMPT}\n\n# About the owner\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}.${owner?.text ? `\n${owner.text}` : ""}\n\nUI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
 
 ${CALL_MODE_PROMPT}` : ""}${scalableConnection?.tradingAccess === "read" ? `
 
@@ -271,7 +276,8 @@ ${artifactModePrompt(scalableConnection ? settings.artifact_scalable_data : null
 Current state:
 ${artifactBrief}` : ""}`,
       messages: modelMessages,
-      stopWhen: stepCountIs(artifactId ? 16 : 10),
+      // A guard against runaway loops, not a budget: the prompt's stop rules decide when an answer is done.
+      stopWhen: stepCountIs(30),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
         await stopIfCanceled();
@@ -325,7 +331,7 @@ ${artifactBrief}` : ""}`,
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
-        transactions_search: tool({ description: "Find transactions, newest first. Filter by description text, posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        transactions_search: tool({ description: "Find transactions, newest first within each kind of match. Filter by description text (rows containing it come first with match \"text\", then rows whose description is similar, such as a nickname or typo of the name, with match \"similar_name\": judge those yourself), posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
           execute: () => aiEvidence(["accounts", "transactions"], async latest => {
             const found = await proposeRepayments({ ...latest, chatRequestId: requestId });

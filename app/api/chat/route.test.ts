@@ -93,10 +93,10 @@ it("leaves this call's still-running questions out of a call request's history",
     context: { via: "call", runningTasks: [{ requestId: running, text: "Analyze last month" }] } }) }));
   expect((vi.mocked(generateText).mock.calls[0][0].messages as { content: unknown }[]).map(item => String(item.content).split("\n")[0])).toEqual(["Earlier", "Total spent last month?"]);
 });
-it("offers scoped investigation and question-bound review start within ten model steps", async () => {
+it("offers scoped investigation and question-bound review start within the model step guard", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
   const options = vi.mocked(generateText).mock.calls[0][0];
-  expect(options.stopWhen).toBe(10);
+  expect(options.stopWhen).toBe(30);
   const tools = options.tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   expect(await tools.reviews_investigate.execute()).toEqual({ source: "exact evidence" });
   expect(await tools.reviews_start.execute()).toMatchObject({ jobId: "job", status: "queued", href: "/ai" });

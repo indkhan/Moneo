@@ -3,6 +3,7 @@ import { cashflow, searchTransactions, listAccounts, listGoals } from "./tools";
 
 const fixture = vi.hoisted(() => ({ tables: [] as string[], unresolvedTransfer: false }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", display_currency: "EUR" }, settings: { ai_data_scopes: [] }, supabase: {
+  rpc: async () => ({ data: [], error: null }),
   from: (table: string) => {
     fixture.tables.push(table);
     const query = { then: (resolve: (value: unknown) => unknown) => resolve({ data: [{ id: "synthetic", name: "Synthetic record" }], error: null }), select: () => query, eq: () => query, in: () => query, gte: () => query, lte: () => query, order: () => query, ilike: () => query,
