@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { existsSync } from "node:fs";
+import { e2eStorageStatePath } from "./e2e/fixtures";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const production = process.env.E2E_PRODUCTION_BUILD === "1";
@@ -10,8 +11,13 @@ export default defineConfig({
   testDir: "./e2e",
   // e2e/*.test.ts are Vitest unit tests, not browser specs.
   testMatch: "**/*.spec.ts",
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: external ?? "http://localhost:3000",
+    // Every spec runs as the QA user. The header makes the app refuse, rather than sign in the
+    // owner, when that session is missing or expired (proxy.ts).
+    storageState: e2eStorageStatePath() ?? undefined,
+    extraHTTPHeaders: { "x-moneo-test": "1" },
   },
   webServer: external ? undefined : {
     command: production ? "npm start" : "npm run dev",

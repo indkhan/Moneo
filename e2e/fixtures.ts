@@ -1,4 +1,4 @@
-// Shared deterministic fixtures for Moneo Playwright e2e (prompt.md §46).
+// Shared deterministic fixtures for Moneo Playwright e2e.
 //
 // Mocked journeys reuse these fixtures; authenticated specs also exercise real
 // Supabase workflows and configured free-provider calls. See e2e/README.md
