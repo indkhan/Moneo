@@ -23,6 +23,13 @@ describe("findOwnTransfers", () => {
     expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { reviewReasons: ["source_transfer"] }), row("in", "savings", 100n, "2026-10-01", { reviewReasons: ["source_transfer"] })], own).pairs).toEqual([]);
   });
 
+  it("pairs a closing row with the bank's row in the account it names, even days apart", () => {
+    const closing = row("out", "old", -100n, "2026-10-20", { closingTo: "savings" });
+    expect(findOwnTransfers([closing, row("in", "savings", 100n, "2026-10-01")], own).pairs).toEqual([{ outId: "out", inId: "in" }]);
+    for (const other of [row("in", "current", 100n, "2026-10-19"), row("in", "savings", 99n, "2026-10-19"), row("in", "savings", 100n, "2026-09-01")])
+      expect(findOwnTransfers([closing, other], own).pairs).toEqual([]);
+  });
+
   it("never pairs within one account, across currencies, beyond the window or unequal amounts", () => {
     const out = row("out", "current", -100n, "2026-10-01", { ibans: [SAVINGS] });
     for (const into of [row("in", "current", 100n), row("in", "savings", 100n, "2026-10-01", { currencyCode: "USD" }), row("in", "savings", 100n, "2026-10-05"), row("in", "savings", 99n)])

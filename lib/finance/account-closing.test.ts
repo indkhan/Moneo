@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closingPlan, closingTargets } from "./account-closing";
+import { closingMovedTo, closingPlan, closingTargets } from "./account-closing";
 
 const uuid = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
 const account = { id: uuid(1), name: "Old bank", type: "checking", currency_code: "EUR" };
@@ -20,6 +20,14 @@ describe("closing a balance", () => {
     // A negative balance moves the other way.
     expect(closingPlan(account, -5000n, { outcome: "moved", targetAccountId: savings.id }, [account, savings])).toMatchObject({ out: { amountMinor: 5000n }, into: { amountMinor: -5000n } });
     expect(() => closingPlan(account, 5000n, { outcome: "moved", targetAccountId: dollars.id }, [account, dollars])).toThrow("Choose another EUR");
+  });
+
+  it("adds only the outgoing row when the target's bank will send its own", () => {
+    const plan = closingPlan(account, 5000n, { outcome: "moved", targetAccountId: savings.id }, [account, savings], target => target.id === savings.id);
+    expect(plan).toMatchObject({ out: { amountMinor: -5000n }, into: null, target: { id: savings.id } });
+    expect(closingMovedTo(plan.out.description)).toBe("Savings");
+    expect(closingPlan(account, 5000n, { outcome: "moved", targetAccountId: savings.id }, [account, savings], () => false).into).not.toBeNull();
+    expect(closingPlan(account, 5000n, { outcome: "cash" }, [account, cash], () => true).into).not.toBeNull();
   });
 
   it("takes it to the Cash account, makes one when there is none, and asks when there are several", () => {

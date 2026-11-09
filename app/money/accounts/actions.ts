@@ -11,6 +11,7 @@ import { reviewedCoverage } from "@/app/balance-input";
 import { accountTypes } from "./naming";
 import { minorDigits } from "@/lib/finance/fx";
 import { linkOwnTransfers, normalizeIban } from "@/lib/finance/own-transfers";
+import { syncedAccounts } from "@/lib/finance/bank-synced";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { closingAnswerSchema, closingPlan } from "@/lib/finance/account-closing";
 import { stableId } from "@/lib/import/row";
@@ -58,7 +59,8 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
     const account = resolveBalances(evidence.accounts.filter(row => row.id === accountId), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
     if (!account || account.archived_at) throw new Error("Account not found");
     if (account.balance.amount_minor === null) throw new Error("Settle this account's balance before archiving it");
-    const plan = closingPlan(account, BigInt(account.balance.amount_minor), answer, evidence.accounts);
+    const synced = await syncedAccounts(supabase, workspace.id);
+    const plan = closingPlan(account, BigInt(account.balance.amount_minor), answer, evidence.accounts, target => synced(target.name, target.currency_code));
     const today = calendarDate(new Date(evidence.asOf), workspace.timezone);
     let targetId = plan.target?.id ?? null;
     if (plan.createCash) {
@@ -91,6 +93,8 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
         if (linked.error) throw new Error(linked.error.message);
       }
     }
+    // The bank's row may already be here. If not, the next sync links it, so this can't stop the archiving.
+    if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id).catch(() => undefined);
     const fresh = await supabase.from("accounts").select("version").eq("id", accountId).single();
     if (fresh.error) throw new Error(fresh.error.message);
     const { error } = await supabase.rpc("edit_money_metadata", { p_entity_type: "account", p_id: accountId, p_expected_version: fresh.data.version, p_patch: { archived: true }, p_request_id: stableId(`${requestId}:archive`) });

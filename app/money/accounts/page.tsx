@@ -42,7 +42,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
     loadBalanceEvidence(supabase, workspace.id),
     supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
     supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
-    supabase.from("bank_connection_accounts").select("account_name,currency_code,iban").eq("workspace_id", workspace.id),
+    supabase.from("bank_connection_accounts").select("account_name,currency_code,iban,bank_connections(status)").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
     // The broker shows here once connected; connecting lives on Import. A failed read only hides it.
     supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
@@ -51,6 +51,8 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
   if (historyError || viewsError || bankError || identifierError) throw new Error("Could not load account and saved view history");
   // A bank sync imports into the account with the bank's name and currency, so those accounts take their balance from the sync.
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
+  // A revoked connection sends nothing more, so money moved there needs both rows.
+  const stillFed = new Set((bankAccounts ?? []).filter(connected => (connected.bank_connections as unknown as { status: string } | null)?.status !== "revoked").map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
   const today = calendarDate(evidence.asOf, timeZone);
   const trendFrom = calendarDate(new Date(Date.parse(evidence.asOf) - TREND_DAYS * 86400000), timeZone);
@@ -93,7 +95,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
       {saved === `balance:${account.id}` || saved === `account:${account.id}` ? <p role="status" className="mb-2 px-2 text-sm text-success">{saved.startsWith("balance") ? `Balance saved for ${account.name}.` : `${account.name} saved.`}</p> : null}
       <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1 basis-80">
-          <AccountForm key={`${account.id}:${account.version}`} moneyLeft={account.balance.amount_minor !== null && BigInt(account.balance.amount_minor) !== 0n ? formatMoney(account.balance.amount_minor, account.currency_code, locale) : null} targets={closingTargets(account, accounts).map(({ id, name, type }) => ({ id, name, type }))} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
+          <AccountForm key={`${account.id}:${account.version}`} moneyLeft={account.balance.amount_minor !== null && BigInt(account.balance.amount_minor) !== 0n ? formatMoney(account.balance.amount_minor, account.currency_code, locale) : null} targets={closingTargets(account, accounts).map(({ id, name, type, currency_code }) => ({ id, name, type, bankSynced: stillFed.has(JSON.stringify([name, currency_code])) }))} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
           <p className="mt-1 flex flex-wrap items-center gap-x-3 px-2 text-xs text-muted-foreground">
             <span>{account.currency_code}</span>
             {account.archived_at ? <span>Archived</span> : null}

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { loadWorkspaceSettings } from "@/lib/settings";
+import { closingMovedTo } from "./account-closing";
 import type { BankLeg } from "./transit";
 
 // Money moved between the owner's own accounts is a transfer, never income or spending.
@@ -11,6 +12,8 @@ import type { BankLeg } from "./transit";
 // own accounts. Every decision goes through the audited link RPCs, so each one can be undone.
 
 export const MATCH_DAYS = 3;
+// A closing row says which account the money went to, and it can be archived well after the bank's row arrived.
+const CLOSING_MATCH_DAYS = 30;
 const IBAN = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$/;
 
 export function normalizeIban(value: string) {
@@ -27,6 +30,8 @@ export function sourceIbans(row: unknown) {
 export type TransferCandidate = {
   id: string; version: number; accountId: string; postedOn: string; amountMinor: bigint; currencyCode: string;
   reviewReasons: string[]; ibans: string[]; text?: string; counterparty?: string; transferId?: string | null;
+  /** The account a closing row says this money went to. */
+  closingTo?: string;
 };
 
 // Without an IBAN, only the bank's own wording proves own money: a cash machine, or Scalable Capital
@@ -45,9 +50,9 @@ export type Leg = Pick<TransferCandidate, "id" | "accountId" | "postedOn" | "amo
 export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, legs: Leg[] = rows, options: { scalable?: boolean } = {}) {
   // The posting account's own IBAN often appears in its row too; only the other side counts.
   const counterparts = (row: TransferCandidate) => row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
-  const points = (row: TransferCandidate, accountId: string) => counterparts(row).some(iban => own.tracked.get(iban) === accountId);
+  const points = (row: TransferCandidate, accountId: string) => row.closingTo === accountId || counterparts(row).some(iban => own.tracked.get(iban) === accountId);
   const matches = (out: TransferCandidate, into: TransferCandidate) => out.amountMinor < 0n && into.amountMinor === -out.amountMinor
-    && out.currencyCode === into.currencyCode && out.accountId !== into.accountId && days(out.postedOn, into.postedOn) <= MATCH_DAYS;
+    && out.currencyCode === into.currencyCode && out.accountId !== into.accountId && days(out.postedOn, into.postedOn) <= (out.closingTo || into.closingTo ? CLOSING_MATCH_DAYS : MATCH_DAYS);
   const used = new Set<string>();
   const pairs: { outId: string; inId: string }[] = [];
   const outs = rows.filter(row => row.amountMinor < 0n), ins = rows.filter(row => row.amountMinor > 0n);
@@ -242,6 +247,9 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
   const [own, rows, legs, transfers, scalable] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId),
     loadRows(db, workspaceId, "transfer"), db.from("scalable_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "active")]);
   if (scalable.error) throw new Error(scalable.error.message);
+  const { data: accounts, error: accountsError } = await db.from("accounts").select("id, name, currency_code").eq("workspace_id", workspaceId);
+  if (accountsError) throw new Error(accountsError.message);
+  for (const row of rows) { const name = closingMovedTo(row.text); if (name) row.closingTo = accounts?.find(account => account.name === name && account.currency_code === row.currencyCode)?.id; }
   const { pairs, single, named } = findOwnTransfers(rows, own, legs, { scalable: (scalable.count ?? 0) > 0 });
   const byId = new Map(rows.map(row => [row.id, row]));
   let linked = 0, marked = 0, skipped = 0;

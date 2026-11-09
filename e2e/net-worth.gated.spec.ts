@@ -183,3 +183,39 @@ test("a repeated bank row can be resolved from review without posting twice, and
     await db`delete from public.accounts where id=${account}`;
   }
 });
+
+test("archiving into a bank-synced account adds only the outgoing row, and the bank's row completes the transfer", async ({ page }) => {
+  test.setTimeout(150_000);
+  const workspace = await workspaceId(), suffix = randomUUID().slice(0, 8), name = `Closing old ${suffix}`, target = `Closing synced ${suffix}`;
+  const old = await seedAccount(workspace, name, 8100), synced = await seedAccount(workspace, target, 5000);
+  const [connection] = await db`insert into public.bank_connections(workspace_id,aspsp_name,aspsp_country,status) values(${workspace},'Synthetic bank','DE','error') returning id`;
+  await db`insert into public.bank_connection_accounts(connection_id,workspace_id,provider_account_uid,currency_code,account_name) values(${connection.id},${workspace},${`uid-${suffix}`},'EUR',${target})`;
+  try {
+    await page.goto("/money/accounts");
+    const card = page.getByRole("article", { name, exact: true });
+    await card.getByText("More", { exact: true }).click();
+    await card.getByRole("button", { name: `Archive ${name}`, exact: true }).click();
+    await card.getByRole("radio", { name: "I moved it to another of my accounts" }).check();
+    await card.getByRole("combobox").last().selectOption({ label: target });
+    await expect(card).toContainText("Your bank's own row completes the transfer");
+    await card.getByRole("button", { name: "Archive account", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Archived accounts" }).getByRole("textbox", { name: `Name of ${name}`, exact: true })).toBeVisible({ timeout: 30_000 });
+    expect(await db`select amount_minor::text,kind from public.transactions where account_id=${old}`).toEqual([{ amount_minor: "-8100", kind: "ordinary" }]);
+    expect(await db`select id from public.transactions where account_id=${synced}`).toEqual([]);
+    // The bank's own row arrives, and looking for transfers links the two.
+    await db`insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind) values(${workspace},${synced},${day(0)},'Synthetic bank row',8100,'EUR','posted','ordinary')`;
+    await page.reload();
+    await page.getByRole("button", { name: "Mark transfers between my accounts" }).click();
+    await expect.poll(async () => (await db`select kind,transfer_id is not null linked from public.transactions where account_id=${old}`)[0], { timeout: 30_000 }).toEqual({ kind: "transfer", linked: true });
+  } finally {
+    await db`update public.transactions set transfer_id=null where account_id in (${old},${synced})`;
+    await db`delete from public.correction_events where transaction_id in (select id from public.transactions where account_id in (${old},${synced}))`;
+    await db`delete from public.manual_transaction_entries where account_id in (${old},${synced})`.catch(() => {});
+    await db`delete from public.transaction_links where workspace_id=${workspace}`.catch(() => {});
+    await db`delete from public.transactions where account_id in (${old},${synced})`;
+    await db`delete from public.balance_snapshots where account_id in (${old},${synced})`;
+    await db`delete from public.money_metadata_events where entity_id in (${old},${synced})`;
+    await db`delete from public.bank_connections where id=${connection.id}`;
+    await db`delete from public.accounts where id in (${old},${synced})`;
+  }
+});
