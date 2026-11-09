@@ -16,12 +16,12 @@ function setup() {
     clock += ms;
     for (let due = timers.filter(timer => timer.at <= clock); due.length; due = timers.filter(timer => timer.at <= clock))
       for (const timer of due) { timers.splice(timers.indexOf(timer), 1); timer.run(); }
-    await new Promise(resolve => setTimeout(resolve));
+    await new Promise(resolve => setImmediate(resolve));
   };
   const say = (text: string, endMs?: number, startMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, start_ms: startMs, end_ms: endMs });
   // A hand-off arrives once the transcript has caught up, unless a test says otherwise.
   const delegate = (id: string, offsetMs?: number, settled = true) => { if (settled) clock += TRANSCRIPT_SETTLE_MS; call.handle({ type: "session.delegation.created", offset_ms: offsetMs, delegation: { id } }); };
-  const answer = async (message: string, text: string, status = 200) => { pending[message]({ ok: status < 400, status, body: status < 400 ? { answer: text, conversationId: "c" } : { error: "x" } }); await new Promise(resolve => setTimeout(resolve)); };
+  const answer = async (message: string, text: string, status = 200) => { pending[message]({ ok: status < 400, status, body: status < 400 ? { answer: text, conversationId: "c" } : { error: "x" } }); await new Promise(resolve => setImmediate(resolve)); };
   // Time passes in small steps, so retries the controller schedules run too; Moneo's voice is metered every 100 ms.
   const wait = async (ms: number) => { for (let time = 0; time < ms; time += 100) await advance(100); };
   const moneoTalks = async (ms: number) => { for (let time = 0; time < ms; time += 100) { call.heardMoneo(); await advance(100); } };

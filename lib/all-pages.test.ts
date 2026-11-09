@@ -33,7 +33,7 @@ describe("allPages", () => {
     const rows = Array.from({ length: 100 }, (_, index) => index);
     const page = async (from: number, to: number, count?: "exact") => {
       peak = Math.max(peak, ++active);
-      await new Promise(resolve => setTimeout(resolve, 1));
+      await Promise.resolve();
       active--;
       return { data: rows.slice(from, to + 1), error: null, count: count ? rows.length : null };
     };
