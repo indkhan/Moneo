@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import postgres from "postgres";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 3, connect_timeout: 10 });
 const user = randomUUID(), account = randomUUID(), transaction = randomUUID(), conversation = randomUUID(), request = randomUUID();

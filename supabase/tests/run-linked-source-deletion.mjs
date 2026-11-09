@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import { readFileSync } from "node:fs";
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const db=postgres(process.env.SUPABASE_DB_URL,{max:1});
 try { await db.begin(async tx=>{
   if(process.argv.includes("--candidate")) await tx.unsafe(readFileSync("supabase/migrations/202610010050_preserve_linked_sources.sql","utf8"));

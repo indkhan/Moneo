@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
 import { applicationMigrationSql, canonicalFunctionDefinition, replayMigrations, runIsolatedFixture } from "./migration-replay.mjs";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL is required");
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 1, connect_timeout: 10, onnotice: () => {},

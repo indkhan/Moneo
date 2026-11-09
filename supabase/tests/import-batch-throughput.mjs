@@ -7,7 +7,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import postgres from "postgres";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 1, onnotice: () => {}, connection: { application_name: "mne015-throughput", lock_timeout: "10s", statement_timeout: "120s" } });
 const schema = `mne015_throughput_qa_${randomUUID().replaceAll("-", "")}`;

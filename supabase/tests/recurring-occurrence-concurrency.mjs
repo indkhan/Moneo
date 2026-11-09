@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, mkdirSync, writeFileSync, unlinkSync } from 
 import { setTimeout as delay } from "node:timers/promises";
 import postgres from "postgres";
 import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 4, connect_timeout: 10, onnotice: () => {} });

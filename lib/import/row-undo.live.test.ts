@@ -4,7 +4,7 @@ import postgres from "postgres";
 import { expect, it } from "vitest";
 
 it.skipIf(process.env.RUN_IMPORT_ROW_UNDO_DB_TESTS !== "1")("reopens exact decisions, retains receipts and refuses dependencies in a rolled-back migration", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");

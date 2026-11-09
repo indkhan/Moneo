@@ -5,7 +5,7 @@ import postgres from "postgres";
 import { expect, it } from "vitest";
 
 it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusions, progress, fencing and immutable identity in a rolled-back SQL transaction", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");

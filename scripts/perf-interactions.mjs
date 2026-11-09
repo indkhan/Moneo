@@ -1,5 +1,5 @@
 // Interaction measurements against a running production build (see scripts/perf-pages.mjs for setup).
-//   node --env-file=.env scripts/perf-interactions.mjs <baseUrl> <label> [runs=3]
+//   node --env-file=.env.qa scripts/perf-interactions.mjs <baseUrl> <label> [runs=3]
 // Costs a few real chat answers (default OpenAI chat model) and, on builds with voice, one realtime transcription session.
 //   panel      click on Ask Moneo until the panel dialog is open
 //   chat       POST /api/chat with a simple question: response headers, first stream event, full answer

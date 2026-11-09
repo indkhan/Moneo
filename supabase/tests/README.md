@@ -1,6 +1,6 @@
 # Database checks
 
-These scripts test the SQL functions, row-level security and concurrency of the self-hosted database. They read `SUPABASE_DB_URL` and the Supabase keys from `.env` (written by `npm run setup`).
+These scripts test the SQL functions, row-level security and concurrency of the self-hosted database. They read `SUPABASE_DB_URL` and the Supabase keys from `.env.qa`, the separate test backend (`npm run setup -- --qa`), never the owner's `.env`.
 
 ## Migrations and regressions
 

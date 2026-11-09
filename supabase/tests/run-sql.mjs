@@ -1,7 +1,7 @@
 import postgres from "postgres";
 import { readFileSync } from "node:fs";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL is required for database regression checks");
 const db = postgres(process.env.SUPABASE_DB_URL, { max: 1 });
 try {
