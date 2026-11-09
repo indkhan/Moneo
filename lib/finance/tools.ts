@@ -94,7 +94,8 @@ export async function searchTransactions(input: unknown, context?: FinanceContex
   // Text matches come first; descriptions merely similar to the query ("Venji" for "Venjalin Ravindran") fill the rest.
   const [exact, similar] = await Promise.all([
     (query ? filtered().ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`) : filtered()).limit(limit),
-    query ? supabase.rpc("similar_transaction_ids", { p_workspace_id: workspace.id, p_query: query, p_limit: limit }) : null,
+    query ? supabase.rpc("similar_transaction_ids", { p_workspace_id: workspace.id, p_query: query, ...(from && { p_from: from }), ...(to && { p_to: to }),
+      ...(minAmountMinor && { p_min_minor: minAmountMinor }), ...(maxAmountMinor && { p_max_minor: maxAmountMinor }), p_limit: limit }) : null,
   ]);
   if (exact.error) throw exact.error;
   if (similar?.error) throw similar.error;

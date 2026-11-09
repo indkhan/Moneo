@@ -27,7 +27,7 @@ it("finds a nickname through similar descriptions after the exact matches", asyn
     rpc: async (name: string, args: unknown) => { rpcCalls.push([name, args]); return { data: [{ id: "exact" }, { id: "similar" }], error: null }; },
     from: (table: string) => {
       let ids: string[] | undefined;
-      const query = { select: () => query, eq: () => query, ilike: () => query, gte: () => query, lte: () => query, order: () => query,
+      const query = { select: () => query, eq: () => query, ilike: () => query, gte: () => query, lte: () => query, or: () => query, order: () => query,
         in: (column: string, values: string[]) => { if (column === "id") ids = values; return query; },
         limit: async () => ({ data: ids ? [exact, similar].filter(row => ids!.includes(row.id)) : [exact], error: null }),
         range: async () => ({ data: table === "effective_transactions" ? [] : [], error: null }) };
@@ -35,5 +35,9 @@ it("finds a nickname through similar descriptions after the exact matches", asyn
     } } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>;
   const result = await searchTransactions({ query: "Venji", limit: 5 }, context);
   expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Venji", p_limit: 5 }]]);
+  // Filters narrow the similar candidates before their limit, so stronger matches on other dates can't crowd out the right one.
+  rpcCalls.length = 0;
+  await searchTransactions({ query: "Venji", from: "2026-09-01", to: "2026-09-30", minAmountMinor: "20000", maxAmountMinor: "30000", limit: 5 }, context);
+  expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Venji", p_from: "2026-09-01", p_to: "2026-09-30", p_min_minor: "20000", p_max_minor: "30000", p_limit: 5 }]]);
   expect(result.map(row => [row.id, row.match])).toEqual([["exact", "text"], ["similar", "similar_name"]]);
 });
