@@ -3,6 +3,7 @@
 // What it proves: the app boots, reports configuration status, opens signed in without a
 // sign-in page, and renders the key entry routes without making OpenAI requests.
 import { test, expect } from "@playwright/test";
+import { hasSupabaseEnv } from "./fixtures";
 
 test.describe("core journey smoke (no session, no live AI)", () => {
   test("home opens signed in, or explains how to finish setup", async ({ page, request }) => {
@@ -36,9 +37,11 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     await expect(page.getByText("npm run setup")).toBeVisible();
   });
 
-  test("a link to the import page opens it without a sign-in step", async ({ page, request }) => {
-    test.skip(!(await (await request.get("/api/health")).json()).supabase, "Needs the self-hosted backend");
-    await page.goto("/import");
-    await expect(page).toHaveURL(/\/import$/);
+  test.describe("with the self-hosted backend", () => {
+    test.skip(!hasSupabaseEnv(), "Needs the self-hosted backend");
+    test("a link to the import page opens it without a sign-in step", async ({ page }) => {
+      await page.goto("/import");
+      await expect(page).toHaveURL(/\/import$/);
+    });
   });
 });

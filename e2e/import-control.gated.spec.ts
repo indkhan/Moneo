@@ -79,6 +79,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const stale=await admin.rpc("ingest_import_row",{p_import_id:importId,p_workspace_id:workspace,p_run_version:stoppedVersion-1,p_account_id:account,p_row:{transactionId:randomUUID()}});
     expect(stale.error?.code).toBe("57014");expect(stale.error?.message).toContain("canceled or superseded");
     // Observe a real retry window. Old workers also remain rejected after Resume.
+    // eslint-disable-next-line no-restricted-syntax -- a real retry window can only be observed over time
     for(let i=0;i<8;i++){await page.waitForTimeout(1000);expect(await counts()).toEqual(stopped);}
     const retained=await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number`;
     expect(retained.slice(0,initial.length)).toEqual(initial);

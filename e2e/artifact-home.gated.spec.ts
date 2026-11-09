@@ -62,12 +62,25 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(card.getByRole("button", { name: "Beta" })).toHaveAttribute("aria-pressed", "true");
 
     // An older resize response arriving last must not replace the latest body.
+    // Size M responses are held until the test releases them, so they always arrive after the newer one.
+    const held: { release: () => void; done: Promise<void> }[] = [];
     await page.route(`**/api/cards/${cardId}?*`, async route => {
       const response = await route.fetch();
-      if (new URL(route.request().url()).searchParams.get("size") === "M") await new Promise(resolve => setTimeout(resolve, 800));
+      let release!: () => void, finish!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const done = new Promise<void>(resolve => { finish = resolve; });
+      if (new URL(route.request().url()).searchParams.get("size") === "M") { held.push({ release, done }); await gate; }
       // The page may have cancelled this older request while it was held back.
       await route.fulfill({ response }).catch(() => {});
+      finish();
     });
+    const deliverHeld = async () => {
+      const late = held.splice(0);
+      for (const { release } of late) release();
+      await Promise.all(late.map(({ done }) => done));
+      // Let the page handle the late responses before checking what it shows.
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    };
     const resize = page.getByRole("button", { name: new RegExp(`^Resize ${title} card`) });
     await resize.focus();
     const firstRequest = page.waitForRequest(request => request.url().includes(`/api/cards/${cardId}?`) && new URL(request.url()).searchParams.get("size") === "M");
@@ -75,7 +88,7 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await firstRequest;
     await page.keyboard.press("ArrowRight");
     await expect(card.getByText("Picked b at L")).toBeVisible({ timeout: 30_000 });
-    await page.waitForTimeout(1200);
+    await deliverHeld();
     await expect(card.getByText("Picked b at L")).toBeVisible();
     // Returning to the already displayed width must also invalidate the pending request.
     await resize.focus();
@@ -83,7 +96,8 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await page.keyboard.press("ArrowLeft");
     await returning;
     await page.keyboard.press("ArrowRight");
-    await page.waitForTimeout(1200);
+    await expect(card.getByText("Picked b at L")).toBeVisible();
+    await deliverHeld();
     await expect(card.getByText("Picked b at L")).toBeVisible();
     await page.unroute(`**/api/cards/${cardId}?*`);
     // Return to S for the existing publish/restore checks below.
@@ -144,6 +158,7 @@ test("an empty Home cards tab sends the build request only after a press", async
     // A link alone never sends anything, whatever it carries.
     await page.goto(`/ai/artifacts/${id}?tab=cards&start=${encodeURIComponent("Sent by a link")}`);
     await expect(page.getByRole("button", { name: "Create a Home card", exact: true })).toBeVisible();
+    // eslint-disable-next-line no-restricted-syntax -- proving that nothing is sent can only be observed over time
     await page.waitForTimeout(1000);
     expect(requests).toEqual([]);
     await page.getByRole("button", { name: "Create a Home card", exact: true }).click();
@@ -173,6 +188,7 @@ test("a new artifact sends its first request once, and a failed one takes a pres
     await page.reload();
     const again = page.getByRole("button", { name: "Send it again", exact: true });
     await expect(again).toBeVisible();
+    // eslint-disable-next-line no-restricted-syntax -- proving that nothing is sent can only be observed over time
     await page.waitForTimeout(1000);
     expect(requests).toHaveLength(1);
     await again.click();

@@ -34,11 +34,9 @@ it("starts independent dashboard queries while balance evidence is still loading
   let release!: () => void;
   fixture.balanceGate = new Promise(resolve => { release = resolve; });
   const page = Home();
-  await new Promise(resolve => setTimeout(resolve, 0));
-  const started = [...fixture.started];
+  await vi.waitFor(() => expect(fixture.started).toEqual(expect.arrayContaining(["fx_rates", "dashboard_layouts", "goals", "goal_allocations"])));
   release();
   await page;
-  expect(started).toEqual(expect.arrayContaining(["fx_rates", "dashboard_layouts", "goals", "goal_allocations"]));
 });
 
 it.each(["fx_rates", "dashboard_layouts"])("reports %s failures instead of silently showing incomplete dashboard data", async table => {

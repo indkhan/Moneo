@@ -61,8 +61,10 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
   });
   test("a stalled history refresh cannot leave a confirmed import busy forever", async ({ page }) => {
     let confirmed = false;
+    let unstall!: () => void;
+    const stalled = new Promise<void>(resolve => { unstall = resolve; });
     await page.route("**/api/imports", async route => {
-      if (confirmed) { await new Promise(resolve => setTimeout(resolve, 20_000)); await route.abort(); }
+      if (confirmed) { await stalled; await route.abort().catch(() => {}); }
       else await route.fulfill({ json: [] });
     });
     await page.route("**/api/imports/inspect", route => route.fulfill({ json: mockInspectResponse() }));
@@ -75,6 +77,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.locator("main").getByRole("alert").filter({ hasText: "Import history" })).toHaveText("Import history is unavailable. Try again.", { timeout: 15_000 });
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await expect(page.getByText("Working…", { exact: true })).toHaveCount(0);
+    unstall();
   });
   test("upload → AI mapping preview → Correct → Continue → history → Cancel", async ({
     page,
