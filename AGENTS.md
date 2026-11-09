@@ -60,6 +60,7 @@ Everything that needs a database or a running app is tested against `moneo-qa`, 
 - **App:** `npm run qa:server` runs this checkout on http://localhost:3100 against `.env.qa`, building into `.next-qa`, with bank access off and a placeholder AI key that every provider rejects, so nothing costs money. `npm run test:e2e` starts it on its own and refuses to run against any server that would sign tests in as the owner.
 - **Reset:** `npm run qa:reset` empties the QA workspace. Each spec should still set up the state it needs rather than rely on what earlier runs left behind.
 - `npm run test:db` and the `supabase/tests/*.mjs` scripts read `.env.qa` only.
+- A nightly run (`npm run qa:nightly`, see `e2e/README.md`) runs every spec twice and keeps the issue "Nightly browser suite is failing" up to date; fix what it lists before adding new specs.
 
 ## Project map
 
