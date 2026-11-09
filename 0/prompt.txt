@@ -1,0 +1,28 @@
+Act as the implementation sub-agent for this task.
+
+Work in the Moneo repo (your checkout is a fresh worktree of `main`). Read `AGENTS.md` first and follow it, especially the **Tests** section and the Safety rules. Do NOT start the app, Docker, Playwright, or anything that touches a database or a paid AI/bank service. Run `npm ci` first (node_modules is not installed in a new worktree).
+
+Goal: turn a few AGENTS.md test rules into automatic checks so agents can't drift, and remove two sources of friction. One PR to `main` with one commit per item. Plain-language commit messages; end each with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. End the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+
+1. **ESLint rules for test files** (`eslint.config.*`, scoped to `**/*.test.ts`, `**/*.test.tsx`, `e2e/**/*.ts`) using `no-restricted-syntax` / `no-restricted-properties`, each with a clear message pointing to AGENTS.md Tests:
+   - A real wait: `new Promise(resolve => setTimeout(resolve, <n>))` with a numeric delay, and `page.waitForTimeout(...)`. Message: use fake timers, controlled promises or await the real event.
+   - `test.skip(...)` called *inside* a test body (dynamic skip). File-level `test.skip(condition, reason)` at module top level stays allowed. Message: arrange the state instead of skipping.
+   - `readFileSync` whose path argument is a string literal or template containing `supabase/migrations` inside unit test files, EXCEPT these intentional files, which you allow by path: `lib/schema.test.ts`, `lib/finance/currency-precision-contract.test.ts`, `supabase/tests/**`, and any `*.live.test.ts` (they apply migrations to a real DB). Message: test behaviour, not migration text.
+   Then run `npm run lint`. Fix every NEW violation in the existing code properly (fake timers, controlled promises, awaiting the real event), never with eslint-disable, unless the wait itself is the thing under test; in that case use a single eslint-disable-next-line with a reason. List each fix in the PR.
+2. **Slowest-tests report in CI.** Make `.github/workflows/ci.yml` print the 10 slowest Vitest files after `npm test` (e.g. run vitest with an extra JSON reporter to a temp file and a tiny inline node script that sorts by duration). Keep `npm test` itself unchanged for local use. Also fail CI if any single test file takes over 10 s, with a message naming the file. Check locally that the current suite stays under that limit.
+3. **Line endings.** Add `.gitattributes` with `* text=auto eol=lf` (plus `*.png binary` etc. for binary types present in the repo; check with `git ls-files`). Run `git add --renormalize .` and commit that separately ("Normalize line endings to LF"). Make sure `git status` is clean afterwards and `npm test` and lint still pass.
+4. **AGENTS.md, Commits and pull requests section**, add two bullets (keep the file's style, short):
+   - Stacked PRs: before merging a PR that another open PR is based on, change the dependent PR's base to `main`; deleting the merged branch otherwise closes it.
+   - Long agent prompts and plans don't get committed; if guidance must persist, put the rule in AGENTS.md.
+
+Before finishing run `npm test`, `npm run lint`, `npm run typecheck`. Push and open the PR to `main`. Report the PR URL, the list of violations you fixed, and the slowest-10 output.
+
+---
+
+<task-notification>
+<task-id>b320v0ask</task-id>
+<tool-use-id>toolu_01PjxdcxfTY9hJJU1wEcQ66H</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ad34c1f4a956dc4f\ef9d5866-1775-4902-a6b6-9515622134a1\tasks\b320v0ask.output</output-file>
+<status>completed</status>
+<summary>Background command "git status -sb | head -3 &amp;&amp; ls &amp;&amp; cat eslint.config.* &amp;&amp; cat .github/workflows/ci.yml &amp;&amp; ls -a | grep git &amp;&amp; (npm ci 2&gt;&amp;1 | tail -3)" completed (exit code 0)</summary>
+</task-notification>
