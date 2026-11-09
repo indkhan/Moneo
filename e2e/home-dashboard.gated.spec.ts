@@ -65,7 +65,7 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await expect(goals).toHaveCount(0);
   await hiding;
   // Undo must preserve a later resize of a different widget.
-  const overviewResize = page.getByRole("button", { name: /^Resize Overview/ });
+  const overviewResize = page.getByRole("button", { name: /^Resize Net worth/ });
   const overviewBefore = await overviewResize.getAttribute("aria-label");
   const laterSave = saved(page);
   await overviewResize.focus();

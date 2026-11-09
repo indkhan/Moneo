@@ -76,7 +76,14 @@ test("individual accept and reject undo retain source and decision history and r
   } finally {
     await context.close();
     try {
-      await db.begin(async tx => { await tx`select set_config('request.jwt.claim.sub',${user},true)`; await tx`select public.delete_account()`; });
+      await db.begin(async tx => {
+        await tx`select set_config('request.jwt.claim.sub',${user},true)`;
+        await tx`select public.reset_workspace()`;
+        await tx`delete from public.categories where workspace_id in (select id from public.workspaces where owner_id=${user})`;
+        await tx`delete from public.categories where workspace_id in (select id from public.workspaces where owner_id=${user})`;
+        await tx`delete from public.workspaces where owner_id=${user}`;
+      });
+      expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
       unlinkSync(journal);
     } finally { await db.end(); }
   }

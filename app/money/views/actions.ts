@@ -63,6 +63,7 @@ export async function saveTransactionView(form: FormData) {
     .select("id")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not save view");
+  revalidatePath("/money/transactions");
   redirect(`/money/transactions?view=${data.id}`);
 }
 
@@ -93,6 +94,7 @@ export async function deleteTransactionView(form: FormData) {
     p_patch: { removed: true }, p_request_id: z.uuid().parse(form.get("requestId")),
   });
   if (error) throw new Error(error.message);
+  revalidatePath("/money/transactions");
   redirect("/money/transactions");
 }
 

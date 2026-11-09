@@ -90,7 +90,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     await expect.poll(async () => (await db`select tags from public.transactions where id=${match}`)[0].tags, { timeout: 30_000 }).toEqual(["holiday", "qa-touched"]);
     await page.goto(viewUrl);
     await expectScopedView();
-    await page.getByText("Manual entries and batch history", { exact: true }).click();
+    await page.getByText("Batch history", { exact: true }).click();
     await page.getByRole("button", { name: "Undo batch", exact: true }).first().click();
     await expect.poll(async () => (await db`select tags,event_name from public.transactions where id=${match}`)[0], { timeout: 30_000 }).toEqual({ tags: ["holiday"], event_name: "Berlin trip" });
     await page.goto(viewUrl);
