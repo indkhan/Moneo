@@ -17,19 +17,26 @@ const connection = { id: "c", workspace_id: "w", portfolio: { itemIds: ["cash"],
 const item = (id: string, as_of: string) => ({ id, as_of, name: id, kind: "asset", amount_minor: "1", currency_code: "EUR", linked_account_id: null, removed_at: null });
 const setup = () => {
   const eq = vi.fn(async () => ({ error: null })), update = vi.fn(() => ({ eq })), rpc = vi.fn(async () => ({ data: 1, error: null }));
-  vi.mocked(serviceDb).mockReturnValue({ rpc, from: () => ({ update }) } as never);
+  const upsert = vi.fn(async () => ({ error: null }));
+  const saved = { select: () => ({ eq: () => ({ limit: async () => ({ data: [{ provider_id: "t", isin: "I", price_text: "1.5" }], error: null }) }) }), upsert };
+  vi.mocked(serviceDb).mockReturnValue({ rpc, from: (table: string) => table === "scalable_trade_details" ? saved : { update } } as never);
   vi.mocked(loadWealthEvents).mockResolvedValue([{ id: "e", item_id: "sold", before: null, created_at: "2026-11-03T10:00:00Z", undone_at: null, after: item("sold", "2026-11-03") }] as never);
   vi.mocked(loadWealthItems).mockResolvedValue([item("cash", "2026-11-05"), item("manual", "2020-01-01")] as never);
   vi.mocked(withScalable).mockImplementation(async (_id, _workspace, work) => work({} as never));
   vi.mocked(readHistoryInput).mockResolvedValue({ synthetic: true } as never);
-  return { rpc, update };
+  return { rpc, update, upsert };
 };
 
 it("saves a passing run and stops before the first synced value, ignoring valuations that are not Scalable's", async () => {
-  const { rpc, update } = setup();
+  const { rpc, update, upsert } = setup();
   vi.mocked(calculateHistory).mockReturnValue({ ok: true, days: [{ date: "2026-11-01", securitiesMinor: 1n, cryptoMinor: 2n, cashMinor: 3n, totalMinor: 6n }] });
   await expect(rebuildScalableHistory(connection, "Europe/Berlin", "2026-11-08")).resolves.toBe("saved");
-  expect(vi.mocked(readHistoryInput).mock.calls[0].slice(1)).toEqual(["Europe/Berlin", "2026-11-03"]);
+  const [, timeZone, before, details] = vi.mocked(readHistoryInput).mock.calls[0];
+  expect([timeZone, before]).toEqual(["Europe/Berlin", "2026-11-03"]);
+  // A trade's details come from what's saved, and new ones are saved for next time.
+  expect(details.known.get("t")).toEqual({ isin: "I", price: "1.5" });
+  await details.remember("u", { isin: "J", price: null });
+  expect(upsert).toHaveBeenCalledWith({ workspace_id: "w", provider_id: "u", isin: "J", price_text: null });
   expect(rpc).toHaveBeenCalledWith("replace_scalable_value_history", { p_connection_id: "c", p_checked_on: "2026-11-08",
     p_rows: [{ on_date: "2026-11-01", currency_code: "EUR", securities_minor: "1", crypto_minor: "2", cash_minor: "3", total_minor: "6" }] });
   expect(update).not.toHaveBeenCalled();

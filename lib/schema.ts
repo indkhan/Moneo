@@ -271,6 +271,16 @@ export const iouRepayments = pgTable("iou_repayments", {
 ]);
 
 // Past Scalable values calculated from its transactions and price charts (202611080002). A calculation, not a record.
+export const scalableTradeDetails = pgTable("scalable_trade_details", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  providerId: text("provider_id").notNull(),
+  isin: text("isin").notNull(),
+  priceText: text("price_text"),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.providerId] }),
+  check("scalable_trade_details_price_text_check", sql`${table.priceText} ~ '^[0-9]+(\\.[0-9]+)?$'`),
+]);
+
 export const scalableValueHistory = pgTable("scalable_value_history", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   onDate: date("on_date").notNull(),

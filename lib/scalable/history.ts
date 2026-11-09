@@ -17,10 +17,10 @@ const TIMEFRAMES = ["max", "one_year", "six_months", "year_to_date"];
 
 type Chart = { currency: string; points: { at: string; price: string }[] };
 export type HistoryRow = { id: string; at: string; currency?: string } & (
-  | { kind: "security"; isin: string; side: string; quantity: string | null; amountText: string }
+  | { kind: "security"; isin: string; side: string; quantity: string | null; amountText: string; price?: string | null }
   | { kind: "cash"; quantity?: undefined; amountText: string }
   // Scalable holds crypto as shares of an ETP, so `isin` and `quantity` are the ETP's.
-  | { kind: "crypto"; isin: string; side: string; quantity: string | null; amountText: string });
+  | { kind: "crypto"; isin: string; side: string; quantity: string | null; amountText: string; price?: string | null });
 export type HistoryInput = {
   rows: HistoryRow[]; charts: Record<string, Chart>;
   holdings: { isin: string; filled: number | string; currency?: string }[];
@@ -47,11 +47,14 @@ const holdingsSchema = z.object({
   cryptoHoldings: z.array(z.object({ ticker: z.string(), position: z.object({ filled: decimal }).nullish(), etpPositions: z.array(z.object({ isin: z.string(), position: z.object({ filled: decimal }).nullish() })).nullish() })).default([]),
 });
 const chartSchema = z.object({ currency: z.string().nullish(), dataPoints: z.array(z.object({ midPrice: decimal.nullish(), timestampUtc: z.string() })).default([]) });
-const detailsSchema = z.object({ transaction: z.object({ security: z.object({ isin: z.string() }) }) });
+const detailsSchema = z.object({ transaction: z.object({ security: z.object({ isin: z.string() }), securityTrade: z.object({ averagePrice: decimal.nullish() }).nullish() }) });
+/** What a trade's details add to the list: the ETP behind a crypto row, and the price paid without fees. These never change, so each trade is asked about once. */
+export type TradeDetail = { isin: string; price: string | null };
+export type TradeDetails = { known: Map<string, TradeDetail>; remember: (id: string, detail: TradeDetail) => Promise<void> };
 const settled = (row: { status: string; isCancellation?: boolean | null }) => row.status === "SETTLED" && !row.isCancellation;
 
 /** Every settled trade and cash move. Security and crypto rows page separately, and a stream whose cursor runs out starts over if asked again. */
-async function readRows(mcp: Pick<ScalableMcp, "callTool">) {
+async function readRows(mcp: Pick<ScalableMcp, "callTool">, details: TradeDetails) {
   const securities = new Map<string, HistoryRow>(), crypto = new Map<string, Omit<Extract<HistoryRow, { kind: "crypto" }>, "isin">>();
   let cursor: string | undefined, cryptoCursor: string | undefined, securitiesDone = false, cryptoDone = false;
   for (let page = 0; !securitiesDone || !cryptoDone; page++) {
@@ -69,9 +72,20 @@ async function readRows(mcp: Pick<ScalableMcp, "callTool">) {
     cryptoCursor = cryptoDone ? undefined : reply.crypto?.page?.nextCursor || undefined;
     securitiesDone = !cursor; cryptoDone = !cryptoCursor;
   }
+  const detail = async (id: string) => {
+    const saved = details.known.get(id);
+    if (saved) return saved;
+    const { security, securityTrade } = detailsSchema.parse(await mcp.callTool("get_transaction_details", { transactionId: id })).transaction;
+    const price = securityTrade?.averagePrice != null && Number(securityTrade.averagePrice) > 0 ? text(securityTrade.averagePrice) : null;
+    const found = { isin: security.isin, price };
+    // Saved straight away, so a run that stops partway doesn't ask again.
+    await details.remember(id, found);
+    return found;
+  };
+  const rows: HistoryRow[] = [];
+  for (const row of securities.values()) rows.push(row.kind === "security" ? { ...row, price: (await detail(row.id)).price } : row);
   // A crypto row only names the coin; its details name the ETP that was actually bought.
-  const rows = [...securities.values()];
-  for (const row of crypto.values()) rows.push({ ...row, isin: detailsSchema.parse(await mcp.callTool("get_transaction_details", { transactionId: row.id })).transaction.security.isin });
+  for (const row of crypto.values()) { const { isin, price } = await detail(row.id); rows.push({ ...row, isin, price }); }
   return rows;
 }
 
@@ -83,8 +97,8 @@ async function readChart(mcp: Pick<ScalableMcp, "callTool">, isin: string): Prom
 }
 
 /** Everything the calculation needs, through Scalable's read tools only. A security chart that fails stops the run, to retry another day. */
-export async function readHistoryInput(mcp: Pick<ScalableMcp, "callTool">, timeZone: string, before: string): Promise<HistoryInput> {
-  const rows = await readRows(mcp);
+export async function readHistoryInput(mcp: Pick<ScalableMcp, "callTool">, timeZone: string, before: string, details: TradeDetails): Promise<HistoryInput> {
+  const rows = await readRows(mcp, details);
   const holdings = holdingsSchema.parse(await mcp.callTool("get_portfolio_holdings"));
   const cash = z.object({ cash: z.object({ cashBalance: decimal }) }).parse(await mcp.callTool("get_portfolio_cash_breakdown"));
   // Scalable's coin figure shrinks over time, while the ETP's shares and price are exact, so those are what count.
@@ -104,8 +118,9 @@ const scaled = (value: number | string) => { const ratio = decimalRatio(text(val
 const decimalOf = (value: bigint) => `${value / ONE}.${(value % ONE).toString().padStart(18, "0")}`;
 const value = (quantity: bigint, price: bigint) => holdingValue(decimalOf(quantity), decimalOf(price), CURRENCY);
 const absolute = (minor: bigint) => minor < 0n ? -minor : minor;
-/** The price per unit each trade paid, oldest first; a trade with no money or quantity says nothing. */
+/** The price per unit each trade paid, without fees when Scalable says so, otherwise worked out from its amount. A trade with no money or quantity says nothing. */
 const tradePrices = (rows: Exclude<HistoryRow, { kind: "cash" }>[]) => rows.flatMap(row => {
+  if (row.price) return [{ at: row.at, price: scaled(row.price) }];
   const minor = BigInt(toMinor(row.amountText, CURRENCY)), quantity = scaled(row.quantity!);
   return minor !== 0n && quantity > 0n ? [{ at: row.at, price: absolute(minor) * CENT_SCALE * ONE / quantity }] : [];
 });

@@ -1,7 +1,7 @@
 import { firstSyncedOn, loadWealthEvents, scalableKnownIds, valuationHistory } from "@/app/money/wealth/net-worth";
 import { serviceDb } from "@/lib/bank/server";
 import { loadWealthItems } from "@/lib/finance/wealth";
-import { calculateHistory, readHistoryInput } from "./history";
+import { calculateHistory, readHistoryInput, type TradeDetails } from "./history";
 import type { ScalableExtras } from "./portfolio";
 import { withScalable } from "./server";
 
@@ -24,7 +24,16 @@ export async function rebuildScalableHistory(connection: { id: string; workspace
     return "failed" as const;
   };
   try {
-    const result = calculateHistory(await withScalable(connection.id, connection.workspace_id, mcp => readHistoryInput(mcp, timeZone, before), fetch, LOGIN_NEEDED_MS));
+    const known = await db.from("scalable_trade_details").select("provider_id, isin, price_text").eq("workspace_id", connection.workspace_id).limit(100000);
+    if (known.error) throw new Error(known.error.message);
+    const details: TradeDetails = {
+      known: new Map((known.data ?? []).map(row => [row.provider_id, { isin: row.isin, price: row.price_text }])),
+      remember: async (id, detail) => {
+        const remembered = await db.from("scalable_trade_details").upsert({ workspace_id: connection.workspace_id, provider_id: id, isin: detail.isin, price_text: detail.price });
+        if (remembered.error) throw new Error(remembered.error.message);
+      },
+    };
+    const result = calculateHistory(await withScalable(connection.id, connection.workspace_id, mcp => readHistoryInput(mcp, timeZone, before, details), fetch, LOGIN_NEEDED_MS));
     if (!result.ok) return await failed(result.reason);
     const saved = await db.rpc("replace_scalable_value_history", { p_connection_id: connection.id, p_checked_on: today,
       p_rows: result.days.map(day => ({ on_date: day.date, currency_code: "EUR", securities_minor: day.securitiesMinor.toString(), crypto_minor: day.cryptoMinor.toString(), cash_minor: day.cashMinor.toString(), total_minor: day.totalMinor.toString() })) });

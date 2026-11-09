@@ -1,11 +1,12 @@
 import { expect, it } from "vitest";
-import { calculateHistory, readHistoryInput, type HistoryInput } from "./history";
+import { calculateHistory, readHistoryInput, type HistoryInput, type TradeDetail, type TradeDetails } from "./history";
 
 const ISIN = "DE000A0TEST1", ETP = "XS0000000ETP";
 const buy = (id: string, at: string, quantity: string, amount: string, isin = ISIN) => ({ id, at, kind: "security" as const, isin, side: "BUY", quantity, amountText: amount });
 const sell = (id: string, at: string, quantity: string, amount: string, isin = ISIN) => ({ id, at, kind: "security" as const, isin, side: "SELL", quantity, amountText: amount });
 const cash = (id: string, at: string, amount: string) => ({ id, at, kind: "cash" as const, amountText: amount });
 const etp = (id: string, at: string, side: string, shares: string, amount: string) => ({ id, at, kind: "crypto" as const, isin: ETP, side, quantity: shares, amountText: amount });
+const noDetails = (known = new Map<string, TradeDetail>()): TradeDetails => ({ known, remember: async (id, detail) => { known.set(id, detail); } });
 const chart = (...points: [string, number][]) => ({ currency: "EUR", points: points.map(([at, price]) => ({ at, price: String(price) })) });
 
 const input = (over: Partial<HistoryInput> = {}): HistoryInput => ({
@@ -124,7 +125,7 @@ function fakeMcp(pages: { securities: unknown[][]; crypto: unknown[][] }, charts
     }
     if (name === "get_portfolio_holdings") return { holdings: [{ isin: ISIN, position: { filled: 1 }, currentQuote: { midPrice: 10, currency: "EUR" } }], cryptoHoldings: catalog };
     if (name === "get_portfolio_cash_breakdown") return { cash: { cashBalance: 5 } };
-    if (name === "get_transaction_details") return { transaction: { security: { isin: ETP } } };
+    if (name === "get_transaction_details") return { transaction: { security: { isin: args.transactionId === "x" ? ETP : ISIN }, securityTrade: args.transactionId === "paid" ? { averagePrice: "28.984" } : null } };
     if (name === "get_security_chart") {
       const chart = charts[`${args.isin}:${args.timeframe}`] ?? charts[String(args.isin)];
       if (chart instanceof Error) throw chart;
@@ -138,7 +139,7 @@ const crypto = (id: string) => ({ id, status: "SETTLED", ticker: "BTC", side: "B
 
 it("follows both cursors to their ends, keeps exhausted streams exhausted and removes repeated rows", async () => {
   const mcp = fakeMcp({ securities: [[security("a"), security("b")], [security("c")]], crypto: [[crypto("x")], [crypto("x"), crypto("y")], [crypto("z"), crypto("y")]] });
-  const input = await readHistoryInput(mcp, "UTC", "2026-02-01");
+  const input = await readHistoryInput(mcp, "UTC", "2026-02-01", noDetails());
   expect(input.rows.map(row => row.id).sort()).toEqual(["a", "b", "c", "x", "y", "z"]);
   expect(mcp.calls.filter(call => call.name === "list_portfolio_transactions").map(call => call.args)).toEqual([
     { pageSize: 100 }, { pageSize: 100, cursor: "1", cryptoCursor: "1" }, { pageSize: 100, cryptoCursor: "2" }]);
@@ -148,7 +149,7 @@ it("reads a crypto row's ETP shares, never its coin figure, and only settled row
   const mcp = fakeMcp({ securities: [[security("a"), security("p", "PENDING"), security("c", "SETTLED", { isCancellation: true }),
     { id: "cash", kind: "CASH", status: "SETTLED", currency: "EUR", isCancellation: false, lastEventAt: "2026-01-01T10:00:00Z", cash: { relatedIsin: null, transactionType: "DEPOSIT", amount: 100 } },
     { id: "split", kind: "NON_TRADE", status: "SETTLED", isCancellation: false, lastEventAt: "2026-01-01T10:00:00Z", nonTradeSecurity: { isin: ISIN, quantity: "5" } }]], crypto: [[crypto("x")]] });
-  const input = await readHistoryInput(mcp, "UTC", "2026-02-01");
+  const input = await readHistoryInput(mcp, "UTC", "2026-02-01", noDetails());
   expect(input.rows.map(row => [row.id, row.kind, row.quantity ?? null, row.amountText])).toEqual([["a", "security", "1", "-10"], ["cash", "cash", null, "100"], ["x", "crypto", "10", "-5"]]);
   expect(input.rows.find(row => row.id === "x")).toMatchObject({ isin: ETP });
 });
@@ -161,15 +162,15 @@ it("merges every chart timeframe, skips empty prices and fails when a security c
     [`${ISIN}:six_months`]: { currency: "EUR", dataPoints: [{ midPrice: 10, timestampUtc: "2025-12-01T00:00:00Z" }] },
     [`${ISIN}:year_to_date`]: { currency: "EUR", dataPoints: [{ midPrice: 11, timestampUtc: "2026-01-01T00:00:00Z" }] },
   });
-  expect((await readHistoryInput(mcp, "UTC", "2026-02-01")).charts[ISIN].points.map(point => point.price).sort()).toEqual(["10", "11", "8", "9"]);
-  await expect(readHistoryInput(fakeMcp(rows, { [`${ISIN}:one_year`]: new Error("down") }), "UTC", "2026-02-01")).rejects.toThrow("down");
+  expect((await readHistoryInput(mcp, "UTC", "2026-02-01", noDetails())).charts[ISIN].points.map(point => point.price).sort()).toEqual(["10", "11", "8", "9"]);
+  await expect(readHistoryInput(fakeMcp(rows, { [`${ISIN}:one_year`]: new Error("down") }), "UTC", "2026-02-01", noDetails())).rejects.toThrow("down");
 });
 
 it("holds crypto as ETP shares even when the coin figure has shrunk", async () => {
   const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.00328548315 }, etpPositions: [{ isin: "XS0000000BAD", name: "Other", position: null }, { isin: ETP, name: "Held", position: { blocked: 0, filled: 10, pending: 0 } }] },
     { ticker: "ETH", name: "Ether", position: { filled: 0 }, etpPositions: [{ isin: "XS0000000ETH", name: "Not traded", position: null }] }];
   const mcp = fakeMcp({ securities: [[]], crypto: [[crypto("x")]] }, { [ETP]: { currency: "EUR", dataPoints: [{ midPrice: 1, timestampUtc: "2026-01-01T00:00:00Z" }] } }, catalog);
-  const input = await readHistoryInput(mcp, "UTC", "2026-02-01");
+  const input = await readHistoryInput(mcp, "UTC", "2026-02-01", noDetails());
   expect(input.holdings).toContainEqual({ isin: ETP, filled: 10 });
   expect(Object.keys(input.charts)).toEqual([ETP]);
   expect(mcp.calls.filter(call => call.name === "get_transaction_details").map(call => call.args)).toEqual([{ transactionId: "x" }]);
@@ -177,12 +178,40 @@ it("holds crypto as ETP shares even when the coin figure has shrunk", async () =
 
 it("refuses a coin held without an ETP position, since it has no shares or price to replay", async () => {
   const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.5 }, etpPositions: [{ isin: ETP, name: "Not held", position: null }] }];
-  await expect(readHistoryInput(fakeMcp({ securities: [[]], crypto: [[]] }, {}, catalog), "UTC", "2026-02-01")).rejects.toThrow("BTC");
+  await expect(readHistoryInput(fakeMcp({ securities: [[]], crypto: [[]] }, {}, catalog), "UTC", "2026-02-01", noDetails())).rejects.toThrow("BTC");
 });
 
 it("only ever calls read tools", async () => {
   const catalog = [{ ticker: "BTC", name: "Bitcoin", position: { filled: 0.5 }, etpPositions: [{ isin: ETP, name: "Good", position: { filled: 10 } }] }];
   const mcp = fakeMcp({ securities: [[security("a")]], crypto: [[crypto("x")]] }, {}, catalog);
-  await readHistoryInput(mcp, "UTC", "2026-02-01");
+  await readHistoryInput(mcp, "UTC", "2026-02-01", noDetails());
   expect([...new Set(mcp.calls.map(call => call.name))].sort()).toEqual(["get_portfolio_cash_breakdown", "get_portfolio_holdings", "get_security_chart", "get_transaction_details", "list_portfolio_transactions"]);
+});
+
+it("prices a trade without fees when Scalable says what it paid", () => {
+  const paid = { id: "a", at: "2026-01-01T10:00:00Z", kind: "security" as const, isin: ISIN, side: "BUY", quantity: "10", amountText: "-293.69" };
+  const base = { charts: { [ISIN]: { currency: "EUR", points: [] } }, holdings: [{ isin: ISIN, filled: 10 }], cashBalance: "-293.69", timeZone: "UTC", before: "2026-01-02" };
+  const on = (row: typeof paid & { price?: string | null }) => { const result = calculateHistory({ ...base, rows: [row] }); return result.ok ? result.days[0].securitiesMinor : null; };
+  expect(on({ ...paid, price: "28.984" })).toBe(28984n);
+  expect(on({ ...paid, price: null })).toBe(29369n);
+});
+
+it("asks about each trade once, and remembers even when a later trade fails", async () => {
+  const rows = { securities: [[security("paid"), security("b")]], crypto: [[]] };
+  const known = new Map<string, TradeDetail>();
+  const first = fakeMcp(rows);
+  const input = await readHistoryInput(first, "UTC", "2026-02-01", noDetails(known));
+  expect(input.rows.map(row => row.kind === "security" ? row.price : undefined)).toEqual(["28.984", null]);
+  expect(first.calls.filter(call => call.name === "get_transaction_details")).toHaveLength(2);
+  const second = fakeMcp(rows);
+  const again = await readHistoryInput(second, "UTC", "2026-02-01", noDetails(known));
+  expect(second.calls.filter(call => call.name === "get_transaction_details")).toHaveLength(0);
+  expect(again.rows).toEqual(input.rows);
+
+  const partial = new Map<string, TradeDetail>();
+  const failing = fakeMcp(rows);
+  const realCall = failing.callTool;
+  failing.callTool = async (name, args = {}) => { if (name === "get_transaction_details" && args.transactionId === "b") throw new Error("down"); return realCall(name, args); };
+  await expect(readHistoryInput(failing, "UTC", "2026-02-01", noDetails(partial))).rejects.toThrow("down");
+  expect([...partial.keys()]).toEqual(["paid"]);
 });
