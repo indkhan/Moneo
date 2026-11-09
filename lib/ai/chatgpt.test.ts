@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { encryptToken } from "@/lib/bank/token-crypto";
 import { chatgptAccessToken, chatgptFetch, chatgptStatus, finalResponse, finishSignIn, setAiSource, signOut, startSignIn, usesChatGPT } from "./chatgpt";
 
 let dir: string;
@@ -28,6 +29,7 @@ it("registers dynamically on a 127.0.0.1 callback, then exchanges the code with 
   const { authorize, fetcher } = await signIn();
   expect(authorize.origin + authorize.pathname).toBe("https://auth.openai.com/api/accounts/authorize");
   expect(authorize.searchParams.get("client_id")).toBe("dynamic_agent_client");
+  expect(authorize.searchParams.get("ext_agent_host_id")).toMatch(/^urn:uuid:[0-9a-f-]{36}$/);
   expect(authorize.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:3000/api/ai/chatgpt/callback");
   expect(authorize.searchParams.get("scope")).toContain("chatgpt.tokens.use.direct");
   const body = new URLSearchParams(String(fetcher.mock.calls[0][1]?.body));
@@ -39,6 +41,7 @@ it("registers dynamically on a 127.0.0.1 callback, then exchanges the code with 
   // A returning sign-in reuses the issued client and skips the agent name.
   const again = new URL(await startSignIn(3000));
   expect(again.searchParams.get("client_id")).toBe("oaiapp_1");
+  expect(again.searchParams.get("ext_agent_host_id")).toBe(authorize.searchParams.get("ext_agent_host_id"));
   expect(again.searchParams.get("agent_name_hint")).toBeNull();
 });
 
@@ -92,4 +95,13 @@ it("passes a streaming request's events straight through", async () => {
 
 it("treats a stream without a terminal event as a failure", async () => {
   await expect(finalResponse(sse({ type: "response.output_text.delta", delta: "partial" }).body!)).rejects.toThrow("ended the response early");
+});
+
+it("preserves an existing bare UUID when migrating its host ID to a URI", async () => {
+  const hostId = "12345678-1234-4234-8234-123456789abc";
+  writeFileSync(path.join(dir, "chatgpt.json"), encryptToken(JSON.stringify({ hostId }), "moneo:chatgpt"));
+  const first = new URL(await startSignIn(3000));
+  const again = new URL(await startSignIn(3000));
+  expect(first.searchParams.get("ext_agent_host_id")).toBe(`urn:uuid:${hostId}`);
+  expect(again.searchParams.get("ext_agent_host_id")).toBe(`urn:uuid:${hostId}`);
 });

@@ -18,7 +18,7 @@ const AAD = "moneo:chatgpt";
 export type AiSource = "chatgpt" | "api_key";
 const tokensSchema = z.object({ accessToken: z.string(), refreshToken: z.string().nullable(), expiresAt: z.number(), scopes: z.array(z.string()) });
 const stateSchema = z.object({
-  hostId: z.string(),
+  hostId: z.string().transform(value => z.uuid().safeParse(value).success ? `urn:uuid:${value}` : value),
   // Which one pays when both are set up; the owner picks it in Settings.
   source: z.enum(["chatgpt", "api_key"]).default("chatgpt"),
   account: z.object({ clientId: z.string(), email: z.string().nullable(), idToken: z.string().nullable(), tokens: tokensSchema }).nullable().default(null),
@@ -33,7 +33,7 @@ export class ChatGPTError extends Error {}
 async function load(): Promise<State> {
   try { return stateSchema.parse(JSON.parse(decryptToken(await readFile(file(), "utf8"), AAD))); }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return stateSchema.parse({ hostId: randomUUID() });
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return stateSchema.parse({ hostId: `urn:uuid:${randomUUID()}` });
     throw error;
   }
 }
