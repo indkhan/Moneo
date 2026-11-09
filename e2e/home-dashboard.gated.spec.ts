@@ -1,9 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+import postgres from "postgres";
 import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
 
 const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
-test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
+test.skip(!hasSupabaseEnv() || !state || !process.env.SUPABASE_DB_URL || !process.env.E2E_USER_EMAIL, gatedSkipReason());
 // Each step waits for its save, and Home's sections stream in after load.
 test.setTimeout(120_000);
 
@@ -13,6 +14,13 @@ const open = async (page: Page) => {
   await page.goto("/", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Customize", exact: true }).click();
 };
+// Every run starts from the default layout, whatever an earlier run left behind (#185).
+test.beforeEach(async () => {
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
+  try {
+    await db`delete from public.dashboard_layouts where workspace_id in (select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!})`;
+  } finally { await db.end(); }
+});
 const saved = (page: Page) => page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/");
 
 test("Home widgets are moved, resized, hidden and added back in place, and stay that way", async ({ page }) => {

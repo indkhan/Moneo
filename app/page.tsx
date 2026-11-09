@@ -176,7 +176,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
         </dl>}
     </section>,
-    spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" />}><CashFlowPanel {...sectionProps} /></Suspense>,
+    spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" chart={240} />}><CashFlowPanel {...sectionProps} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
     planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} locale={locale} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>

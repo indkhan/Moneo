@@ -51,7 +51,8 @@ export function CashFlowChart({ labels, income, spending, flow, selected, picked
     ...(flow !== "out" ? [{ ...bar, name: "In", data: points(income), itemStyle: { ...bar.itemStyle, color: colors.brand }, ...marker("in") }] : []),
     ...(flow !== "in" ? [{ ...bar, name: "Out", data: points(spending), itemStyle: { ...bar.itemStyle, color: colors.out }, ...marker("out") }] : []),
   ];
-  return <div role="img" aria-label="Money in and out for each of the last six months">
+  // The box keeps its height while echarts loads, so the card around it does not collapse and grow back.
+  return <div role="img" aria-label="Money in and out for each of the last six months" style={{ height }}>
     <ReactECharts
       notMerge
       option={{
