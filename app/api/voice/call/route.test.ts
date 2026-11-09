@@ -1,3 +1,4 @@
+import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import { beforeEach, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { requireWorkspace } from "@/lib/auth";
@@ -65,7 +66,7 @@ it("explains that calls need an OpenAI key when only OpenRouter is set up", asyn
   process.env.OPENAI_API_KEY = ""; process.env.OPENROUTER_API_KEY = "sk-or";
   const response = await POST(request({ sdp: "offer", conversationId }));
   expect(response.status).toBe(503);
-  expect((await response.json()).error).toBe("Voice calls and dictation need an OpenAI API key. Add one under Settings → AI access.");
+  expect((await response.json()).error).toBe(VOICE_NEEDS_OPENAI_KEY);
   expect(doCreateWebRTCSession).not.toHaveBeenCalled();
   delete process.env.OPENROUTER_API_KEY;
 });
