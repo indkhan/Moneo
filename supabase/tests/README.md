@@ -4,6 +4,8 @@ These scripts test the SQL functions, row-level security and concurrency of the 
 
 ## Migrations and regressions
 
+`npm run test:db` runs the migration replay below and then every opt-in `*.live.test.ts`, one file at a time.
+
 ```sh
 node supabase/tests/migrations.mjs
 ```
