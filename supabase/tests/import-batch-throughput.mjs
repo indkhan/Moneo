@@ -49,6 +49,10 @@ try {
       assert.equal(count, total); assert.equal(amount, String(-101n * BigInt(total)));
       const [{ originals }] = await app`select count(*)::integer originals from public.source_transactions where import_id=${imported} and original_row->>'Amount'='-1.01'`;
       assert.equal(originals, total);
+      // Work budget: one staging call, then a candidates and an ingest call per 250-row batch, each
+      // batch's candidates small enough for one request. Time is printed, not gated: it depends on load.
+      assert.equal(calls, 1 + 2 * Math.ceil(total / 250), `${total} rows took ${calls} staging/batch RPC calls`);
+      assert(maxCandidatesBytes <= 32 * 1024, `${total} rows: a candidates batch was ${maxCandidatesBytes} bytes, over 32 KB`);
       results.push({ rows: total, stagingAndBatchRpcCalls: calls, stagedUtf8Bytes: Buffer.byteLength(JSON.stringify(rows)), maxCandidatesUtf8Bytes: maxCandidatesBytes, databaseFixtureMs: Math.round(performance.now() - started), clientRssDeltaBytes: process.memoryUsage().rss - rssBefore });
       console.log(`PASS: ${total} rows, ${calls} staging/batch RPC calls, exact ${amount} minor-unit total and ${originals} original source observations`);
       if (total === 10000) {
