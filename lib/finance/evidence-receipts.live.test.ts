@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { createEvidenceReceipt } from "./evidence-receipts";
 
 it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("enforces owned scope reads, server-only writes and immutable receipts in a rolled-back disposable schema", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const disposable = `qa_evidence_${randomUUID().replaceAll("-", "")}`, owner = randomUUID(), foreign = randomUUID();
@@ -46,7 +46,7 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("enforces owned sc
 }, 30000);
 
 it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("concurrent captures retain exactly one immutable receipt and clean the disposable fixture", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), { max: 3, onnotice: () => {} });
   const disposable = `qa_evidence_${randomUUID().replaceAll("-", "")}`, owner = randomUUID();

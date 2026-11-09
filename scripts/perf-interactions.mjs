@@ -1,5 +1,5 @@
 // Interaction measurements against a running production build (see scripts/perf-pages.mjs for setup).
-//   node --env-file=.env scripts/perf-interactions.mjs <baseUrl> <label> [runs=3]
+//   node --env-file=.env.qa scripts/perf-interactions.mjs <baseUrl> <label> [runs=3]
 // Costs a few real chat answers (default OpenAI chat model) and, on builds with voice, one realtime transcription session.
 //   panel      click on Ask Moneo until the panel dialog is open
 //   chat       POST /api/chat with a simple question: response headers, first stream event, full answer
@@ -17,11 +17,15 @@ const runs = Number(runsArg ?? 3);
 const db = postgres(process.env.SUPABASE_DB_URL, { max: 1, onnotice: () => {} });
 const [{ workspace_id: workspace }] = await db`select w.id as workspace_id from public.workspaces w join auth.users u on u.id=w.owner_id where u.email=${process.env.E2E_USER_EMAIL}`;
 // The QA user's chat model may be an OpenRouter id without credits; the default OpenAI model works.
+// The saved choice is put back when the script ends, even after a failure.
+const [{ ai_models: savedModels } = {}] = await db`select ai_models from public.workspace_settings where workspace_id=${workspace}`;
 await db`update public.workspace_settings set ai_models = ai_models - 'chat' where workspace_id=${workspace}`;
+const restoreModels = () => savedModels && db`update public.workspace_settings set ai_models = ${db.json(savedModels)} where workspace_id=${workspace}`;
 
 const median = values => { const sorted = values.filter(v => v != null).sort((a, b) => a - b); return sorted.length ? sorted[Math.floor(sorted.length / 2)] : null; };
 const out = {};
 const browser = await chromium.launch({ args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
+try {
 const open = async (viewport = { width: 1440, height: 900 }) => {
   const context = await browser.newContext({ viewport, baseURL: base, storageState: "e2e/.auth.json", permissions: ["microphone"] });
   return { context, page: await context.newPage() };
@@ -132,7 +136,9 @@ async function count(page, path, match, hidden = false) {
   }
   out.pollingRequestsPer12s = polling;
 }
-await browser.close(); await db.end();
+} finally {
+  await browser.close(); await restoreModels(); await db.end();
+}
 mkdirSync(".qa", { recursive: true });
 writeFileSync(`.qa/interactions-${label}.json`, JSON.stringify(out, null, 2));
 console.log(JSON.stringify(out, null, 2));

@@ -26,6 +26,12 @@ const migrationText = {
   message: "Test behaviour, not migration text. Don't read supabase/migrations in unit tests (AGENTS.md Tests).",
 };
 
+// Port 3000 is the owner's app; tests reach only the QA server through the configured base URL.
+const ownerApp = {
+  selector: ":matches(Literal[value=/(localhost|127\.0\.0\.1):3000/], TemplateElement[value.raw=/(localhost|127\.0\.0\.1):3000/])",
+  message: "Port 3000 is the owner's app. Use the base URL from playwright.config.ts (the QA server on 3100) (AGENTS.md Test backend).",
+};
+
 // Unit tests that apply or replay migrations on purpose.
 const migrationReaders = [
   "lib/schema.test.ts",
@@ -42,9 +48,13 @@ export default defineConfig([
     rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip] },
   },
   {
+    files: ["e2e/**/*.ts"],
+    rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip, ownerApp] },
+  },
+  {
     files: ["**/*.test.ts", "**/*.test.tsx"],
     ignores: migrationReaders,
     rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip, migrationText] },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "app/.well-known/workflow/**", ".qa/**", ".claude/**", "promo/**"]),
+  globalIgnores([".next/**", ".next-qa/**", "out/**", "build/**", "next-env.d.ts", "app/.well-known/workflow/**", ".qa/**", ".claude/**", "promo/**"]),
 ]);

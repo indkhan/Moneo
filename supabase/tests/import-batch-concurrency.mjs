@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const connection = new URL(process.env.SUPABASE_DB_URL), project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const options = { max: 1, onnotice: () => {}, connection: { application_name: "mne015-batch-race", lock_timeout: "10s", statement_timeout: "120s" } };
 const db = postgres(connection.toString(), options), holder = postgres(connection.toString(), options), waiter = postgres(connection.toString(), options), overlap = postgres(connection.toString(), options);

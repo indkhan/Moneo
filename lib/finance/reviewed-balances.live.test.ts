@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { coveredTransaction, resolveBalances, type BalanceSnapshot, type BalanceTransaction } from "./balances";
 
 it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL and TS cash through fees, later postings, correction and soft undo", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");

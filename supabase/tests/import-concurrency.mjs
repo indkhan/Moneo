@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
 
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const db = postgres(connection.toString(), { max: 3, connect_timeout: 10, onnotice: () => {} });

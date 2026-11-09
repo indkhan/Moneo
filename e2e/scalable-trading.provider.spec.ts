@@ -22,7 +22,7 @@ test.beforeAll(async () => {
   connection = crypto.randomUUID();
   const tokens = encryptToken(JSON.stringify({ accessToken: "mock-access", refreshToken: "mock-refresh", expiresAt: Date.now() + 3_600_000 }), connection);
   await db`insert into public.scalable_connections (id, workspace_id, client_id, redirect_uri, status, tokens_encrypted)
-    values (${connection}, ${workspace}, 'mock', 'http://localhost:3000/api/scalable/callback', 'active', ${tokens})`;
+    values (${connection}, ${workspace}, 'mock', 'http://localhost:3100/api/scalable/callback', 'active', ${tokens})`;
 });
 test.afterAll(async () => {
   await db`delete from public.agent_proposals where kind in ('scalable_order','scalable_cancel') and workspace_id = (select workspace_id from public.scalable_connections where id = ${connection})`;

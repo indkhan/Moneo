@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { resolveBalances } from "./balances";
 
 it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches private SQL balance evidence to the application resolver on current, stale, tied and row-boundary fixtures", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");

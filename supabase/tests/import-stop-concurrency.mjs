@@ -4,7 +4,7 @@ import postgres from "postgres";
 
 // Stop pressed while the import worker is mid-batch: the worker already holds the import row and is about to insert rows,
 // which needs a key lock on the workspace. Stop must wait for the batch and then finish, never deadlock with it.
-process.loadEnvFile(".env");
+process.loadEnvFile(".env.qa");
 const options = { max: 1, onnotice: () => {}, connection: { application_name: "import-stop-race", lock_timeout: "20s", statement_timeout: "30s" } };
 const url = process.env.SUPABASE_DB_URL;
 const db = postgres(url, options), worker = postgres(url, options), stop = postgres(url, options);

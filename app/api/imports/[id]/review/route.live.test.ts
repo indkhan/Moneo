@@ -28,7 +28,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
 afterEach(() => { vi.unstubAllEnvs(); fixture.tampered = false; });
 
 it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("runs hash-verified legacy parsing/preparation through the authenticated RPC with ingestion parity, retry and undo", async () => {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-mocked-storage-boundary");
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
