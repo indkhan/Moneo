@@ -11,6 +11,8 @@ export default defineConfig({
   testDir: "./e2e",
   // e2e/*.test.ts are Vitest unit tests, not browser specs.
   testMatch: "**/*.spec.ts",
+  // *.provider.spec.ts call the real AI model and cost money: they run only with E2E_REAL_AI=1.
+  testIgnore: process.env.E2E_REAL_AI === "1" ? [] : ["**/*.provider.spec.ts"],
   globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: external ?? "http://localhost:3000",

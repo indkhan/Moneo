@@ -29,16 +29,6 @@ export const AUGUST_CSV = [
   "",
 ].join("\n");
 
-// Overlapping newer file: repeats one August row (dedup candidate) plus new
-// September rows. Used by the gated spec to verify re-import safety.
-export const SEPTEMBER_CSV = [
-  "date,description,amount",
-  "2026-08-02,AMZN MKTP DE,-42.99",
-  "2026-09-01,Salary Acme,2500.00",
-  "2026-09-03,Spotify,-10.99",
-  "",
-].join("\n");
-
 // Deterministic stand-in for the AI-proposed column mapping
 // (POST /api/imports/inspect without a `mapping` field calls OpenAI in
 // production; tests fulfil that request with this payload instead).

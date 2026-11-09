@@ -22,15 +22,11 @@ Use one worker: several specs change the same QA workspace and its preferences. 
 
 - `*.smoke.spec.ts` and `*.mocked.spec.ts` stub or skip the backend. Against a configured backend they still need the QA session, like every spec.
 - `*.gated.spec.ts` need the backend. Most use the QA session; others create disposable users with the service key, sign them in by session cookie, and remove them in `finally`. If interrupted, their IDs are left in ignored `.qa/` files for cleanup.
-- `core-journey.gated.spec.ts` calls the real AI provider, so it costs money: run it only when you mean to.
+- `*.provider.spec.ts` call the real AI model, so they cost money. They run only with `E2E_REAL_AI=1`; `npm run test:e2e` leaves them out.
 - `review-runtime.config.ts` and `review-investigation.config.ts` run the real Workflow engine against local synthetic database and model servers (ports 3040/3041), including a server restart mid-review: `npx playwright test --config e2e/review-runtime.config.ts`.
 
 A skipped spec is not a pass: it means a prerequisite (backend, QA session, service key) is missing.
 
-## Acceptance
-
-`npm run acceptance:fast` runs unit tests, lint and the build. `npm run acceptance:required` then runs the SQL regressions, live database checks and the browser suite on that build with one worker. Results go to an ignored `.qa/acceptance-*` folder; logs there may contain workspace data, so keep them out of the repo.
-
 ## Scalable
 
-`scalable-trading.gated.spec.ts` drives chat against a local stand-in for Scalable's MCP server (`e2e/mocks/scalable-mcp.mjs`, made-up data) with the real AI model. Start the app with `SCALABLE_MCP_ORIGIN=http://127.0.0.1:3043` and run the spec with the same variable; the spec starts the stand-in, adds a Scalable connection to the QA workspace and removes it afterwards. It checks that an order is previewed on a card and sent only when the card is tapped, once, and that read-only access is told it can't trade.
+`scalable-trading.provider.spec.ts` drives chat against a local stand-in for Scalable's MCP server (`e2e/mocks/scalable-mcp.mjs`, made-up data) with the real AI model. Start the app with `SCALABLE_MCP_ORIGIN=http://127.0.0.1:3043` and run the spec with the same variable and `E2E_REAL_AI=1`; the spec starts the stand-in, adds a Scalable connection to the QA workspace and removes it afterwards. It checks that an order is previewed on a card and sent only when the card is tapped, once, and that read-only access is told it can't trade.
