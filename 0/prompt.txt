@@ -1,0 +1,31 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #185 in the Moneo repo, together with the Home layout shift it likely shares a cause with. Your checkout is a new worktree on top of branch `t3/qa-stack` (PR #187), which adds a separate test backend. Read `AGENTS.md` fully first, especially **Safety**, **Test backend** and **Tests**, and follow them.
+
+## Safety (hard rules)
+- Never touch the owner's setup: their `.env`, Docker project `moneo`, or the app on port 3000. Never run `npm run setup` without `--qa`. Never run `docker compose down -v` on project `moneo`.
+- Only test against the QA stack: `npm ci`, then `npm run setup -- --qa` (copies the shared secrets from `~/.moneo/qa.env` and checks migrations), then `npm run qa:auth`. Playwright starts `npm run qa:server` (port 3100) on its own. If port 3100 is already in use by another checkout's QA server, stop and report it rather than killing anything you didn't start.
+- No real AI, bank or Scalable calls.
+
+## The problem
+1. `e2e/home-dashboard.gated.spec.ts`, test "Home widgets are moved, resized, hidden and added back in place, and stay that way". It fails when Home starts from the **default layout** (delete the QA workspace's `public.dashboard_layouts` row first). Sequence: hide Goals → resize Net worth → Undo → hide Goals again → add another hidden widget → Undo. Goals' heading comes back, but the next `goals.hover()` (~line 102) times out "waiting for element to be visible and stable". That suggests the masonry grid in `app/home-grid.tsx` keeps re-measuring and moving widgets. With leftover layout state it sometimes passed. A patch that adds the layout reset as a `beforeEach` (postgres delete of the QA user's `dashboard_layouts` row, using `SUPABASE_DB_URL` and `E2E_USER_EMAIL` from `.env.qa`) is a good starting point; apply the same idea.
+2. `e2e/home-performance.gated.spec.ts` fails: Home CLS is ~0.47 against a 0.1 budget on an empty QA workspace. Layout-shift sources are the widget containers `#spending`, `#overview`, `#budgets` (`div.group relative min-w-0 lg:col-span-*`), at ~4.0 s, 4.7 s and 5.0 s after load as sections stream in.
+
+## What to do
+- Reproduce both, find the root cause in the Home grid/masonry and widget loading (use the codebase-design / diagnosing-bugs skills if listed), and fix it in the app, not the specs. Keep the masonry home grid (an owner decision). Reserve space or settle the layout so streaming sections don't push widgets around, and make sure measurement stops once sizes are stable.
+- Add the layout reset to `home-dashboard.gated.spec.ts` so it always starts from the default layout. No `test.skip` inside the test; turn the existing `test.skip(at === 0, ...)` into an assertion.
+- Verify on a production build too: `E2E_PRODUCTION_BUILD=1 npx playwright test e2e/home-dashboard.gated.spec.ts e2e/home-performance.gated.spec.ts --workers=1`. Run each at least 3 times; all must pass every time. Also check Home on mobile width (390px) and in dark mode with a before/after screenshot, since this is visual.
+- Run `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`.
+- Commit in steps, in plain language, each ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Push and open a PR whose description says what caused it, what you changed, and the checks with numbers (CLS before/after). End it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)` and `Closes #185`. Base the PR on `main` if PR #187 is merged by then, otherwise on `t3/qa-stack`.
+
+Report: PR URL, root cause in two sentences, CLS before/after, and how many repeated runs passed.
+
+---
+
+<task-notification>
+<task-id>b8k1yggq1</task-id>
+<tool-use-id>toolu_01W3jWJf9kDN35a2qegZ3GBA</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\316f66f95fff1b12\c974c5ca-b84c-4eeb-8ee2-1249d19751a0\tasks\b8k1yggq1.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm ci &gt; ../npmci.log 2&gt;&amp;1; echo done $?) " completed (exit code 0)</summary>
+</task-notification>
