@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
