@@ -95,7 +95,8 @@ it("aborts an active provider request promptly and acknowledges only after it se
   const work = financialReview("job", "workspace").catch(() => {});
   await started.promise;
   state.cancel_requested = true; state.stage = "cancel_requested";
-  await new Promise(resolve => setTimeout(resolve, 1200));
+  // Wait for the abort itself rather than a fixed time.
+  if (!signal!.aborted) await new Promise(resolve => signal!.addEventListener("abort", resolve, { once: true }));
   const aborted = signal!.aborted;
   const pendingStatus = state.status;
   release(); await work;
