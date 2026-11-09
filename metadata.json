@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M711MKPVE1JDBD0V265Y7QDR",
+  "strategy": "manual-commit",
+  "branch": "t3/bundle-budget",
+  "checkpoints_count": 6,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    "AGENTS.md",
+    "package.json",
+    "scripts/bundle-budget.json",
+    "scripts/check-bundle-size.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 22,
+    "cache_creation_tokens": 14684,
+    "cache_read_tokens": 2511075,
+    "output_tokens": 8864,
+    "api_call_count": 11
+  },
+  "redaction": {
+    "replacements": 34,
+    "layers": {
+      "betterleaks": 11,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 12,
+      "key_context": 5,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
