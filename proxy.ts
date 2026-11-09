@@ -33,6 +33,9 @@ export async function proxy(request: NextRequest) {
   const { data, error } = await supabase.auth.getClaims();
   // An outage is not a signed-out owner: let the page report it.
   if (data?.claims || isAuthRetryableFetchError(error)) return response;
+  // Browser tests send this header (playwright.config.ts). Without a valid QA session they must
+  // fail, never fall back to the owner's workspace.
+  if (request.headers.has("x-moneo-test")) return new NextResponse("Browser tests need a QA session.", { status: 401 });
   const email = process.env.MONEO_OWNER_EMAIL, password = process.env.MONEO_OWNER_PASSWORD;
   // A failed sign-in leaves the request signed out; pages then show how to finish setup.
   if (email && password) await supabase.auth.signInWithPassword({ email, password });

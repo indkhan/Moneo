@@ -82,3 +82,12 @@ it("still refuses public Funnel traffic on the Workflow routes", () => {
   expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url, headers: { "tailscale-funnel-request": "?1" } })).toBe(true);
   expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url })).toBe(false);
 });
+
+it("never signs the owner in for a browser test, so a missing QA session fails instead of using the owner's data", async () => {
+  process.env.MONEO_OWNER_EMAIL = "owner@moneo.local";
+  process.env.MONEO_OWNER_PASSWORD = "secret";
+  const signIn = withClaims({ data: null, error: null });
+  const response = await proxy(new NextRequest("http://localhost:3000/plan", { headers: { "x-moneo-test": "1" } }));
+  expect(response.status).toBe(401);
+  expect(signIn).not.toHaveBeenCalled();
+});
