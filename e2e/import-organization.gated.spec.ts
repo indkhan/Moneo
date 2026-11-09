@@ -85,7 +85,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await pick('Category','QA Groceries');
   await apply(true);
   await expect(impact()).toContainText('Merchant: unassigned → Cedar Cooperative');await expect(impact()).toContainText('Category: uncategorized → QA Groceries');
-  await expect(impact()).toContainText('90071992547409.93');
+  await expect(impact()).toContainText('90,071,992,547,409.93');
   await page.screenshot({path:testInfo.outputPath('native-organization-exact-preview.png'),fullPage:true});
   await page.reload();expect(await fingerprint()).toBe(before);
   const [rule]=await db`select id,enabled,version,merchant_id,category_id from public.organization_rules where workspace_id=${workspace!}`;
