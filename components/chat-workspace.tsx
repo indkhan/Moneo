@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { VoiceKeyToast } from "@/components/voice-key-toast";
 import { useFollowOutput } from "@/lib/use-follow-output";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -268,7 +269,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
         {access?.ai === false && <p role="status" className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">No AI is set up yet. Sign in with ChatGPT or add an OpenAI or OpenRouter API key in <Link href="/settings#ai-access" className="underline">Settings → AI access</Link> to start chatting.</p>}
-        {callBlocked && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"><span>Voice calls and dictation need an OpenAI API key. <Link href="/settings#ai-access" className="underline">Add one in Settings → AI access</Link>.</span><button type="button" onClick={() => setCalling(false)} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
+        {callBlocked && <VoiceKeyToast onDismiss={() => setCalling(false)} />}
         {notice && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
         {unavailable ? <div className="py-10"><h2 className="font-semibold">Conversation unavailable</h2><p role="alert" className="mt-1 text-sm">{unavailable}</p><Link href={href("new")} onClick={event => open(event, null)} className="mt-3 inline-block text-sm underline">New conversation</Link></div>
           : selectedId && !entry ? <div className="space-y-6 py-6" role="status" aria-label="Loading conversation">{[0, 1].map(row => <div key={row} className="space-y-3"><div className="ml-auto h-9 w-1/2 animate-pulse rounded-3xl bg-muted" /><div className="h-4 w-5/6 animate-pulse rounded bg-muted" /><div className="h-4 w-2/3 animate-pulse rounded bg-muted" /></div>)}</div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { VoiceKeyToast } from "@/components/voice-key-toast";
 import { ArrowUp, Check, Mic, X } from "lucide-react";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
 import { useVoiceInput, VOICE_MAX_SECONDS } from "@/lib/ai/use-voice-input";
@@ -46,9 +46,7 @@ export function VoiceInput({ onSend, onDone, disabled = false, compact = false }
     <button ref={mic} type="button" onClick={() => { if (access?.voice === false) setNeedsKey(true); else void start(); }} onContextMenu={event => event.preventDefault()} disabled={disabled || active}
       aria-label="Talk: record a voice message" title={access?.voice === false ? VOICE_NEEDS_OPENAI_KEY : "Talk"} className={`flex shrink-0 touch-manipulation items-center justify-center rounded-lg text-muted-foreground transition-colors select-none hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ai disabled:opacity-40 ${access?.voice === false ? "opacity-60" : ""} ${icon}`}>
       <Mic className="size-4" aria-hidden="true" /></button>
-    {needsKey && <p role="alert" className="absolute bottom-full left-0 z-10 mb-2 flex max-w-full items-center gap-2 rounded-lg border border-border bg-card py-1 pr-1 pl-3 text-xs shadow-sm">
-      <span>Voice calls and dictation need an OpenAI API key. <Link href="/settings#ai-access" className="underline">Add one in Settings</Link></span>
-      <button type="button" onClick={() => setNeedsKey(false)} aria-label="Dismiss" className="grid size-7 shrink-0 place-items-center rounded-md hover:bg-muted"><X className="size-3.5" aria-hidden="true" /></button></p>}
+    {needsKey && <VoiceKeyToast onDismiss={() => setNeedsKey(false)} />}
     {voice.error && !active && <p role="alert" className="absolute bottom-full left-0 mb-2 flex max-w-full items-center gap-2 rounded-lg border border-danger/30 bg-danger-soft py-1 pr-1 pl-3 text-xs text-danger shadow-sm">
       {voice.error}<button type="button" onClick={voice.cancel} aria-label="Dismiss" className="grid size-7 place-items-center rounded-md hover:bg-danger/10"><X className="size-3.5" aria-hidden="true" /></button></p>}
     {active && <div role="group" aria-label="Voice message" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); voice.cancel(); } }}

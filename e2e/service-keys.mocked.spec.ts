@@ -56,3 +56,26 @@ test("Settings keeps every key and connection in one section", async ({ page }) 
   await expect(section.getByText("Encryption for saved keys and bank sessions")).toBeVisible();
   await expect(section.getByText("Missing: run npm run setup")).toHaveCount(0);
 });
+
+test("ChatGPT or OpenRouter chat stays available while voice shows a missing-key toast", async ({ page }) => {
+  await page.route("**/api/ai/status", route => route.fulfill({ json: { ai: true, voice: false } }));
+  let voiceRequests = 0;
+  await page.route("**/api/voice/**", route => { voiceRequests++; return route.abort(); });
+  await page.goto("/ai?conversation=new");
+  await expect(page.getByText("No AI is set up yet.")).toHaveCount(0);
+  await page.getByRole("button", { name: "Call", exact: true }).click();
+  const toast = page.getByRole("alert").filter({ hasText: "Normal chat and other AI features still work" });
+  await expect(toast).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Voice call with Moneo" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Dismiss voice notice" }).click();
+  await expect(toast).toHaveCount(0);
+  await page.getByRole("button", { name: "Talk: record a voice message" }).click();
+  await expect(toast).toBeVisible();
+  await page.goto("/settings");
+  await page.clock.install();
+  await page.getByRole("button", { name: "Play sample" }).click();
+  await expect(toast).toBeVisible();
+  await page.clock.fastForward(8000);
+  await expect(toast).toHaveCount(0);
+  expect(voiceRequests).toBe(0);
+});
