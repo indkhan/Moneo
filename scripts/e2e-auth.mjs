@@ -18,17 +18,10 @@ if (process.argv.includes("--reset")) {
   await db.begin(async tx => {
     const [user] = await tx`select id, raw_user_meta_data->>'qa_test' as qa from auth.users where email=${email}`;
     if (user?.qa !== "e2e-auth") throw new Error("Refusing to reset a user not created by this script");
-    const workspaces = (await tx`select id from public.workspaces where owner_id=${user.id}`).map(row => row.id);
-    // Audit tables reference each other, so skip FK triggers for this one owned sweep.
-    // ponytail: column-name sweep; extend the list if a new owner column appears.
-    await tx`set local session_replication_role = replica`;
-    const columns = await tx`select table_name, column_name from information_schema.columns join information_schema.tables using (table_schema, table_name)
-      where table_schema='public' and table_type='BASE TABLE' and table_name <> 'workspaces'
-      and column_name in ('workspace_id','actor_id','user_id','created_by')`;
-    for (const { table_name, column_name } of columns)
-      await tx.unsafe(`delete from public."${table_name}" where "${column_name}"::text = any($1::text[])`, [[user.id, ...workspaces]]);
-    // Same starting categories a new signup gets from seed_default_categories().
-    await tx`insert into public.categories(workspace_id,name) select w,n from unnest(${workspaces}::uuid[]) w cross join unnest(public.default_category_names()) n`;
+    // Same as Settings "Reset all data": empties every table in dependency order with constraints on,
+    // then makes a fresh workspace with the default categories.
+    await tx`select set_config('request.jwt.claim.sub', ${user.id}, true)`;
+    await tx`select public.reset_workspace()`;
   });
   await db.end();
   console.log("Emptied the QA user's workspace");
