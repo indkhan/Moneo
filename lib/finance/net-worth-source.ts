@@ -113,6 +113,13 @@ export function netWorthModel(evidence: NetWorthEvidence) {
 }
 export type NetWorthModel = ReturnType<typeof netWorthModel>;
 
+/** This month's split in words, the same on every screen. Nothing when the month hasn't changed anything. */
+export function describeMonthSplit(split: NonNullable<ReturnType<NetWorthModel["monthSplit"]>> | null, money: (minor: bigint) => string) {
+  if (!split || (split.changeMinor === 0n && split.newlyAddedMinor === 0n)) return null;
+  const signed = (minor: bigint) => `${minor > 0n ? "+" : ""}${money(minor)}`;
+  return [`${signed(split.moneyMinor)} money in and out`, `${signed(split.investmentsMinor)} investments`, ...(split.newlyAddedMinor !== 0n ? [`${signed(split.newlyAddedMinor)} newly added`] : [])].join(" · ");
+}
+
 type Rate = { from_currency: string; rate_text: string; rate_date: string; source: string };
 
 export async function loadFxRates(db: SupabaseClient, workspaceId: string, displayCurrency: string): Promise<Rate[]> {

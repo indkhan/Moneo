@@ -35,7 +35,7 @@ import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems } from "@/lib/finance/wealth";
 import { checksNotice, loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
 import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth } from "./money/wealth/net-worth";
-import { convertedNetWorth, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
+import { convertedNetWorth, describeMonthSplit, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
 import { TRANSIT_MATCH_DAYS } from "@/lib/finance/transit";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
@@ -119,6 +119,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // The change needs last month's end on record; without it there is nothing to compare with. Newly added money counts in the total, not as a gain.
   const split = worth.monthSplit(displayCurrency);
   const monthBase = split?.baseMinor ?? null, monthChange = split?.changeMinor ?? 0n;
+  const monthWords = describeMonthSplit(split, minor => money(minor, displayCurrency));
   const signedMoney = (minor: bigint) => `${minor > 0n ? "+" : ""}${money(minor, displayCurrency)}`;
   const portfolio = (portfolios.data?.portfolio ?? null) as ScalablePortfolio | null;
   const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports, repayments,
@@ -161,7 +162,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
-        {split && (split.changeMinor !== 0n || split.newlyAddedMinor !== 0n) && <p className="font-mono text-xs text-muted-foreground">{[`${signedMoney(split.moneyMinor)} money in and out`, `${signedMoney(split.investmentsMinor)} investments`, ...(split.newlyAddedMinor !== 0n ? [`${signedMoney(split.newlyAddedMinor)} newly added`] : [])].join(" · ")}</p>}
+        {monthWords && <p className="font-mono text-xs text-muted-foreground">{monthWords}</p>}
         {historyNote && <p className="text-xs text-muted-foreground">{historyNote}</p>}
         {landing.length > 0 && <p className="text-xs text-muted-foreground">{landing.length === 1 ? "A transfer has" : `${landing.length} transfers have`} one side showing so far, so the total can run off by {money(landing.reduce((sum, item) => sum + (item.amountMinor < 0n ? -item.amountMinor : item.amountMinor), 0n), displayCurrency)} until the other lands. <Link href="/money/wealth" className="underline">See Wealth</Link></p>}
         {parts.transit !== 0n && <p className="text-xs text-muted-foreground">Includes {money(parts.transit, displayCurrency)} on its way between your accounts.</p>}

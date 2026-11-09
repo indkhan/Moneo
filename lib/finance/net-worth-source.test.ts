@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { netWorth } from "@/app/money/wealth/net-worth";
 import { buildReviewEvidence } from "./review";
 import { resolveBalances } from "./balances";
-import { convertedNetWorth, loadNetWorthEvidence, netWorthModel, readNetWorth } from "./net-worth-source";
+import { convertedNetWorth, describeMonthSplit, loadNetWorthEvidence, netWorthModel, readNetWorth } from "./net-worth-source";
 
 const WS = "w", TODAY = "2026-11-08";
 const workspace = { id: WS, timezone: "UTC", display_currency: "EUR", locale: "en-GB" };
@@ -179,5 +179,18 @@ describe("this month, split", () => {
   it("has nothing to compare with before last month's end is on record", async () => {
     tables.balance_snapshots = [snapshot("bank", "100000", "2026-11-05T00:00:00Z")];
     expect((await load()).monthSplit("EUR")).toBeNull();
+  });
+});
+
+describe("describeMonthSplit", () => {
+  const split = { base: "2026-10-31", baseMinor: 0n, totalChangeMinor: 0n, changeMinor: 0n, moneyMinor: 0n, investmentsMinor: 0n, newlyAddedMinor: 0n };
+  const money = (minor: bigint) => `${minor}`;
+  it("says nothing when the month changed nothing", () => {
+    expect(describeMonthSplit(null, money)).toBeNull();
+    expect(describeMonthSplit(split, money)).toBeNull();
+  });
+  it("names money, investments and only then what's new", () => {
+    expect(describeMonthSplit({ ...split, changeMinor: -5n, moneyMinor: -10n, investmentsMinor: 5n }, money)).toBe("-10 money in and out · +5 investments");
+    expect(describeMonthSplit({ ...split, moneyMinor: 0n, newlyAddedMinor: 7n }, money)).toBe("0 money in and out · 0 investments · +7 newly added");
   });
 });

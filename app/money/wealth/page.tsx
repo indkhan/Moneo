@@ -16,7 +16,7 @@ import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
 import { NetWorthProblems } from "./net-worth-problems";
 import { loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
 import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth, netWorthSeries } from "./net-worth";
-import { loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
+import { describeMonthSplit, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
 import { transitOn } from "@/lib/finance/transit";
 
 export const metadata = { title: "Wealth" };
@@ -63,6 +63,8 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const worth = netWorthModel(netWorthEvidence);
   const { calculated, valuations: allValuations, accounts: resolved, dated: valuations, now } = worth;
   const series = worth.points(monthEnds(today, MONTHS));
+  // Past days aren't converted, so the split is only in the display currency.
+  const monthWords = describeMonthSplit(worth.monthSplit(workspace.display_currency), minor => formatMoney(minor, workspace.display_currency));
   const unbalanced = resolved.filter(account => account.balance.amount_minor === null).length;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
@@ -94,6 +96,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
       {currencies.map(currency => { const recorded = chartPoints(currency); const values = recorded.map(point => point.value); const low = values.reduce((a, b) => b < a ? b : a, values[0]), high = values.reduce((a, b) => b > a ? b : a, values[0]); return <div key={currency} className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm text-muted-foreground">Net worth ({currency})</h2>
         <p className="mt-1 break-words font-mono text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl">{formatMoney(totals.get(currency) ?? 0n, currency)}</p>
+        {currency === workspace.display_currency && monthWords && <p className="mt-1 font-mono text-xs text-muted-foreground">This month: {monthWords}</p>}
         <div className="mt-1"><CoverageNote counted={resolved.length - unbalanced} total={resolved.length} /></div>
         <dl className="mt-5 grid gap-4 sm:grid-cols-3 border-t border-border pt-4 text-sm">
           {([["Accounts", now.accounts], ["Investments & assets", now.assets], ["Debts", now.debts]] as const).map(([label, map]) => <div key={label}>
