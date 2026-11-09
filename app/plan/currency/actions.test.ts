@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { addFxRate } from "./actions";
 const insert = vi.hoisted(() => vi.fn(async () => ({ error: null })));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "workspace", timezone: "Europe/Berlin" }, supabase: { from: () => ({ insert }) } }) }));
 vi.mock("next/navigation", () => ({ redirect: () => { throw new Error("REDIRECT"); } }));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });

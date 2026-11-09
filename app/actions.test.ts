@@ -2,6 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { setManualBalance } from "./actions";
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), requireWorkspace: vi.fn(), currency: "EUR" }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: mocks.requireWorkspace }));
 vi.mock("next/navigation", () => ({ redirect: () => { throw new Error("redirect"); } }));
 

@@ -174,6 +174,7 @@ export async function createScenario(form: FormData) {
   const { data, error } = await supabase.from("scenarios").insert({ workspace_id: workspace.id, name })
     .select("id").single();
   if (error) throw error;
+  revalidatePath("/", "layout");
   redirect(`/plan?scenario=${data.id}`);
 }
 
@@ -194,6 +195,7 @@ export async function addScenarioEvent(form: FormData) {
     scenario_id: scenarioId, account_id: accountId, name, amount_delta_minor: amount.toString(),
     currency_code: account.currency_code, cadence, starts_on: start });
   if (error) throw error;
+  revalidatePath("/", "layout");
   redirect(`/plan?scenario=${scenarioId}`);
 }
 

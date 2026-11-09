@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({ rpc: vi.fn(), account: { currency_code: "EUR" } }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "workspace", timezone: "Europe/Berlin" }, supabase: {
   rpc: fixture.rpc,
   from: () => { const query = { insert: async () => ({ error: null }), select: () => query, eq: () => query, maybeSingle: async () => ({ data: fixture.account, error: null }) }; return query; },

@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
@@ -26,6 +27,7 @@ export async function setManualBalance(form: FormData) {
     p_request_id: z.uuid().parse(form.get("requestId")),
   });
   if (error) throw error;
+  revalidatePath("/", "layout");
   redirect("/");
 }
 
@@ -38,6 +40,7 @@ export async function undoManualBalance(form: FormData) {
     p_expected_latest_version: z.coerce.number().int().positive().parse(form.get("expectedLatestVersion")),
   });
   if (error) throw error;
+  revalidatePath("/", "layout");
   redirect("/");
 }
 

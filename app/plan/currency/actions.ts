@@ -1,6 +1,7 @@
 "use server";
 
 import { safely, type SafeState } from "@/lib/safe-action";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
@@ -29,6 +30,7 @@ export async function setDisplayCurrency(form: FormData) {
   // Display-only: original transactions, accounts and balances are never mutated.
   const { error } = await supabase.from("workspaces").update({ display_currency: currency }).eq("id", workspace.id);
   if (error) throw error;
+  revalidatePath("/", "layout");
   redirect("/plan/currency?saved=display");
 }
 
@@ -53,6 +55,7 @@ export async function addFxRate(form: FormData) {
   });
   if (error && error.code === "23505") throw new Error(`A ${from} to ${to} rate for ${rateDate} is already saved. Choose another date, or use the saved one.`);
   if (error) throw error;
+  revalidatePath("/", "layout");
   redirect("/plan/currency?saved=rate");
 }
 
