@@ -46,6 +46,7 @@ test("a generated page runs its scripts and charts but can't send its data anywh
   const { leaked, inner } = await serve(page, HOSTILE);
   await expect(inner.getByText("charts ready")).toBeVisible();
   // Proving that nothing was sent needs time for the delayed attempts (the 200 ms navigation, the 1 s meta refresh).
+  // eslint-disable-next-line no-restricted-syntax -- proving that nothing is sent can only be observed over time
   await page.waitForTimeout(1500);
   expect(leaked).toEqual([]);
   expect(page.frames().map(frame => frame.url()).filter(url => url.includes("receiver.test"))).toEqual([]);

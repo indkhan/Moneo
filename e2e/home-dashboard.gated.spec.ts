@@ -30,9 +30,15 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await expect(goals.getByRole("heading", { name: "Goals" })).toBeVisible({ timeout: 30_000 });
 
   // Move Goals one place back from the keyboard.
+  // If Goals is already first, step it forward so there is a place to move back to.
+  if ((await order(page)).indexOf("goals") === 0) {
+    await goals.getByRole("button", { name: "Move Goals" }).focus();
+    const forward = saved(page);
+    await page.keyboard.press("ArrowRight");
+    await forward;
+  }
   const before = await order(page);
   const at = before.indexOf("goals");
-  test.skip(at === 0, "Goals is already first");
   await goals.getByRole("button", { name: "Move Goals" }).focus();
   const moved = saved(page);
   await page.keyboard.press("ArrowLeft");
@@ -124,7 +130,7 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   // One touch point per frame, as a finger moves.
   const touch = async (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) => {
     await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
-    await page.waitForTimeout(20);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
   };
   // An empty workspace leaves some widgets without content, and so without height.
   const [first, second] = await page.locator("[data-widget]:visible").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
@@ -133,6 +139,7 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   const start = (await page.locator(`[data-widget="${first}"]`).boundingBox())!;
   const end = (await page.locator(`[data-widget="${second}"]`).boundingBox())!;
   await touch("touchStart", start.x + 40, start.y + 30);
+  // eslint-disable-next-line no-restricted-syntax -- the long-press delay is the behaviour under test
   await page.waitForTimeout(400);
   for (let step = 1; step <= 10; step++) await touch("touchMove", start.x + 40, start.y + 30 + (end.y + end.height - 20 - start.y - 30) * step / 10);
   const moved = saved(page);
