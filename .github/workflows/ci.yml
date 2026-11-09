@@ -25,6 +25,23 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest.json"
+      - name: Slowest test files
+        env:
+          REPORT: ${{ runner.temp }}/vitest.json
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from "node:fs";
+          const limit = 10;
+          const root = process.cwd().replaceAll("\\", "/") + "/";
+          const files = JSON.parse(readFileSync(process.env.REPORT, "utf8")).testResults
+            .map(f => ({ file: f.name.replace(root, ""), seconds: (f.endTime - f.startTime) / 1000 }))
+            .sort((a, b) => b.seconds - a.seconds);
+          console.log("Slowest 10 test files:");
+          for (const f of files.slice(0, 10)) console.log(`${f.seconds.toFixed(2).padStart(7)} s  ${f.file}`);
+          const slow = files.filter(f => f.seconds > limit);
+          for (const f of slow) console.log(`::error file=${f.file}::${f.file} took ${f.seconds.toFixed(1)} s; a test file may take at most ${limit} s. Split it, or mock the slow part (AGENTS.md Tests).`);
+          if (slow.length) process.exit(1);
+          EOF
       - run: npm run build
       - run: npm run check:bundle
