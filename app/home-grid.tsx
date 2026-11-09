@@ -32,8 +32,6 @@ const nearest = (options: CardSize[], columns: number) => options.reduce((best, 
 export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
   const currentLayout = useRef(layout);
-  const currentWidgets = useRef(widgets);
-  useLayoutEffect(() => { currentWidgets.current = widgets; }, [widgets]);
   useLayoutEffect(() => { currentLayout.current = layout; }, [layout]);
   // The grid owns the layout once shown: a later server render (an added widget's content arriving) can carry an older one.
   // Another tab's change surfaces as a conflict on the next save.
@@ -226,9 +224,10 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
       const current = currentLayout.current;
       const items = current.items.filter(item => item !== key);
       items.splice(Math.min(before.items.indexOf(key), items.length), 0, key);
-      const needsContent = !Object.hasOwn(currentWidgets.current, key);
-      if (needsContent) setAdding(current => [...current, key]);
-      change({ ...current, items }, needsContent);
+      // Its content may be here now, yet a refresh still on its way from an earlier save (an added widget) carries none,
+      // so the restore always brings its own; until then the widget shows its placeholder.
+      setAdding(current => current.includes(key) ? current : [...current, key]);
+      change({ ...current, items }, true);
     } } });
   }
   function add(key: string) {
