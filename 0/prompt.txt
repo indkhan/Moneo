@@ -1,0 +1,15 @@
+the api key is out but u can use the applciaiton itself it has sign in with chatgpt the only things use the gpt 6 luna
+
+---
+
+sure work on that and can you tell me what all is given to the ai before user query like accounts , lents and all can you tell me what and why
+
+---
+
+<task-notification>
+<task-id>bekkm8x1q</task-id>
+<tool-use-id>toolu_011wG8ZodgkJ7CjkAvoUWP8w</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\edca25a881f8a995\c8864d3c-1b48-4ec1-ac21-8f2c2f5a401e\tasks\bekkm8x1q.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm test &gt; "$TEMP/unit.log" 2&gt;&amp;1; echo "exit $?" &gt;&gt; "$TEMP/unit.log"; npm run lint &gt; "$TEMP/lint.log" 2&gt;&amp;1; echo "exit $?" &gt;&gt; "$TEMP/lint.log"; node supabase/tests/migrations.mjs &gt; "$TEMP/mig.log" 2&gt;&amp;1; echo "exit $?" &gt;&gt; "$TEMP/mig.log")" completed (exit code 0)</summary>
+</task-notification>
