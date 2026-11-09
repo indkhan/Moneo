@@ -19,7 +19,7 @@ These are defaults. The developer's instructions override them; if a rule confli
 1. **Think before coding.** State your assumptions. If a request has more than one reading, name them and ask instead of picking silently. If a simpler approach exists, say so.
 2. **Simplicity first.** Write the least code that solves the problem: no speculative features, options or single-use abstractions. Prefer existing utilities and dependencies, and Zod for validating user and external input. Would a senior engineer call it overcomplicated? Then simplify.
 3. **Surgical changes.** Touch only what the task needs and match the nearby style. Remove what your own change made unused; mention unrelated dead code instead of deleting it.
-4. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts with a test that fails on the current code. Purely visual changes get a before/after screenshot instead.
+4. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts by reproducing the failure; see Tests for when that becomes a kept test. Purely visual changes get a before/after screenshot instead.
 
 ## Safety
 
@@ -77,14 +77,24 @@ Each outside service sends the browser back to a different address. Keep these i
 
 Add a new ordered migration in `supabase/migrations/` and keep `lib/schema.ts` aligned. Never rewrite an applied migration. `npm run setup` applies pending ones and records them in `supabase_migrations.schema_migrations`. For other Supabase CLI commands use `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`).
 
-## Validation
+## Tests
 
-Run the smallest relevant test while iterating. Before finishing, run `npm test` and `npm run lint`; add `npm run build` for app, config or build changes, and Playwright for changed user flows. Await real events in tests; don't add sleeps or polling.
+A test earns its place by failing when real behaviour breaks. Before writing one, name the bug it would catch.
+
+- **Write tests for** money math, imports and undo, auth, RLS and AI scopes, concurrency, and bugs that actually happened (name the PR or issue).
+- **Don't write tests that** assert UI copy or labels, grep source or migration files, mirror the implementation, or need more than about three `vi.mock`s to run. Test the `lib/` function instead.
+- One test per behaviour. Don't add a test per requirement or per audit finding; if an existing test covers the failure, extend it.
+- `npm test` must pass with no `.env`, no Docker and no network. Anything that needs the database is a `*.live.test.ts`.
+- Use fake timers or controlled promises, never real waits. Mock AI, bank and Scalable; real calls are opt-in only.
+- Browser specs are for whole user journeys, not single links or labels. Add a spec only when no existing journey can take the check.
+- When you remove a feature, remove its tests. Never delete or skip a failing test just to get green: fix the cause, or ask.
+- If a pointless test lands, find out why the agent wrote it and fix the guidance here.
+
+Run the smallest relevant test while iterating. Before finishing, run `npm test`, `npm run lint` and `npm run typecheck`; add `npm run build` for app, config or build changes, and Playwright for changed user flows. CI runs the same checks on every pull request.
 
 ## Commits and pull requests
 
 - Break the work into steps and commit each one; a big task is several commits.
-- Never open a pull request unless asked.
 - Write commit messages in plain language: what changed and why.
 - Deferred work gets their issue created on github.
 - suggest edits in agents.md if there was something that is changed or needs to be there in agents.md but only suggest when it is actually needed dont suggest just for suggesting.(only for prs)
