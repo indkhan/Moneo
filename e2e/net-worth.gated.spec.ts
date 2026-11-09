@@ -208,14 +208,6 @@ test("archiving into a bank-synced account adds only the outgoing row, and the b
     await page.getByRole("button", { name: "Mark transfers between my accounts" }).click();
     await expect.poll(async () => (await db`select kind,transfer_id is not null linked from public.transactions where account_id=${old}`)[0], { timeout: 30_000 }).toEqual({ kind: "transfer", linked: true });
   } finally {
-    await db`update public.transactions set transfer_id=null where account_id in (${old},${synced})`;
-    await db`delete from public.correction_events where transaction_id in (select id from public.transactions where account_id in (${old},${synced}))`;
-    await db`delete from public.manual_transaction_entries where account_id in (${old},${synced})`.catch(() => {});
-    await db`delete from public.transaction_links where workspace_id=${workspace}`.catch(() => {});
-    await db`delete from public.transactions where account_id in (${old},${synced})`;
-    await db`delete from public.balance_snapshots where account_id in (${old},${synced})`;
-    await db`delete from public.money_metadata_events where entity_id in (${old},${synced})`;
     await db`delete from public.bank_connections where id=${connection.id}`;
-    await db`delete from public.accounts where id in (${old},${synced})`;
   }
 });

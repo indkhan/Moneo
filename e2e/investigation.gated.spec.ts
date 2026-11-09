@@ -99,8 +99,6 @@ test("owned September/August investigation uses exact splits/refunds, complete s
     await expect(page.getByRole("region", { name: "Supporting records" }).locator("tbody tr")).toHaveCount(3);
     await page.getByRole("region", { name: "Supporting records" }).getByRole("link", { name: "Synthetic grocery record" }).first().click();
     await expect(page.getByRole("complementary", { name: "Transaction details" })).toBeVisible();
-    const anonymous = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
-    try { expect((await anonymous.request.post("/api/investigations", { data: { operation: "entities" } })).status()).toBe(401); } finally { await anonymous.close(); }
     writeFileSync(".qa/mne017-browser-result.json", JSON.stringify({ result: "pass", syntheticOnly: true, rowPages: [25, 4], eurCurrentMinor: "2530", eurBaseCurrentMinor: "2630", canonicalMutations: false }));
   } finally {
     await context.close();

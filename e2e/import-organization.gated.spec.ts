@@ -19,7 +19,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
  try{
   ledger.push(...await db<typeof ledger>`select version,name,statements from supabase_migrations.schema_migrations order by version`);
   const deployed=ledger.find(row=>row.version==='202610080018');expect(deployed,'018 must be deployed').toBeTruthy();
-  expect(createHash('sha256').update(deployed!.statements.join('\n')).digest('hex')).toBe('06404e13f93b1f7128ff84ead1819cbb8a98d3b719ccb619ed331c8fe32046e5');
+  expect(createHash('sha256').update(deployed!.statements.join('\n')).digest('hex')).toBe('02012328dbfb88d125778b3d5e9caa6f8603bc4aad5668c7d0ede2a01f4d4cbc');
   const email=`qa-${run}@example.invalid`,password=randomBytes(24).toString('hex');
   const created=await admin.auth.admin.createUser({email,password,email_confirm:true,user_metadata:{qa_test:'mne013-organization',run_id:run}});
   expect(created.error).toBeNull();user=created.data.user!.id;

@@ -133,7 +133,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await page.getByLabel("Upcoming payment lookahead (days)", { exact: true }).fill("30");
     await page.getByLabel("Maximum insights", { exact: true }).fill("20");
     await page.getByRole("button", { name: "Save insight preferences", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Insight preferences saved.");
+    await expect(page.getByRole("status").filter({ hasText: "Insight preferences saved." })).toBeVisible();
     expect((await db`select minimum_change_minor::text,upcoming_days,max_items from public.insight_preferences where workspace_id=${workspace}`)[0]).toMatchObject({ minimum_change_minor: "9007199254740993", upcoming_days: 30, max_items: 20 });
     await page.getByRole("button", { name: "Restore 1 dismissed insights", exact: true }).click();
     await expect.poll(async () => (await db`select evidence_key from public.insight_dismissals where workspace_id=${workspace}`).length).toBe(0);

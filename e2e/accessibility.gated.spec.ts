@@ -25,7 +25,7 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   const originalTheme = await appearance.inputValue();
   await appearance.selectOption("dark");
   await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Preferences saved");
+  await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
   try {
   expect((await db.from("accounts").insert({ id: accountId, workspace_id: workspace!.id, name: accountName, currency_code: "EUR", type: "checking" })).error).toBeNull();
   for (const route of ["/", "/money/transactions", "/money/accounts", "/money/wealth", "/import", "/settings", "/ai"]) {
@@ -60,7 +60,7 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
     await page.goto("/settings");
     await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption(originalTheme);
     await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Preferences saved");
+    await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
     } finally {
       expect((await cleanup.from("accounts").delete().eq("id", accountId).eq("workspace_id", workspace!.id)).error).toBeNull();
     }
