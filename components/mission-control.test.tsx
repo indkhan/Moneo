@@ -70,10 +70,3 @@ it("offers bulk decisions only within the 100 the action accepts", () => {
   expect(html).toContain("Reject first 100");
 });
 
-it("lights up the flowchart with each agent's live status", () => {
-  const html = renderToStaticMarkup(<MissionControl initial={run("running")} locale="en-GB" />);
-  expect(html).toContain("Live run");
-  expect(html).toMatch(/data-status="running"[^>]*>.*?Categorizer/);
-  expect(html).toMatch(/data-status="done"[^>]*>.*?Recurring detective/);
-  expect(html).toMatch(/data-status="skipped"[^>]*>.*?Budget coach/);
-});

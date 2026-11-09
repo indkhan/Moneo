@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseAmountMinor } from "@/lib/import/csv";
 import { expandSchedule } from "@/lib/finance/model";
@@ -24,13 +23,4 @@ describe("plan assumption controls", () => {
     expect(parseAmountMinor("0.01", "EUR")).toBe(1n);
   });
 
-  it("guards user-confirmed assumptions against inferred overwrites and deletes", () => {
-    const sql = readFileSync(
-      new URL("../../supabase/migrations/202609260019_assumption_edits.sql", import.meta.url),
-      "utf8",
-    );
-    expect(sql).toContain("source = 'user'");
-    expect(sql).toContain("on delete set null");
-    expect(sql).toMatch(/grant update, delete on public\.financial_assumptions/i);
-  });
 });

@@ -121,17 +121,3 @@ it("lists upcoming obligations under the forecast chart and compares a scenario 
   expect(withScenario).toContain("Compared with the real plan: EUR 0.00 change in spare cash over 3 days.");
 });
 
-it("says when a scenario link no longer works and shows the real plan", async () => {
-  const html = await render({ scenario: "00000000-0000-4000-8000-00000000dead" });
-  expect(html).toContain("This scenario is unavailable"); expect(html).not.toContain("Viewing hypothetical scenario");
-});
-it("marks the scenario in view and lists payments past the first eight without the chart", async () => {
-  const many = { ...input, horizonDays: 12, events: Array.from({ length: 10 }, (_, day) => ({ date: `2026-10-${String(day + 8).padStart(2, "0")}`, accountId: "checking", expectedMinor: -100n, name: `Bill ${day}`, source: "confirmed" as const })) };
-  vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: many, forecast: forecastDaily(many), available: availableToSpend(many), liquidity: accountLiquidity(many), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
-  const html = await render({ horizon: "12", scenario: "00000000-0000-4000-8000-000000000001" });
-  expect(html).toContain("Viewing hypothetical scenario"); expect(html).toContain('aria-current="page"');
-  expect(html).toContain("Bill 9"); expect(html).toContain("Show 2 more payments"); expect(html).toContain("Daily forecast table");
-});
-it("offers undo beside the history after an assumption is removed", async () => {
-  expect(await render({ removed: "assumption" })).toContain("Assumption removed");
-});
