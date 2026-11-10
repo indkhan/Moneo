@@ -6,6 +6,10 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 
 ## Install
 
+### Desktop preview
+
+Desktop installers are being validated for Windows, macOS and Linux; no desktop release has been published yet. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
+
 ### Easiest: let an AI agent install it
 
 If you use an AI coding agent such as Claude Code or Codex, it can do the install for you with the `moneo-setup` skill that comes with Moneo. Open the agent in an empty folder and paste:
