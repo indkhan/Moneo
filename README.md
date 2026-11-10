@@ -6,6 +6,8 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 
 ## Install
 
+Scalable questions in chat and voice can combine live holdings, paginated transaction history and transaction details with local JavaScript calculations. The calculation sandbox has no network, filesystem or credentials. Read results remain subject to your AI data scopes and are sent to your configured AI provider as needed to answer. Trades still require accepting an approval card. No additional setup is needed.
+
 ### Easiest: let an AI agent install it
 
 If you use an AI coding agent such as Claude Code or Codex, it can do the install for you with the `moneo-setup` skill that comes with Moneo. Open the agent in an empty folder and paste:

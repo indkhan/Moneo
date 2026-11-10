@@ -93,6 +93,8 @@ export const transactionsInput = z.object({
   types: z.array(z.string().max(40)).max(5).optional().describe("e.g. buy, sell, deposit, withdrawal, dividend"),
   statuses: z.array(z.string().max(40)).max(5).optional().describe("e.g. pending for open orders, settled, cancelled"),
   limit: z.number().int().min(1).max(50).optional(),
+  cursor: z.string().min(1).max(4000).optional().describe("nextCursor from the previous page, with the same filters"),
+  allPages: z.boolean().optional().describe("Fetch the complete matching security transaction stream, deduplicated by id; fails if pagination cannot finish"),
 }).strict();
 
 export type InvestmentTransaction = ReturnType<typeof readTransactions>[number];
@@ -108,13 +110,28 @@ export function readTransactions(value: unknown) {
 }
 
 /** Buys, sells, deposits, withdrawals and dividends, newest first; `id` is what an order cancellation needs. */
-export async function investmentsTransactions(mcp: ScalableMcp, input: z.infer<typeof transactionsInput>) {
+export async function investmentsTransactions(mcp: ScalableMcp, input: z.infer<typeof transactionsInput>): Promise<{ transactions: InvestmentTransaction[]; more: boolean; nextCursor: string | null; totalCount: number | null }> {
+  if (input.allPages) {
+    if (input.cursor) throw new Error("Complete history must start without a cursor");
+    const rows = new Map<string, InvestmentTransaction>(), seen = new Set<string>();
+    let cursor: string | undefined;
+    for (let count = 0; count < 200; count++) {
+      const page = await investmentsTransactions(mcp, { ...input, allPages: false, cursor, limit: 50 });
+      for (const row of page.transactions) rows.set(row.id, row);
+      if (!page.nextCursor) return { transactions: [...rows.values()], more: false, nextCursor: null, totalCount: page.totalCount };
+      if (seen.has(page.nextCursor)) throw new Error("Scalable repeated its transaction cursor; history is incomplete");
+      seen.add(page.nextCursor); cursor = page.nextCursor;
+    }
+    throw new Error("Scalable history exceeded 200 pages; narrow the filters");
+  }
   const raw = await mcp.callTool("list_portfolio_transactions", { pageSize: input.limit ?? 20,
+    ...(input.cursor ? { cursor: input.cursor } : {}),
     ...(input.from ? { fromTime: `${input.from}T00:00:00.000Z` } : {}), ...(input.to ? { toTime: `${input.to}T23:59:59.999Z` } : {}),
     ...(input.isin ? { isin: input.isin } : {}), ...(input.search ? { searchTerm: input.search } : {}),
     ...(input.types ? { transactionTypes: input.types } : {}), ...(input.statuses ? { statuses: input.statuses } : {}) });
   const page = transactionsSchema.parse(raw).page;
-  return { transactions: readTransactions(raw), more: Boolean(page?.nextCursor) };
+  if (page?.nextCursor && page.nextCursor === input.cursor) throw new Error("Scalable repeated its transaction cursor; history is incomplete");
+  return { transactions: readTransactions(raw), more: Boolean(page?.nextCursor), nextCursor: page?.nextCursor ?? null, totalCount: page?.totalCount ?? null };
 }
 
 export const securityInput = z.object({
