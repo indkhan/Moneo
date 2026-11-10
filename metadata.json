@@ -3,9 +3,10 @@
   "checkpoint_id": "01M73KFZY8X1JK5P1G5KW1FJ2Q",
   "strategy": "manual-commit",
   "branch": "t3/desktop-app-pwa",
-  "checkpoints_count": 4,
+  "checkpoints_count": 7,
   "files_touched": [
     "app/setup/page.tsx",
+    "desktop/README.md",
     "desktop/electron-builder.config.cjs",
     "desktop/electron-builder.entitlements.mac.plist",
     "desktop/icons/icon.png",
@@ -13,7 +14,9 @@
     "desktop/setup/index.html",
     "desktop/setup/setup.css",
     "desktop/setup/setup.js",
+    "desktop/src/app-window.ts",
     "desktop/src/certificate.ts",
+    "desktop/src/main.ts",
     "desktop/src/navigation.test.ts",
     "desktop/src/navigation.ts",
     "desktop/src/next-server.ts",
@@ -21,6 +24,7 @@
     "desktop/src/port.ts",
     "desktop/src/preload.ts",
     "desktop/src/setup-window.ts",
+    "desktop/src/tray.ts",
     "desktop/tsconfig.json",
     "eslint.config.mjs",
     "lib/bank/return-listener.ts",
@@ -28,7 +32,9 @@
     "package-lock.json",
     "package.json",
     "scripts/desktop/build.mjs",
-    "tsconfig.json"
+    "scripts/desktop/package-smoke.mjs",
+    "tsconfig.json",
+    "vitest.config.mts"
   ],
   "sessions": [
     {
@@ -51,6 +57,13 @@
       "compact_transcript": "/2/transcript.jsonl",
       "content_hash": "/2/content_hash.txt",
       "prompt": "/2/prompt.txt"
+    },
+    {
+      "metadata": "/3/metadata.json",
+      "transcript": "/3/full.jsonl",
+      "compact_transcript": "/3/transcript.jsonl",
+      "content_hash": "/3/content_hash.txt",
+      "prompt": "/3/prompt.txt"
     }
   ],
   "token_usage": {
@@ -61,7 +74,7 @@
     "api_call_count": 0
   },
   "redaction": {
-    "replacements": 59,
+    "replacements": 60,
     "layers": {
       "betterleaks": 54,
       "connection_string": 0,
@@ -69,7 +82,7 @@
       "credential_value": 11,
       "credentialed_uri": 8,
       "entropy": 12,
-      "key_context": 6,
+      "key_context": 7,
       "provider_token": 0,
       "shell_stdin": 0
     }
