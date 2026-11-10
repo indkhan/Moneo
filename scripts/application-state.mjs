@@ -44,7 +44,8 @@ export function startupEntry(root, platform = process.platform, home = homedir()
   };
   throw new Error("Automatic startup supports Windows, macOS and Linux desktop sessions.");
 }
-export const startupEnabled = root => existsSync(startupEntry(root).path);
+// This is the owner's OS startup directory, not a file to include in the Next.js bundle.
+export const startupEnabled = root => existsSync(/* turbopackIgnore: true */ startupEntry(root).path);
 export function setStartup(root, enabled) {
   const entry = startupEntry(root);
   if (enabled) {
