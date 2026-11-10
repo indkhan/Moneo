@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M73KFQKP7M52G79AY39R89H0",
+  "session_id": "f2bc50f8-0d5a-4dfe-ae34-5346d13218ed",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-10T20:48:17.1977294Z",
+  "branch": "t3/desktop-app-pwa",
+  "checkpoints_count": 3,
+  "save_step_count": 4,
+  "files_touched": [
+    ".gitignore"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "be71e2798210",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 170,
+    "cache_creation_tokens": 106556,
+    "cache_read_tokens": 16772991,
+    "output_tokens": 50248,
+    "api_call_count": 85
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 3
+  }
+}
