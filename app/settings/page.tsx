@@ -12,12 +12,14 @@ import { AiAccess } from "./ai-access";
 import { SetupSecrets } from "./setup-secrets";
 import { PhoneAccessSection } from "./phone-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
+import { ApplicationSection } from "./application";
 
 export const metadata = { title: "Settings" };
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
+  ["application", "Application"],
   ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
   ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
 ] as const;
@@ -48,6 +50,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
+        <Suspense fallback={<SkeletonCard lines={3} />}><ApplicationSection /></Suspense>
         <section id="connections" aria-labelledby="connections-title" className="scroll-mt-20 space-y-4">
           <div><h2 id="connections-title" className="text-base font-semibold">Keys and connections</h2>
             <p className="mt-1 text-sm text-muted-foreground">Every key and outside service Moneo uses is set up here. Keys are checked before they are saved and stored encrypted in your database; there is no file to edit.</p></div>

@@ -70,6 +70,9 @@ That's it. Want it on your phone or tablet too? See [Use it from your phone or t
 ## Everyday use
 
 - **Start Moneo:** `npm start` in the Moneo folder (Docker Desktop must be running).
+- **Start automatically:** in **Settings → Application**, turn on **Start Moneo when I sign in**. Windows uses your Startup folder, macOS a user LaunchAgent, and Linux a desktop autostart entry. No administrator access is needed. You can also choose whether to open the browser. Turning startup off leaves the current session running. Keep the installation folder and Node executable in place; if you move either, turn startup off before moving and on again afterwards.
+
+`npm start` runs a local launcher that starts the Docker backend and the website, without rebuilding it. It can open Docker Desktop on Windows/macOS; Linux needs a running Docker Engine service or Docker Desktop's user service. Logs are in `.data/application/launcher.log` and `.data/application/website.log`. Closing a manually opened terminal stops its launcher; automatic startup runs in the background. Run `npm start` again to open an already running installation without starting a duplicate.
 - **Stop Moneo:** press `Ctrl+C`. The database keeps running in Docker; `docker compose stop` stops it.
 - **Update Moneo:**
   ```sh

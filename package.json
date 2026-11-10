@@ -7,7 +7,7 @@
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
     "check:bundle": "node scripts/check-bundle-size.mjs",
-    "start": "next start -H 127.0.0.1",
+    "start": "node scripts/application-launcher.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
