@@ -35,11 +35,14 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     ".next-qa/types/**/*.ts",
-    ".next-qa/dev/types/**/*.ts"
+    ".next-qa/dev/types/**/*.ts",
+    ".next-desktop/types/**/*.ts",
+    ".next-desktop/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     ".qa",
-    "promo"
+    "promo",
+    "desktop"
   ]
 }

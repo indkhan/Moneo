@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moneo</title>
+  <link rel="stylesheet" href="setup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <img src="../icons/icon.png" alt="" width="40" height="40">
+      <h1 id="title">Starting Moneo</h1>
+    </header>
+    <p id="intro">Moneo is getting ready.</p>
+    <ol id="steps" aria-live="polite"></ol>
+    <section id="failure" hidden>
+      <p id="error-summary"></p>
+      <pre id="error-detail"></pre>
+      <div class="actions">
+        <button id="retry" type="button" class="primary">Try again</button>
+        <button id="logs" type="button">Open logs folder</button>
+        <button id="restore" type="button">Restore from backup…</button>
+        <button id="quit" type="button">Quit</button>
+      </div>
+    </section>
+  </main>
+  <script src="setup.js"></script>
+</body>
+</html>

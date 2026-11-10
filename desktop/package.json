@@ -1,0 +1,10 @@
+{
+  "name": "moneo-desktop",
+  "productName": "Moneo",
+  "version": "0.1.0",
+  "description": "Moneo personal finance, running privately on this computer.",
+  "author": "Moneo contributors",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/main.js"
+}

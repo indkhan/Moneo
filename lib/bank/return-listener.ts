@@ -10,7 +10,8 @@ export const BANK_RETURN_PORT = 3443;
 export const BANK_REDIRECT_URL = `https://localhost:${BANK_RETURN_PORT}/api/bank/callback`;
 const CALLBACK = "/api/bank/callback";
 
-export function certificatePaths(dir = path.join(process.cwd(), ".data")) {
+// The desktop app keeps its data outside the app folder (MONEO_DATA_DIR), like the ChatGPT sign-in.
+export function certificatePaths(dir = process.env.MONEO_DATA_DIR ?? path.join(process.cwd(), ".data")) {
   return { key: path.join(dir, "localhost-key.pem"), cert: path.join(dir, "localhost.pem") };
 }
 
@@ -22,8 +23,10 @@ export function forwardTarget(requestUrl: string, appUrl: string) {
 
 export function startBankReturnListener(appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000") {
   const files = certificatePaths();
-  if (!existsSync(files.key) || !existsSync(files.cert)) return null;
-  const server = createServer({ key: readFileSync(files.key), cert: readFileSync(files.cert) }, (request, response) => {
+  // Runtime paths (MONEO_DATA_DIR) that the build's file tracing must not follow.
+  if (!existsSync(/*turbopackIgnore: true*/ files.key) || !existsSync(/*turbopackIgnore: true*/ files.cert)) return null;
+  const tls = { key: readFileSync(/*turbopackIgnore: true*/ files.key), cert: readFileSync(/*turbopackIgnore: true*/ files.cert) };
+  const server = createServer(tls, (request, response) => {
     const target = forwardTarget(request.url ?? "/", appUrl);
     response.writeHead(target ? 303 : 404, target ? { location: target, "cache-control": "no-store" } : {}).end();
   });
