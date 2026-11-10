@@ -3,7 +3,7 @@
   "checkpoint_id": "01M73DC61YRZPYB9J0FHM2EJ97",
   "strategy": "manual-commit",
   "branch": "t3/desktop-app-pwa",
-  "checkpoints_count": 2,
+  "checkpoints_count": 4,
   "files_touched": [
     "README.md",
     "app/globals.css",
@@ -30,25 +30,32 @@
       "compact_transcript": "/1/transcript.jsonl",
       "content_hash": "/1/content_hash.txt",
       "prompt": "/1/prompt.txt"
+    },
+    {
+      "metadata": "/2/metadata.json",
+      "transcript": "/2/full.jsonl",
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "prompt": "/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 144,
-    "cache_creation_tokens": 260243,
-    "cache_read_tokens": 7492599,
-    "output_tokens": 73164,
-    "api_call_count": 72
+    "input_tokens": 194,
+    "cache_creation_tokens": 351439,
+    "cache_read_tokens": 9679127,
+    "output_tokens": 105466,
+    "api_call_count": 97
   },
   "redaction": {
-    "replacements": 36,
+    "replacements": 48,
     "layers": {
-      "betterleaks": 44,
+      "betterleaks": 54,
       "connection_string": 0,
       "credential_key": 0,
       "credential_value": 8,
       "credentialed_uri": 8,
       "entropy": 6,
-      "key_context": 2,
+      "key_context": 4,
       "provider_token": 0,
       "shell_stdin": 0
     }

@@ -1,0 +1,79 @@
+Make Moneo an installable desktop app for Windows, macOS, and Linux, with an installable PWA for phones and tablets. Implement the work autonomously on a dedicated branch and isolated worktree. Follow AGENTS.md; never modify main or touch the owner’s backend, secrets, or financial data.
+
+The user experience must be simple: download from GitHub Releases, install, open, and complete setup inside the app. No repository, terminal, Node installation, Docker requirement, or environment-file editing.
+
+Architecture:
+- Electron around the existing Next.js app.
+- Bundle and manage native PostgreSQL and the required Supabase services locally. Preserve existing financial SQL, history, undo, permissions, and storage behavior.
+- Keep private phone/tablet access through Tailscale.
+- Preserve ChatGPT sign-in, open router and OpenAI API key ,call ,artifact Enable Banking, and Scalable, including their callback requirements and system-browser authentication.
+- Do not replace the database or move data to the cloud.
+
+First prove that the production app and minimum native backend can be packaged and launched on all three platforms, including required PostgreSQL extensions and file storage. If a service cannot be distributed reliably, report the concrete blocker and ask before changing architecture. Do not silently fall back to requiring Docker.
+
+Then complete secure Electron boundaries, first-run setup, startup/recovery, tray/background operation, explicit quit, persistent per-user data, backups, safe upgrades, PWA support, installers, and GitHub release automation. Preserve existing source-based development. Do not publish a release or merge.
+
+Orchestrate focused subagents with specific tasks and clear ownership. Discover available models and choose according to difficulty: stronger reasoning for architecture/security and independent review, capable coding models for implementation, faster models for bounded routine work. Follow orchestration tool rules. Review and test every agent’s work before integrating it.
+
+Run repository-required checks and meaningful QA journeys using disposable test data and mocked external providers. Launch and exercise packaged applications, not only development builds. Verify installation, setup, authentication callbacks, background operation, upgrades, and data retention. Fix failures and obtain an independent final review.
+
+Commit coherent milestones, update user documentation, and open a draft PR. Keep progress updates concise. Continue until acceptance criteria pass or a concrete external blocker remains; never claim unperformed verification passed.
+
+Final handoff:
+- Branch and draft PR link.
+- Installers and test results, distinguishing platforms actually launched from those only built.
+- A video of the packaged application running and demonstrating its main flows, using QA data without secrets.
+- Remaining limitations, external setup, signing requirements, or verification gaps.
+
+---
+
+<task-notification>
+<task-id>bwuwpdmgj</task-id>
+<tool-use-id>toolu_014gbsjPYYc5B2dNkbaAYgbR</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\c8cff258-d219-492d-b62f-e613ed42492f\tasks\bwuwpdmgj.output</output-file>
+<status>completed</status>
+<summary>Background command "Install dependencies with npm ci" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ac1800585-d937-49e3-a463-1bf565e98c96%3Adelegate-task%3Aab986a91-2d5e-40fc-a2e0-a9a8c5d925f2 (PWA installability) [completed]:
+Moneo is now an installable PWA with a network-only service worker. Nothing is committed. Typecheck, lint (including `check:privacy`) and `npm test` pass (1543 passed, 10 skipped). I did not re-run the e2e spec after the last edit, which was only a README line.
+
+## Files changed
+- **New:** `public/sw.js`, `public/offline.html`, `components/service-worker.tsx`.
+- **Edited:** `app/layout.tsx`, `app/manifest.ts`, `proxy.ts`, `app/globals.css`, `components/app-shell.tsx`, `e2e/core-journey.smoke.spec.ts`, `README.md`.
+
+## What changed
+- **Service worker (`/sw.js`, scope `/`):** it only handles GET navigations. If one fails, or the server answers 502/503/504 (what Tailscale returns when Moneo isn't running), it shows the offline page. It never touches `/api/`, `/.well-known/`, `/artifact-lib/`, non-GET requests or non-navigation requests. The only thing it caches is `offline.html`.
+- **Offline page:** plain-words message with a "Try again" button, light and dark, with safe-area padding.
+- **Registration:** `ServiceWorker` registers it only in production on secure contexts.
+- **Cache headers:** Next already serves `public/` files with `Cache-Control: public, max-age=0`, so I added no header config. I left `next.config.ts` alone as asked.
+- **Manifest:** added `id: "/"` and `categories: ["finance"]`. It already had the name, `start_url`, `scope`, `display: standalone`, and 192, 512 and maskable icons.
+- **Theme colour:** now follows light and dark (`#f4f3ee` and `#0f1011`). The manifest's own `theme_color` and `background_color` stay `#0f1011`, since it can't do both.
+- **Safe-area insets:** the header gets top padding, and the body and mobile bottom nav get left and right padding for landscape notches. The bottom inset was already handled.
+- **`proxy.ts`:** the matcher now skips `sw.js` and `offline.html`, like the existing image exclusions. The Funnel refusal still applies to everything else. Those two static files are now served without the Funnel check.
+- **README:** one sentence in the phone access section saying the phone never keeps your numbers.
+
+## What I verified
+- **E2E spec:** I extended `e2e/core-journey.smoke.spec.ts` with one test that checks the manifest, registers the worker, goes offline, and confirms the offline page and a failed `/api/health`. It passed on the dev server. I made the worker cache pages on purpose and the test failed, then restored the file.
+- **Production build on the QA server (port 3100), iPhone 14 and Pixel 7, light and dark:**
+  - The worker registers from the app and activates with scope `/`.
+  - Cache Storage held only `/offline.html`.
+  - Offline, `/money/accounts` showed the offline page and `/api/health` failed.
+  - The head has theme-color for light and dark, the manifest link, `apple-touch-icon`, and the apple web-app tags (capable, title, status bar `default`).
+- **Cleanup:** I stopped my own QA server and port 3100 is free. I did not reconfirm every PID: the process on the port didn't show the worktree path in its command line, so I stopped the `qa-server.mjs` wrapper I had started, and the port then showed free.
+
+## Screenshots
+Files are in `C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\c8cff258-d219-492d-b62f-e613ed42492f\scratchpad\pwa\`:
+- `before-{iphone,pixel}-{light,dark}.png`
+- `after-{iphone,pixel}-{light,dark}.png`
+- `offline-{iphone,pixel}-{light,dark}.png`
+
+I looked at `offline-iphone-dark.png` and `after-iphone-light.png`, and the layout looks unchanged. I did not open the other ten.
+
+## Gaps
+- **iOS and iPadOS Safari weren't tested.** Chromium can't emulate the notch or home indicator, so the safe-area changes are untested. The insets are 0 in emulation, so the before and after screenshots match.
+- **Status bar and theme-color follow the OS, not Moneo's own theme setting.** A user who picks dark in Moneo on a light phone gets a light bar.
+- **Splash background is always dark.** The manifest only allows one colour.
+- **In dev, the worker only registers if you register it by hand.** The spec does this itself.
