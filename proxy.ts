@@ -43,9 +43,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Artifact libraries are public files loaded by sandboxed pages, which send no session.
+  // Artifact libraries are public files loaded by sandboxed pages, which send no session. The service worker
+  // and its offline page are static and must load when Moneo cannot sign in.
   matcher: [
-    "/((?!\\.well-known/workflow/|artifact-lib/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!\\.well-known/workflow/|artifact-lib/|_next/static|_next/image|favicon.ico|sw.js|offline.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     // Workflow skips the session step, but public Funnel traffic must still be refused.
     { source: "/.well-known/workflow/:path*", has: [{ type: "header", key: "tailscale-funnel-request" }] },
   ],

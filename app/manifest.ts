@@ -3,12 +3,14 @@ import type { MetadataRoute } from "next";
 // Lets Android and iOS (Add to Home Screen) install Moneo as a standalone app.
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "Moneo — Personal Finance Workspace",
     short_name: "Moneo",
     description: "Understand your money, plan decisions, and build reusable financial tools with AI.",
     start_url: "/",
     scope: "/",
     display: "standalone",
+    categories: ["finance"],
     background_color: "#0f1011",
     theme_color: "#0f1011",
     icons: [

@@ -126,6 +126,8 @@ Your phone becomes another screen on the Moneo running on this computer: same da
 
 The address and code are your own, from your own Tailscale account. Only devices on your Tailscale network can reach Moneo, and they get in without a password, so don't use a network you share with other people. Leave Tailscale Funnel off: Moneo refuses traffic from the public internet.
 
+Moneo then opens like an app. It never keeps your numbers on the phone: when the computer is off, it says so and shows nothing until the computer is back.
+
 Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, start Docker and run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address. On Linux, first run `sudo tailscale set --operator=$USER`.
 
 How it works, step by step: [docs/phone-access-deep-dive.html](docs/phone-access-deep-dive.html).

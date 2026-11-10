@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Moneo can't connect</title>
+<style>
+  :root { --bg: #f4f3ee; --fg: #141413; --muted: #5c5d58; --btn-bg: #141413; --btn-fg: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1011; --fg: #eeece6; --muted: #a3a39e; --btn-bg: #cbf26b; --btn-fg: #0f1011; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left)); background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 26rem; text-align: center; }
+  h1 { margin: 0 0 .75rem; font-size: 1.5rem; line-height: 1.2; }
+  p { margin: 0 0 1.5rem; color: var(--muted); }
+  button { min-height: 44px; padding: 0 1.5rem; border: 0; border-radius: 12px; background: var(--btn-bg); color: var(--btn-fg); font: inherit; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Moneo can't reach your computer</h1>
+  <p>Make sure your computer is on and Moneo is running, then try again. Your numbers are kept on your computer, so nothing is shown here until it's back.</p>
+  <button type="button" onclick="location.reload()">Try again</button>
+</main>
+</body>
+</html>
