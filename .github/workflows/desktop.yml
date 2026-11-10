@@ -1,0 +1,167 @@
+name: Desktop
+
+# Builds Moneo Desktop on Windows, macOS and Linux, smoke-tests the packaged app, and on a `v*` tag
+# drafts a GitHub release with the installers. Packages are unsigned unless the signing secrets exist.
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "scripts/desktop/**"
+      - "next.config.ts"
+      - "package*.json"
+      - "supabase/migrations/**"
+      - ".github/workflows/desktop.yml"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: win-x64, runner: windows-latest, builder: "--win --x64" }
+          - { id: mac-arm64, runner: macos-14, builder: "--mac --arm64" }
+          # macos-13 was retired; macos-15-intel is the remaining Intel runner, so mac-x64 builds
+          # and is smoke-tested natively.
+          - { id: mac-x64, runner: macos-15-intel, builder: "--mac --x64" }
+          - { id: linux-x64, runner: ubuntu-24.04, builder: "--linux --x64" }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # No setup-go: fetch-backend.mjs downloads its own pinned Go toolchain into desktop/.cache.
+      - run: npm ci
+
+      - uses: actions/cache@v4
+        with:
+          path: desktop/.cache
+          key: desktop-cache-${{ matrix.id }}-${{ hashFiles('scripts/desktop/fetch-backend.mjs') }}
+
+      - name: Fetch the native backend
+        run: node scripts/desktop/fetch-backend.mjs --platform ${{ matrix.id }}
+
+      - run: npm run desktop:build
+
+      - name: Package
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          # Secrets that do not exist arrive as empty strings; unset them so electron-builder
+          # treats the build as unsigned.
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then unset "$name"; fi
+          done
+          if [ -z "${CSC_LINK:-}" ] && [ -z "${WIN_CSC_LINK:-}" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "No signing certificate: building unsigned packages."
+          fi
+          npm run desktop:dist -- ${{ matrix.builder }} --publish never
+
+      - name: List packages
+        run: ls -la desktop/release
+
+      # The smoke test starts the unpacked app (own temporary home, no cloud calls).
+      - name: Linux dependencies for the smoke test
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3-tools
+          # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Smoke test
+        run: |
+          mkdir -p smoke
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a --server-args="-screen 0 1280x1024x24" npm run desktop:smoke 2>&1 | tee "smoke/smoke-${{ matrix.id }}.log"
+          else
+            npm run desktop:smoke 2>&1 | tee "smoke/smoke-${{ matrix.id }}.log"
+          fi
+
+      - name: Upload installers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moneo-desktop-${{ matrix.id }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.id }}
+          path: smoke/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: moneo-desktop-*
+          path: installers
+          merge-multiple: true
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./desktop/package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::warning::Tag $TAG does not match desktop/package.json version $version; installer file names carry $version."
+          fi
+          cd installers
+          ls -la
+          files=$(find . -maxdepth 1 -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.deb' \) -printf '%f\n' | sort)
+          if [ -z "$files" ]; then echo "::error::No installers were downloaded."; exit 1; fi
+          # shellcheck disable=SC2086
+          sha256sum $files > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          # shellcheck disable=SC2086
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "Moneo Desktop $TAG" \
+            --notes "Moneo Desktop $TAG. Packages are unsigned unless noted; check SHA256SUMS.txt." \
+            $files SHA256SUMS.txt
