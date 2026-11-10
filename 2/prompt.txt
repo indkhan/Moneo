@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>b2ccvuyyz</task-id>
+<tool-use-id>toolu_01Xu7LTnDh3vsKbjhwiVJyqa</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\f2bc50f8-0d5a-4dfe-ae34-5346d13218ed\tasks\b2ccvuyyz.output</output-file>
+<status>completed</status>
+<summary>Background command "cat C:/Users/mgsuk/AppData/Local/Temp/claude/cc74f73eb1c8553d/f2bc50f8-0d5a-4dfe-ae34-5346d13218ed/tasks/bkdugrk44.output; cd C:/Users/mgsuk/.t3/worktrees/Moneo/t3-bb40520b-1bab67392cb16a35/desktop; ls -la release | grep -v "^d"; du -sh release/win-unpacked release/win-unpacked/resources/* .build/app .build/backend/win-x64 .build/storage-api dist; npx --prefix .. asar list release/win-unpacked/resources/app.asar | wc -l; ls -la release/win-unpacked/resources/app.asar" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Thanks — reviewed and committed (9f92c952 on branch t3/desktop-app-pwa, draft PR #194). Typecheck/lint/tests pass. Follow-ups, same ownership plus `lib/phone-access.ts` (only the turbopackIgnore tracing fix) and `e2e/` for a new desktop spec if needed. The backend agent is concurrently making backend changes (orphan recovery, MSVC DLLs, slimmer storage-api) — don't edit desktop/src/backend/** or scripts/desktop/fetch-backend.mjs/backend-*; rebuild with whatever is current when you test. Do not commit; I integrate.
+1. Security: in packaged builds refuse `--remote-debugging-port`/`--remote-debugging-pipe`/`--inspect*` switches (app.commandLine.hasSwitch at startup → quit with a log line) unless MONEO_DESKTOP_DEBUG=1; the smoke sets that env. Fix the phone-access tracing at the source with turbopackIgnore and drop the trimming workaround in build.mjs if no longer needed (verify the standalone server still works).
+2. Exercise the untested packaged paths in package-smoke (test-only hooks must be gated behind MONEO_DESKTOP_DEBUG=1 and unpackaged/debug only): tray menu actions (Back up now creates a backup; Open in browser goes to the open-external log), restore from backup via the real flow (data written before the backup comes back, data written after is gone), crash restart of the Next server (kill its PID → app comes back), error screen when the backend fails to start (e.g. occupy-and-corrupt scenario of your choice) with Retry working, quit then relaunch in the same home keeps data, close→hide→reopen via second-instance launch.
+3. QA journey on the packaged app with disposable data and no real providers: first-run setup → Home → import a small synthetic CSV statement (use an existing fixture from e2e/ or supabase/tests/fixtures if one fits; no private data) → see transactions → undo the import → re-import → Settings shows AI/bank/Scalable/phone sections; click ChatGPT sign-in, Scalable connect and a bank connect if reachable without real keys and confirm the provider URL goes to the open-external log (system browser) rather than the window, and that GET http://127.0.0.1:<port>/api/ai/chatgpt/callback and https://localhost:3443/api/bank/callback?x=1 (after the cert exists; use the mkcert-made cert without installing trust — accept self-signed in the request) reach Moneo. Voice call: just confirm the microphone permission request is granted for the app origin and denied elsewhere.
+4. Upgrade + data retention: build installer 0.1.0 and a 0.1.1 variant (version override at build time, no committed version bump), silently install 0.1.0 into a temp install dir (/S /D=...) with MONEO_DESKTOP_HOME pointing to a temp home, create data, install 0.1.1 over it, launch: data retained, pre-upgrade backup only if migrations were pending, version shown. Then uninstall silently: home data stays. Never install into the default per-user location or use the real userData dir.
+5. Video: record the packaged app running the main flows from (3) using QA data — e.g. CDP Page.startScreencast frames encoded with the ffmpeg that ships with Playwright (look under %LOCALAPPDATA%\ms-playwright\ffmpeg-*), output MP4 or WebM to C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\c8cff258-d219-492d-b62f-e613ed42492f\scratchpad\video\moneo-desktop.mp4. Include setup screen, Home, import, undo, Settings connections, tray hide/reopen. No secrets on screen.
+Report exact results per check, file paths, and what remains unverified.
+
+---
+
+<task-notification>
+<task-id>bm29rlebn</task-id>
+<tool-use-id>toolu_01YZbK2cqoRHrZgUc7rpdAsy</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\f2bc50f8-0d5a-4dfe-ae34-5346d13218ed\tasks\bm29rlebn.output</output-file>
+<status>completed</status>
+<summary>Background command "cd C:/Users/mgsuk/.t3/worktrees/Moneo/t3-bb40520b-1bab67392cb16a35; set -e; node scripts/desktop/build.mjs --main; rm -rf desktop/release/win-unpacked; npm run desktop:dist -- --win --dir &gt; C:/Users/mgsuk/AppData/Local/Temp/claude/cc74f73eb1c8553d/f2bc50f8-0d5a-4dfe-ae34-5346d13218ed/scratchpad/dist.log 2&gt;&amp;1; echo dist ok; timeout 1500 node scripts/desktop/package-smoke.mjs 2&gt;&amp;1 | tail -60" completed (exit code 0)</summary>
+</task-notification>
