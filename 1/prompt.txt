@@ -1,0 +1,260 @@
+Make Moneo an installable desktop app for Windows, macOS, and Linux, with an installable PWA for phones and tablets. Implement the work autonomously on a dedicated branch and isolated worktree. Follow AGENTS.md; never modify main or touch the owner’s backend, secrets, or financial data.
+
+The user experience must be simple: download from GitHub Releases, install, open, and complete setup inside the app. No repository, terminal, Node installation, Docker requirement, or environment-file editing.
+
+Architecture:
+- Electron around the existing Next.js app.
+- Bundle and manage native PostgreSQL and the required Supabase services locally. Preserve existing financial SQL, history, undo, permissions, and storage behavior.
+- Keep private phone/tablet access through Tailscale.
+- Preserve ChatGPT sign-in, open router and OpenAI API key ,call ,artifact Enable Banking, and Scalable, including their callback requirements and system-browser authentication.
+- Do not replace the database or move data to the cloud.
+
+First prove that the production app and minimum native backend can be packaged and launched on all three platforms, including required PostgreSQL extensions and file storage. If a service cannot be distributed reliably, report the concrete blocker and ask before changing architecture. Do not silently fall back to requiring Docker.
+
+Then complete secure Electron boundaries, first-run setup, startup/recovery, tray/background operation, explicit quit, persistent per-user data, backups, safe upgrades, PWA support, installers, and GitHub release automation. Preserve existing source-based development. Do not publish a release or merge.
+
+Orchestrate focused subagents with specific tasks and clear ownership. Discover available models and choose according to difficulty: stronger reasoning for architecture/security and independent review, capable coding models for implementation, faster models for bounded routine work. Follow orchestration tool rules. Review and test every agent’s work before integrating it.
+
+Run repository-required checks and meaningful QA journeys using disposable test data and mocked external providers. Launch and exercise packaged applications, not only development builds. Verify installation, setup, authentication callbacks, background operation, upgrades, and data retention. Fix failures and obtain an independent final review.
+
+Commit coherent milestones, update user documentation, and open a draft PR. Keep progress updates concise. Continue until acceptance criteria pass or a concrete external blocker remains; never claim unperformed verification passed.
+
+Final handoff:
+- Branch and draft PR link.
+- Installers and test results, distinguishing platforms actually launched from those only built.
+- A video of the packaged application running and demonstrating its main flows, using QA data without secrets.
+- Remaining limitations, external setup, signing requirements, or verification gaps.
+
+---
+
+<task-notification>
+<task-id>bwuwpdmgj</task-id>
+<tool-use-id>toolu_014gbsjPYYc5B2dNkbaAYgbR</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\c8cff258-d219-492d-b62f-e613ed42492f\tasks\bwuwpdmgj.output</output-file>
+<status>completed</status>
+<summary>Background command "Install dependencies with npm ci" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ac1800585-d937-49e3-a463-1bf565e98c96%3Adelegate-task%3Aab986a91-2d5e-40fc-a2e0-a9a8c5d925f2 (PWA installability) [completed]:
+Moneo is now an installable PWA with a network-only service worker. Nothing is committed. Typecheck, lint (including `check:privacy`) and `npm test` pass (1543 passed, 10 skipped). I did not re-run the e2e spec after the last edit, which was only a README line.
+
+## Files changed
+- **New:** `public/sw.js`, `public/offline.html`, `components/service-worker.tsx`.
+- **Edited:** `app/layout.tsx`, `app/manifest.ts`, `proxy.ts`, `app/globals.css`, `components/app-shell.tsx`, `e2e/core-journey.smoke.spec.ts`, `README.md`.
+
+## What changed
+- **Service worker (`/sw.js`, scope `/`):** it only handles GET navigations. If one fails, or the server answers 502/503/504 (what Tailscale returns when Moneo isn't running), it shows the offline page. It never touches `/api/`, `/.well-known/`, `/artifact-lib/`, non-GET requests or non-navigation requests. The only thing it caches is `offline.html`.
+- **Offline page:** plain-words message with a "Try again" button, light and dark, with safe-area padding.
+- **Registration:** `ServiceWorker` registers it only in production on secure contexts.
+- **Cache headers:** Next already serves `public/` files with `Cache-Control: public, max-age=0`, so I added no header config. I left `next.config.ts` alone as asked.
+- **Manifest:** added `id: "/"` and `categories: ["finance"]`. It already had the name, `start_url`, `scope`, `display: standalone`, and 192, 512 and maskable icons.
+- **Theme colour:** now follows light and dark (`#f4f3ee` and `#0f1011`). The manifest's own `theme_color` and `background_color` stay `#0f1011`, since it can't do both.
+- **Safe-area insets:** the header gets top padding, and the body and mobile bottom nav get left and right padding for landscape notches. The bottom inset was already handled.
+- **`proxy.ts`:** the matcher now skips `sw.js` and `offline.html`, like the existing image exclusions. The Funnel refusal still applies to everything else. Those two static files are now served without the Funnel check.
+- **README:** one sentence in the phone access section saying the phone never keeps your numbers.
+
+## What I verified
+- **E2E spec:** I extended `e2e/core-journey.smoke.spec.ts` with one test that checks the manifest, registers the worker, goes offline, and confirms the offline page and a failed `/api/health`. It passed on the dev server. I made the worker cache pages on purpose and the test failed, then restored the file.
+- **Production build on the QA server (port 3100), iPhone 14 and Pixel 7, light and dark:**
+  - The worker registers from the app and activates with scope `/`.
+  - Cache Storage held only `/offline.html`.
+  - Offline, `/money/accounts` showed the offline page and `/api/health` failed.
+  - The head has theme-color for light and dark, the manifest link, `apple-touch-icon`, and the apple web-app tags (capable, title, status bar `default`).
+- **Cleanup:** I stopped my own QA server and port 3100 is free. I did not reconfirm every PID: the process on the port didn't show the worktree path in its command line, so I stopped the `qa-server.mjs` wrapper I had started, and the port then showed free.
+
+## Screenshots
+Files are in `C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\c8cff258-d219-492d-b62f-e613ed42492f\scratchpad\pwa\`:
+- `before-{iphone,pixel}-{light,dark}.png`
+- `after-{iphone,pixel}-{light,dark}.png`
+- `offline-{iphone,pixel}-{light,dark}.png`
+
+I looked at `offline-iphone-dark.png` and `after-iphone-light.png`, and the layout looks unchanged. I did not open the other ten.
+
+## Gaps
+- **iOS and iPadOS Safari weren't tested.** Chromium can't emulate the notch or home indicator, so the safe-area changes are untested. The insets are 0 in emulation, so the before and after screenshots match.
+- **Status bar and theme-color follow the OS, not Moneo's own theme setting.** A user who picks dark in Moneo on a light phone gets a light bar.
+- **Splash background is always dark.** The manifest only allows one colour.
+- **In dev, the worker only registers if you register it by hand.** The spec does this itself.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ac1800585-d937-49e3-a463-1bf565e98c96%3Adelegate-task%3A98a13cff-567e-479d-8da6-61d60a085e62 (Desktop native backend spike) [completed]:
+Everything you asked for works on Windows x64: the backend starts under plain Node, passes every smoke check, and passes all 53 SQL regression files. Two parts needed patches you should approve. Storage-api's file backend uses a native module that won't install on Windows, and GoTrue doesn't compile for Windows as published. Nothing is committed, the probe container is removed, and I left the shell agent's running `Moneo.exe` smoke alone.
+
+## Decisions for you
+1. **Storage-api on Windows.** Its file backend imports `fs-xattr`, a native module marked `os: ["!win32"]`, so it can't install or run on Windows. I replaced it with a small stand-in, `scripts/desktop/backend-fs-xattr-shim`:
+   - On Windows it keeps file metadata in NTFS alternate data streams. This is proven: content type survived upload, download, backup and restore.
+   - On macOS/Linux it loads upstream's own addon (N-API), built per platform. That path is untested.
+   - The alternative is patching or forking Storage.
+2. **GoTrue on Windows.** v2.197.0 fails to compile because of one `unix.SO_REUSEPORT` call in `cmd/serve_cmd.go`. For the Windows target only, a `go build -overlay` drops that call; the source and other platforms stay upstream.
+3. **supautils stand-in.** Without supautils, `postgres` gets `must be owner of table objects` on Moneo's storage policy migration (`202609260001_initial.sql`). I reproduced this. During Moneo's migrations only, `postgres` is granted `supabase_auth_admin` and `supabase_storage_admin` (inherit true, set false). It's revoked right after and again at every start; the smoke run confirms nothing stays granted. Otherwise `postgres` keeps the image's `NOSUPERUSER BYPASSRLS`.
+
+## Smoke and regression results (Windows, Node 22.23.2)
+`node scripts/desktop/backend-smoke.mjs` on the final code:
+- **Startup:** first start ready in 29.8 s, restart in 6.8 s.
+- **Upgrade:** starting a database one migration behind took an automatic `pre-upgrade` backup, then all 121 of 121 migrations were applied.
+- **Extensions:** pgcrypto works (sha256 matched Node's, bcrypt) and so does pg_trgm (similarity 0.333).
+- **RLS:** through PostgREST the owner sees its workspace and anon sees none.
+- **Storage:** a 200,030-byte upload and download through the gateway kept `text/csv`; anon was refused (400).
+- **Backup/restore:** backup (1252 KB dump), then restore into a fresh home kept the same owner, workspace, file and content type.
+- **Newer database:** a database with a future migration is refused, and Postgres is stopped again.
+- **Stop:** each stop ended all 4 processes (GoTrue, Storage, PostgREST, Postgres) and closed the ports.
+
+SQL regressions, run from a temp directory with its own `.env.qa` (the repo's `.env.qa` and `moneo-qa` untouched):
+- `supabase/tests/migrations.mjs`: `PASS: fresh replay 121 migrations and 53 SQL regressions` and `PASS: 121 migrations, 0 pending upgrades, 53 SQL regressions; … match`.
+- One file at a time: all 53 pass.
+- I did not compare against Docker. That would need my own reference stack, and `moneo-qa` was off-limits.
+
+Next sanity check: `next dev -p 3311 -H 127.0.0.1` with the backend's env returned `GET / 200` twice (cold 75 s, then 3.2 s). The owner was signed in automatically and GoTrue recorded sessions. I stopped only the processes I started; git status was unchanged by the run.
+
+## Pinned sources and licenses
+Versions and sha256 are in `PINS` in `scripts/desktop/fetch-backend.mjs`.
+
+| Component | Source | License |
+|---|---|---|
+| PostgreSQL 17.11 | theseus-rs/postgresql-binaries 17.11.1 | PostgreSQL |
+| PostgREST v16.5 | GitHub release | MIT |
+| GoTrue v2.197.0 | supabase/auth source, built with Go 1.27.0 (`CGO_ENABLED=0`) | MIT |
+| Storage API v1.88.0 | supabase/storage source | Apache-2.0 |
+| mkcert v1.4.4 | GitHub release | BSD-3-Clause |
+
+I chose theseus over zonky because zonky has no `pg_dump`, `pg_restore` or `psql`. The theseus builds bundle dependency notices and provenance files.
+
+## Sizes
+
+| Platform | Postgres (pruned) | PostgREST | GoTrue | mkcert | Total |
+|---|---|---|---|---|---|
+| win-x64 (built) | 63.2 MB | 62.3 MB | 36.5 MB | 4.7 MB | 166.7 MB |
+| linux-x64 | ≈75 MB (estimated) | 19.6 MB | 35.6 MB | 4.6 MB | ≈135 MB |
+| mac-arm64 | ≈68 MB (estimated) | 70.9 MB | 34.0 MB | 4.9 MB | ≈178 MB |
+| mac-x64 | ≈67 MB (estimated) | 17.4 MB | 36.6 MB | 5.1 MB | ≈126 MB |
+
+Storage API adds 344.8 MB on every platform. Its only remaining native files are `@datadog/pprof` prebuilds, used only by its profiler code path.
+
+## Other differences from the Supabase image
+- Not bundled: supautils, safeupdate, pg_graphql, pg_net, pg_cron, vault/pgsodium, pg_stat_statements, realtime; no Moneo migration needs them. Without safeupdate, a PostgREST DELETE/UPDATE with no filter is not rejected (RLS still limits it).
+- `uuid-ossp` is missing from the Windows Postgres build, so the bootstrap creates it only where available. Nothing in Moneo, GoTrue or Storage uses it.
+- Postgres keeps the image settings that change results (UTC, `extra_float_digits=0`, `row_security`, ICU en-US collation). It sets `jit=off` and uses the default `wal_level`.
+
+## Open risks
+- **MSVC runtime on Windows:** Postgres imports `vcruntime140.dll`, `vcruntime140_1.dll` and `msvcp140.dll`, which Windows doesn't ship. The packaging needs to bundle them app-local or run vc_redist.
+- **macOS PostgREST** links Homebrew's libpq by absolute path (`/opt/homebrew/...` on arm64, `/usr/local/...` on x64). The script now relinks it with `install_name_tool` plus an ad-hoc signature, but only on a mac host, so this is untested. All macOS binaries still need hardened-runtime signing and notarization.
+- **Not run on macOS or Linux at all.** Their Postgres archives contain symlinks that Windows can't extract, so they have to be fetched on CI. PostgREST, GoTrue and mkcert did cross-build for all three from here.
+- **Node version:** Storage declares `node >=26` and I tested only Node 22. Electron's Node version needs checking.
+- **Restore is not crash-atomic.** It first takes a `before-restore` backup, so the old state is recoverable.
+
+## Contract additions
+All optional, so the brief's contract still holds:
+- `startBackend(paths, progress, { fork, appUrl, appVersion })`. The default `fork` uses Electron's `utilityProcess` when running inside Electron.
+- `backup(paths, reason, { automatic })`. The newest 5 automatic backups are kept.
+
+Default ports are 54331 (gateway) and 54332 (database); if busy, a free port is picked and saved. `.gitignore` got two appended lines (`/desktop/.cache/`, `/desktop/.build/`). I need no new dependencies; `esbuild` is already in `node_modules`.
+
+Files are in `desktop/src/backend/`:
+- `index.ts`
+- `config.ts`
+- `postgres.ts`
+- `processes.ts`
+- `gateway.ts`
+- `migrations.ts`
+- `backup.ts`
+- `README.md`
+
+Files in `desktop/bootstrap/`:
+- `00-roles.sql`
+- `10-schema.sql`
+
+Files in `scripts/desktop/`:
+- `fetch-backend.mjs`
+- `backend-load.mjs`
+- `backend-run.mjs` (runs the backend in the foreground for dev)
+- `backend-smoke.mjs`
+- `backend-fs-xattr-shim/`
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ac1800585-d937-49e3-a463-1bf565e98c96%3Adelegate-task%3A7aa5cc72-606b-44c7-b133-ca93ea28e8f5 (Desktop Electron shell) [completed]:
+That notification was a leftover folder-size check finishing; it changes nothing in my report above. No background work is still running.
+
+---
+
+Delegated task node:delegated-task:provider-continuation%3Amessage%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253Ac1800585-d937-49e3-a463-1bf565e98c96%25253Adelegate-task%25253A7aa5cc72-606b-44c7-b133-ca93ea28e8f5%3Aordinal%3A1%3Aefb02678-7688-46ae-87e3-ce4fdb2c3eec (Desktop Electron shell) [completed]:
+That was the last leftover size check finishing; it changes nothing in the report above. No background tasks are left.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Aeb7136c4-88ab-4ec8-a0ce-fd1237c18475%3Athread-send%3A9f5d0ca5-78f9-4d73-a214-fa6310bfba16 (Desktop Electron shell) [completed]:
+Waiting for the smoke run to finish.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Aeb7136c4-88ab-4ec8-a0ce-fd1237c18475%3Athread-send%3Af922503a-4a1a-49ee-8f76-42d2308fb4ea (Desktop native backend spike) [completed]:
+All four follow-ups are done and verified on Windows. The full smoke test and `supabase/tests/migrations.mjs` both pass on the final code. Nothing is committed, `desktop/electron-builder.config.cjs` needed no change (its existing `extraResources` filter already covers the new files), and nothing of mine is left running.
+
+## 1. Leftovers after a hard kill
+- **Records:** `run/services.json` now stores PID, executable path and, for Storage, the script path.
+- **Next start, before Postgres starts:** a recorded process is ended only if it's alive, its executable is the recorded one, and that executable is inside the bundled backend (resolving junctions). For Storage, the recorded Node/Electron binary must also be running the recorded bundled script. Nothing is matched by name; a PID now used by another program is logged and left alone.
+- **Postgres:** if `postmaster.pid` points to a live `postgres` from this bundle, or one whose command line names this data folder, it's stopped with `pg_ctl stop -m fast`. Otherwise the file is stale and is deleted.
+- **What actually survives a hard kill on Windows:** only Postgres. libuv puts every child Node spawns into a kill-on-close job object, so GoTrue and PostgREST die with the parent; `pg_ctl`'s server is the one that breaks away. On macOS/Linux GoTrue and PostgREST can survive, and the PID check covers them there (not run on those platforms).
+- **Storage** now exits by itself within a second once its parent is gone. A few lines at the top of the bundle watch `MONEO_PARENT_PID`.
+- **Proof in the smoke test:** the backend runs in a child `backend-run.mjs`, which is killed hard. Two planted records then show the checks hold on any platform:
+  - a detached PostgREST from the bundle, which recovery must end;
+  - an unrelated process recorded under GoTrue's path, which it must leave alone.
+
+## 2. MSVC runtime
+- **Source:** Microsoft's VC_redist.x64.exe 14.44.35211.0, from its versioned download URL (the path contains its SHA-256, which I pinned). The signature checks as valid (Microsoft).
+- **How it's extracted:** the installer is never run. The script reads its embedded cabinets and takes the three DLLs from the runtime package; each DLL is pinned by sha256 and is itself Microsoft-signed (14.44.35211.0).
+- **Where they go:** `postgres/bin` and `postgrest/`, plus the runtime's `license.rtf`. They only extract on a Windows (or macOS) host.
+- **License basis:** the redist's own license only says "install and use". The right to ship the DLLs app-local comes from Visual Studio's "Distributable Code" terms (REDIST.TXT), which assume the distributor holds a Visual Studio licence (Community/Build Tools count). Worth a quick legal look; the other route is running vc_redist from the installer, which needs admin rights the per-user installer doesn't have.
+- **Verified by loaded-module listing:** `postgres` loaded `postgres\bin\vcruntime140.dll`, `msvcp140.dll` and `vcruntime140_1.dll`, and `postgrest` loaded `postgrest\vcruntime140.dll`. That's the app-local copies, even though this machine also has them in System32.
+
+## 3. Storage API size and paths
+- It's now an esbuild bundle: `server.js` (12.8 MB) plus pino's three worker files, `migrations/`, `LICENSE`, and `THIRD_PARTY_NOTICES.txt` (492 bundled packages, generated from esbuild's metafile).
+- **Total 16.2 MB, 119 files** (was 345 MB). No native modules and no `node_modules`.
+- Longest path under `resources\` is 85 chars for Storage and 101 for anything (a GoTrue migration). Under a typical `%LOCALAPPDATA%\Programs\Moneo\resources\` that's about 168 absolute.
+- Bundling needed three fixes:
+  - `pg-format`'s `require(__dirname + '/reserved.js')` is rewritten so it gets bundled.
+  - `postgres-migrations`' bootstrap SQL is shipped next to the bundle.
+  - Storage now runs with `EXPOSE_DOCS=false`, since Swagger reads a `package.json` the bundle doesn't have. Moneo doesn't use the docs.
+
+## 4. Final runs
+`node scripts/desktop/backend-smoke.mjs`:
+```
+PASS stop ended 4 processes (13408, 11444, 17416, 2652) and closed the ports
+PASS force-quit left postgres 36432 running (GoTrue ended, PostgREST ended); Storage exited by itself
+PASS recovery ended the old postmaster and the planted bundled PostgREST (31824), and left the unrelated process (9556) alone
+PASS after the force-quit: leftovers ended; one postmaster (35848) for this data folder, one GoTrue, one PostgREST
+PASS postgres (pid 35848) loaded the app-local MSVC runtime: win-x64\postgres\bin\vcruntime140.dll, win-x64\postgres\bin\msvcp140.dll, win-x64\postgres\bin\vcruntime140_1.dll
+PASS postgrest (pid 11728) loaded the app-local MSVC runtime: win-x64\postgrest\vcruntime140.dll
+PASS pending migration triggered backup 2026-11-10T21-15-54Z-pre-upgrade
+PASS 121 of 121 migrations applied
+PASS postgres is NOSUPERUSER BYPASSRLS like the image, without the migration-time owner roles
+PASS pgcrypto (sha256 bb9cc8fd91c6…, bcrypt) and pg_trgm (similarity 0.333, …)
+PASS PostgREST: owner sees its workspace 9ae4017a-…, anon sees none (RLS)
+PASS Storage: 200030 bytes uploaded and downloaded as the owner with content-type text/csv; anon refused (400)
+PASS backup 2026-11-10T21-15-59Z-smoke (1252 KB dump)
+PASS stop ended 4 processes (16932, 36268, 11728, 35848) and closed the ports
+PASS restored home: same owner, same workspace, same file and content type
+PASS stop ended 4 processes (18772, 39780, 30476, 17252) and closed the ports
+PASS a database with a newer migration is refused and postgres is stopped again
+All backend smoke checks passed.
+```
+First start is now ready in 15.4 s (was about 30 s); restarts take about 5 s.
+
+`supabase/tests/migrations.mjs`, run against a fresh native backend from a temp folder with its own `.env.qa` (the repo's `.env.qa` and `moneo-qa` untouched):
+```
+PASS: fresh replay 121 migrations and 53 SQL regressions; disposable schema rollback verified
+PASS: 121 migrations, 0 pending upgrades, 53 SQL regressions; columns/constraints/indexes/RLS/policies/views/triggers/functions match; rollback verified
+migrations.mjs exit=0
+```
+Typecheck (`desktop/tsconfig.json`) and eslint on my files pass.
+
+## Changed files
+- `desktop/src/backend/processes.ts`, `postgres.ts`, `index.ts`, `README.md`
+- `scripts/desktop/fetch-backend.mjs`
+- `scripts/desktop/backend-run.mjs` (gained a `--resources` option)
+- `scripts/desktop/backend-smoke.mjs`
+
+**Still untested:** the macOS/Linux side of the leftover check (reading process paths there) and the Linux CAB extraction, which needs `bsdtar`. Neither affects the win-x64 build.
