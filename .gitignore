@@ -58,3 +58,12 @@ next-env.d.ts
 
 # Local app state (ChatGPT sign-in, sealed with BANK_TOKEN_ENCRYPTION_KEY)
 .data/
+
+# Moneo Desktop downloads and native backend builds
+/desktop/.cache/
+/desktop/.build/
+
+# Desktop app build output
+/.next-desktop/
+/desktop/dist/
+/desktop/release/
