@@ -8,6 +8,8 @@ import { delimiter, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { applicationDirectory, preferences, readJson, writeJson, launcherRequest } from "./application-state.mjs";
+import { checkRelease, parseUpdateTarget } from "./application-releases.mjs";
+import { installUpdate, prepareUpdate } from "./application-update.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 process.chdir(root);
@@ -17,7 +19,7 @@ process.env.PATH = [dirname(process.execPath), "/usr/local/bin", "/opt/homebrew/
 const directory = applicationDirectory(root);
 mkdirSync(directory, { recursive: true });
 const log = message => appendFileSync(join(directory, "launcher.log"), `${new Date().toISOString()} ${message}\n`, { mode: 0o600 });
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || (process.argv.includes("--login") && readJson(join(directory, "startup.json"))?.port) || 3000);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid application port.");
 const url = `http://localhost:${port}`;
 const login = process.argv.includes("--login");
@@ -25,22 +27,42 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let child;
 let stopping = false;
 let state = { phase: "starting", message: "Starting Moneo…" };
+let pendingUpdate;
 const token = randomBytes(32).toString("hex");
 const runtimePath = join(directory, "runtime.json");
 const lockPath = join(directory, "launcher.lock");
 
+async function performUpdate(input) {
+  let target;
+  try { target = await prepareUpdate(root, input, command); }
+  catch (error) {
+    state = { phase: "restored", message: "The update was not started. Moneo is still running.", recovery: error.message };
+    return;
+  }
+  try {
+    await installUpdate({ root, target, run: command, stop: stopWebsite, start: startWebsite, status: next => {
+      state = next; writeJson(join(directory, "update-status.json"), next);
+    } });
+  } catch (error) {
+    state = { phase: "failed", message: `Update recovery needs attention: ${error.message}`, recovery: "Follow README → Update recovery. Check disk space and .data/application/update.log before restarting." };
+  }
+}
+
 function command(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args, { cwd: root, windowsHide: true, timeout: 300_000, ...options });
+    const child = spawn(command, args, { cwd: root, windowsHide: true, timeout: 1_800_000, shell: process.platform === "win32" && command === "npm", ...options });
     let output = "";
-    process.stdout?.on("data", chunk => { output += chunk; });
-    process.stderr?.on("data", () => {}); // Never copy command output containing owner data into the web status.
-    process.on("error", reject);
-    process.on("exit", code => code === 0 ? resolve(output.trim()) : reject(new Error(`${command} failed (${code}).`)));
+    const diagnostic = chunk => {
+      if (["preparing", "updating"].includes(state.phase)) appendFileSync(join(directory, "update.log"), chunk, { mode: 0o600 });
+    };
+    child.stdout?.on("data", chunk => { output = (output + chunk).slice(-1_000_000); diagnostic(chunk); });
+    child.stderr?.on("data", diagnostic); // Keep diagnostics local; never put command output in web status.
+    child.on("error", reject);
+    child.on("exit", code => code === 0 ? resolve(output.trim()) : reject(new Error(`${command} ${args.slice(0, 2).join(" ")} failed (${code}).`)));
   });
 }
 async function dockerReady() {
-  try { await command("docker", ["info"]); return; } catch { /* Desktop may not have started at sign-in. */ }
+  try { await command("docker", ["info"], { timeout: 10_000 }); return; } catch { /* Desktop may not have started at sign-in. */ }
   if (process.platform === "win32") {
     const executable = join(process.env.ProgramFiles || "C:\\Program Files", "Docker", "Docker", "Docker Desktop.exe");
     if (!existsSync(executable)) throw new Error("Install Docker Desktop, then start Moneo again.");
@@ -53,7 +75,7 @@ async function dockerReady() {
   }
   for (let attempt = 0; attempt < 90; attempt++) {
     await sleep(2000);
-    try { await command("docker", ["info"]); return; } catch { /* Wait for the engine. */ }
+    try { await command("docker", ["info"], { timeout: 10_000 }); return; } catch { /* Wait for the engine. */ }
   }
   throw new Error("Docker did not become ready. Start Docker and run npm start again.");
 }
@@ -94,7 +116,7 @@ async function startWebsite() {
   throw new Error("Moneo did not become ready. Check .data/application/website.log.");
 }
 async function stopWebsite() {
-  if (!child || child.exitCode !== null) return;
+  if (!child?.pid || child.exitCode !== null) return;
   const owned = child;
   await new Promise(resolve => {
     const timer = setTimeout(() => owned.kill("SIGKILL"), 15_000);
@@ -109,8 +131,10 @@ try {
 } catch (error) {
   if (error.code !== "EEXIST") throw error;
   try {
-    await launcherRequest(root);
-    if (!login || preferences(root).openBrowser) openBrowser(url);
+    const status = await launcherRequest(root);
+    const runtime = readJson(runtimePath);
+    if (status.phase === "failed") await launcherRequest(root, process.argv.includes("--resume") ? "/resume" : "/retry", {});
+    if (!login || preferences(root).openBrowser) openBrowser(["ready", "restored"].includes(status.phase) ? url : `http://127.0.0.1:${runtime.port}/#${runtime.token}`);
     process.exit(0);
   } catch {
     const previous = readJson(runtimePath);
@@ -134,22 +158,70 @@ const server = createServer(async (request, response) => {
   if (request.headers.authorization !== `Bearer ${token}`) { response.writeHead(403).end(); return; }
   response.setHeader("Content-Type", "application/json");
   if (request.method === "GET" && request.url === "/status") { response.end(JSON.stringify(state)); return; }
+  if (request.method === "POST" && ["/retry", "/resume"].includes(request.url)) {
+    if (state.phase !== "failed") { response.writeHead(409).end(JSON.stringify({ error: "Moneo is already running or starting." })); return; }
+    state = { phase: "starting", message: "Starting Moneo…" };
+    response.end(JSON.stringify({ ok: true }));
+    void launch(request.url === "/resume");
+    return;
+  }
+  if (request.method === "POST" && request.url === "/begin") {
+    if (state.phase === "queued" && pendingUpdate) {
+      const input = pendingUpdate; pendingUpdate = null;
+      state = { phase: "preparing", message: "Checking the release before stopping Moneo…" };
+      response.end(JSON.stringify({ ok: true }));
+      void performUpdate(input);
+    } else response.end(JSON.stringify({ ok: false }));
+    return;
+  }
+  if (request.method === "POST" && request.url === "/update") {
+    let body = "";
+    try {
+      for await (const chunk of request) {
+        body += chunk;
+        if (body.length > 1024) throw new Error("Update request is too large.");
+      }
+      const input = parseUpdateTarget(JSON.parse(body));
+      if (!["ready", "restored", "queued"].includes(state.phase)) { response.writeHead(409).end(JSON.stringify({ error: "Moneo is starting, updating, or needs recovery." })); return; }
+      pendingUpdate = input;
+      state = { phase: "queued", message: "Opening update progress…" };
+      response.end(JSON.stringify({ url: `http://127.0.0.1:${server.address().port}/#${token}` }));
+    } catch { response.writeHead(400).end(JSON.stringify({ error: "Invalid update request." })); }
+    return;
+  }
   response.writeHead(404).end(JSON.stringify({ error: "Unknown request." }));
 });
-server.listen(0, "127.0.0.1", async () => {
-  writeJson(runtimePath, { pid: process.pid, port: server.address().port, token });
+async function launch(resume = false) {
   try {
+    const interrupted = readJson(join(directory, "update-status.json"));
+    if (interrupted && ["updating", "failed"].includes(interrupted.phase) && !resume) {
+      state = { phase: "failed", message: "The previous update needs recovery before Moneo can start.", recovery: interrupted.recovery || "Follow README → Update recovery. After repairing the installation, run npm start -- --resume." };
+      console.error(state.message);
+      openBrowser(`http://127.0.0.1:${server.address().port}/#${token}`);
+      return;
+    }
+    await stopWebsite();
     await dockerReady();
     await command("docker", ["compose", "up", "--detach", "--wait"]);
     await startWebsite();
+    if (resume) writeJson(join(directory, "update-status.json"), state);
     if (login && preferences(root).openBrowser) openBrowser(url);
     console.log(`Moneo is running at ${url}`);
+    if (preferences(root).checkUpdates) void checkRelease(root);
   } catch (error) {
     state = { phase: "failed", message: error.message };
     log(error.message); console.error(error.message);
     if (login) openBrowser(`http://127.0.0.1:${server.address().port}/#${token}`);
   }
+}
+server.listen(0, "127.0.0.1", () => {
+  writeJson(runtimePath, { pid: process.pid, port: server.address().port, token });
+  void launch(process.argv.includes("--resume"));
 });
+const releaseTimer = setInterval(() => {
+  if (preferences(root).checkUpdates && ["ready", "restored"].includes(state.phase)) void checkRelease(root);
+}, 3_600_000);
+releaseTimer.unref();
 async function shutdown() {
   if (stopping) return;
   stopping = true; await stopWebsite();
@@ -158,5 +230,5 @@ async function shutdown() {
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, shutdown);
 
 function progressPage(target) {
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Moneo application</title><style>body{font:16px system-ui;max-width:42rem;margin:12vh auto;padding:24px;background:#111827;color:#f3f4f6}p{line-height:1.6}a{color:#93c5fd}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Moneo</h1><p id="status" role="status">Connecting to the launcher…</p><pre id="detail"></pre><a href="${target}">Open Moneo</a><script>const token=location.hash.slice(1);history.replaceState(null,'','/');async function poll(){try{const response=await fetch('/status',{headers:{authorization:'Bearer '+token}});if(!response.ok)throw Error();const state=await response.json();document.getElementById('status').textContent=state.message;document.getElementById('detail').textContent=state.recovery||'';if(state.phase==='ready'){location.replace(${JSON.stringify(target + "/settings#application")});return}}catch{document.getElementById('status').textContent='The launcher is unavailable. Check its local log and run npm start again.'}setTimeout(poll,1500)}poll()</script></html>`;
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Moneo application</title><style>body{font:16px system-ui;max-width:42rem;margin:12vh auto;padding:24px;background:#111827;color:#f3f4f6}p{line-height:1.6}a{color:#93c5fd}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Moneo</h1><p id="status" role="status">Connecting to the launcher…</p><pre id="detail"></pre><a href="${target}">Open Moneo</a><script>const token=location.hash.slice(1)||sessionStorage.getItem('launcher-token');sessionStorage.setItem('launcher-token',token||'');history.replaceState(null,'','/');const headers={authorization:'Bearer '+token};async function poll(){try{const response=await fetch('/status',{headers});if(!response.ok)throw Error();const state=await response.json();document.getElementById('status').textContent=state.message;document.getElementById('detail').textContent=state.recovery||'';if(state.phase==='ready'){location.replace(${JSON.stringify(target + "/settings#application")});return}}catch{document.getElementById('status').textContent='The launcher is unavailable. Check its local log and run npm start again.'}setTimeout(poll,1500)}fetch('/begin',{method:'POST',headers}).catch(()=>{}).finally(poll)</script></html>`;
 }

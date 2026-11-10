@@ -12,6 +12,7 @@ import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
 import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
 import { IntentLink } from "@/components/intent-link";
 import { cn } from "@/lib/utils";
+import { ApplicationUpdateNotice } from "@/components/application-update-notice";
 
 /** Streamed from the root layout; null when signed out or the lookup failed. */
 export type ShellData = { accounts: { id: string; name: string }[]; counts: Partial<Record<string, number>> } | null;
@@ -185,6 +186,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           </IntentLink>)}
         </nav>}
       </header>
+      <ApplicationUpdateNotice />
       <div id="main-content" tabIndex={-1} className={fullHeight ? "min-h-0 flex-1 overflow-hidden" : undefined}>{children}</div>
     </div>
     <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export const applicationDirectory = (root) => join(root, ".data", "application");
+/** @param {unknown} [fallback] */
 export function readJson(file, fallback = null) {
   try { return JSON.parse(readFileSync(file, "utf8")); }
   catch (error) { if (error.code === "ENOENT") return fallback; throw error; }
@@ -17,9 +18,11 @@ export function writeJson(file, value) {
 export const preferences = root => readJson(join(applicationDirectory(root), "preferences.json"), { openBrowser: true, checkUpdates: false });
 
 const xml = value => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
-const desktop = value => '"' + value.replace(/[\\"`$]/g, "\\$&").replaceAll("%", "%%") + '"';
+const desktop = value => '"' + value.replace(/[\\"`$]/g, "\\$&").replaceAll("\\", "\\\\").replaceAll("%", "%%") + '"';
 
-/** User-level sign-in registration: no admin rights, shell, or system-wide service. */
+/** User-level sign-in registration: no admin rights, shell, or system-wide service.
+ * @param {Record<string, string | undefined>} env
+ */
 export function startupEntry(root, platform = process.platform, home = homedir(), env = process.env, node = process.execPath) {
   root = resolve(root);
   if ([root, node].some(value => /[\r\n\0]/.test(value))) throw new Error("The installation path cannot contain line breaks.");
@@ -56,6 +59,7 @@ export function localApplicationRequest(headers) {
 }
 
 /** Runtime file is only a discovery hint; a live authenticated response proves ownership. */
+/** @param {unknown} [body] */
 export async function launcherRequest(root, path = "/status", body = undefined) {
   const runtime = readJson(join(applicationDirectory(root), "runtime.json"));
   if (!runtime || !Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 || typeof runtime.token !== "string") throw new Error("Start Moneo with npm start to use the application controls.");

@@ -4,5 +4,5 @@ import { localApplicationRequest } from "@/scripts/application-state.mjs";
 import { ApplicationCard } from "./application-card";
 
 export async function ApplicationSection() {
-  return <ApplicationCard initial={applicationState(localApplicationRequest(await headers()))} />;
+  return <ApplicationCard initial={await applicationState(localApplicationRequest(await headers()))} />;
 }

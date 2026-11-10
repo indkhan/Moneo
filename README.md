@@ -72,17 +72,29 @@ That's it. Want it on your phone or tablet too? See [Use it from your phone or t
 - **Start Moneo:** `npm start` in the Moneo folder (Docker Desktop must be running).
 - **Start automatically:** in **Settings → Application**, turn on **Start Moneo when I sign in**. Windows uses your Startup folder, macOS a user LaunchAgent, and Linux a desktop autostart entry. No administrator access is needed. You can also choose whether to open the browser. Turning startup off leaves the current session running. Keep the installation folder and Node executable in place; if you move either, turn startup off before moving and on again afterwards.
 
-`npm start` runs a local launcher that starts the Docker backend and the website, without rebuilding it. It can open Docker Desktop on Windows/macOS; Linux needs a running Docker Engine service or Docker Desktop's user service. Logs are in `.data/application/launcher.log` and `.data/application/website.log`. Closing a manually opened terminal stops its launcher; automatic startup runs in the background. Run `npm start` again to open an already running installation without starting a duplicate.
 - **Stop Moneo:** press `Ctrl+C`. The database keeps running in Docker; `docker compose stop` stops it.
-- **Update Moneo:**
+- **Update Moneo:** use **Settings → Application → Check now**, then **Update now**. Optional daily release checks show a notice across the website; they contact GitHub without sending financial data and never install anything automatically. The updater uses published stable releases from the official repository, not every commit on `main`. If no release has been published, there is nothing to install yet. For a manual update, stop the launcher first, then:
   ```sh
-  git pull
+  git switch main
+  git pull --ff-only
   npm ci
   npm run setup
   npm run build
   npm start
   ```
   Your data and secrets are kept.
+
+`npm start` runs a local launcher that starts the Docker backend and the website, without rebuilding it. It can open Docker Desktop on Windows/macOS; Linux needs a running Docker Engine service or Docker Desktop's user service. Logs are in `.data/application/launcher.log` and `.data/application/website.log`. Closing a manually opened terminal stops its launcher; automatic startup runs in the background. Run `npm start` again to open an already running installation without starting a duplicate. Sign-in startup uses the port saved when you enable it; after changing `PORT`, save the startup setting again.
+
+Startup and update controls are available only from a loopback address on the computer running Moneo. Phones can see the update notice and release notes. Updating requires Git, npm, Docker, an internet connection, at least 2 GB free for installation, and additional room for a full data backup. Local edits, untracked source files, development branches, forks, divergent commits and release mismatches block installation. The updater verifies the release commit, stops the website, backs up the database, uploaded files, `.env` and `.data`, installs dependencies and builds, applies setup/migrations, then restarts and checks the website. It checks out the release commit in detached HEAD; subsequent in-app updates work from there. Keep the computer awake and avoid editing its code or database during an update.
+
+### Update recovery
+
+The separate local progress page stays available while Moneo is stopped. Backups are kept in `.data/application/backups/<time>/`, with `database.dump`, `storage.tar`, `.env`, local `data/`, application preferences and a manifest naming the old commit. These files contain private data and secrets: keep them local. Backups are not automatically deleted; remove older backups yourself when you no longer need them.
+
+If a download or backup fails, no release is installed. If installation or building fails before migrations, Moneo attempts to restore the previous code, dependencies and build. If setup/migrations may have run, or that restoration fails, it keeps the recovery page open and does **not** start older code against the changed database. An interrupted update also blocks the next startup until repaired.
+
+First fix the reported cause (for example, Docker being stopped or insufficient disk space). In the installation folder, run `npm ci`, `npm run setup` and `npm run build`, keeping the release code and existing `.env`. Then run `npm start -- --resume`; it can ask an already running recovery launcher to retry. This explicitly clears the recovery block after the repaired app becomes healthy. Do not delete Docker volumes or regenerate secrets. If a migration itself needs reversing, keep Moneo stopped and restore the database, storage and matching code together from that backup with someone familiar with Postgres; the updater never performs a destructive database restore automatically.
 
 While Moneo runs it does its background work by itself: scheduled summaries, and syncing your bank and Scalable about once a day. Anything missed while your computer was off runs shortly after you start Moneo.
 
@@ -129,7 +141,7 @@ Your phone becomes another screen on the Moneo running on this computer: same da
 
 The address and code are your own, from your own Tailscale account. Only devices on your Tailscale network can reach Moneo, and they get in without a password, so don't use a network you share with other people. Leave Tailscale Funnel off: Moneo refuses traffic from the public internet.
 
-Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, start Docker and run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address. On Linux, first run `sudo tailscale set --operator=$USER`.
+Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, sign in to the computer if automatic startup is enabled under Settings → Application; otherwise run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address. On Linux, first run `sudo tailscale set --operator=$USER`.
 
 How it works, step by step: [docs/phone-access-deep-dive.html](docs/phone-access-deep-dive.html).
 

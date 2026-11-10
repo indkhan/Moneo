@@ -27,7 +27,7 @@ export function PhoneAccessCard({ initial }: { initial: PhoneAccessState }) {
   return <section aria-labelledby="phone-access" className="rounded-xl border border-border bg-card p-6">
     <h2 id="phone-access" className="text-sm font-medium">Phone and tablet <span className="font-normal text-muted-foreground">· optional</span></h2>
     {state.state === "on" ? <>
-      <p role="status" className="mt-1 text-sm text-muted-foreground">On. Every device on your Tailscale network can open Moneo without a password, so don&apos;t use a network you share with other people. Devices share this computer&apos;s data and connections, so keep it awake with Moneo running. After a restart, start Moneo again here (<code className="rounded bg-muted px-1">npm start</code>).</p>
+      <p role="status" className="mt-1 text-sm text-muted-foreground">On. Every device on your Tailscale network can open Moneo without a password, so don&apos;t use a network you share with other people. Devices share this computer&apos;s data and connections, so keep it awake with Moneo running. After a restart, Moneo starts when you sign in if automatic startup is enabled under Application; otherwise run <code className="rounded bg-muted px-1">npm start</code> here.</p>
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
         {/* eslint-disable-next-line @next/next/no-img-element -- generated on the server for this address */}
         <img alt={`Scan code for ${state.url}`} src={`data:image/svg+xml;utf8,${encodeURIComponent(state.qr)}`} className="size-36 shrink-0 rounded-lg bg-white p-2" />

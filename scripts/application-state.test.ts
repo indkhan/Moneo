@@ -12,12 +12,13 @@ afterEach(() => { vi.unstubAllEnvs(); vi.mocked(homedir).mockReset(); });
 
 it("accepts only loopback application controls, including when a proxy supplies the host", () => {
   for (const host of ["localhost:3000", "127.0.0.1:3000"]) expect(localApplicationRequest(new Headers({ host }))).toBe(true);
-  for (const headers of [
+  const denied: Record<string, string>[] = [
     { host: "laptop.example.ts.net" },
     { host: "localhost:3000", "x-forwarded-host": "laptop.example.ts.net" },
     { host: "localhost.attacker.test" },
     { host: "127.0.0.1:3000", "tailscale-funnel-request": "true" },
-  ]) expect(localApplicationRequest(new Headers(headers))).toBe(false);
+  ];
+  for (const headers of denied) expect(localApplicationRequest(new Headers(headers))).toBe(false);
 });
 
 it("registers and removes only this installation's startup file", () => {
@@ -42,7 +43,7 @@ it("escapes paths without allowing startup command injection on any platform", (
   expect(mac.content).toContain("<string>/usr/local/bin/node</string>");
   const linux = startupEntry(root, "linux", tmpdir(), {}, "/usr/bin/node");
   expect(linux.content).toContain('Exec="/usr/bin/node"');
-  expect(linux.content).toContain("\\$test");
+  expect(linux.content).toContain("\\\\$test");
   expect(() => startupEntry(join(tmpdir(), "Moneo%unsafe"), "win32", tmpdir(), { APPDATA: tmpdir() })).toThrow("percent");
   expect(() => startupEntry("Moneo\nExec=bad", "linux")).toThrow("line breaks");
 });
