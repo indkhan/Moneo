@@ -1,6 +1,6 @@
 // Child processes, logs, ports and health checks for the native services.
 import { spawn, fork as nodeFork, type ChildProcess } from "node:child_process";
-import { createWriteStream, existsSync, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, realpathSync, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
@@ -120,36 +120,97 @@ export function isAlive(pid: number) {
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
-// The executable name of a running process, used before touching a PID left by an earlier run.
-export async function processName(pid: number): Promise<string | undefined> {
-  if (!isAlive(pid)) return undefined;
+export type ProcessInfo = { exe?: string; commandLine?: string };
+
+// Executable path and command line of running processes, read before touching a PID left by an
+// earlier run. A PID that is gone, or whose details cannot be read, is missing from the result.
+export async function processInfo(pids: number[]): Promise<Map<number, ProcessInfo>> {
+  const result = new Map<number, ProcessInfo>();
+  const alive = [...new Set(pids)].filter(pid => Number.isInteger(pid) && pid > 0 && isAlive(pid));
+  if (!alive.length) return result;
   if (process.platform === "win32") {
-    const { output } = await runProgram("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"]);
-    return output.match(/^"([^"]+)"/m)?.[1]?.toLowerCase();
+    const filter = alive.map(pid => `ProcessId=${pid}`).join(" OR ");
+    const { output } = await runProgram("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      `Get-CimInstance Win32_Process -Filter '${filter}' | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress`], { timeoutMs: 30_000 });
+    const parsed = output.trim() ? JSON.parse(output) : [];
+    for (const row of Array.isArray(parsed) ? parsed : [parsed])
+      result.set(row.ProcessId, { exe: row.ExecutablePath ?? undefined, commandLine: row.CommandLine ?? undefined });
+    return result;
   }
-  const { output } = await runProgram("ps", ["-p", String(pid), "-o", "comm="]);
-  return path.basename(output.trim()).toLowerCase() || undefined;
+  for (const pid of alive) {
+    if (process.platform === "linux") {
+      const exe = await fs.readlink(`/proc/${pid}/exe`).catch(() => undefined);
+      const commandLine = await fs.readFile(`/proc/${pid}/cmdline`, "utf8").then(text => text.split(String.fromCharCode(0)).join(" ")).catch(() => undefined);
+      result.set(pid, { exe, commandLine });
+    } else {
+      // macOS: comm is the full path of the executable.
+      const exe = (await runProgram("ps", ["-p", String(pid), "-o", "comm="])).output.trim() || undefined;
+      const commandLine = (await runProgram("ps", ["-p", String(pid), "-o", "args="])).output.trim() || undefined;
+      result.set(pid, { exe, commandLine });
+    }
+  }
+  return result;
 }
 
-// PIDs of the services this backend started, so a later start can end the ones a crash left behind.
+const comparable = (file: string) => {
+  let resolved = path.resolve(file);
+  try { resolved = realpathSync.native(resolved); } catch { /* compare as given */ }
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+};
+
+// True when file is dir itself or inside it, after resolving links (junctions included).
+export function isInside(file: string | undefined, dir: string) {
+  if (!file) return false;
+  const relative = path.relative(comparable(dir), comparable(file));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+// Whether a command line names file (separators and, on Windows, case ignored).
+export const mentions = (commandLine: string | undefined, file: string) => {
+  const normalize = (text: string) => (process.platform === "win32" ? text.toLowerCase() : text).replaceAll("\\", "/");
+  return commandLine !== undefined && normalize(commandLine).includes(normalize(path.resolve(file)));
+};
+
+export const samePath = (a: string | undefined, b: string) => a !== undefined && comparable(a) === comparable(b);
+
+async function terminate(pid: number) {
+  try { process.kill(pid); } catch { return; }
+  const deadline = Date.now() + 5000;
+  while (isAlive(pid) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+  if (isAlive(pid)) try { process.kill(pid, "SIGKILL"); } catch { /* gone */ }
+}
+
+export type PidEntry = { service: string; pid: number; exe: string; script?: string };
+
+// PIDs and executables of the services this backend started (<home>/run/services.json), so a start
+// after a crash or a force-quit can end the ones left behind.
 export class PidFile {
   constructor(private file: string) {}
-  async read(): Promise<{ service: string; pid: number; name: string }[]> {
+  async read(): Promise<PidEntry[]> {
     if (!existsSync(this.file)) return [];
-    try { return JSON.parse(await fs.readFile(this.file, "utf8")); } catch { return []; }
+    try { return (JSON.parse(await fs.readFile(this.file, "utf8")) as PidEntry[]).filter(entry => entry.exe && entry.pid); } catch { return []; }
   }
-  async write(entries: { service: string; pid: number; name: string }[]) {
+  async write(entries: PidEntry[]) {
     await fs.mkdir(path.dirname(this.file), { recursive: true });
     await fs.writeFile(this.file, JSON.stringify(entries));
   }
-  // Kills a recorded process only while its executable name still matches what was started.
-  async killStale(log: (line: string) => void) {
-    for (const entry of await this.read()) {
-      const name = await processName(entry.pid);
-      if (name && name === entry.name.toLowerCase()) {
-        log(`Stopping ${entry.service} (pid ${entry.pid}) left from an earlier run`);
-        try { process.kill(entry.pid); } catch { /* already gone */ }
-      }
+  // Ends a recorded process only while it is alive and still the program that was started:
+  // its executable is the recorded one and lies inside the bundled backend (GoTrue, PostgREST), or,
+  // for a Node service, it is the recorded Node/Electron binary running the recorded script from the
+  // bundle. Anything else with a reused PID is left alone; nothing is ever matched by name.
+  async killStale(bundle: string[], log: (line: string) => void) {
+    const bundled = (file: string | undefined) => bundle.some(dir => isInside(file, dir));
+    const entries = await this.read();
+    const info = await processInfo(entries.map(entry => entry.pid));
+    for (const entry of entries) {
+      const found = info.get(entry.pid);
+      if (!found) continue;
+      const ours = samePath(found.exe, entry.exe) && (entry.script
+        ? bundled(entry.script) && mentions(found.commandLine, entry.script)
+        : bundled(found.exe));
+      if (!ours) { log(`Leaving pid ${entry.pid} alone: it is no longer ${entry.service} (${found.exe ?? "unknown executable"})`); continue; }
+      log(`Stopping ${entry.service} (pid ${entry.pid}) left running by an earlier session`);
+      await terminate(entry.pid);
     }
     await fs.rm(this.file, { force: true });
   }

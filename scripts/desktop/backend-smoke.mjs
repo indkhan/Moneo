@@ -5,15 +5,19 @@
 // Checks: first start with all but the newest migration, then an upgrade start (pre-upgrade backup,
 // the last migration applied), owner sign-in, RLS through PostgREST, Storage upload/download through
 // the gateway, pgcrypto and pg_trgm, refusing a database from a newer Moneo, backup and restore into
-// a fresh home, and that stop leaves no process or port behind.
+// a fresh home, and that stop leaves no process or port behind. Also a force-quit: the backend runs
+// in a child Node process that is killed hard; the next start ends what it left running (and only
+// that) and runs without duplicates. On Windows, Postgres and PostgREST must load the app-local
+// MSVC runtime DLLs.
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import postgres from "postgres";
-import { built, loadBackend } from "./backend-load.mjs";
+import { built, loadBackend, root } from "./backend-load.mjs";
 
 const keep = process.argv.includes("--keep");
 const work = mkdtempSync(path.join(os.tmpdir(), "moneo-desktop-smoke-"));
@@ -63,6 +67,50 @@ async function postmasterPid(home) {
   return Number(text.split("\n")[0]) || undefined;
 }
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const until = async (what, check, ms) => {
+  const deadline = Date.now() + ms;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+};
+const bundleDir = realpathSync.native(path.join(built, "backend"));
+const platformKey = { "win32-x64": "win-x64", "darwin-arm64": "mac-arm64", "darwin-x64": "mac-x64", "linux-x64": "linux-x64" }[`${process.platform}-${process.arch}`];
+const exeSuffix = process.platform === "win32" ? ".exe" : "";
+const decoys = [];
+const output = (file, args) => new Promise((resolve, reject) => {
+  const child = spawn(file, args, { stdio: ["ignore", "pipe", "inherit"], windowsHide: true });
+  let text = "";
+  child.stdout.on("data", chunk => { text += chunk; });
+  child.once("error", reject);
+  child.once("exit", () => resolve(text));
+});
+
+// Processes whose executable is in desktop/.build/backend (also when started through the smoke's
+// junctions): pid, parent pid, executable, command line.
+const real = file => { try { return realpathSync.native(file); } catch { return file; } };
+const inBundle = exe => /^(postgres|postgrest|auth)(\.exe)?$/i.test(path.basename(exe))
+  && real(exe).toLowerCase().startsWith(bundleDir.toLowerCase() + path.sep);
+async function bundleProcesses() {
+  if (process.platform === "win32") {
+    const text = await output("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      "Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath } | Select-Object ProcessId,ParentProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress"]);
+    return JSON.parse(text).map(p => ({ pid: p.ProcessId, ppid: p.ParentProcessId, exe: p.ExecutablePath, args: p.CommandLine ?? "" }))
+      .filter(p => inBundle(p.exe));
+  }
+  const text = await output("ps", ["-axo", "pid=,ppid=,comm=,args="]);
+  return text.split("\n").map(line => line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)).filter(Boolean)
+    .map(([, pid, ppid, exe, args]) => ({ pid: Number(pid), ppid: Number(ppid), exe, args })).filter(p => inBundle(p.exe));
+}
+
+// Windows: which copies of the MSVC runtime a process has loaded.
+async function msvcModules(pid) {
+  const filter = "$_.ModuleName -match '^(vcruntime140|vcruntime140_1|msvcp140)\\.dll$'";
+  const text = await output("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    `(Get-Process -Id ${pid}).Modules | Where-Object { ${filter} } | Select-Object ModuleName,FileName | ConvertTo-Json -Compress`]);
+  const parsed = text.trim() ? JSON.parse(text) : [];
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
 
 async function stopAndCheck(running, home) {
   const pids = [...(await servicePids(home)).map(entry => entry.pid), await postmasterPid(home)].filter(Boolean);
@@ -90,12 +138,69 @@ try {
   await stopAndCheck(running, home);
   running = undefined;
 
-  // 2. Upgrade start: one pending migration → automatic pre-upgrade backup, then applied.
-  console.log("\n== Upgrade start (current bundle)");
+  // 2. Force-quit: the backend runs in a child Node process, which is killed hard.
+  console.log("\n== Force-quit (child runner killed hard)");
+  const runner = spawn(process.execPath, [path.join(root, "scripts", "desktop", "backend-run.mjs"), "--home", home, "--resources", older],
+    { stdio: ["ignore", "ignore", "inherit"], windowsHide: true });
+  const runnerExit = new Promise(resolve => runner.once("exit", resolve));
+  await until("the child backend", () => existsSync(path.join(home, "run", "env.json")), 180_000);
+  const left = Object.fromEntries((await servicePids(home)).map(entry => [entry.service, entry.pid]));
+  const oldPostmaster = await postmasterPid(home);
+  runner.kill("SIGKILL");
+  await runnerExit;
+  // pg_ctl's server always outlives its parent. On Windows, libuv puts spawned children in a
+  // kill-on-close job, so GoTrue and PostgREST end with the parent; elsewhere they are left running.
+  assert.ok(alive(oldPostmaster), "postgres should outlive a force-quit");
+  if (process.platform !== "win32") assert.ok(alive(left.auth) && alive(left.rest), "GoTrue and PostgREST should outlive a force-quit here");
+  await until("Storage to exit after its parent died", () => !alive(left.storage), 10_000);
+  pass(`force-quit left postgres ${oldPostmaster} running (GoTrue ${alive(left.auth) ? "running" : "ended"}, PostgREST ${alive(left.rest) ? "running" : "ended"}); Storage exited by itself`);
+
+  // Two planted records prove the recovery checks before it kills: a detached PostgREST from the
+  // bundle (must be ended) and an unrelated process recorded under GoTrue's path (must be left alone).
+  const decoyRest = spawn(path.join(older, "backend", platformKey, "postgrest", `postgrest${exeSuffix}`), [], {
+    detached: true, stdio: "ignore", windowsHide: true,
+    env: { ...process.env, PATH: `${path.join(older, "backend", platformKey, "postgres", "bin")}${path.delimiter}${process.env.PATH}`,
+      PGRST_DB_URI: "postgresql://nobody@127.0.0.1:1/nothing", PGRST_SERVER_HOST: "127.0.0.1", PGRST_SERVER_PORT: "0" },
+  });
+  const sleeper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore", windowsHide: true });
+  decoys.push(decoyRest.pid, sleeper.pid);
+  await until("the decoy PostgREST", () => alive(decoyRest.pid), 5000);
+  await fs.writeFile(path.join(home, "run", "services.json"), JSON.stringify([...await servicePids(home),
+    { service: "rest", pid: decoyRest.pid, exe: path.join(older, "backend", platformKey, "postgrest", `postgrest${exeSuffix}`) },
+    { service: "auth", pid: sleeper.pid, exe: path.join(older, "backend", platformKey, "gotrue", `auth${exeSuffix}`) }]));
+
+  // 3. Upgrade start in the same home: ends the leftovers, then one pending migration → automatic
+  // pre-upgrade backup, then applied.
+  console.log("\n== Upgrade start after the force-quit (current bundle)");
   started = Date.now();
   running = await backend.startBackend({ resources: current, home }, progress);
   console.log(`  ready in ${((Date.now() - started) / 1000).toFixed(1)} s`);
   const { env } = running;
+  const gone = [oldPostmaster, ...Object.values(left), decoyRest.pid].filter(alive);
+  assert.deepEqual(gone, [], `leftovers still running: ${gone.join(", ")}`);
+  assert.ok(alive(sleeper.pid), "a recorded PID that is not the recorded program must be left alone");
+  process.kill(sleeper.pid);
+  pass(`recovery ended the old postmaster and the planted bundled PostgREST (${decoyRest.pid}), and left the unrelated process (${sleeper.pid}) alone`);
+  const newPostmaster = await postmasterPid(home);
+  const processes = await bundleProcesses();
+  assert.deepEqual(processes.filter(p => p.ppid === runner.pid), [], "nothing started by the killed runner may survive");
+  const dataDir = path.join(home, "postgres").replaceAll("\\", "/").toLowerCase();
+  const postmasters = processes.filter(p => /postgres(\.exe)?$/i.test(p.exe) && p.args.replaceAll("\\", "/").toLowerCase().includes(dataDir));
+  assert.deepEqual(postmasters.map(p => p.pid), [newPostmaster], `one postmaster for this data folder: ${JSON.stringify(postmasters)}`);
+  const suffix = process.platform === "win32" ? ".exe" : "";
+  const mine = processes.filter(p => p.ppid === process.pid).map(p => path.basename(p.exe).toLowerCase()).sort();
+  assert.deepEqual(mine, [`auth${suffix}`, `postgrest${suffix}`], `one GoTrue and one PostgREST: ${mine.join(", ")}`);
+  pass(`after the force-quit: leftovers ended; one postmaster (${newPostmaster}) for this data folder, one GoTrue, one PostgREST`);
+
+  if (process.platform === "win32") {
+    const restPid = (await servicePids(home)).find(entry => entry.service === "rest").pid;
+    for (const [name, pid] of [["postgres", newPostmaster], ["postgrest", restPid]]) {
+      const modules = await msvcModules(pid);
+      assert.ok(modules.some(m => m.ModuleName.toLowerCase() === "vcruntime140.dll"), `${name} did not load vcruntime140.dll`);
+      for (const m of modules) assert.ok(realpathSync.native(m.FileName).toLowerCase().startsWith(bundleDir.toLowerCase()), `${name} loaded ${m.FileName}, not the app-local copy`);
+      pass(`${name} (pid ${pid}) loaded the app-local MSVC runtime: ${modules.map(m => path.relative(bundleDir, realpathSync.native(m.FileName))).join(", ")}`);
+    }
+  }
   const backups = readdirSync(path.join(home, "backups"));
   assert.equal(backups.filter(name => name.endsWith("pre-upgrade")).length, 1, `pre-upgrade backup: ${backups.join(", ")}`);
   pass(`pending migration triggered backup ${backups[0]}`);
@@ -144,7 +249,7 @@ try {
   await response.body?.cancel();
   pass(`Storage: ${content.length} bytes uploaded and downloaded as the owner with content-type text/csv; anon refused (${response.status})`);
 
-  // 3. Manual backup while running, stop, restore into a fresh home, check the data came along.
+  // 4. Manual backup while running, stop, restore into a fresh home, check the data came along.
   const folder = await backend.backup({ resources: current, home }, "smoke");
   const manifest = JSON.parse(await fs.readFile(path.join(folder, "manifest.json"), "utf8"));
   assert.equal(manifest.automatic, false);
@@ -167,7 +272,7 @@ try {
   assert.equal(readdirSync(path.join(restored, "backups")).length, 0, "an upgrade-free restore needs no automatic backup");
   pass("restored home: same owner, same workspace, same file and content type");
 
-  // 4. A database from a newer Moneo is refused before any service starts.
+  // 5. A database from a newer Moneo is refused before any service starts.
   const db2 = postgres(running.env.SUPABASE_DB_URL, { max: 1, onnotice: () => {} });
   await db2`insert into supabase_migrations.schema_migrations (version, name) values ('299901010001', 'from_the_future')`;
   await db2.end();
@@ -180,5 +285,11 @@ try {
   console.log("\nAll backend smoke checks passed.");
 } finally {
   if (running) await running.stop().catch(error => console.error(`stop: ${error.message}`));
+  // After a failed check: end what this run started and may have left (decoys, a force-quit's server).
+  for (const pid of decoys) if (alive(pid)) process.kill(pid);
+  for (const dir of [home, path.join(work, "home-restored")]) {
+    if (await postmasterPid(dir) && alive(await postmasterPid(dir)))
+      await output(path.join(built, "backend", platformKey, "postgres", "bin", `pg_ctl${exeSuffix}`), ["stop", "-D", path.join(dir, "postgres"), "-m", "fast", "-w"]);
+  }
   if (!keep) await fs.rm(work, { recursive: true, force: true }).catch(error => console.error(`Could not remove ${work}: ${error.message}`));
 }

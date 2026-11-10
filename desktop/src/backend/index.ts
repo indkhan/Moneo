@@ -40,6 +40,7 @@ function layout(paths: BackendPaths) {
     gotrueMigrations: path.join(backend, "gotrue", "migrations"),
     xattrAddon: path.join(backend, "fs-xattr", "xattr.node"),
     storageApi: path.join(paths.resources, "storage-api"),
+    storageServer: path.join(paths.resources, "storage-api", "server.js"),
     migrations: path.join(paths.resources, "migrations"),
     bootstrap: path.join(paths.resources, "bootstrap"),
     configFile: path.join(paths.home, "config.json"),
@@ -55,7 +56,7 @@ function layout(paths: BackendPaths) {
 type Layout = ReturnType<typeof layout>;
 
 function checkResources(l: Layout) {
-  const required = [path.join(l.pgBin, `postgres${exe}`), l.postgrest, l.gotrue, l.gotrueMigrations, path.join(l.storageApi, "dist", "start", "server.js"), l.migrations, l.bootstrap];
+  const required = [path.join(l.pgBin, `postgres${exe}`), l.postgrest, l.gotrue, l.gotrueMigrations, l.storageServer, l.migrations, l.bootstrap];
   const missing = required.filter(file => !existsSync(file));
   if (missing.length) throw new Error(`The bundled backend is incomplete (run node scripts/desktop/fetch-backend.mjs): missing ${missing.join(", ")}`);
 }
@@ -132,7 +133,7 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
   const secrets = config.secrets;
 
   const pids = new PidFile(l.pids);
-  await pids.killStale(note);
+  await pids.killStale([l.backend, l.storageApi], note);
   const cluster: Cluster = { bin: l.pgBin, data: l.data, logs: path.join(l.logs, "postgres"), port: config.ports.db, password: secrets.POSTGRES_PASSWORD };
   if (!fresh) await recoverStalePid(cluster, note);
   config.ports.db = cluster.port = await preferredPort(config.ports.db);
@@ -196,7 +197,9 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     const [authPort, restPort, restAdminPort, storagePort, storageAdminPort] = await Promise.all([freePort(), freePort(), freePort(), freePort(), freePort()]);
     const base = baseEnv();
     const dbUrl = (user: string) => `postgresql://${user}:${encodeURIComponent(secrets.POSTGRES_PASSWORD)}@127.0.0.1:${cluster.port}/postgres`;
-    const recordPids = () => pids.write(services.filter(s => s.pid).map(s => ({ service: s.name, pid: s.pid as number, name: s.name === "storage" ? path.basename(process.execPath) : path.basename(s.name === "auth" ? l.gotrue : l.postgrest) })));
+    const recordPids = () => pids.write(services.filter(s => s.pid).map(s => s.name === "storage"
+      ? { service: s.name, pid: s.pid as number, exe: process.execPath, script: l.storageServer }
+      : { service: s.name, pid: s.pid as number, exe: s.name === "auth" ? l.gotrue : l.postgrest }));
 
     await step("auth", "Starting sign-in (GoTrue)", async () => {
       const appUrl = options.appUrl ?? "http://localhost";
@@ -249,9 +252,13 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
         GLOBAL_S3_BUCKET: "stub",
         STORAGE_S3_REGION: "local",
         ENABLE_IMAGE_TRANSFORMATION: "false",
+        // No Swagger docs: Moneo does not use them, and the bundled server has no package.json for them.
+        EXPOSE_DOCS: "false",
+        // The bundled server exits by itself once this process is gone (see fetch-backend.mjs).
+        MONEO_PARENT_PID: String(process.pid),
       };
       if (process.platform !== "win32") env.MONEO_FS_XATTR_ADDON = l.xattrAddon;
-      const child = fork(path.join(l.storageApi, "dist", "start", "server.js"), [], { env, cwd: l.storageApi, serviceName: "Moneo Storage" });
+      const child = fork(l.storageServer, [], { env, cwd: l.storageApi, serviceName: "Moneo Storage" });
       const service = track("storage", child, await openLog(l.logs, "storage"), () => stopping, emitExit);
       services.push(service);
       await recordPids();

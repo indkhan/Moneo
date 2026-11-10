@@ -1,5 +1,5 @@
 // Runs the native desktop backend under plain Node until stopped, for development and checks:
-//   node scripts/desktop/backend-run.mjs --home <dir>
+//   node scripts/desktop/backend-run.mjs --home <dir> [--resources <dir>]   (resources: desktop/.build)
 // Writes the app environment to <home>/run/env.json (it holds secrets; the home is yours alone).
 // Stops cleanly on Ctrl+C, or when <home>/run/stop exists (for runs started in the background).
 import { existsSync } from "node:fs";
@@ -7,12 +7,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { built, loadBackend } from "./backend-load.mjs";
 
-const at = process.argv.indexOf("--home");
-if (at < 0 || !process.argv[at + 1]) throw new Error("Usage: node scripts/desktop/backend-run.mjs --home <dir>");
-const home = path.resolve(process.argv[at + 1]);
+const option = name => { const at = process.argv.indexOf(name); return at < 0 ? undefined : process.argv[at + 1]; };
+if (!option("--home")) throw new Error("Usage: node scripts/desktop/backend-run.mjs --home <dir> [--resources <dir>]");
+const home = path.resolve(option("--home"));
+const resources = path.resolve(option("--resources") ?? built);
 await fs.mkdir(path.join(home, "run"), { recursive: true });
 const backend = await loadBackend(path.join(home, "run"));
-const running = await backend.startBackend({ resources: built, home }, step => console.log(`[${step.state}] ${step.label}${step.detail ? `: ${step.detail}` : ""}`));
+const running = await backend.startBackend({ resources, home }, step => console.log(`[${step.state}] ${step.label}${step.detail ? `: ${step.detail}` : ""}`));
 running.onExit((service, code) => console.error(`${service} exited unexpectedly (${code})`));
 const stopFile = path.join(home, "run", "stop");
 await fs.rm(stopFile, { force: true });

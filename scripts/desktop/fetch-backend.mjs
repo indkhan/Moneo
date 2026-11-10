@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import fs from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -61,6 +62,22 @@ export const PINS = {
       "mac-arm64": "c8af0df44bce04359794dad8ea28d750437411d632748049d08644ffb66a60c6",
       "mac-x64": "a32dfab51f1845d51e810db8e47dcf0e6b51ae3422426514bf5a2b8302e97d4e",
       "linux-x64": "6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52",
+    },
+  },
+  // The Microsoft Visual C++ 2015-2022 runtime that the Windows PostgreSQL build (MSVC) needs, copied
+  // app-local next to postgres.exe and postgrest.exe so a clean Windows needs no vc_redist install.
+  // Taken from Microsoft's signed VC_redist.x64.exe (versioned download URL; its path carries the
+  // SHA-256) without running it: the DLLs sit in the bundle's vcRuntimeMinimum cabinet and are
+  // checked against the hashes below. Redistribution basis: Visual Studio's "Distributable Code"
+  // (REDIST.TXT lists these DLLs for app-local deployment); the runtime's own license.rtf ships too.
+  vcruntime: {
+    version: "14.44.35211.0",
+    url: "https://download.visualstudio.microsoft.com/download/pr/e9604e21-4b79-4096-a4b3-1b63d4b55b4d/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
+    sha256: "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b",
+    files: {
+      "vcruntime140.dll": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "vcruntime140_1.dll": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
+      "msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
     },
   },
   // Build-only toolchain for GoTrue, matching supabase/auth's go.mod and Dockerfile.
@@ -216,6 +233,57 @@ async function mkcert(platform, target) {
   await fs.chmod(join(target, `mkcert${p.exe}`), 0o755);
 }
 
+// Cabinet files ("MSCF", version 1.3) embedded in a WiX Burn bundle, in order: the UX container
+// (with the manifest) first, then the attached payload container.
+async function embeddedCabinets(file) {
+  const bytes = await fs.readFile(file);
+  const cabinets = [];
+  for (let at = bytes.indexOf("MSCF"); at >= 0; at = bytes.indexOf("MSCF", at + 4)) {
+    const length = bytes.readUInt32LE(at + 8);
+    if (bytes.readUInt32LE(at + 4) !== 0 || bytes[at + 25] !== 1 || bytes[at + 24] !== 3 || length < 64 || at + length > bytes.length) continue;
+    cabinets.push(bytes.subarray(at, at + length));
+    at += length - 4;
+  }
+  return cabinets;
+}
+
+async function extractCabinet(bytes, dest) {
+  await fs.mkdir(dest, { recursive: true });
+  const file = `${dest}.cab`;
+  await fs.writeFile(file, bytes);
+  // libarchive's bsdtar reads cabinets: the system tar on Windows and macOS, bsdtar on Linux.
+  if (process.platform === "win32") run(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe"), ["-xf", file, "-C", dest]);
+  else run(process.platform === "linux" ? "bsdtar" : "tar", ["-xf", file, "-C", dest]);
+}
+
+async function vcRuntime(platform, target) {
+  if (PLATFORMS[platform].os !== "win32") return;
+  const pin = PINS.vcruntime;
+  const bundle = await download(pin.url, pin.sha256, `VC_redist.x64-${pin.version}.exe`);
+  const work = join(cache, "work", "vc-redist");
+  await remove(work);
+  const [ux, attached] = await embeddedCabinets(bundle);
+  if (!attached) throw new Error("VC_redist.x64.exe: payload container not found");
+  await extractCabinet(ux, join(work, "ux"));
+  const manifest = await fs.readFile(join(work, "ux", "0"), "utf8");
+  const payload = name => manifest.match(new RegExp(`<Payload [^>]*FilePath="${name.replaceAll("\\", "\\\\")}"[^>]*SourcePath="([^"]+)"`))?.[1];
+  const cab = payload("packages\\vcRuntimeMinimum_amd64\\cab1.cab"), license = payload("license.rtf");
+  if (!cab || !license) throw new Error("VC_redist.x64.exe: runtime cabinet or license not found in the bundle manifest");
+  await extractCabinet(attached, join(work, "attached"));
+  await extractCabinet(await fs.readFile(join(work, "attached", cab)), join(work, "runtime"));
+  for (const dir of [join(target, "postgres", "bin"), join(target, "postgrest")]) {
+    if (!existsSync(dir)) continue;
+    for (const [name, expected] of Object.entries(pin.files)) {
+      const from = join(work, "runtime", `${name}_amd64`);
+      const actual = await sha256(from);
+      if (actual !== expected) throw new Error(`${name} from VC_redist: sha256 ${actual}, expected ${expected}`);
+      await fs.copyFile(from, join(dir, name));
+    }
+    await fs.copyFile(join(work, "ux", license), join(dir, "VC_RUNTIME_LICENSE.rtf"));
+  }
+  await remove(work);
+}
+
 async function goToolchain() {
   const host = { win32: "windows", darwin: "darwin", linux: "linux" }[process.platform];
   const arch = { x64: "amd64", arm64: "arm64" }[process.arch];
@@ -283,47 +351,90 @@ function npm(npmArgs, cwd) {
   run("npm", npmArgs, { cwd, shell: process.platform === "win32" });
 }
 
-async function nativeModules(dir, found = []) {
-  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) await nativeModules(path, found);
-    else if (entry.name === "binding.gyp" || entry.name.endsWith(".node")) found.push(path);
+// The license texts of every npm package esbuild put into the bundle, for THIRD_PARTY_NOTICES.txt.
+async function bundledNotices(src, metafile) {
+  const packages = new Map();
+  for (const input of Object.keys(metafile.inputs)) {
+    const match = input.replaceAll("\\", "/").match(/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//);
+    if (match && !packages.has(match[1])) packages.set(match[1], join(src, match[1]));
   }
-  return found;
+  const sections = [];
+  for (const dir of [...packages.values()].sort()) {
+    const manifest = JSON.parse(await fs.readFile(join(dir, "package.json"), "utf8"));
+    const file = (await fs.readdir(dir)).find(name => /^(licen[cs]e|copying|notice)(\.|$)/i.test(name));
+    const text = file ? (await fs.readFile(join(dir, file), "utf8")).trim() : `License: ${JSON.stringify(manifest.license ?? "see package")} (no license file in the package)`;
+    sections.push(`${manifest.name}@${manifest.version}\n${"-".repeat(72)}\n${text}\n`);
+  }
+  return { count: sections.length, text: sections.join("\n\n") };
 }
 
-// supabase/storage built like its Dockerfile: npm ci without install scripts, esbuild into dist/,
-// then a production-only install. Storage's file backend imports fs-xattr, a native addon that
-// refuses to install on Windows; it is replaced by scripts/desktop/backend-fs-xattr-shim so this
-// folder is the same on every platform, and the macOS/Linux addon is built per platform.
+// supabase/storage built like its Dockerfile (npm ci without install scripts, esbuild into dist/),
+// then bundled with its own esbuild into a few flat files: no node_modules, short paths, about 12 MB
+// instead of a 340 MB tree. pino writes logs from worker threads that load files by path, so those
+// workers are separate entry points, found through pino's __bundlerPathsOverrides. Storage's file
+// backend imports fs-xattr, a native addon that refuses to install on Windows; it is replaced by
+// scripts/desktop/backend-fs-xattr-shim, so this folder is the same on every platform and the
+// macOS/Linux addon is built per platform. Migrations are read from ./migrations/tenant (cwd).
 async function storage() {
   const src = await source(PINS.storage, "storage");
   const dest = join(out, "storage-api");
   const stamp = join(dest, ".moneo-build.json");
   const shim = join(import.meta.dirname, "backend-fs-xattr-shim");
-  const wanted = JSON.stringify({ version: PINS.storage.version, sha256: PINS.storage.sha256, shim: await fs.readFile(join(shim, "index.js"), "utf8") });
+  const wanted = JSON.stringify({ version: PINS.storage.version, sha256: PINS.storage.sha256, builder: await sha256(import.meta.filename), shim: await fs.readFile(join(shim, "index.js"), "utf8") });
   if (existsSync(stamp) && await fs.readFile(stamp, "utf8") === wanted) return console.log("Storage API is up to date.");
-  const flags = ["--ignore-scripts", "--engine-strict=false", "--force", "--no-audit", "--no-fund"];
   console.log(`Building Storage API ${PINS.storage.version}`);
-  npm(["ci", ...flags], src);
-  run(process.execPath, ["build.js"], { cwd: src });
+  if (!existsSync(join(src, "dist", "start", "server.js"))) {
+    npm(["ci", "--ignore-scripts", "--engine-strict=false", "--force", "--no-audit", "--no-fund"], src);
+    run(process.execPath, ["build.js"], { cwd: src });
+  }
   const staging = `${dest}.partial`;
   await remove(staging);
   await fs.mkdir(staging, { recursive: true });
-  for (const file of ["package.json", "package-lock.json", ".npmrc", "LICENSE"]) await fs.copyFile(join(src, file), join(staging, file));
-  npm(["ci", "--omit=dev", ...flags], staging);
-  await fs.cp(join(src, "dist"), join(staging, "dist"), { recursive: true });
+  const fromSource = createRequire(join(src, "package.json"));
+  const { build } = fromSource("esbuild");
+  const overrides = ["thread-stream-worker", "pino-worker", "pino/file"]
+    .map(name => `${JSON.stringify(name)}: require("path").join(__dirname, ${JSON.stringify(`${name.replace("/", "-")}.js`)})`).join(", ");
+  const result = await build({
+    absWorkingDir: src,
+    entryPoints: {
+      server: join(src, "dist", "start", "server.js"),
+      "thread-stream-worker": fromSource.resolve("thread-stream/lib/worker.js"),
+      "pino-worker": fromSource.resolve("pino/lib/worker.js"),
+      "pino-file": fromSource.resolve("pino/file.js"),
+    },
+    outdir: staging, bundle: true, platform: "node", format: "cjs", target: "node22",
+    alias: { "fs-xattr": join(shim, "index.js") },
+    // Besides pino's worker paths: exit once the backend that started this server is gone (a
+    // force-quit leaves no one to stop it), checked from the main thread every second.
+    banner: { js: `globalThis.__bundlerPathsOverrides = { ${overrides} };
+if (process.env.MONEO_PARENT_PID && require("worker_threads").isMainThread) {
+  const parent = Number(process.env.MONEO_PARENT_PID);
+  setInterval(() => { try { process.kill(parent, 0); } catch (error) { if (error.code === "ESRCH") process.exit(0); } }, 1000).unref();
+}` },
+    minify: true, keepNames: true, legalComments: "none", metafile: true, logLevel: "warning",
+    plugins: [{
+      // `require(__dirname + "/file.js")` (pg-format's reserved words) is invisible to the bundler;
+      // as a plain relative require it gets bundled.
+      name: "dirname-require",
+      setup(bundler) {
+        bundler.onLoad({ filter: /[\\/]node_modules[\\/].*\.js$/ }, async args => {
+          const text = await fs.readFile(args.path, "utf8");
+          if (!text.includes("require(__dirname + ")) return undefined;
+          return { contents: text.replace(/require\(__dirname \+ (['"])\/([^'"]+)\1\)/g, "require($1./$2$1)"), loader: "js", resolveDir: dirname(args.path) };
+        });
+      },
+    }],
+  });
   await fs.cp(join(src, "migrations"), join(staging, "migrations"), { recursive: true });
-  // Source maps and declaration files are not needed to run it.
-  for (const file of await fs.readdir(join(staging, "dist"), { recursive: true })) if (file.endsWith(".map")) await fs.rm(join(staging, "dist", file));
-  await remove(join(staging, "node_modules", "fs-xattr"));
-  await fs.cp(shim, join(staging, "node_modules", "fs-xattr"), { recursive: true });
-  const natives = await nativeModules(join(staging, "node_modules"));
-  if (natives.length) console.warn(`Native files left in storage-api node_modules:\n  ${natives.join("\n  ")}`);
+  // postgres-migrations reads its bootstrap SQL from <its dir>/migrations, now the bundle's folder.
+  await fs.copyFile(fromSource.resolve("postgres-migrations/dist/migrations/0_create-migrations-table.sql"), join(staging, "migrations", "0_create-migrations-table.sql"));
+  await fs.copyFile(join(src, "LICENSE"), join(staging, "LICENSE"));
+  const notices = await bundledNotices(src, result.metafile);
+  await fs.writeFile(join(staging, "THIRD_PARTY_NOTICES.txt"), `Third-party packages bundled into server.js (${notices.count}):\n\n${notices.text}`);
   await remove(dest);
   await fs.rename(staging, dest);
   await fs.writeFile(stamp, wanted);
-  console.log(`Storage API: ${mb(await size(dest))}`);
+  console.log(`Storage API: ${mb(await size(dest))} (${notices.count} bundled packages)`);
 }
 
 // The fs-xattr N-API addon for macOS/Linux, loaded by the shim through MONEO_FS_XATTR_ADDON.
@@ -363,6 +474,7 @@ for (const platform of platforms) {
   if (!skip.has("gotrue")) await gotrue(platform, target);
   if (!skip.has("mkcert")) await mkcert(platform, target);
   if (!skip.has("storage")) await xattrAddon(platform, target);
+  if (!skip.has("vcruntime")) await vcRuntime(platform, target);
   const manifest = {
     platform,
     postgres: { version: PINS.postgres.version, release: PINS.postgres.release, sha256: PINS.postgres.sha256[platform] },
@@ -370,6 +482,7 @@ for (const platform of platforms) {
     gotrue: { version: PINS.gotrue.version, commit: PINS.gotrue.commit, sha256: PINS.gotrue.sha256 },
     storage: { version: PINS.storage.version, commit: PINS.storage.commit, sha256: PINS.storage.sha256 },
     mkcert: { version: PINS.mkcert.version, sha256: PINS.mkcert.sha256[platform] },
+    ...(PLATFORMS[platform].os === "win32" ? { vcruntime: { version: PINS.vcruntime.version, sha256: PINS.vcruntime.sha256 } } : {}),
   };
   await fs.writeFile(join(target, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   for (const part of ["postgres", "postgrest", "gotrue", `mkcert${PLATFORMS[platform].exe}`, "fs-xattr"])

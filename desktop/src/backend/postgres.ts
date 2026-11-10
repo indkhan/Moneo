@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { exe, isAlive, mustRun, processName, runProgram } from "./processes";
+import { exe, isAlive, isInside, mentions, mustRun, processInfo, runProgram } from "./processes";
 
 export type Cluster = { bin: string; data: string; logs: string; port: number; password: string };
 
@@ -87,17 +87,19 @@ async function postmasterPid(data: string) {
   return Number.isInteger(pid) && pid > 0 ? pid : undefined;
 }
 
-// A postmaster.pid left by a crash: stop the server if it is still ours, delete the file if the
-// process is gone or the PID now belongs to another program (postgres would refuse to start).
+// A postmaster.pid left by a crash or a force-quit. If its PID is alive and is a postgres from
+// this bundle or serving this data folder, stop it with pg_ctl stop -m fast; if the PID is gone or
+// now belongs to another program (ours would be inspectable: same user), delete the file (postgres would refuse to start otherwise).
 export async function recoverStalePid(cluster: Cluster, log: (line: string) => void) {
   const pid = await postmasterPid(cluster.data);
   if (!pid) return;
-  const name = await processName(pid);
-  if (name === `postgres${exe}`) {
-    log(`PostgreSQL (pid ${pid}) is still running from an earlier session; restarting it`);
+  const found = (await processInfo([pid])).get(pid);
+  const postgres = found?.exe !== undefined && path.basename(found.exe).toLowerCase() === `postgres${exe}`;
+  if (postgres && (isInside(found.exe, cluster.bin) || mentions(found?.commandLine, cluster.data))) {
+    log(`PostgreSQL (pid ${pid}) is still running from an earlier session; stopping it first`);
     await stopCluster(cluster);
   } else {
-    log(`Removing stale postmaster.pid (pid ${pid} is ${name ? `now ${name}` : "gone"})`);
+    log(`Removing stale postmaster.pid (pid ${pid} is ${found?.exe ? `now ${found.exe}` : "gone"})`);
     await fs.rm(path.join(cluster.data, "postmaster.pid"), { force: true });
   }
 }

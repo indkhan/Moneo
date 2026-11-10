@@ -15,11 +15,24 @@ SHA-256 in that script), and land in `desktop/.build/` (in a package, `resources
 | `data/`, `workflow/` | `MONEO_DATA_DIR`, `WORKFLOW_LOCAL_DATA_DIR` for the app |
 | `backups/<time>-<reason>/` | `database.dump` (pg_dump -Fc), `storage/`, `config.json`, `manifest.json` |
 | `logs/` | `backend.log`, `auth.log`, `rest.log`, `storage.log`, `postgres/` |
-| `run/services.json` | PIDs of running services, so a start after a crash can end leftovers |
+| `run/services.json` | PID and executable of each running service, so a start after a crash can end leftovers |
+
+## After a crash or force-quit
+
+- `pg_ctl` starts Postgres outside the app's process tree, so it keeps running. At the next start,
+  a `postmaster.pid` whose PID is alive and is a `postgres` executable from this bundle (or one whose
+  command line names this data folder) is stopped with `pg_ctl stop -m fast`; any other PID there means
+  the file is stale and it is deleted.
+- GoTrue and PostgREST: on Windows they end with the app (libuv puts children in a kill-on-close job);
+  elsewhere they may survive. At the next start each PID in `run/services.json` is ended only if it is
+  alive, its executable is the recorded one and lies inside the bundled backend. Nothing is matched by
+  name, and a PID now used by another program is left alone.
+- The Storage server exits by itself within a second once the process that started it is gone
+  (`MONEO_PARENT_PID`, checked by a few lines fetch-backend.mjs puts at the top of its bundle).
 
 ## Start order
 
-1. Postgres (`initdb` on first run, otherwise stale `postmaster.pid` recovery), via `pg_ctl`.
+1. Postgres (`initdb` on first run, otherwise the recovery above), via `pg_ctl`.
 2. First run only: `desktop/bootstrap/*.sql` as `supabase_admin`, then the passwords and JWT settings
    `docker/db/roles.sql` sets.
 3. Refuses to go on if the database has a migration newer than the bundled ones. With pending
@@ -48,6 +61,14 @@ SHA-256 in that script), and land in `desktop/.build/` (in a package, `resources
   N-API addon on macOS and Linux.
 - **GoTrue on Windows** is built with a `go build -overlay` that drops one `SO_REUSEPORT` call
   (no such option on Windows); see `fetch-backend.mjs`.
+- **Storage API is one esbuild bundle** (`storage-api/server.js` plus pino's three worker files,
+  `migrations/`, `THIRD_PARTY_NOTICES.txt`), about 16 MB instead of a 340 MB `node_modules` with paths
+  over 260 characters. It runs with `EXPOSE_DOCS=false` (Swagger docs need its package.json).
+- **MSVC runtime on Windows.** The Windows PostgreSQL build needs `vcruntime140.dll`,
+  `vcruntime140_1.dll` and `msvcp140.dll`. They ship app-local in `postgres/bin` and `postgrest/`
+  (Windows loads them from the executable's folder first), taken from Microsoft's signed
+  VC_redist.x64 14.44.35211.0 and pinned by SHA-256 in `fetch-backend.mjs`, so no vc_redist install is
+  needed.
 - Postgres settings follow the image where they change results (`timezone = UTC`,
   `extra_float_digits = 0`, `row_security = on`, english text search); `jit = off`, no replication
   (`wal_level` default), logs rotate daily for a week.
