@@ -3,9 +3,10 @@
   "checkpoint_id": "01M74P5HRCZZ32BPX7QRMW02NW",
   "strategy": "manual-commit",
   "branch": "t3/desktop-app-pwa",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "desktop/electron-builder.config.cjs",
+    "desktop/electron-builder.installer.nsh",
     "desktop/setup/index.html",
     "desktop/setup/setup.css",
     "desktop/setup/setup.js",
@@ -14,7 +15,8 @@
     "desktop/src/tray.ts",
     "lib/phone-access.ts",
     "scripts/desktop/build.mjs",
-    "scripts/desktop/package-smoke.mjs"
+    "scripts/desktop/package-smoke.mjs",
+    "scripts/desktop/package-upgrade.mjs"
   ],
   "sessions": [
     {
@@ -23,6 +25,13 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
@@ -33,15 +42,15 @@
     "api_call_count": 24
   },
   "redaction": {
-    "replacements": 1,
+    "replacements": 48,
     "layers": {
-      "betterleaks": 0,
+      "betterleaks": 44,
       "connection_string": 0,
       "credential_key": 0,
-      "credential_value": 0,
-      "credentialed_uri": 0,
-      "entropy": 0,
-      "key_context": 1,
+      "credential_value": 13,
+      "credentialed_uri": 8,
+      "entropy": 12,
+      "key_context": 3,
       "provider_token": 0,
       "shell_stdin": 0
     }

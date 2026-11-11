@@ -1,0 +1,15 @@
+Thanks — reviewed and committed (f6e9fc3d on branch t3/desktop-app-pwa, draft PR #194). I approve all three deviations (fs-xattr shim, Windows GoTrue overlay, temporary migration-only grants). The shell agent integrated your module; the packaged Windows app loads Home with your backend. Follow-ups, same file ownership as before (plus you may edit desktop/electron-builder.config.cjs ONLY for adding the extra resource files these need; do not commit, I integrate):
+1. Orphans after a hard kill: when Electron is force-killed, postgres (and possibly gotrue/postgrest/storage) keep running. On startBackend, recover: record child PIDs + executable paths in home/run/; on next start terminate only recorded processes whose PID is alive AND whose executable path is inside our resources dir (verify before killing; never kill by name), and if postmaster.pid points to a live postgres for our data dir, stop it with pg_ctl stop -m fast before starting. Prove it in backend-smoke.mjs (kill the parent Node runner hard, then start again in the same home: works, no duplicate processes).
+2. MSVC runtime: bundle vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll app-local next to the Postgres binaries on win-x64 from an official, redistributable Microsoft source pinned with sha256 (document the license basis), so Postgres runs on a clean Windows without vc_redist. Verify Postgres loads them from the app dir (e.g. temporarily rename lookups is not possible — at least check with a PE import/load listing or Process-level loaded-module check that the app-local copies are the ones loaded).
+3. Storage API size and Windows path length: it's ≥336 MB and has node_modules paths over 260 chars (NSIS install/uninstall risk). Make it small and flat — preferably an esbuild bundle of its server entry into a few files (externalize only what must stay external, e.g. the fs-xattr shim/native bits), or else aggressive pruning (dev-only, docs, tests, unused S3/profiler deps if safely lazy). Verify the full backend-smoke still passes (storage upload/download/content type/backup/restore) and report the new size and max path length.
+4. Re-run backend-smoke.mjs and supabase/tests/migrations.mjs at the end and report exact results.
+
+---
+
+<task-notification>
+<task-id>b5zwtcfos</task-id>
+<tool-use-id>toolu_01CHq2RMMYrTt5Z1SUmsgUai</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cc74f73eb1c8553d\929a30f4-91d6-43fb-9cda-2e99d0e29d37\tasks\b5zwtcfos.output</output-file>
+<status>completed</status>
+<summary>Background command "Start native backend in background for regressions" completed (exit code 0)</summary>
+</task-notification>
