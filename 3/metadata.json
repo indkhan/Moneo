@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M74P5HRCZZ32BPX7QRMW02NW",
+  "session_id": "f2bc50f8-0d5a-4dfe-ae34-5346d13218ed",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-11T06:54:42.1453445Z",
+  "branch": "t3/desktop-app-pwa",
+  "checkpoints_count": 4,
+  "save_step_count": 5,
+  "files_touched": [
+    "desktop/electron-builder.config.cjs",
+    "desktop/electron-builder.installer.nsh",
+    "desktop/setup/index.html",
+    "desktop/setup/setup.css",
+    "desktop/setup/setup.js",
+    "desktop/src/main.ts",
+    "desktop/src/setup-window.ts",
+    "desktop/src/tray.ts",
+    "lib/phone-access.ts",
+    "scripts/desktop/build.mjs",
+    "scripts/desktop/harness.mjs",
+    "scripts/desktop/package-journey.mjs",
+    "scripts/desktop/package-smoke.mjs",
+    "scripts/desktop/package-upgrade.mjs"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "9d3eb23e863a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 46,
+    "cache_creation_tokens": 23398,
+    "cache_read_tokens": 7962676,
+    "output_tokens": 11189,
+    "api_call_count": 24
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 9
+  }
+}

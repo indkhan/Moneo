@@ -3,7 +3,7 @@
   "checkpoint_id": "01M74P5HRCZZ32BPX7QRMW02NW",
   "strategy": "manual-commit",
   "branch": "t3/desktop-app-pwa",
-  "checkpoints_count": 15,
+  "checkpoints_count": 19,
   "files_touched": [
     "desktop/electron-builder.config.cjs",
     "desktop/electron-builder.installer.nsh",
@@ -15,6 +15,8 @@
     "desktop/src/tray.ts",
     "lib/phone-access.ts",
     "scripts/desktop/build.mjs",
+    "scripts/desktop/harness.mjs",
+    "scripts/desktop/package-journey.mjs",
     "scripts/desktop/package-smoke.mjs",
     "scripts/desktop/package-upgrade.mjs"
   ],
@@ -39,17 +41,24 @@
       "compact_transcript": "/2/transcript.jsonl",
       "content_hash": "/2/content_hash.txt",
       "prompt": "/2/prompt.txt"
+    },
+    {
+      "metadata": "/3/metadata.json",
+      "transcript": "/3/full.jsonl",
+      "compact_transcript": "/3/transcript.jsonl",
+      "content_hash": "/3/content_hash.txt",
+      "prompt": "/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 54,
-    "cache_creation_tokens": 13648,
-    "cache_read_tokens": 2549565,
-    "output_tokens": 5406,
-    "api_call_count": 36
+    "input_tokens": 100,
+    "cache_creation_tokens": 37046,
+    "cache_read_tokens": 10512241,
+    "output_tokens": 16595,
+    "api_call_count": 60
   },
   "redaction": {
-    "replacements": 75,
+    "replacements": 77,
     "layers": {
       "betterleaks": 54,
       "connection_string": 0,
@@ -57,7 +66,7 @@
       "credential_value": 13,
       "credentialed_uri": 8,
       "entropy": 12,
-      "key_context": 20,
+      "key_context": 22,
       "provider_token": 0,
       "shell_stdin": 0
     }
