@@ -193,6 +193,9 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
       }));
     }
 
+    // Older desktop homes need the guard before PostgREST opens its sessions too.
+    await admin.unsafe("ALTER ROLE authenticator SET session_preload_libraries TO 'safeupdate'");
+
     const apiUrl = `http://127.0.0.1:${config.ports.api}`;
     const [authPort, restPort, restAdminPort, storagePort, storageAdminPort] = await Promise.all([freePort(), freePort(), freePort(), freePort(), freePort()]);
     const base = baseEnv();

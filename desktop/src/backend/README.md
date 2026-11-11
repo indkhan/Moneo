@@ -44,10 +44,11 @@ SHA-256 in that script), and land in `desktop/.build/` (in a package, `resources
 
 ## Differences from the Docker backend
 
-- **No supautils, safeupdate, pg_graphql, pg_net, pg_cron, pgsodium/vault, pg_stat_statements,
-  realtime.** Nothing in Moneo uses them. `authenticator` therefore has no
-  `session_preload_libraries`; without safeupdate, a PostgREST `DELETE`/`UPDATE` with no filter is not
-  rejected (RLS still limits it to the owner's rows).
+- **safeupdate** is compiled from pinned upstream source against each bundled PostgreSQL and
+  preloaded for `authenticator`, preserving rejection of unfiltered PostgREST updates and deletes.
+  Building needs Visual Studio C++ Build Tools on Windows and a C compiler on macOS/Linux.
+- **No supautils, pg_graphql, pg_net, pg_cron, pgsodium/vault, pg_stat_statements, realtime.**
+  Moneo does not call these extensions; the supautils migration grants are reproduced below.
 - **supautils' policy grants.** In the image, supautils lets `postgres` create and drop policies and
   triggers on `auth.*`/`storage.*` tables it does not own. Moneo's migrations need that
   (`create policy … on storage.objects`). During Moneo's own migrations only, `postgres` is granted

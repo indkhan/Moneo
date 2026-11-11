@@ -6,8 +6,8 @@
 -- Derived from a throwaway container of that image started like docker-compose.yml's db service:
 --   pg_dumpall -U supabase_admin --globals-only --no-role-passwords
 -- Attributes, per-role settings and memberships are copied as dumped, including that postgres is
--- NOSUPERUSER BYPASSRLS. One deviation: authenticator has no session_preload_libraries
--- ('supautils, safeupdate'), because those extensions are not bundled (see desktop/src/backend/README.md).
+-- NOSUPERUSER BYPASSRLS. safeupdate is built against the bundled PostgreSQL; supautils'
+-- migration-only grants are handled by the backend (see desktop/src/backend/README.md).
 
 -- supabase_admin is the initdb superuser (initdb -U supabase_admin), so it already exists.
 ALTER ROLE supabase_admin WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
@@ -41,6 +41,7 @@ ALTER ROLE supabase_storage_admin WITH NOSUPERUSER NOINHERIT CREATEROLE NOCREATE
 
 ALTER ROLE anon SET statement_timeout TO '3s';
 ALTER ROLE authenticated SET statement_timeout TO '8s';
+ALTER ROLE authenticator SET session_preload_libraries TO 'safeupdate';
 ALTER ROLE authenticator SET statement_timeout TO '8s';
 ALTER ROLE authenticator SET lock_timeout TO '8s';
 ALTER ROLE postgres SET search_path TO E'\\$user', 'public', 'extensions';

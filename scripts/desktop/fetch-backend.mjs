@@ -9,7 +9,7 @@
 //   node scripts/desktop/fetch-backend.mjs --platform win-x64 [--platform mac-arm64 ...] [--skip storage,gotrue]
 //
 // Platforms: win-x64, mac-arm64, mac-x64, linux-x64. Everything cross-builds from any host except
-// the fs-xattr addon for macOS/Linux, which compiles only on a host of that platform (CI does that).
+// safeupdate and the fs-xattr addon, which compile only on their native host (CI does that).
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
@@ -190,6 +190,7 @@ async function postgres(platform, target) {
   const work = join(cache, "work", `postgres-${platform}`);
   await extract(archive, work);
   const src = await single(work);
+  await safeupdate(platform, src, work);
   // Drop what a running database never loads: headers, docs, static libraries, build files,
   // PL/Python (and the Python runtime it bundles) and the LLVM JIT (the backend sets jit = off).
   await remove(join(src, "include"));
@@ -205,6 +206,39 @@ async function postgres(platform, target) {
   await remove(join(target, "postgres"));
   await fs.rename(src, join(target, "postgres"));
   await remove(work);
+}
+
+// Build the same parser guard that the Docker image preloads for PostgREST.
+async function safeupdate(platform, pg, work) {
+  const p = PLATFORMS[platform];
+  if (process.platform !== p.os || process.arch !== p.arch)
+    throw new Error(`safeupdate must be built on a ${platform} host`);
+  const source = await download(
+    "https://raw.githubusercontent.com/eradman/pg-safeupdate/37dbc9c4acf5e2504adf2b218e9c6b41751022f3/safeupdate.c",
+    "1351fc18b9a1e2dcc72185d349c178244458b5d9eb30007609c3d599b38aeb38", "safeupdate-37dbc9c4.c");
+  const license = await download(
+    "https://raw.githubusercontent.com/eradman/pg-safeupdate/37dbc9c4acf5e2504adf2b218e9c6b41751022f3/LICENSE",
+    "0bf2ef60c813bf0bb01f02b9b9a11b090cd8c90f0fbc627a3ddb0dcb3955ce1b", "safeupdate-37dbc9c4-LICENSE");
+  await fs.mkdir(join(pg, "dependency-notices"), { recursive: true });
+  await fs.copyFile(license, join(pg, "dependency-notices", "safeupdate-LICENSE"));
+  const build = join(work, "safeupdate-build");
+  await fs.mkdir(build, { recursive: true });
+  await fs.copyFile(source, join(build, "safeupdate.c"));
+  if (p.os === "win32") {
+    const vswhere = join(process.env["ProgramFiles(x86)"] ?? "C:/Program Files (x86)", "Microsoft Visual Studio", "Installer", "vswhere.exe");
+    const result = spawnSync(vswhere, ["-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"], { encoding: "utf8" });
+    const vs = result.stdout?.trim();
+    if (result.status !== 0 || !vs) throw new Error("Building safeupdate requires Visual Studio C++ Build Tools");
+    const batch = `@call "${join(vs, "VC", "Auxiliary", "Build", "vcvars64.bat")}"\r\n@if errorlevel 1 exit /b 1\r\ncl /nologo /LD /MD /I"${join(pg, "include", "server")}" /I"${join(pg, "include", "server", "port", "win32")}" /I"${join(pg, "include")}" safeupdate.c /link "${join(pg, "lib", "postgres.lib")}" /EXPORT:_PG_init /OUT:safeupdate.dll\r\n`;
+    await fs.writeFile(join(build, "build.cmd"), batch);
+    run("cmd.exe", ["/d", "/c", join(build, "build.cmd")], { cwd: build });
+  } else {
+    // This module needs only server headers and unresolved backend symbols, avoiding PGXS'
+    // build-time paths and make's handling of spaces in the extracted PostgreSQL location.
+    run("cc", ["-fPIC", ...(p.os === "darwin" ? ["-bundle", "-undefined", "dynamic_lookup"] : ["-shared"]),
+      `-I${join(pg, "include", "server")}`, `-I${join(pg, "include")}`, "safeupdate.c", "-o", "safeupdate.so"], { cwd: build });
+  }
+  await fs.copyFile(join(build, p.os === "win32" ? "safeupdate.dll" : "safeupdate.so"), join(pg, "lib", p.os === "win32" ? "safeupdate.dll" : "safeupdate.so"));
 }
 
 async function postgrest(platform, target) {
@@ -477,6 +511,7 @@ for (const platform of platforms) {
   if (!skip.has("vcruntime")) await vcRuntime(platform, target);
   const manifest = {
     platform,
+    safeupdate: { commit: "37dbc9c4acf5e2504adf2b218e9c6b41751022f3", sha256: "1351fc18b9a1e2dcc72185d349c178244458b5d9eb30007609c3d599b38aeb38" },
     postgres: { version: PINS.postgres.version, release: PINS.postgres.release, sha256: PINS.postgres.sha256[platform] },
     postgrest: { version: PINS.postgrest.version, sha256: PINS.postgrest.sha256[platform] },
     gotrue: { version: PINS.gotrue.version, commit: PINS.gotrue.commit, sha256: PINS.gotrue.sha256 },
