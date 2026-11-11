@@ -9,6 +9,7 @@ type Step = Parameters<Progress>[0];
 export type SetupState = {
   phase: "starting" | "failed" | "stopping" | "restoring";
   firstRun: boolean;
+  version?: string;
   steps: Step[];
   error?: { summary: string; detail?: string };
 };

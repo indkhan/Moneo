@@ -8,11 +8,22 @@ import { NextServer } from "./next-server";
 import { backupsDir, home, log, readSettings, resources, setupHome, updateSettings } from "./paths";
 import { choosePort } from "./port";
 import { closeSetup, focusSetup, progress, registerSetupIpc, setSetupState, showSetup } from "./setup-window";
-import { createTray, openedAtLogin } from "./tray";
+import { createTray, openedAtLogin, type TrayActions } from "./tray";
+
+// MONEO_DESKTOP_DEBUG=1 allows debugging switches and the test hooks below (package smoke tests).
+const debug = process.env.MONEO_DESKTOP_DEBUG === "1";
+// A debugging port or inspector would let any program on this computer drive the owner's signed-in window.
+const DEBUG_SWITCHES = ["remote-debugging-port", "remote-debugging-pipe", "inspect", "inspect-brk", "inspect-port", "inspect-brk-node", "inspect-publish-uid"];
 
 setupHome();
-if (!app.requestSingleInstanceLock()) app.quit();
-else main();
+const refused = app.isPackaged && !debug ? DEBUG_SWITCHES.filter(name => app.commandLine.hasSwitch(name)) : [];
+if (refused.length) {
+  log(`Refusing to start with --${refused.join(", --")} (debugging switches need MONEO_DESKTOP_DEBUG=1)`);
+  app.exit(1);
+} else if (!app.requestSingleInstanceLock() || process.argv.includes("--quit")) {
+  // A second launch hands its arguments to the running Moneo; `--quit` with none running does nothing.
+  app.quit();
+} else main();
 
 function main() {
   const paths: BackendPaths = { resources: resources(), home: home() };
@@ -45,10 +56,11 @@ function main() {
     backend = undefined;
   }
 
-  function boot() {
+  function boot(reason: string) {
     booting ??= (async () => {
+      log(`Starting services (${reason})`);
       failed = false;
-      setSetupState({ phase: "starting", steps: [], error: undefined, firstRun: !existsSync(path.join(paths.home, "config.json")) });
+      setSetupState({ phase: "starting", steps: [], error: undefined, firstRun: !existsSync(path.join(paths.home, "config.json")), version: app.getVersion() });
       if (!hidden || window) showSetup(!window?.isVisible());
       try {
         port = await choosePort();
@@ -94,7 +106,8 @@ function main() {
       // Windows ends the session through the window; finish cleanly within the time it gives.
       onSessionEnd: () => void quit(),
     });
-    await window.loadURL(`http://localhost:${port}/`);
+    // The server is up; a page that navigates on during this first load (a redirect, a click) is not a failed start.
+    await window.loadURL(`http://localhost:${port}/`).catch(error => log(`First page load: ${message(error)}`));
     if (visible) window.show();
   }
 
@@ -143,7 +156,10 @@ function main() {
       message: `Restore Moneo from ${path.basename(folder)}?`,
       detail: "Your current data is replaced by this backup. Moneo backs up the current data first, so you can go back.",
     });
-    if (response !== 0) return;
+    if (response === 0) await restoreFrom(folder);
+  }
+
+  async function restoreFrom(folder: string) {
     busy = true;
     try {
       await booting;
@@ -159,14 +175,14 @@ function main() {
       return;
     }
     busy = false;
-    await boot();
+    await boot("restored");
   }
 
   async function retry() {
     busy = true;
     await stopServices();
     busy = false;
-    await boot();
+    await boot("retry");
   }
 
   // Explicit quit: stop the server, then the database, then exit. Forced after 20 seconds.
@@ -189,10 +205,31 @@ function main() {
     return quitPromise;
   }
 
+  const trayActions: TrayActions = {
+    open: openWindow,
+    openInBrowser: () => { if (port) void openExternal(`http://localhost:${port}/`); },
+    backUp: () => void backUp("manual", true),
+    openBackups: () => { mkdirSync(backupsDir(), { recursive: true }); void shell.openPath(backupsDir()); },
+    restore: () => void restoreBackup(),
+    quit: () => void quit(),
+  };
+
   app.on("second-instance", (_event, argv) => {
-    if (argv.includes("--quit")) void quit();
+    const hook = argv.find(arg => arg.startsWith("--debug-action="))?.slice("--debug-action=".length);
+    if (hook && debug) void runHook(hook);
+    else if (argv.includes("--quit")) void quit();
     else openWindow();
   });
+
+  // Test hooks (MONEO_DESKTOP_DEBUG=1 only): the tray menu's actions, and a restore without its dialogs.
+  async function runHook(hook: string) {
+    log(`Debug action ${hook}`);
+    const [name, value] = hook.split(/=(.*)/s);
+    if (name === "restore" && value) return restoreFrom(value);
+    const action = trayActions[name as keyof typeof trayActions];
+    if (action) action();
+  }
+
   app.on("before-quit", event => { event.preventDefault(); void quit(); });
   app.on("window-all-closed", () => { /* keep running in the tray */ });
   app.on("activate", openWindow);
@@ -201,17 +238,10 @@ function main() {
     log(`Moneo ${app.getVersion()} starting (home ${paths.home})`);
     lockDownSession();
     registerSetupIpc({ retry: () => void retry(), restore: restoreBackup, quit: () => void quit() });
-    createTray({
-      open: openWindow,
-      openInBrowser: () => { if (port) void openExternal(`http://localhost:${port}/`); },
-      backUp: () => void backUp("manual", true),
-      openBackups: () => { mkdirSync(backupsDir(), { recursive: true }); void shell.openPath(backupsDir()); },
-      restore: () => void restoreBackup(),
-      quit: () => void quit(),
-    });
+    createTray(trayActions);
     // macOS and Linux announce shutdown here; delaying lets the database close cleanly.
     // (The event object is passed at runtime though Electron's types omit it.)
     powerMonitor.on("shutdown", (...args: unknown[]) => { (args[0] as Electron.Event | undefined)?.preventDefault(); void quit(); });
-    void boot();
+    void boot("launch");
   });
 }

@@ -19,7 +19,7 @@ export const openedAtLogin = () => process.argv.includes("--hidden") || app.getL
 export function createTray(actions: TrayActions) {
   const size = process.platform === "darwin" ? 18 : 16;
   tray = new Tray(nativeImage.createFromPath(iconPath()).resize({ width: size, height: size }));
-  tray.setToolTip("Moneo");
+  tray.setToolTip(`Moneo ${app.getVersion()}`);
   const build = () => Menu.buildFromTemplate([
     { label: "Open Moneo", click: actions.open },
     { label: "Open in browser", click: actions.openInBrowser },

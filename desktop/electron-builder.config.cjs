@@ -6,14 +6,19 @@
 // APPLE_TEAM_ID for notarization).
 const signed = Boolean(process.env.CSC_LINK);
 const notarize = Boolean(process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID);
+// Upgrade tests (scripts/desktop/package-upgrade.mjs) build a second version into a separate folder
+// without touching desktop/package.json, and without Start menu or desktop shortcuts.
+const version = process.env.MONEO_DESKTOP_VERSION;
+const testInstaller = process.env.MONEO_DESKTOP_TEST_INSTALLER === "1";
 
 /** @type {import("electron-builder").Configuration} */
 module.exports = {
-  appId: "app.moneo.desktop",
-  productName: "Moneo",
+  appId: testInstaller ? "app.moneo.desktop.qa" : "app.moneo.desktop",
+  productName: testInstaller ? "Moneo QA" : "Moneo",
   copyright: "Copyright © 2026 Moneo contributors",
   electronVersion: require("../node_modules/electron/package.json").version,
-  directories: { output: "release", buildResources: "icons" },
+  directories: { output: process.env.MONEO_DESKTOP_RELEASE_DIR || "release", buildResources: "icons" },
+  ...(version && { extraMetadata: { version } }),
   files: ["package.json", "dist/**", "setup/**", "icons/icon.png"],
   asar: true,
   // desktop/package.json has no dependencies: everything the main process needs is bundled by esbuild.
@@ -37,12 +42,14 @@ module.exports = {
   win: {
     target: [{ target: "nsis", arch: ["x64"] }],
     icon: "icons/icon.png",
-    executableName: "Moneo",
+    executableName: testInstaller ? "Moneo-QA" : "Moneo",
   },
   nsis: {
     oneClick: true,
     perMachine: false,
     deleteAppDataOnUninstall: false,
+    include: "electron-builder.installer.nsh",
+    ...(testInstaller && { createDesktopShortcut: false, createStartMenuShortcut: false }),
     artifactName: "Moneo-Setup-${version}-${arch}.${ext}",
   },
   mac: {

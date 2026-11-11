@@ -30,6 +30,7 @@ function render(state) {
     return item;
   }));
   $("failure").hidden = state.phase !== "failed";
+  $("version").textContent = state.version ? `Moneo ${state.version}` : "";
   if (state.error) {
     $("error-summary").textContent = state.error.summary;
     $("error-detail").textContent = state.error.detail ?? "";

@@ -25,6 +25,7 @@ li.running::before { content: "◌"; animation: spin 1.2s linear infinite; displ
 li.done::before { content: "✓"; color: inherit; }
 li.error::before { content: "✕"; color: var(--error); }
 li .detail { color: var(--muted); font-size: 12px; }
+#version { color: var(--muted); font-size: 11px; margin: 18px 0 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 #failure { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
 #error-summary { color: var(--error); margin: 0 0 8px; }

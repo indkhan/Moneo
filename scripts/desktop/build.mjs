@@ -61,10 +61,9 @@ function assemble() {
   const app = path.join(out, "app");
   rmSync(app, { recursive: true, force: true });
   cpSync(standalone, app, { recursive: true, dereference: true });
-  // Some dynamic paths (lib/phone-access.ts) make tracing copy the whole checkout; the server runs
-  // without any of the source, so keep only what it needs.
-  const keep = new Set([distDir, "node_modules", "server.js", "package.json"]);
-  for (const entry of readdirSync(app)) if (!keep.has(entry)) rmSync(path.join(app, entry), { recursive: true, force: true });
+  // A dynamic fs or spawn path makes tracing copy the whole checkout; Next warns about it and so do we.
+  const extra = readdirSync(app).filter(entry => ![distDir, "node_modules", "server.js", "package.json"].includes(entry));
+  if (extra.length) fail(`the standalone server traced source files (${extra.join(", ")}); add /*turbopackIgnore: true*/ to the dynamic path Next.js warned about`);
   cpSync(path.join(built, "static"), path.join(app, distDir, "static"), { recursive: true });
   cpSync(path.join(root, "public"), path.join(app, "public"), { recursive: true });
   // Read from disk at runtime (outputFileTracingIncludes in next.config.ts); fail early if tracing missed them.
