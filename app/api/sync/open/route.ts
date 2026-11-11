@@ -24,6 +24,8 @@ function due(connection: { id: string; last_synced_at: string | null; last_attem
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
+  if (process.env.MONEO_DESKTOP === "1" && process.env.MONEO_DESKTOP_PREVIEW === "1")
+    return NextResponse.json({ refresh: false });
   const { supabase, workspace } = context;
   const [scalable, banks] = await Promise.all([
     supabase.from("scalable_connections").select("id, last_synced_at").eq("workspace_id", workspace.id).eq("status", "active"),

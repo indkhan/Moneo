@@ -48,6 +48,7 @@ export class NextServer {
       HOSTNAME: "127.0.0.1",
       NEXT_PUBLIC_APP_URL: `http://localhost:${this.options.port}`,
       MONEO_DESKTOP: "1",
+      ...(process.env.MONEO_DESKTOP_PREVIEW === "1" ? { MONEO_DESKTOP_PREVIEW: "1" } : {}),
       NODE_ENV: "production",
       NEXT_TELEMETRY_DISABLED: "1",
     };

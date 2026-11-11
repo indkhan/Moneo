@@ -42,6 +42,15 @@ it("does nothing and asks for no refresh when everything is fresh", async () => 
   expect(start).not.toHaveBeenCalled();
 });
 
+it("does not sync copied connections when opening an explicit desktop preview", async () => {
+  vi.stubEnv("MONEO_DESKTOP", "1");
+  vi.stubEnv("MONEO_DESKTOP_PREVIEW", "1");
+  connections([{ id: "s-preview", last_synced_at: ago(180) }], [{ id: "b-preview", last_synced_at: ago(180) }]);
+  expect(await open()).toEqual({ refresh: false });
+  expect(syncScalable).not.toHaveBeenCalled();
+  expect(start).not.toHaveBeenCalled();
+});
+
 it("leaves a bank sync that is already running alone", async () => {
   connections([], [{ id: "b-running", last_synced_at: ago(180), sync_started_at: ago(1) }]);
   expect(await open()).toEqual({ refresh: false });

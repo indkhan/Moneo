@@ -6,6 +6,8 @@ export async function register() {
   setGlobalDispatcher(new Agent({ keepAliveTimeout: 60_000, keepAliveMaxTimeout: 600_000 }));
   // Workflow's local port lookup reads a report; reverse DNS can block the event loop.
   (process.report as NodeJS.ProcessReport & { excludeNetwork: boolean }).excludeNetwork = true;
+  // A private desktop data preview must not replay copied jobs or start automatic provider syncs.
+  if (process.env.MONEO_DESKTOP === "1" && process.env.MONEO_DESKTOP_PREVIEW === "1") return;
   // Local queues are in memory; start replays persisted pending/running runs.
   // Next awaits this once per server instance.
   const { getWorld } = await import("workflow/runtime");

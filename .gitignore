@@ -67,3 +67,4 @@ next-env.d.ts
 /.next-desktop/
 /desktop/dist/
 /desktop/release/
+/desktop/release-preview/

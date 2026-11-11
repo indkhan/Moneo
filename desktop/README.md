@@ -55,6 +55,12 @@ macOS asks for the login keychain password, Linux adds it to the browsers' NSS s
 
 ## Security fuses
 
+For a private copied-data preview, launch the desktop executable with `MONEO_DESKTOP_PREVIEW=1`.
+This runtime-only flag prevents persisted Workflow recovery, the scheduler and the bank callback
+listener from starting, and skips automatic bank/Scalable sync when opening a page. It does not
+block network requests triggered by explicit actions in the app, and is
+not an offline mode. Normal desktop launches and source development keep their usual behavior.
+
 RunAsNode, `NODE_OPTIONS` and `--inspect` are off; cookie encryption, asar-only loading and embedded asar
 integrity are on. The smoke test reads them back from the packaged executable. Because `--inspect` is off,
 Playwright's `_electron.launch` cannot attach, so the smoke test drives the app over
