@@ -3,7 +3,7 @@
   "checkpoint_id": "01M74P5HRCZZ32BPX7QRMW02NW",
   "strategy": "manual-commit",
   "branch": "t3/desktop-app-pwa",
-  "checkpoints_count": 3,
+  "checkpoints_count": 15,
   "files_touched": [
     "desktop/electron-builder.config.cjs",
     "desktop/electron-builder.installer.nsh",
@@ -32,25 +32,32 @@
       "compact_transcript": "/1/transcript.jsonl",
       "content_hash": "/1/content_hash.txt",
       "prompt": "/1/prompt.txt"
+    },
+    {
+      "metadata": "/2/metadata.json",
+      "transcript": "/2/full.jsonl",
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "prompt": "/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 46,
-    "cache_creation_tokens": 11502,
-    "cache_read_tokens": 1877042,
-    "output_tokens": 4918,
-    "api_call_count": 24
+    "input_tokens": 54,
+    "cache_creation_tokens": 13648,
+    "cache_read_tokens": 2549565,
+    "output_tokens": 5406,
+    "api_call_count": 36
   },
   "redaction": {
-    "replacements": 48,
+    "replacements": 75,
     "layers": {
-      "betterleaks": 44,
+      "betterleaks": 54,
       "connection_string": 0,
       "credential_key": 0,
       "credential_value": 13,
       "credentialed_uri": 8,
       "entropy": 12,
-      "key_context": 3,
+      "key_context": 20,
       "provider_token": 0,
       "shell_stdin": 0
     }
