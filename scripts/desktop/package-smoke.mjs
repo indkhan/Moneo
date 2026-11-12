@@ -9,7 +9,7 @@ import postgres from "postgres";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { FuseState, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
-import { alive, check, defaultExe, Desktop, importCsv, listeningPid, processesOf, statement, summary, tempHome, transactionsText, until } from "./harness.mjs";
+import { alive, check, defaultExe, Desktop, importCsv, processesOf, statement, summary, tempHome, transactionsText, until } from "./harness.mjs";
 
 const exe = path.resolve(process.argv[2] ?? defaultExe());
 if (!existsSync(exe)) { console.error(`No packaged app at ${exe}. Run npm run desktop:build && npm run desktop:dist first.`); process.exit(1); }
@@ -110,10 +110,13 @@ try {
   }
 
   // Crash: the server is restarted.
-  const serverPid = listeningPid(port);
+  // Use the app-owned PID: Linux can hide utility-process sockets from lsof.
+  const serverPidFromLog = () => Number([...app.log().matchAll(/Next server process (\d+)/g)].at(-1)?.[1]) || null;
+  const serverPid = serverPidFromLog();
+  if (!serverPid || !alive(serverPid)) throw new Error("No live Next server PID recorded");
   process.kill(serverPid);
   await until("the server to go down", async () => !alive(serverPid), 10_000);
-  const restartedPid = await until("the server to come back", async () => await health(port) && listeningPid(port), 90_000).catch(() => null);
+  const restartedPid = await until("the server to come back", async () => await health(port) && serverPidFromLog() !== serverPid && serverPidFromLog(), 90_000).catch(() => null);
   await page.reload();
   check("a crashed server is restarted", restartedPid && restartedPid !== serverPid && /Restarting the Next server/.test(app.log()), `pid ${serverPid} → ${restartedPid}`);
 

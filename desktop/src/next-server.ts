@@ -62,6 +62,7 @@ export class NextServer {
     };
     child.stdout?.on("data", record);
     child.stderr?.on("data", record);
+    child.once("spawn", () => log(`Next server process ${child.pid}`));
     this.child = child;
     log(`Next server starting on port ${this.options.port}`);
     return child;
