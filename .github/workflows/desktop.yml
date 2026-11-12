@@ -33,7 +33,7 @@ jobs:
       matrix:
         include:
           - { id: win-x64, runner: windows-latest, builder: "--win --x64" }
-          - { id: mac-arm64, runner: macos-14, builder: "--mac --arm64" }
+          - { id: mac-arm64, runner: macos-15, builder: "--mac --arm64" }
           # macos-13 was retired; macos-15-intel is the remaining Intel runner, so mac-x64 builds
           # and is smoke-tested natively.
           - { id: mac-x64, runner: macos-15-intel, builder: "--mac --x64" }
