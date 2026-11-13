@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bqqukuz1v</task-id>
+<tool-use-id>toolu_01UkZ3h6NH1JzegdS1RVgr8q</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f81372221cd7d8f3\03ae4bf0-a664-452c-a27d-552821b51e17\tasks\bqqukuz1v.output</output-file>
+<status>failed</status>
+<summary>Background command "node "C:/Users/mgsuk/AppData/Local/Temp/claude/f81372221cd7d8f3/03ae4bf0-a664-452c-a27d-552821b51e17/scratchpad/qa-server-3101.mjs"" failed with exit code 1</summary>
+</task-notification>
