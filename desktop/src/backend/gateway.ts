@@ -9,7 +9,11 @@ const PREFIXES: [string, keyof Routes][] = [["/auth/v1", "auth"], ["/rest/v1", "
 const HOP_BY_HOP = ["connection", "keep-alive", "proxy-connection", "proxy-authenticate", "proxy-authorization", "te", "trailer", "upgrade"];
 
 export function startGateway(port: number, routes: Routes, log: (line: string) => void) {
-  const agent = new http.Agent({ keepAlive: true, maxSockets: 64 });
+  // PostgREST (Warp) closes connections idle for 30-60 s without telling clients, and a request sent
+  // on such a connection fails with "socket hang up": pages showed "This page couldn't load" after
+  // Moneo sat idle. An idle connection is dropped here after 4 s, long before that. (The timeout
+  // only notifies requests in flight; it ends nothing but idle connections.)
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 64, timeout: 4_000 });
   const server = http.createServer((req, res) => {
     const url = req.url ?? "/";
     const match = PREFIXES.find(([prefix]) => url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`));
