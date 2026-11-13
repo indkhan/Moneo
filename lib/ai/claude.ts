@@ -18,8 +18,8 @@ export function claudeExecutable(): string | null {
   const base = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
   for (const name of process.platform === "linux" ? [base, `${base}-musl`] : [base]) {
     try {
-      const file = require.resolve(`${name}/claude${process.platform === "win32" ? ".exe" : ""}`);
-      if (existsSync(file)) return file;
+      const file = require.resolve(/*turbopackIgnore: true*/ `${name}/claude${process.platform === "win32" ? ".exe" : ""}`);
+      if (existsSync(/*turbopackIgnore: true*/ file)) return file;
     } catch { /* try the next one */ }
   }
   return null;
