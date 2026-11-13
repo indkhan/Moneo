@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { sleep } from "workflow";
 import { start } from "workflow/api";
 import { EnableBankingError, enableBankingClient, type BankTransaction, type EnableBankingClient, type PsuContext } from "@/lib/bank/enable-banking";
+import { bankRawRows } from "@/lib/bank/normalize";
 import { bankObservation, bankStatement } from "@/lib/bank/statement";
 import { serviceDb } from "@/lib/bank/server";
 import { claimBankSync, holdBankSync, releasedLease } from "@/lib/bank/sync-lease";
@@ -144,6 +145,7 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   if (!due.length) return staged;
   const settings = await loadWorkspaceSettings(db, workspaceId);
   const client = await enableBankingClient();
+  const ownIbans = await ownAccountIbans(db, workspaceId);
   const today = isoDay(new Date());
   for (const account of due) {
     const attemptedAt = new Date().toISOString();
@@ -157,7 +159,7 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
       const observation = bankObservation(await client.balances(account.provider_account_uid, psu), account.currency_code, new Date(), settings.timezone);
       if (observation) staged.observations.push({ accountName: account.account_name, currencyCode: account.currency_code, ...observation });
       const transactions = await bookedSince(client, account.provider_account_uid, account.last_booked_on, today, psu);
-      const item = await stageImport(db, workspaceId, account, transactions, settings.timezone, today);
+      const item = await stageImport(db, workspaceId, account, transactions, settings.timezone, today, ownIbans);
       if (item) staged.imports.push(item);
       await saveAccount({ next_allowed_at: null, last_error: null });
     } catch (error) {
@@ -188,8 +190,18 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   return staged;
 }
 
+// The IBANs of every account the workspace connected or told Moneo about, so a row's counterparty can be recognised as the owner's own.
+async function ownAccountIbans(db: ReturnType<typeof serviceDb>, workspaceId: string) {
+  const [connected, declared] = await Promise.all([
+    db.from("bank_connection_accounts").select("iban").eq("workspace_id", workspaceId),
+    db.from("own_account_identifiers").select("iban").eq("workspace_id", workspaceId)]);
+  if (connected.error) throw new Error(connected.error.message);
+  if (declared.error) throw new Error(declared.error.message);
+  return new Set([...connected.data, ...declared.data].flatMap(row => row.iban ? [String(row.iban).replace(/s/g, "").toUpperCase()] : []));
+}
+
 async function stageImport(db: ReturnType<typeof serviceDb>, workspaceId: string, account: { provider_account_uid: string; account_name: string; currency_code: string },
-  transactions: BankTransaction[], timezone: string, today: string): Promise<BankImport | null> {
+  transactions: BankTransaction[], timezone: string, today: string, ownIbans: ReadonlySet<string>): Promise<BankImport | null> {
   const statement = bankStatement(transactions, { accountName: account.account_name, currencyCode: account.currency_code, calendarTimezone: timezone });
   if (!statement) return null;
   if (statement.rowCount > 10_000) throw new Error("Bank returned more than 10,000 transactions for one account");
@@ -207,6 +219,14 @@ async function stageImport(db: ReturnType<typeof serviceDb>, workspaceId: string
     const existing = await db.from("imports").select("id, status").eq("workspace_id", workspaceId).eq("file_hash", hash).neq("status", "undone").single();
     if (existing.error) throw new Error(existing.error.message);
     importId = existing.data.status === "queued" ? existing.data.id : undefined;
+  }
+  // The bank's full data beside the CSV, one row per CSV row. A window already staged finds its rows in place (ignored duplicates).
+  if (importId) {
+    const rawRows = bankRawRows(workspaceId, importId, statement.sources, ownIbans);
+    for (let offset = 0; offset < rawRows.length; offset += 500) {
+      const saved = await db.from("bank_transaction_raw").upsert(rawRows.slice(offset, offset + 500), { onConflict: "import_id,row_number", ignoreDuplicates: true });
+      if (saved.error) throw new Error(saved.error.message);
+    }
   }
   return importId ? { importId, rowCount: statement.rowCount, uid: account.provider_account_uid, lastBookedOn: statement.lastBookedOn } : null;
 }

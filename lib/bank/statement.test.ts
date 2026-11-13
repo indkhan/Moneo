@@ -92,3 +92,42 @@ describe("bank statement mapping", () => {
     expect(preferredBalance([balance("CLBD", "1", "USD")], "EUR")).toBeUndefined();
   });
 });
+
+// Changing the CSV bytes would re-import every window as new rows and orphan rules keyed on the description (the dedupe hash
+// is the CSV's). The raw-data sidecar must never touch it: this is the exact output for an invented three-page response
+// with every extra Enable Banking field, taken before the sidecar existed.
+describe("statement bytes are frozen", () => {
+  const extra = { bank_transaction_code: { code: "CARD_PAYMENT", sub_code: "POS" }, merchant_category_code: "5411", note: "n", exchange_rate: { exchange_rate: "1.1" },
+    creditor_agent: { bic_fi: "ABNANL2A" }, debtor_account_additional_identification: [{ identification: "card-1" }], reference_number: "R1" };
+  const pages: BankTransaction[][] = [
+    [tx({ entry_reference: "b2", booking_date: "2026-10-02", transaction_amount: { currency: "EUR", amount: "4.50" }, ...extra }),
+      tx({ entry_reference: "a1", booking_date: "2026-10-01", credit_debit_indicator: "CRDT", transaction_amount: { currency: "EUR", amount: "1200.00" }, debtor: { name: "Employer GmbH" }, debtor_account: { iban: "DE89 3704 0044 0532 0130 00" }, remittance_information: ["Salary", "October"] }),
+      tx({ entry_reference: "p1", status: "PDNG" })],
+    [tx({ entry_reference: "b2", booking_date: "2026-10-02", transaction_amount: { currency: "EUR", amount: "4.50" } }),
+      tx({ entry_reference: null, transaction_id: "t3", booking_date: null, value_date: "2026-10-03", creditor: { name: "  Cafe   Luna " }, remittance_information: [], balance_after_transaction: { currency: "EUR", amount: "99.50" } })],
+    [tx({ entry_reference: null, transaction_id: null, booking_date: "2026-10-03", creditor: null, remittance_information: null, credit_debit_indicator: null, transaction_amount: { currency: "EUR", amount: "-0.10" } }),
+      tx({ entry_reference: "c4", booking_date: "2026-10-03", transaction_amount: { currency: "EUR", amount: "7.00" }, remittance_information: ["Gläubiger-ID: DE98ZZZ09999999999", "Mandatsref: M1"] })],
+  ];
+  const GOLDEN = [
+    "id,date,description,amount,currency,balance,counterparty,counterparty_iban",
+    "a1,2026-10-01,Salary October,1200.00,EUR,,Employer GmbH,DE89370400440532013000",
+    "b2,2026-10-02,REWE SAGT DANKE 1234,-4.50,EUR,,REWE Markt,",
+    ",2026-10-03,Bank transaction,-0.10,EUR,,,",
+    "c4,2026-10-03,Gläubiger-ID: DE98ZZZ09999999999 Mandatsref: M1,-7.00,EUR,,REWE Markt,",
+    "t3,2026-10-03,Cafe Luna,-12.30,EUR,99.50,Cafe Luna,",
+  ].join("\n");
+
+  it("produces the same CSV and file hash as before", () => {
+    const statement = bankStatement(pages.flat(), account)!;
+    expect(statement.csv).toBe(GOLDEN);
+    expect(createHash("sha256").update(statement.csv).digest("hex")).toBe("e0a1dcc69d4b8cd1962e2f7b15341bc548d6e109fa82311848d9a3f4c7a2165d");
+  });
+
+  it("names the bank transaction behind every CSV row, in order", () => {
+    const statement = bankStatement(pages.flat(), account)!;
+    expect(statement.sources).toHaveLength(statement.rowCount);
+    // CSV row number i + 2 (the header is row 1) is sources[i]: identified rows by their bank id.
+    const ids = parseCsv(statement.csv).map(row => row.id);
+    statement.sources.forEach((source, index) => expect(source.entry_reference ?? source.transaction_id ?? "").toBe(ids[index]));
+  });
+});

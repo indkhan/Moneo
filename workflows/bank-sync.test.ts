@@ -18,7 +18,7 @@ type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
 function table(name: string) {
   const filters: [string, unknown][] = [];
-  let patch: Row | undefined, insert: Row | undefined;
+  let patch: Row | undefined, insert: Row | undefined, upsert: Row[] | undefined;
   const rows = () => tables[name].filter(row => filters.every(([column, value]) => row[column] === value));
   const run = () => {
     if (insert) {
@@ -26,6 +26,11 @@ function table(name: string) {
       const row = { id: `import-${tables[name].length + 1}`, ...insert };
       tables[name].push(row);
       return { data: row, error: null };
+    }
+    if (upsert) {
+      // bank_transaction_raw primary key (import_id, row_number), ignoreDuplicates.
+      for (const row of upsert) if (!tables[name].some(have => have.import_id === row.import_id && have.row_number === row.row_number)) tables[name].push(row);
+      return { data: null, error: null };
     }
     if (patch) { rows().forEach(row => Object.assign(row, patch)); return { data: null, error: null }; }
     return { data: rows(), error: null };
@@ -35,6 +40,7 @@ function table(name: string) {
     eq: (column: string, value: unknown) => { filters.push([column, value]); return builder; },
     insert: (row: Row) => { insert = row; return builder; },
     update: (row: Row) => { patch = row; return builder; },
+    upsert: (rows: Row[]) => { upsert = rows; return builder; },
     single: async () => { const result = run(); return Array.isArray(result.data) ? { data: result.data[0], error: result.data[0] ? null : { message: "missing" } } : result; },
     maybeSingle: async () => ({ data: (run().data as Row[])[0] ?? null, error: null }),
     then: (resolve: (value: unknown) => void) => resolve(run()),
@@ -72,8 +78,8 @@ async function sync(psu: PsuContext | undefined = PSU) {
 beforeEach(() => {
   tables = {
     bank_connections: [{ id: "c1", workspace_id: "w1", status: "active", valid_until: "2099-01-01T00:00:00Z", last_error: null }],
-    bank_connection_accounts: [{ connection_id: "c1", provider_account_uid: "u1", currency_code: "EUR", account_name: "Revolut ••1234", last_booked_on: null }],
-    imports: [], workspace_settings: [],
+    bank_connection_accounts: [{ connection_id: "c1", workspace_id: "w1", iban: "DE89370400440532013000", provider_account_uid: "u1", currency_code: "EUR", account_name: "Revolut ••1234", last_booked_on: null }],
+    imports: [], workspace_settings: [], bank_transaction_raw: [], own_account_identifiers: [{ workspace_id: "w1", iban: "NL91ABNA0417164300" }],
   };
   vi.useFakeTimers({ now, toFake: ["Date"] });
   rpc = vi.fn(async (name: string, args: Record<string, string>) => name.endsWith("_bank_sync") ? lease(name, args) : { error: null });
@@ -94,6 +100,29 @@ it("syncing the same bank data twice adds no second import", async () => {
   expect(tables.bank_connection_accounts[0].last_booked_on).toBe("2026-10-02");
   expect(bank.bookedTransactions).toHaveBeenLastCalledWith("u1", "2026-09-25", PSU);
   expect(tables.bank_connections[0]).toMatchObject({ status: "active", last_error: null });
+});
+
+it("stores the bank's full data once per CSV row, and a repeated window adds none", async () => {
+  bank.bookedTransactions.mockResolvedValue([
+    { ...tx("b", "2026-10-02", "7.25"), bank_transaction_code: { code: "TRANSFER" }, creditor: { name: "Savings" }, creditor_account: { iban: "NL91 ABNA 0417 1643 00" } },
+    { ...tx("a", "2026-10-01", "5.00"), bank_transaction_code: { code: "CARD_PAYMENT" }, merchant_category_code: "5411" }]);
+  await sync();
+  // Row numbers follow the CSV's sorted order (a, then b), not the bank's order; the header is row 1.
+  expect(tables.bank_transaction_raw.map(row => [row.import_id, row.row_number, row.bank_id, row.payment_type, row.mcc, row.own_account])).toEqual([
+    ["import-1", 2, "a", "card", "5411", false], ["import-1", 3, "b", "transfer", null, true]]);
+  expect(tables.bank_transaction_raw[1].raw).toMatchObject({ entry_reference: "b", bank_transaction_code: { code: "TRANSFER" } });
+  await sync();
+  expect(tables.imports).toHaveLength(1);
+  expect(tables.bank_transaction_raw).toHaveLength(2);
+});
+
+it("stores the raw rows of an import an earlier attempt left queued, without duplicating them", async () => {
+  vi.mocked(importFile).mockImplementationOnce(async () => { throw new Error("crashed"); });
+  await sync();
+  expect(tables.imports[0].status).toBe("queued");
+  await sync();
+  expect(tables.imports).toHaveLength(1);
+  expect(tables.bank_transaction_raw.map(row => row.row_number)).toEqual([2, 3]);
 });
 
 it("records progress when work after a completed import fails", async () => {

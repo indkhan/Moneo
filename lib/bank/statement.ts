@@ -31,16 +31,18 @@ export function bankStatementRow(tx: BankTransaction) {
 // sync of an unchanged window is a no-op at the imports(file_hash) unique index. The bank's stated
 // balance isn't part of it: that is its own observation (bankObservation), which can't get lost with a row.
 export function bankStatement(transactions: BankTransaction[], account: { accountName: string; currencyCode: string; calendarTimezone?: string }) {
-  const byId = new Map<string, ReturnType<typeof bankStatementRow>>();
-  const unidentified: ReturnType<typeof bankStatementRow>[] = [];
+  type Entry = { row: ReturnType<typeof bankStatementRow>; tx: BankTransaction };
+  const byId = new Map<string, Entry>();
+  const unidentified: Entry[] = [];
   for (const tx of transactions) {
     if (tx.status !== "BOOK") continue;
     const row = bankStatementRow(tx);
     if (!row.date) throw new Error("Booked bank transaction has no date");
-    if (row.id) byId.set(row.id, row); else unidentified.push(row);
+    if (row.id) byId.set(row.id, { row, tx }); else unidentified.push({ row, tx });
   }
-  const rows = [...byId.values(), ...unidentified].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)
-    || a.amount.localeCompare(b.amount) || a.description.localeCompare(b.description));
+  const entries = [...byId.values(), ...unidentified].sort((a, b) => a.row.date.localeCompare(b.row.date) || a.row.id.localeCompare(b.row.id)
+    || a.row.amount.localeCompare(b.row.amount) || a.row.description.localeCompare(b.row.description));
+  const rows = entries.map(entry => entry.row);
   if (!rows.length) return null;
   const last = rows[rows.length - 1];
   const csv = Papa.unparse({ fields: [...headers], data: rows.map(row => headers.map(header => row[header])) }, { newline: "\n" });
@@ -52,7 +54,8 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
     ...(account.calendarTimezone ? { calendarTimezone: account.calendarTimezone } : {}),
   };
   const parsed = parseCsv(csv);
-  return { csv, rowCount: parsed.length, lastBookedOn: last.date, mapping: validateImportConfirmation(parsed, mapping) };
+  // sources[i] is the bank transaction behind CSV row number i + 2, for the raw-data sidecar (bank_transaction_raw).
+  return { csv, rowCount: parsed.length, sources: entries.map(entry => entry.tx), lastBookedOn: last.date, mapping: validateImportConfirmation(parsed, mapping) };
 }
 
 // Booked balances first. Some banks (Revolut) publish only an available balance, so fall back to it.
