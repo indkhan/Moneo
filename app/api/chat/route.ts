@@ -63,7 +63,7 @@ export async function POST(request: Request) {
   // A call turn carries a brief of the call so far, so it gets more room.
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
-  if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or add an API key under Settings → AI access." }, { status: 503 });
+  if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or Claude, or add an API key under Settings → AI access." }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
@@ -205,6 +205,9 @@ export async function POST(request: Request) {
     }])) as T;
   }
     const model = await modelPromise;
+    // Claude Code takes photos but would silently drop a PDF, so say so instead of answering without it.
+    if (model.provider === "claude-code" && files.some(file => file.mediaType === "application/pdf"))
+      throw new Error("Claude can read photos here but not PDFs yet. Attach the pages as photos, or switch AI access to ChatGPT or an API key in Settings.");
     // The visible plan is not financial evidence; it only tells the user what the model will check.
     let modelFollowUps: string[] = [];
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
