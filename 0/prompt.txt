@@ -1,0 +1,14 @@
+Update on pull request #194 (https://github.com/indkhan/Moneo/pull/194), which T3 Code is watching for you:
+- All 1 required check passed on 936f89b.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+firstly if windows is done then download it and run it for me with my old things and all and the speed things and all you fixed was for both the mac and linux as well right
+
+---
+
+like sometimes i open a page it shows this then when i type try again it works but the first time it shows this very rarely but check in it why is that other then that the new bank connection now works as it should and all of that
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\ee2817b0-3a4d-49f8-b621-89525ae74e3d-740c4d6c-e1e6-4b7b-88fe-0c719b7483a9.png]
