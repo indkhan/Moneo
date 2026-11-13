@@ -1,7 +1,8 @@
 import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions } from "ai";
 import { after } from "next/server";
 import { z } from "zod";
-import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
+import { modelForSettings, SYSTEM_PROMPT, withTools } from "@/lib/ai/provider";
+import { moneoToolName } from "@/lib/ai/claude";
 import { aiConfigured } from "@/lib/ai/configured";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
   // A call turn carries a brief of the call so far, so it gets more room.
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
-  if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or add an API key under Settings → AI access." }, { status: 503 });
+  if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or Claude, or add an API key under Settings → AI access." }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
@@ -184,6 +185,7 @@ export async function POST(request: Request) {
     return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
+        if (stop.signal.aborted) throw new Error("Request canceled");
         emit({ type: "tool", id: options?.toolCallId, name, state: "running", input });
         // Labels for ids in the output load while the tool runs.
         const names = namesFor(context).catch((): EntityNames => ({}));
@@ -204,6 +206,9 @@ export async function POST(request: Request) {
     }])) as T;
   }
     const model = await modelPromise;
+    // Claude Code takes photos but would silently drop a PDF, so say so instead of answering without it.
+    if (model.provider === "claude-code" && files.some(file => file.mediaType === "application/pdf"))
+      throw new Error("Claude can read photos here but not PDFs yet. Attach the pages as photos, or switch AI access to ChatGPT or an API key in Settings.");
     // The visible plan is not financial evidence; it only tells the user what the model will check.
     let modelFollowUps: string[] = [];
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
@@ -260,7 +265,6 @@ export async function POST(request: Request) {
     const owner = await briefPromise;
     for (const scope of owner?.scopes ?? []) readScopes.add(scope);
     const result = streamText({
-      model,
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
       maxOutputTokens: 3000,
       // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
@@ -290,7 +294,8 @@ ${artifactBrief}` : ""}`,
         emit({ type: "steered", steers: taken });
         return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
       },
-      tools: { ...planTool, ...retainTools({
+      // Claude runs these inside Claude Code; withTools hands them over there.
+      ...withTools(model, { ...planTool, ...retainTools({
         // Designers check the request is still running before they save, so a canceled build saves nothing.
         ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
@@ -358,18 +363,23 @@ ${artifactBrief}` : ""}`,
             },
           }),
         } : {}),
-      }) },
+      }) }),
     });
     // The answer is all text the model wrote, across steps, exactly as streamed to the user.
     let text = "", stepBreak = false;
-    for await (const part of result.fullStream) {
-      if (part.type === "text-delta" && part.text) {
-        const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
-        stepBreak = false; text += delta;
-        emit({ type: "delta", text: delta });
-      } else if (part.type === "finish-step") stepBreak = true;
-      else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
-    }
+    // Claude runs its whole tool loop inside one step, so prepareStep never sees a cancel made mid-answer;
+    // check for one while it streams, and aborting stops Claude Code.
+    const watchCancel = model.provider === "claude-code" ? setInterval(() => void stopIfCanceled(), 2000) : undefined;
+    try {
+      for await (const part of result.fullStream) {
+        if (part.type === "text-delta" && part.text) {
+          const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
+          stepBreak = false; text += delta;
+          emit({ type: "delta", text: delta });
+        } else if (part.type === "finish-step") stepBreak = true;
+        else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
+      }
+    } finally { clearInterval(watchCancel); }
     // totalUsage sums every step; usage is only the last one, which drops the tool-call rounds.
     const [usage, steps] = await Promise.all([result.totalUsage, result.steps]);
     if (!text.trim()) throw new Error("The model returned no answer");
@@ -381,7 +391,7 @@ ${artifactBrief}` : ""}`,
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (stop.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...readScopes);
-    const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
+    const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [moneoToolName(toolResult.toolName)] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
     // The answer is final; show it while the durable publication below completes.
     emit({ type: "answer", conversationId, answer, toolsUsed, followUps });

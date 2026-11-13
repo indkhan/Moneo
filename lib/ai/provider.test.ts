@@ -1,7 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { getModel, modelIdFor } from "./provider";
+import { claudeAccount } from "./claude";
 import { AI_AGENTS, settingsSchema } from "@/lib/settings";
 
+vi.mock("./claude", async original => ({ ...await original<typeof import("./claude")>(), claudeAccount: vi.fn() }));
 afterEach(() => { vi.unstubAllEnvs(); });
 
 test("uses each agent's typed model and falls back to its default", () => {
@@ -9,6 +11,19 @@ test("uses each agent's typed model and falls back to its default", () => {
   expect(modelIdFor(settings, "chat")).toBe("gpt-custom");
   expect(modelIdFor(settings, "imports")).toBe(AI_AGENTS.imports.model);
   expect(modelIdFor(undefined, "chat")).toBe(AI_AGENTS.chat.model);
+  // On a Claude plan the defaults are Claude models; a typed model still wins.
+  expect(modelIdFor(settings, "imports", "claude")).toBe(AI_AGENTS.imports.claude);
+  expect(modelIdFor(settings, "chat", "claude")).toBe("gpt-custom");
+});
+
+test("a Claude model runs only on a Claude plan sign-in, never on a paid key", async () => {
+  vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+  vi.mocked(claudeAccount).mockResolvedValue({ installed: true, signedIn: false, email: null, plan: null, problem: null });
+  await expect(getModel("claude-opus-5-5")).rejects.toThrow("Sign in with Claude");
+  vi.mocked(claudeAccount).mockResolvedValue({ installed: true, signedIn: true, email: "owner@example.com", plan: "max", problem: null });
+  const model = await getModel("claude-opus-5-5");
+  expect(model.provider).toBe("claude-code");
+  expect(model.modelId).toBe("claude-opus-5-5");
 });
 
 test("a voice call follows the chat model until its own model is set", () => {

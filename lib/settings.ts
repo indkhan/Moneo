@@ -6,16 +6,17 @@ export const INSIGHT_TYPES = ["spending_changes", "budget_pressure", "unusual_ac
   "cash_shortfall", "goal_progress", "asset_debt", "data_quality"] as const;
 export type AiDataScope = typeof AI_DATA_SCOPES[number];
 // Each AI agent and its default OpenAI model; Settings lets the user type a different one per agent.
+// `model` is the default on ChatGPT or an API key, `claude` the default on a Claude plan.
 export const AI_AGENTS = {
-  chat: { label: "Chat assistant", model: "gpt-6.1-sol" },
-  review: { label: "Financial review", model: "gpt-6.1-sol" },
-  agents: { label: "Agent team", model: "gpt-6-luna" },
-  imports: { label: "Import mapping", model: "gpt-6-luna" },
-  organize: { label: "Organization suggestions", model: "gpt-6-luna" },
-  artifacts: { label: "Artifact builder", model: "gpt-6.1-sol" },
-  titles: { label: "Chat titles", model: "gpt-6-luna" },
+  chat: { label: "Chat assistant", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
+  review: { label: "Financial review", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
+  agents: { label: "Agent team", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
+  imports: { label: "Import mapping", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
+  organize: { label: "Organization suggestions", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
+  artifacts: { label: "Artifact builder", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
+  titles: { label: "Chat titles", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
   // Typed as a model like the others, but a blank one follows the chat model (see modelIdFor).
-  voice_call: { label: "Voice call", model: "gpt-6.1-sol" },
+  voice_call: { label: "Voice call", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
 } as const;
 export type AiAgent = keyof typeof AI_AGENTS;
 export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];

@@ -32,7 +32,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
       if (!settings.ai_models[agent] || settings.ai_models[agent] === previous?.ai_models[agent]) continue;
       field = `model:${agent}`;
       const check = await generateText({ model: await modelForSettings(settings, agent), prompt: "Reply with the single word OK.",
-        maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) })
+        maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(30000) })
         .catch(error => APICallError.isInstance(error) && error.statusCode === 429 ? "rate-limited" as const : null);
       // A rate-limited model exists and answers later; only a missing or silent one blocks saving.
       if (check === "rate-limited") continue;

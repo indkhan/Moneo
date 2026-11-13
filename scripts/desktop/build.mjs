@@ -67,7 +67,8 @@ function assemble() {
   cpSync(path.join(built, "static"), path.join(app, distDir, "static"), { recursive: true });
   cpSync(path.join(root, "public"), path.join(app, "public"), { recursive: true });
   // Read from disk at runtime (outputFileTracingIncludes in next.config.ts); fail early if tracing missed them.
-  for (const file of ["node_modules/echarts/dist/echarts.min.js", "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm", "node_modules/@workflow/world-local/package.json"]) {
+  for (const file of ["node_modules/echarts/dist/echarts.min.js", "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm", "node_modules/@workflow/world-local/package.json",
+    `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude${process.platform === "win32" ? ".exe" : ""}`]) {
     if (!existsSync(path.join(app, file))) fail(`${file} is missing from the standalone server`);
   }
   const migrations = path.join(out, "migrations");

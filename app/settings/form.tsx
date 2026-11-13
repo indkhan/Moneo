@@ -6,6 +6,7 @@ import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
 import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, INSIGHT_TYPES, VOICES, type WorkspaceSettings } from "@/lib/settings";
 import { saveSettings } from "./actions";
+import type { AiSource } from "@/lib/ai/chatgpt";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
 import { VoiceKeyToast } from "@/components/voice-key-toast";
 
@@ -57,7 +58,7 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
     {state === "failed" && <span role="alert" className="text-sm font-normal text-danger">{"Couldn’t play the sample. Check your sound and try again."}</span>}</div>;
 }
 
-export function SettingsForm({ settings, currency, timeZones }: { settings: WorkspaceSettings; currency: string; timeZones: string[] }) {
+export function SettingsForm({ settings, currency, timeZones, aiSource }: { settings: WorkspaceSettings; currency: string; timeZones: string[]; aiSource: AiSource }) {
   const [state, action, pending] = useActionState(saveSettings, {});
   const [dirty, setDirty] = useState(false);
   const [locale, setLocale] = useState(settings.locale);
@@ -97,13 +98,13 @@ export function SettingsForm({ settings, currency, timeZones }: { settings: Work
     <fieldset id="ai" className={card}><legend className={legend}>AI and your data</legend>
       <p className={help}>Choose which of your data the AI may use. Secrets are never sent.</p>
       <VoicePicker value={settings.voice} />
-      <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI or OpenRouter (depending on the model) receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key.</p></details>
+      <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI, Anthropic or OpenRouter (depending on the model) receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key, or counts toward your ChatGPT or Claude plan.</p></details>
       <div className="divide-y divide-border">{AI_DATA_SCOPES.map(scope => <label key={scope} className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_data_scopes" value={scope} defaultChecked={settings.ai_data_scopes.includes(scope)} /><span><strong className="block capitalize">{scope}</strong><span className="text-muted-foreground">{scopeDescriptions[scope]}</span></span></label>)}
         <label className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="artifact_scalable_data" value="live" defaultChecked={settings.artifact_scalable_data === "live"} /><span><strong className="block">Live Scalable data in artifacts</strong><span className="text-muted-foreground">Off: artifact Pages and Home cards show your Scalable portfolio as of the last sync, the same figures as Wealth. On: they read Scalable live each time they open, with current prices and quotes and charts for any security, but they load slower and show an error when Scalable can&apos;t be reached.</span></span></label></div>
       <details className="text-sm"><summary className="cursor-pointer font-medium">Advanced: choose AI models</summary><div className="mt-3 space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">{AI_AGENT_KEYS.map(agent => <label key={agent} className={label}>{AI_AGENTS[agent].label} model
-        <input className={input} {...invalid(`model:${agent}`)} name={`model:${agent}`} defaultValue={settings.ai_models[agent] ?? ""} placeholder={agent === "voice_call" ? "Same as the chat assistant" : AI_AGENTS[agent].model} maxLength={200} autoComplete="off" spellCheck={false} /></label>)}</div>
-      <p className={help}>Type an OpenAI model ID (gpt-6.1-sol) or an OpenRouter one (vendor/model, e.g. nvidia/nemotron-3.5-lightning:free), or leave blank for the default shown. A changed model is tested before saving. Voice call follows the chat assistant unless you pick a faster model for it.</p>
+        <input className={input} {...invalid(`model:${agent}`)} name={`model:${agent}`} defaultValue={settings.ai_models[agent] ?? ""} placeholder={agent === "voice_call" ? "Same as the chat assistant" : aiSource === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model} maxLength={200} autoComplete="off" spellCheck={false} /></label>)}</div>
+      <p className={help}>Type an OpenAI model ID (gpt-6.1-sol), a Claude one for your Claude plan (claude-opus-5-5) or an OpenRouter one (vendor/model, e.g. nvidia/nemotron-3.5-lightning:free), or leave blank for the default shown. A changed model is tested before saving. Voice call follows the chat assistant unless you pick a faster model for it.</p>
       </div></details>
     </fieldset>
     <fieldset id="insights" className={card}><legend className={legend}>Insights and summaries</legend>

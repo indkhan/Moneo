@@ -59,6 +59,10 @@ it("lets the owner pick the API key when both are set up, and falls back to it a
   expect(await usesChatGPT()).toBe(false);
   await setAiSource("chatgpt");
   expect(await usesChatGPT()).toBe(true);
+  // A GPT model mixed in while Claude is the main source still runs on the plan, not the paid key.
+  await setAiSource("claude");
+  expect(await usesChatGPT()).toBe(true);
+  await setAiSource("chatgpt");
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 200 }));
   await signOut();
   expect(await chatgptStatus()).toMatchObject({ signedIn: false, source: "api_key" });

@@ -272,7 +272,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
-        {access?.ai === false && <p role="status" className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">No AI is set up yet. Sign in with ChatGPT or add an OpenAI or OpenRouter API key in <Link href="/settings#ai-access" className="underline">Settings → AI access</Link> to start chatting.</p>}
+        {access?.ai === false && <p role="status" className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">No AI is set up yet. Sign in with ChatGPT or Claude, or add an OpenAI or OpenRouter API key in <Link href="/settings#ai-access" className="underline">Settings → AI access</Link> to start chatting.</p>}
         {callBlocked && <VoiceKeyToast onDismiss={() => setCalling(false)} />}
         {notice && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
         {unavailable ? <div className="py-10"><h2 className="font-semibold">Conversation unavailable</h2><p role="alert" className="mt-1 text-sm">{unavailable}</p><Link href={href("new")} onClick={event => open(event, null)} className="mt-3 inline-block text-sm underline">New conversation</Link></div>

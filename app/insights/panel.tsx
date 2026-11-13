@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages } from "@/lib/all-pages";
 import { accountShortfalls, buildInsights, insightPreferencesSchema, defaultInsightPreferences, type Insight, type InsightInput } from "@/lib/finance/insights";
 import { briefingFindings, keepsFacts, plainWording, rephraseFindings } from "@/lib/ai/briefing";
-import { getModel, modelIdFor } from "@/lib/ai/provider";
+import { currentModelId, getModel } from "@/lib/ai/provider";
 import { describeMissingInputs, formatInputAmount } from "@/lib/finance/format";
 import { type ReviewTransaction } from "@/lib/finance/review";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
@@ -131,7 +131,7 @@ const cachedWording = unstable_cache(async (_workspaceId: string, modelId: strin
 async function wording(props: InsightPanelProps, findings: Insight[]) {
   try {
     requireAiScope(props.settings, "transactions", "planning");
-    const sentences = await cachedWording(props.workspaceId, modelIdFor(props.settings, "agents"), findings.map(({ key, type, title, detail }) => ({ key, type, title, detail })));
+    const sentences = await cachedWording(props.workspaceId, await currentModelId(props.settings, "agents"), findings.map(({ key, type, title, detail }) => ({ key, type, title, detail })));
     return new Map(findings.flatMap(finding => sentences[finding.key] && keepsFacts(finding, sentences[finding.key]) ? [[finding.key, sentences[finding.key]]] : []));
   } catch { return new Map<string, string>(); }
 }

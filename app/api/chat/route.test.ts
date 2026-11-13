@@ -23,7 +23,7 @@ vi.mock("ai", () => ({ generateObject, tool: (value: unknown) => value, stepCoun
 const { after } = vi.hoisted(() => ({ after: vi.fn() }));
 vi.mock("next/server", async original => ({ ...await original<typeof import("next/server")>(), after }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
-vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })) }));
+vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })), withTools: (model: unknown, tools: unknown) => ({ model, tools }) }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: vi.fn(async () => ({ source: "exact evidence" })) }));
 vi.mock("@/lib/finance/edit-preview", async original => ({ ...await original<typeof import("@/lib/finance/edit-preview")>(), loadCategoryPreview: vi.fn(async () => ({ href: "/ai/actions/preview?ids=selected&category=owned", warning: "Preview only" })) }));

@@ -10,7 +10,7 @@ const fixture = vi.hoisted(() => ({ insights: [] as unknown[], wording: new Map<
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("next/cache", () => ({ unstable_cache: (fn: unknown) => fn }));
 vi.mock("./actions", () => ({ dismissInsight: "dismiss", dismissInsights: "dismiss-all", muteInsightType: "mute" }));
-vi.mock("@/lib/ai/provider", () => ({ getModel: () => ({}), modelIdFor: () => "model" }));
+vi.mock("@/lib/ai/provider", () => ({ getModel: () => ({}), currentModelId: async () => "model" }));
 vi.mock("@/lib/ai/briefing", async original => ({ ...await original<typeof import("@/lib/ai/briefing")>(), rephraseFindings: async () => fixture.wording }));
 vi.mock("@/lib/finance/insights", async original => ({ ...await original<typeof import("@/lib/finance/insights")>(), buildInsights: () => fixture.insights }));
 beforeEach(() => { fixture.insights = []; fixture.wording = new Map(); });
