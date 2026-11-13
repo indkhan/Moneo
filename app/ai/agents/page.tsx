@@ -57,7 +57,7 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
         : !page.length ? <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No runs yet. <Link href="/import" className="underline">Import a statement</Link> or start one above.</p>
         : <ul className="divide-y divide-border rounded-xl border border-border bg-card">{page.map(run => <li key={run.id}><Link href={`/ai/agents/${run.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3.5 hover:bg-muted">
         <span className="text-[13px] font-medium">{STATUS[run.status] ?? run.status}</span>
-        <span className="text-[13px] text-muted-foreground">{when.format(new Date(run.created_at))} · {run.trigger === "import" ? "after an import" : "started by you"}</span>
+        <span className="text-[13px] text-muted-foreground">{when.format(new Date(run.created_at))} · {({ import: "after an import", sync: "after a bank sync", backlog: "for rows still unorganized" } as Record<string, string>)[run.trigger] ?? "started by you"}</span>
         {limits.get(run.id) ? <span className="ai-chip">{limits.get(run.id)} limits to review</span> : null}
         {onHome.get(run.id) ? <span className="ai-chip">{onHome.get(run.id)} waiting on Home</span> : null}
         <span className="ml-auto text-xs underline">View review</span>

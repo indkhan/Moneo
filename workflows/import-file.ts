@@ -3,21 +3,19 @@
 import { createHash } from "node:crypto";
 import { serviceClient } from "@/lib/service-db";
 import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
-import { modelForSettings } from "@/lib/ai/provider";
-import { aiConfigured } from "@/lib/ai/configured";
-import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { stableId } from "@/lib/import/row";
 import { linkOwnTransfers } from "@/lib/finance/own-transfers";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
-import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
+import { maybeStartFirstReview } from "@/lib/import/follow-up";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
   return result.data;
 }
 
-export async function importFile(importId: string, workspaceId: string, rowCount: number, runVersion = 1) {
+// followUps is false for a bank sync, which starts the agent team and first review once for all its accounts.
+export async function importFile(importId: string, workspaceId: string, rowCount: number, runVersion = 1, followUps = true) {
   "use workflow";
   try {
     const stagedRows = rowCount === 0 ? 0 : await prepareImport(importId, workspaceId, rowCount, runVersion);
@@ -30,8 +28,9 @@ export async function importFile(importId: string, workspaceId: string, rowCount
     return;
   }
   await linkOwnTransfersStep(workspaceId);
+  if (!followUps) return;
   await startAgentTeam(importId, workspaceId);
-  await maybeStartFirstReview(importId, workspaceId);
+  await firstReviewStep(importId, workspaceId);
 }
 
 // Transfers between the owner's own accounts are linked as soon as new rows land, so a later
@@ -156,20 +155,8 @@ async function failImport(importId: string, workspaceId: string, error: string, 
   checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: error }));
 }
 
-async function maybeStartFirstReview(importId: string, workspaceId: string) {
+async function firstReviewStep(importId: string, workspaceId: string) {
   "use step";
-  if (!(await aiConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const settings = await loadWorkspaceSettings(db, workspaceId);
-  try {
-    requireAiScope(settings, "accounts", "transactions");
-  } catch { return; } // Analysis eligibility is optional; the completed import remains valid.
-  await modelForSettings(settings, "imports");
-  const first = await db.from("imports").select("id").eq("workspace_id", workspaceId).eq("status", "completed").gt("new_rows", 0).order("created_at").order("id").limit(1).maybeSingle();
-  if (first.error) throw first.error;
-  if (first.data?.id !== importId) return;
-  const jobId = stableId(`${workspaceId}:first-financial-review`);
-  const inserted = await db.from("background_jobs").upsert({ id: jobId, workspace_id: workspaceId, kind: "financial_review" }, { onConflict: "id", ignoreDuplicates: true }).select("id").maybeSingle();
-  if (inserted.error) throw inserted.error;
-  await dispatchFinancialReview(db, jobId, workspaceId, false);
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+  await maybeStartFirstReview(serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY), workspaceId, [importId]);
 }

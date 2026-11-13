@@ -2,9 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getRun, start } from "workflow/api";
 import { agentTeam } from "@/workflows/agent-team";
 import { loadWorkspaceSettings } from "@/lib/settings";
+import { backlogRerunNeeded } from "@/lib/ai/agent-team";
 
-/** Creates (or reuses) the run for an import or a manual request and starts the durable team. */
-export async function startAgentRun(db: SupabaseClient, workspaceId: string, options: { importId?: string } = {}) {
+/**
+ * Creates (or reuses) the run for an import, a bank sync, the backlog check or a manual request and
+ * starts the durable team. Everything but an import reuses the workspace's queued or running run.
+ */
+export async function startAgentRun(db: SupabaseClient, workspaceId: string, options: { importId?: string; trigger?: "sync" | "backlog" } = {}) {
   if (options.importId) {
     const existing = await db.from("agent_runs").select("id").eq("workspace_id", workspaceId).eq("import_id", options.importId).maybeSingle();
     if (existing.error) throw existing.error;
@@ -15,8 +19,9 @@ export async function startAgentRun(db: SupabaseClient, workspaceId: string, opt
     const active = await db.from("agent_runs").select("id").eq("workspace_id", workspaceId).in("status", ["queued", "running"]).limit(1).maybeSingle();
     if (active.error) throw active.error;
     if (active.data) return active.data.id as string;
+    if (options.trigger && !(await loadWorkspaceSettings(db, workspaceId)).ai_data_scopes.includes("transactions")) return null;
   }
-  const inserted = await db.from("agent_runs").insert({ workspace_id: workspaceId, import_id: options.importId ?? null, trigger: options.importId ? "import" : "manual" }).select("id").single();
+  const inserted = await db.from("agent_runs").insert({ workspace_id: workspaceId, import_id: options.importId ?? null, trigger: options.importId ? "import" : options.trigger ?? "manual" }).select("id").single();
   if (inserted.error) {
     if (inserted.error.code !== "23505" || !options.importId) throw inserted.error;
     const raced = await db.from("agent_runs").select("id").eq("workspace_id", workspaceId).eq("import_id", options.importId).single();
@@ -25,6 +30,22 @@ export async function startAgentRun(db: SupabaseClient, workspaceId: string, opt
   }
   await dispatch(db, inserted.data.id, workspaceId);
   return inserted.data.id as string;
+}
+
+/** The hourly check: a run for rows still lacking a merchant or category, when backlogRerunNeeded says so. */
+export async function startBacklogRun(db: SupabaseClient, workspaceId: string) {
+  const settings = await loadWorkspaceSettings(db, workspaceId);
+  const transactionsAllowed = settings.ai_data_scopes.includes("transactions");
+  if (!transactionsAllowed) return null;
+  const unorganized = () => db.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "posted").or("merchant_id.is.null,category_id.is.null");
+  const [runs, backlog] = await Promise.all([db.from("agent_runs").select("status, created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(3), unorganized()]);
+  if (runs.error) throw runs.error;
+  if (backlog.error) throw backlog.error;
+  const latest = runs.data[0] as { status: string; created_at: string } | undefined;
+  const since = latest && backlog.count ? await unorganized().gt("created_at", latest.created_at) : null;
+  if (since?.error) throw since.error;
+  const due = backlogRerunNeeded({ transactionsAllowed, unorganized: backlog.count ?? 0, recentRuns: runs.data.map(run => run.status as string), unorganizedSinceLatestRun: (since?.count ?? 0) > 0 });
+  return due ? startAgentRun(db, workspaceId, { trigger: "backlog" }) : null;
 }
 
 async function dispatch(db: SupabaseClient, runId: string, workspaceId: string) {
