@@ -162,7 +162,7 @@ export class Desktop {
     const current = new Map(processTable().map(row => [row.pid, row]));
     for (const row of this.snapshotSafe()) if (current.get(row.pid)?.command === row.command && alive(row.pid)) try { process.kill(row.pid); } catch { /* gone */ }
     if (results.some(result => !result.ok)) {
-      for (const name of ["main.log", "next.log"]) {
+      for (const name of ["main.log", "next.log", "backend.log", "rest.log", "auth.log"]) {
         const text = this.log(name);
         if (text) console.log(`--- ${name} (${this.home}) ---\n${text.slice(-3000)}`);
       }

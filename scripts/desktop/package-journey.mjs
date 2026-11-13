@@ -84,6 +84,21 @@ try {
   check("Home opens signed in", new URL(page.url()).pathname === "/" && await page.getByRole("navigation").first().isVisible());
   await page.waitForTimeout(1_500);
 
+  // Every section opens signed in, without bouncing to another page or failing to load the workspace
+  // (both happened on Windows while GoTrue opened a new database connection per request).
+  const pages = ["/money/transactions", "/money/organization", "/money/investigations", "/import", "/money/accounts", "/money/recurring",
+    "/plan", "/plan/spending", "/plan/currency", "/money/wealth", "/ai", "/ai/agents", "/ai/artifacts", "/ai/activity", "/settings", "/"];
+  const opened = [];
+  for (let round = 0; round < 2; round++) for (const section of pages) {
+    const started = Date.now();
+    const response = await page.goto(`${origin}${section}`, { waitUntil: "domcontentloaded" });
+    const failed = await page.getByRole("alert").filter({ hasText: /could not load workspace|could not sign you in/i }).count();
+    opened.push({ section, ok: response?.ok() && new URL(page.url()).pathname === section && !failed, ms: Date.now() - started });
+  }
+  const slowest = opened.toSorted((a, b) => b.ms - a.ms)[0];
+  check("every section opens signed in, twice over, each within 5 s", opened.every(entry => entry.ok && entry.ms < 5_000),
+    `${opened.filter(entry => !entry.ok).map(entry => entry.section).join(", ") || "all opened"}; slowest ${slowest.section} ${slowest.ms} ms, median ${opened.map(entry => entry.ms).toSorted((a, b) => a - b)[opened.length >> 1]} ms`);
+
   // Import through the page, choosing the columns by hand (no AI is set up).
   const importOnce = async () => {
     await page.goto(`${origin}/import`);
@@ -147,7 +162,8 @@ try {
   const scalable = page.locator("#scalable").getByRole("button", { name: "Connect Scalable Capital" });
   if (await scalable.count() && await scalable.isEnabled()) {
     const mark = app.external().length;
-    await scalable.click();
+    // The page then navigates to the sign-in, which the window cancels; a click would wait for it.
+    await scalable.evaluate(button => button.click());
     const url = await until("Scalable in the system browser", async () => app.external().slice(mark).split("\n").find(line => line.startsWith("https://")), 20_000).catch(() => null);
     check("Scalable UI handoff opens the mocked URL in the system browser (provider and callback not exercised)", url === mockScalableUrl, url ? new URL(url).origin : "nothing logged");
   } else console.log("SKIP Scalable connect — the button is disabled without Scalable configured");
@@ -158,9 +174,12 @@ try {
   const bankButton = page.locator("#banks").getByRole("button", { name: "Connect bank" });
   console.log(`SKIP bank connect — ${await bankButton.count() ? (await bankButton.isEnabled() ? "enabled (not clicked: it calls Enable Banking)" : "the button is disabled without Enable Banking keys") : "no Connect bank button without Enable Banking keys"}`);
 
-  // The sign-in callbacks reach this Moneo.
+  // The sign-in callbacks reach this Moneo, and their result opens in the app window, not the browser.
+  await page.goto(`${origin}/`);
   const callback = await fetch(`http://127.0.0.1:${port}/api/ai/chatgpt/callback`, { redirect: "manual" });
-  check("ChatGPT's loopback callback reaches Moneo", callback.status >= 300 && callback.status < 400 && /\/settings\?chatgpt=/.test(callback.headers.get("location") ?? ""), `${callback.status} → ${callback.headers.get("location")}`);
+  const told = callback.status === 200 && /Continue in Moneo/.test(await callback.text());
+  const shown = await until("the sign-in result in the window", async () => new URL(page.url()).pathname === "/settings" && new URL(page.url()).searchParams.has("chatgpt"), 15_000).catch(() => false);
+  check("a sign-in callback shows its result in the app window and tells the browser tab to continue there", told && shown, `${callback.status}, window at ${new URL(page.url()).pathname}${new URL(page.url()).search}`);
   const data = path.join(app.home, "data"), ca = readFileSync(path.join(app.home, "mkcert", "rootCA.pem"));
   const key = readFileSync(path.join(data, "localhost-key.pem")), cert = readFileSync(path.join(data, "localhost.pem"));
   const verify = (requestPort, requestPath) => new Promise((resolve, reject) => httpsRequest({ host: "127.0.0.1", servername: "localhost", port: requestPort, path: requestPath, ca }, response => { response.resume(); resolve(response); }).on("error", reject).end());
