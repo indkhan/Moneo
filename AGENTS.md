@@ -39,7 +39,7 @@ Before calling a feature done, check where else it shows up:
 - Home widgets and the command palette.
 - Background jobs (`lib/scheduler.ts`, `workflows/`) and imports from files, banks and Scalable.
 - The reverse path: undo, reset all data, reconnect, disconnect.
-- Docs: `README.md` for anything the owner sets up or runs, `.env.example` for new variables. Deferred work goes in GitHub issues.
+- Docs: `README.md` for anything the owner sets up or runs, the landing page in `docs/` when a headline feature or install step changes, `.env.example` for new variables. Deferred work goes in GitHub issues.
 
 ## Commands
 
@@ -51,6 +51,7 @@ Use npm (`package-lock.json` is authoritative).
 - Unit: `npm test` · Lint: `npm run lint` · Build: `npm run build` · Bundle budget: `npm run check:bundle` (after a build)
 - Database: `npm run test:db` (needs the backend from `npm run setup`)
 - E2E: `npm run test:e2e` (see `e2e/README.md`)
+- Desktop release: push a `v*` tag matching `desktop/package.json`, then publish the drafted release (`desktop/README.md` → Releasing). Never tag or publish unasked.
 
 ## Test backend
 
@@ -72,6 +73,8 @@ Everything that needs a database or a running app is tested against `moneo-qa`, 
 - `workflows/` — durable background jobs; `lib/scheduler.ts` runs the daily ones
 - `docker-compose.yml`, `docker/`, `scripts/setup.mjs` — the self-hosted backend
 - `e2e/` — Playwright flows; `supabase/tests/` — SQL regressions
+- `desktop/` — the Electron app; `.github/workflows/desktop.yml` builds it and drafts releases
+- `docs/` — the GitHub Pages landing page (https://indkhan.github.io/Moneo/); its download button reads the latest published release
 
 ## Sign-in callbacks and addresses
 

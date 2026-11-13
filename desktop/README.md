@@ -56,9 +56,15 @@ address and ChatGPT's callback name it). If it is taken on the first run, a free
 
 ## Releasing
 
-Push a `v*` tag matching `desktop/package.json`'s version (bump it first). The Desktop workflow builds
-every platform and drafts a release with the installers, `latest*.yml`, blockmaps and `SHA256SUMS.txt`.
-Publish the draft on GitHub; from then on, Settings → App updates offers it to installed apps.
+Releases are made only from a `v*` tag; pull request runs keep their installers as workflow
+artifacts for 7 days and never create a release.
+
+1. Bump `desktop/package.json`'s version on `main` (the first release is `0.1.0` as is).
+2. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
+3. The Desktop workflow builds every platform and drafts a release with the installers, `latest*.yml`,
+   blockmaps and `SHA256SUMS.txt`.
+4. Publish the draft on GitHub. Drafts are invisible to visitors, to the landing page's download
+   button and to Settings → App updates; once published, all three offer it.
 
 ### Bank return certificate
 
