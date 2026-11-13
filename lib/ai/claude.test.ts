@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const provider = vi.hoisted(() => ({ calls: [] as { modelId: string; settings: Record<string, unknown> }[] }));
 vi.mock("ai-sdk-provider-claude-code", () => ({
-  createAiSdkMcpServer: (name: string, tools: object) => ({ name, tools: Object.keys(tools) }),
+  createAiSdkMcpServer: (name: string, tools: Record<string, { execute: (input: unknown, options: object) => unknown }>) => ({ name, tools: Object.keys(tools), run: tools }),
   claudeCode: (modelId: string, settings: Record<string, unknown>) => {
     provider.calls.push({ modelId, settings });
     return { provider: "claude-code", modelId, doStream: async (options: unknown) => ({ options }), doGenerate: async (options: unknown) => ({ options }) };
@@ -34,7 +34,7 @@ it("counts only a claude.ai sign-in as the owner's plan", () => {
 });
 
 it("gives Claude only Moneo's tools, its instructions as the system prompt and the call's reasoning effort", async () => {
-  const balance = tool({ description: "Balance", inputSchema: z.object({ account: z.string() }), execute: async () => ({}) });
+  const balance = tool({ description: "Balance", inputSchema: z.object({ account: z.string(), other: z.string().optional() }).refine(input => input.account !== input.other, "Pick two accounts"), execute: async () => ({}) });
   const model = claudeModel("claude-opus-5-5", { accounts_balance: balance });
   const prompt = [{ role: "system" as const, content: "You are Moneo." }, { role: "user" as const, content: [{ type: "text" as const, text: "Hi" }] }];
   const result = await model.doStream({ prompt, providerOptions: { openai: { reasoningEffort: "low" } } } as Parameters<typeof model.doStream>[0]) as unknown as { options: { prompt: unknown[] } };
@@ -43,11 +43,14 @@ it("gives Claude only Moneo's tools, its instructions as the system prompt and t
     mcpServers: { moneo: { name: "moneo", tools: ["accounts_balance"] } }, systemPrompt: "You are Moneo.", effort: "low" });
   expect(settings.env).not.toHaveProperty("ANTHROPIC_API_KEY");
   expect(result.options.prompt).toEqual([prompt[1]]);
+  // Object-level rules still hold although the bridge checks fields one by one.
+  const run = (settings.mcpServers as { moneo: { run: Record<string, { execute: (input: unknown, options: object) => unknown }> } }).moneo.run;
+  expect(() => run.accounts_balance.execute({ account: "a", other: "a" }, {})).toThrow("Pick two accounts");
 });
 
 function fakeLogin() {
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), kill: vi.fn() });
-  const spawn = vi.fn(() => {
+  const spawn = vi.fn((_command: string, _args: string[]) => {
     setTimeout(() => child.stdout.write("Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=abc\nPaste code here if prompted > "), 0);
     return child as unknown as ChildProcess;
   });

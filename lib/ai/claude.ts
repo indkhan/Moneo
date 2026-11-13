@@ -28,7 +28,7 @@ export function claudeExecutable(): string | null {
 // Any of these would make Claude Code bill an API key or a cloud account instead of the plan.
 const PAID_ROUTES = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"];
 /** The environment for Claude Code: this process's, minus everything that routes requests away from the plan. */
-export function claudeEnv(env: NodeJS.ProcessEnv = process.env) {
+export function claudeEnv(env: Record<string, string | undefined> = process.env) {
   return Object.fromEntries(Object.entries(env).filter(([key]) => !PAID_ROUTES.includes(key))) as NodeJS.ProcessEnv;
 }
 
@@ -117,13 +117,18 @@ export function cancelClaudeSignIn() {
  */
 export function claudeModel(modelId: string, tools: ToolSet = {}) {
   const names = Object.keys(tools);
+  // The MCP bridge checks each field on its own; checking the whole schema again keeps object-level rules
+  // (such as "no duplicate overrides") before a tool runs.
+  const checked = Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
+    execute: (input: unknown, options: Parameters<NonNullable<typeof definition.execute>>[1]) =>
+      definition.execute!((definition.inputSchema as z.ZodType).parse(input), options) }])) as ToolSet;
   const settings: ClaudeCodeSettings = {
     pathToClaudeCodeExecutable: claudeExecutable() ?? undefined,
     env: claudeEnv(),
     tools: [], settingSources: [], strictMcpConfig: true, persistSession: false,
     // Matches the chat's stepCountIs(30) guard against runaway loops.
     maxTurns: 30,
-    ...(names.length ? { mcpServers: { moneo: createAiSdkMcpServer("moneo", tools) }, allowedTools: names.map(name => `mcp__moneo__${name}`) } : {}),
+    ...(names.length ? { mcpServers: { moneo: createAiSdkMcpServer("moneo", checked) }, allowedTools: names.map(name => `mcp__moneo__${name}`) } : {}),
   };
   const base = claudeCode(modelId, settings);
   // The provider folds system messages into the prompt text; Moneo's instructions go in as the system prompt

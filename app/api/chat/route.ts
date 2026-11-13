@@ -1,7 +1,8 @@
 import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions } from "ai";
 import { after } from "next/server";
 import { z } from "zod";
-import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
+import { modelForSettings, SYSTEM_PROMPT, withTools } from "@/lib/ai/provider";
+import { moneoToolName } from "@/lib/ai/claude";
 import { aiConfigured } from "@/lib/ai/configured";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
@@ -260,7 +261,6 @@ export async function POST(request: Request) {
     const owner = await briefPromise;
     for (const scope of owner?.scopes ?? []) readScopes.add(scope);
     const result = streamText({
-      model,
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
       maxOutputTokens: 3000,
       // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
@@ -290,7 +290,8 @@ ${artifactBrief}` : ""}`,
         emit({ type: "steered", steers: taken });
         return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
       },
-      tools: { ...planTool, ...retainTools({
+      // Claude runs these inside Claude Code; withTools hands them over there.
+      ...withTools(model, { ...planTool, ...retainTools({
         // Designers check the request is still running before they save, so a canceled build saves nothing.
         ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
@@ -358,7 +359,7 @@ ${artifactBrief}` : ""}`,
             },
           }),
         } : {}),
-      }) },
+      }) }),
     });
     // The answer is all text the model wrote, across steps, exactly as streamed to the user.
     let text = "", stepBreak = false;
@@ -381,7 +382,7 @@ ${artifactBrief}` : ""}`,
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (stop.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...readScopes);
-    const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
+    const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [moneoToolName(toolResult.toolName)] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
     // The answer is final; show it while the durable publication below completes.
     emit({ type: "answer", conversationId, answer, toolsUsed, followUps });
