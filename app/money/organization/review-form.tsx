@@ -102,7 +102,7 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
     </div>
     <span className="shrink-0 whitespace-nowrap font-mono">{formatMoney(row.amount_minor,row.currency_code,locale)}</span>
    </li>;})}</Fragment>)}</ul>
-  {rows.length>0&&<div className="sticky bottom-20 z-10 flex flex-wrap items-center gap-3 rounded-b-xl border-t border-border bg-card p-3 shadow-lg md:bottom-4">
+  {rows.length>0&&<div className="sticky bottom-20 z-10 max-lg:bottom-[calc(4rem+env(safe-area-inset-bottom))] flex flex-wrap items-center gap-3 rounded-b-xl border-t border-border bg-card p-3 shadow-lg md:bottom-4">
    <p className="text-sm font-medium">{rows.length} selected</p>
    {noTarget?<a className="text-sm underline" href="#organize-controls">Choose a category or merchant</a>:<p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{[category,merchant].filter(Boolean).join(' · ')}</p>}
    <button disabled={pending||providerBusy||noTarget} className="ml-auto min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Apply'}</button>

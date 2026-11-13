@@ -82,9 +82,9 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       <h1 className="page-title">{attention ? "Needs attention" : "Activity log"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{attention ? "Failures and decisions waiting for you. An item leaves this list once it is resolved, not when you open it." : "Imports, reviews and chats in one feed. Failures and rows waiting for you are under Needs attention."}</p>
     </header>
-    <nav aria-label="Activity filters" className="flex flex-wrap gap-2">{Object.entries(FILTERS).map(([key, label]) =>
+    <nav aria-label="Activity filters" className="flex flex-wrap gap-2 max-lg:flex-nowrap max-lg:overflow-x-auto [&>*]:shrink-0">{Object.entries(FILTERS).map(([key, label]) =>
       <Link key={key} href={key === "all" ? "/ai/activity" : `/ai/activity?filter=${key}`} aria-current={filter === key ? "page" : undefined}
-        className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm max-sm:min-h-11 ${filter === key ? "border-brand bg-brand text-white" : "border-border bg-card hover:bg-muted"}`}>{label}</Link>)}</nav>
+        className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm max-lg:min-h-9 ${filter === key ? "border-brand bg-brand text-white" : "border-border bg-card hover:bg-muted"}`}>{label}</Link>)}</nav>
     {errors.length > 0 && <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-danger">Could not load part of this activity, so it may be incomplete. <Link className="underline" href={filter === "all" ? "/ai/activity" : `/ai/activity?filter=${filter}`}>Try again</Link></p>}
     {jobs.data?.some(row => row.status === "queued" || row.status === "running") && <AutoRefresh />}
     {attention && (imports.data?.length === 100 || jobs.data?.length === 100 || requests.data?.length === 100) && <p className="text-xs text-muted-foreground">Showing the latest 100 of each kind. Resolve these to see older ones.</p>}

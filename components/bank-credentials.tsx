@@ -54,7 +54,7 @@ export function BankCredentialsForm({ redirectUrl, onSaved, onCancel }: { redire
       <textarea value={privateKey} onChange={event => setPrivateKey(event.target.value)} required rows={4} autoComplete="off" spellCheck={false}
         placeholder="-----BEGIN PRIVATE KEY-----" className={`${field} font-mono text-xs`} /></label>
     <label className="grid gap-1.5 text-sm font-medium">Or upload the .pem file
-      <input type="file" accept=".pem,application/x-pem-file,text/plain" className="text-sm font-normal file:mr-3 file:min-h-10 file:rounded-lg file:border file:border-border file:bg-card file:px-3 file:text-sm"
+      <input type="file" accept=".pem,application/x-pem-file,text/plain" className="w-full min-w-0 text-sm font-normal file:mr-3 file:min-h-10 file:rounded-lg file:border file:border-border file:bg-card file:px-3 file:text-sm"
         onChange={event => { const file = event.target.files?.[0]; if (file) void file.text().then(setPrivateKey); }} /></label>
     <p className="text-xs text-muted-foreground">The key is checked with Enable Banking, then stored encrypted on this computer. It is never shown again.</p>
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
