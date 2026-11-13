@@ -3,7 +3,7 @@ import { agentTeam } from "./agent-team";
 import { finishRun, mergeRun, runAgent, startRun } from "@/lib/ai/agent-runtime";
 
 const calls = vi.hoisted(() => [] as string[]);
-vi.mock("workflow", async original => ({ ...await original<typeof import("workflow")>(), getWorkflowMetadata: () => ({ workflowRunId: "wf" }) }));
+vi.mock("workflow", async original => ({ ...await original<typeof import("workflow")>(), getWorkflowMetadata: () => ({ workflowRunId: "wf" }), getStepMetadata: () => ({ attempt: 1 }) }));
 vi.mock("@/lib/ai/agent-runtime", () => ({
   startRun: vi.fn(async () => [["categorizer", "recurring"], ["forecaster"], ["writer"]]),
   runAgent: vi.fn(async (_run: string, _ws: string, agent: string) => { calls.push(`start:${agent}`); await new Promise(resolve => setTimeout(resolve, agent === "categorizer" ? 10 : 1)); calls.push(`end:${agent}`); return "done"; }),

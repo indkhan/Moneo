@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { serviceClient } from "@/lib/service-db";
+import { isTransientDbError, serviceClient } from "@/lib/service-db";
 import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import { modelForSettings } from "@/lib/ai/provider";
@@ -283,6 +283,8 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
     checked(await db.from("agent_tasks").insert({ run_id: runId, workspace_id: workspaceId, agent: "lead", position: 0, status: "running", started_at: new Date().toISOString() }));
     await report(lead, { type: "step", text: "Profiling your data" });
     const canRead = settings.ai_data_scopes.includes("transactions");
+    const limits = await db.from("spending_plans").select("category_id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+    if (limits.error) throw new Error(limits.error.message);
     const [count, unorganized, oldest] = canRead ? await Promise.all([
       db.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "posted"),
       db.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "posted").or("merchant_id.is.null,category_id.is.null"),
@@ -293,7 +295,7 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
     const months = first ? (Number(today.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(today.slice(5, 7)) - Number(first.slice(5, 7)) : 0;
     let modelStatus = "disabled";
     if (await aiConfigured()) modelStatus = await modelForSettings(settings, "agents").then(() => "available", () => "unavailable");
-    const plan = planRun({ transactions: count.count ?? 0, unorganized: unorganized.count ?? 0, months, scopes: settings.ai_data_scopes });
+    const plan = planRun({ transactions: count.count ?? 0, unorganized: unorganized.count ?? 0, months, spendingLimits: limits.count ?? 0, scopes: settings.ai_data_scopes });
     checked(await db.from("agent_runs").update({ plan, model_status: modelStatus }).eq("id", runId).eq("workspace_id", workspaceId));
     checked(await db.from("agent_tasks").insert(plan.map((task, index) => ({ run_id: runId, workspace_id: workspaceId, agent: task.agent, position: index + 1,
       status: task.status, step: task.reason, ...(task.status === "skipped" ? { summary: task.reason, finished_at: new Date().toISOString() } : {}) }))));
@@ -306,8 +308,12 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
   return WAVES.map(wave => wave.filter(agent => pending.has(agent)));
 }
 
-/** Runs one agent. Agent failures stay inside the task so the rest of the team continues. */
-export async function runAgent(runId: string, workspaceId: string, agent: Exclude<AgentId, "lead">): Promise<string> {
+/**
+ * Runs one agent. Agent failures stay inside the task so the rest of the team continues. With
+ * retryTransient, a dropped database connection is thrown instead, leaving the task running for the
+ * workflow step to try again; rerunning is safe because proposals upsert on their conflict key.
+ */
+export async function runAgent(runId: string, workspaceId: string, agent: Exclude<AgentId, "lead">, retryTransient = false): Promise<string> {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return "canceled"; throw error; }
   const task = checked(await db.from("agent_tasks").select("status").eq("run_id", runId).eq("workspace_id", workspaceId).eq("agent", agent).single()) as { status: string };
@@ -332,6 +338,10 @@ export async function runAgent(runId: string, workspaceId: string, agent: Exclud
     return "done";
   } catch (error) {
     const canceled = error instanceof RunInactive;
+    if (!canceled && retryTransient && isTransientDbError(error)) {
+      await report(context, { type: "note", text: "The database did not answer; trying again shortly" }).catch(() => undefined);
+      throw error;
+    }
     await report(context, { type: "note", text: canceled ? "Stopped" : `Failed: ${error instanceof Error ? error.message : String(error)}` },
       { status: canceled ? "canceled" : "failed", finished_at: new Date().toISOString() });
     return canceled ? "canceled" : "failed";
@@ -363,6 +373,8 @@ export async function mergeRun(runId: string, workspaceId: string) {
   return true;
 }
 
+const appliedResult = (reviewId: string) => ({ reviewId, href: `/money/organization?review=${reviewId}`, undo: "Undo from the organization review", auto: true });
+
 /**
  * Applies the Categorizer's proposals right away, as the owner, through the
  * audited organization review. Each lands under "Decided automatically" with
@@ -371,6 +383,7 @@ export async function mergeRun(runId: string, workspaceId: string) {
 export async function autoApplyRun(runId: string, workspaceId: string) {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return; throw error; }
+  await recoverStuckProposals(db, workspaceId);
   const proposals = checked(await db.from("agent_proposals").select("id, payload, notes").eq("run_id", runId).eq("workspace_id", workspaceId)
     .eq("kind", "categorize").eq("status", "proposed")) as { id: string; payload: unknown; notes: string[] }[];
   for (const proposal of proposals.filter(item => !item.notes.length)) {
@@ -379,9 +392,27 @@ export async function autoApplyRun(runId: string, workspaceId: string) {
     const payload = payloadSchemas.categorize.parse(proposal.payload);
     const { data, error } = await db.rpc("auto_apply_organization_review", { p_workspace: workspaceId, p_rows: payload.rows, p_patch: payload.patch, p_merchant_name: payload.merchantName,
       p_rule_key: payload.ruleKey, p_evidence: payload.evidence, p_request_id: proposal.id });
-    const result = error ? { error: error.message.slice(0, 500) }
-      : { reviewId: data.reviewId, href: `/money/organization?review=${data.reviewId}`, undo: "Undo from the organization review", auto: true };
+    const result = error ? { error: error.message.slice(0, 500) } : appliedResult(data.reviewId);
     checked(await db.from("agent_proposals").update({ status: error ? "failed" : "accepted", result }).eq("id", proposal.id).eq("status", "applying"));
+  }
+}
+
+/**
+ * A crash between claiming a categorize proposal and recording the answer leaves it "applying".
+ * Its organization review (request_id = proposal id) tells what happened: applied means the change
+ * landed; otherwise nothing changed and the proposal waits again. Other kinds stay put: a trade
+ * that may have been sent must never be offered twice.
+ */
+export async function recoverStuckProposals(db: Db, workspaceId: string, now = Date.now()) {
+  const stuck = checked(await db.from("agent_proposals").select("id").eq("workspace_id", workspaceId).eq("kind", "categorize").eq("status", "applying")
+    .lt("decided_at", new Date(now - 5 * 60_000).toISOString())) as { id: string }[];
+  if (!stuck.length) return;
+  const reviews = checked(await db.from("organization_reviews").select("id, request_id, status").eq("workspace_id", workspaceId).in("request_id", stuck.map(item => item.id))) as { id: string; request_id: string; status: string }[];
+  const landed = new Map(reviews.filter(review => review.status === "applied").map(review => [review.request_id, review.id]));
+  for (const { id } of stuck) {
+    const reviewId = landed.get(id);
+    checked(await db.from("agent_proposals").update(reviewId ? { status: "accepted", result: appliedResult(reviewId) } : { status: "proposed", decided_at: null })
+      .eq("id", id).eq("workspace_id", workspaceId).eq("status", "applying"));
   }
 }
 
@@ -390,6 +421,10 @@ export async function finishRun(runId: string, workspaceId: string, error?: stri
   const now = new Date().toISOString();
   const run = checked(await db.from("agent_runs").select("status, cancel_requested").eq("id", runId).eq("workspace_id", workspaceId).single()) as { status: string; cancel_requested: boolean };
   if (!["queued", "running"].includes(run.status)) return run.status;
+  // A run whose agents failed did not finish its work; saying "completed" hid 417 uncategorized rows.
+  const failed = (checked(await db.from("agent_tasks").select("agent, status").eq("run_id", runId).eq("workspace_id", workspaceId)) as { agent: AgentId; status: string }[])
+    .filter(task => task.status === "failed").map(task => AGENTS[task.agent].name);
+  error ??= failed.length ? `${failed.join(", ")} failed; resume the run to try again` : undefined;
   const status = run.cancel_requested ? "canceled" : error ? "failed" : "completed";
   checked(await db.from("agent_runs").update({ status, error: error?.slice(0, 2000) ?? null, finished_at: now, updated_at: now }).eq("id", runId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]));
   checked(await db.from("agent_tasks").update({ status: status === "completed" ? "done" : "canceled", finished_at: now }).eq("run_id", runId).eq("workspace_id", workspaceId).in("status", ["pending", "running"]));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { organizationProposals } from "@/lib/import/organization";
-import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
+import { anomalyFindings, backlogRerunNeeded, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const account = id(900);
@@ -11,16 +11,44 @@ const organizationRow = (item: LedgerRow) => ({ id: item.id, version: item.versi
 
 describe("lead plan", () => {
   it("runs agents in waves and explains every skip", () => {
-    const plan = planRun({ transactions: 120, unorganized: 0, months: 1, scopes: ["accounts", "transactions"] });
+    const plan = planRun({ transactions: 120, unorganized: 0, months: 1, spendingLimits: 1, scopes: ["accounts", "transactions"] });
     expect(plan.find(task => task.agent === "categorizer")).toMatchObject({ status: "skipped", reason: expect.stringContaining("already") });
     expect(plan.find(task => task.agent === "recurring")).toMatchObject({ status: "skipped", reason: expect.stringContaining("two months") });
     expect(plan.find(task => task.agent === "forecaster")).toMatchObject({ status: "skipped", reason: "Allow AI access to planning in Settings" });
-    expect(plan.find(task => task.agent === "anomaly")).toMatchObject({ status: "pending", wave: 0 });
-    expect(plan.find(task => task.agent === "writer")).toMatchObject({ status: "pending", wave: 2 });
+    expect(plan.find(task => task.agent === "anomaly")).toMatchObject({ status: "pending", wave: 1 });
+    expect(plan.find(task => task.agent === "writer")).toMatchObject({ status: "pending", wave: 3 });
+  });
+  // The budget coach ran beside the categorizer and proposed limits from rows that were still uncategorized.
+  it("categorizes alone before anyone reads categories, and coaches budgets only for owners who set limits", () => {
+    const profile = { transactions: 400, unorganized: 417, months: 12, scopes: ["accounts", "transactions", "planning"] as const };
+    const plan = planRun({ ...profile, scopes: [...profile.scopes], spendingLimits: 0 });
+    expect(plan.filter(task => task.wave === 0).map(task => task.agent)).toEqual(["categorizer"]);
+    expect(plan.find(task => task.agent === "categorizer")!.status).toBe("pending");
+    expect(plan.find(task => task.agent === "budget")).toMatchObject({ status: "skipped", wave: 1 });
+    expect(planRun({ ...profile, scopes: [...profile.scopes], spendingLimits: 2 }).find(task => task.agent === "budget")!.status).toBe("pending");
   });
   it("skips everything except writing when there is no data", () => {
-    expect(planRun({ transactions: 0, unorganized: 0, months: 0, scopes: ["accounts", "transactions", "planning", "imports"] })
+    expect(planRun({ transactions: 0, unorganized: 0, months: 0, spendingLimits: 0, scopes: ["accounts", "transactions", "planning", "imports"] })
       .every(task => task.status === "skipped")).toBe(true);
+  });
+});
+
+// 417 bank rows stayed uncategorized after a failed run: later syncs added nothing, so no run started again.
+describe("backlog rerun", () => {
+  const base = { transactionsAllowed: true, unorganized: 417, recentRuns: ["completed"], unorganizedSinceLatestRun: false };
+  it.each([
+    ["the latest run failed", { recentRuns: ["failed", "completed"] }, true],
+    ["new rows arrived after the latest run", { unorganizedSinceLatestRun: true }, true],
+    ["no run has looked yet", { recentRuns: [] }, true],
+    ["a finished run already left these rows", {}, false],
+    ["the owner stopped the latest run", { recentRuns: ["canceled"] }, false],
+    ["a run is still going", { recentRuns: ["running"], unorganizedSinceLatestRun: true }, false],
+    ["nothing lacks a category", { unorganized: 0, recentRuns: ["failed"] }, false],
+    ["AI may not read transactions", { transactionsAllowed: false, recentRuns: ["failed"] }, false],
+    ["three runs in a row failed", { recentRuns: ["failed", "failed", "failed"] }, false],
+    ["three failures, then new rows", { recentRuns: ["failed", "failed", "failed"], unorganizedSinceLatestRun: true }, true],
+  ])("%s", (_case, change, expected) => {
+    expect(backlogRerunNeeded({ ...base, ...change })).toBe(expected);
   });
 });
 
@@ -84,8 +112,7 @@ describe("lead merge", () => {
     expect(proposals.find(item => item.conflictKey.startsWith("duplicate:"))!.confidence).toBe(90);
     expect(proposals.find(item => item.kind === "recurring")!.notes).toEqual([`Anomaly check: price:${id(1)}`]);
     expect(proposals.find(item => item.kind === "categorize")!.notes[0]).toContain("1 possible duplicate");
-    expect(proposals.find(item => item.kind === "budget")).toMatchObject({ confidence: 60, notes: [expect.stringContaining("2 rows")] });
-    expect(resolutions.length).toBeGreaterThanOrEqual(4);
+    expect(resolutions.length).toBeGreaterThanOrEqual(3);
     expect(proposals.map(item => item.kind)).toEqual(["finding", "finding", "categorize", "recurring", "budget"]);
   });
 });

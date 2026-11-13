@@ -20,8 +20,8 @@ export const AGENTS = {
 } as const satisfies Record<string, { name: string; role: string; scopes: AiDataScope[] }>;
 export type AgentId = keyof typeof AGENTS;
 export const AGENT_IDS = Object.keys(AGENTS) as AgentId[];
-/** Agents in the same wave run in parallel; later waves read earlier proposals. */
-export const WAVES: AgentId[][] = [["categorizer", "recurring", "anomaly", "budget"], ["forecaster"], ["writer"]];
+/** Agents in the same wave run in parallel; later waves read earlier proposals. The categorizer goes first, alone. */
+export const WAVES: AgentId[][] = [["categorizer"], ["recurring", "anomaly", "budget"], ["forecaster"], ["writer"]];
 
 const versioned = z.object({ id: z.uuid(), version: z.number().int().min(0).max(2147483647) }).strict();
 export const payloadSchemas = {
@@ -57,7 +57,7 @@ export const reviewed = (row: LedgerRow) => row.status === "posted" && row.kind 
 export const daysBefore = (today: string, days: number) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
 
 // ── Lead: plan ───────────────────────────────────────────────────────────────
-export type Profile = { transactions: number; unorganized: number; months: number; scopes: AiDataScope[] };
+export type Profile = { transactions: number; unorganized: number; months: number; spendingLimits: number; scopes: AiDataScope[] };
 export type PlannedTask = { agent: AgentId; wave: number; status: "pending" | "skipped"; reason: string };
 
 /** Deterministic plan: which agents run, in which wave, and why the others are skipped. */
@@ -70,7 +70,8 @@ export function planRun(profile: Profile): PlannedTask[] {
   const skip: Partial<Record<AgentId, string>> = {
     categorizer: profile.unorganized ? undefined : "Every recent row already has a merchant and category",
     recurring: profile.months >= 2 ? undefined : "Needs at least two months of history",
-    budget: profile.months >= 2 ? undefined : "Needs at least two months of history",
+    // The coach tunes limits the owner chose to keep; it does not invent a budget for someone who has none.
+    budget: !profile.spendingLimits ? "No spending limits set up" : profile.months >= 2 ? undefined : "Needs at least two months of history",
   };
   return WAVES.flatMap((agents, wave) => agents.map(agent => {
     const missing = AGENTS[agent].scopes.filter(scope => !profile.scopes.includes(scope));
@@ -78,6 +79,20 @@ export function planRun(profile: Profile): PlannedTask[] {
     return blocked ? { agent, wave, status: "skipped" as const, reason: blocked }
       : { agent, wave, status: "pending" as const, reason: why[agent] || AGENTS[agent].role };
   }));
+}
+
+export type Backlog = { transactionsAllowed: boolean; unorganized: number; recentRuns: string[]; unorganizedSinceLatestRun: boolean };
+
+/**
+ * Whether the hourly check should start a run for rows still lacking a merchant or category.
+ * recentRuns holds the newest runs' statuses, newest first. Rows a finished run looked at and
+ * left alone stay alone; new rows or a failed run are worth another go, up to three failures in a row.
+ */
+export function backlogRerunNeeded(backlog: Backlog) {
+  const [latest] = backlog.recentRuns;
+  if (!backlog.transactionsAllowed || !backlog.unorganized || backlog.recentRuns.some(status => status === "queued" || status === "running")) return false;
+  if (!latest || backlog.unorganizedSinceLatestRun) return true;
+  return latest === "failed" && !(backlog.recentRuns.length >= 3 && backlog.recentRuns.slice(0, 3).every(status => status === "failed"));
 }
 
 // ── Categorizer ──────────────────────────────────────────────────────────────
@@ -231,16 +246,6 @@ export function mergeProposals(input: Proposal[]): { proposals: Proposal[]; reso
       const ids = new Set((item as Proposal<"recurring">).payload.evidence.map(row => row.id));
       const price = proposals.find(other => other.conflictKey.startsWith("price:") && (other as Proposal<"finding">).payload.transactionIds.some(id => ids.has(id)));
       if (price) item.notes.push(`Anomaly check: ${price.title}`);
-    }
-    if (item.kind === "budget") {
-      const { categoryId } = (item as Proposal<"budget">).payload;
-      const incoming = proposals.filter(other => other.kind === "categorize" && (other as Proposal<"categorize">).payload.patch.category_id === categoryId)
-        .reduce((sum, other) => sum + (other as Proposal<"categorize">).payload.rows.length, 0);
-      if (incoming) {
-        item.notes.push(`${incoming} rows proposed for this category are not in this history yet; revisit the limit after accepting them`);
-        item.confidence = Math.max(1, item.confidence - 15);
-        resolutions.push(`Lowered confidence of “${item.title}” until the Categorizer's ${incoming} rows are decided`);
-      }
     }
   }
   const order: ProposalKind[] = ["finding", "categorize", "recurring", "budget"];
