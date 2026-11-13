@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
 import { tool } from "ai";
@@ -50,8 +50,9 @@ it("gives Claude only Moneo's tools, its instructions as the system prompt and t
 
 function fakeLogin() {
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), kill: vi.fn() });
-  const spawn = vi.fn((_command: string, _args: string[]) => {
-    setTimeout(() => child.stdout.write("Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=abc\nPaste code here if prompted > "), 0);
+  const spawn = vi.fn<(command: string, args: string[]) => ChildProcess>(() => {
+    // Buffered until Moneo starts reading, like a real process's output.
+    child.stdout.write("Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=abc\nPaste code here if prompted > ");
     return child as unknown as ChildProcess;
   });
   return { child, spawn };
@@ -62,12 +63,10 @@ it("signs in through Claude Code's own login and passes the pasted code to it", 
   const state = await startClaudeSignIn(spawn);
   expect(spawn.mock.calls[0][1]).toEqual(["auth", "login", "--claudeai"]);
   expect(state).toEqual({ running: true, url: "https://claude.com/cai/oauth/authorize?code=true&state=abc", error: null });
-  const written: string[] = [];
-  child.stdin.on("data", chunk => written.push(String(chunk)));
   expect(() => submitClaudeCode("bad code")).toThrow("doesn't look like");
+  const written = once(child.stdin, "data");
   submitClaudeCode("  abcdefghijkl#state-1 ");
-  await new Promise(resolve => setTimeout(resolve, 0));
-  expect(written).toEqual(["abcdefghijkl#state-1\n"]);
+  expect(String((await written)[0])).toBe("abcdefghijkl#state-1\n");
   child.emit("exit", 0);
   expect(claudeSignInState()).toEqual({ running: false, url: state.url, error: null });
   expect(() => submitClaudeCode("abcdefghijkl")).toThrow("expired");
