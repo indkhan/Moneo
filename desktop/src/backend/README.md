@@ -70,6 +70,9 @@ SHA-256 in that script), and land in `desktop/.build/` (in a package, `resources
   (Windows loads them from the executable's folder first), taken from Microsoft's signed
   VC_redist.x64 14.44.35211.0 and pinned by SHA-256 in `fetch-backend.mjs`, so no vc_redist install is
   needed.
+- **GoTrue keeps a connection pool** (`GOTRUE_DB_MAX_IDLE_POOL_SIZE`). Its default keeps none, and on
+  Windows each new Postgres connection starts a process (100+ ms), which made every page's sign-in
+  check take about half a second.
 - Postgres settings follow the image where they change results (`timezone = UTC`,
   `extra_float_digits = 0`, `row_security = on`, english text search); `jit = off`, no replication
   (`wal_level` default), logs rotate daily for a week.

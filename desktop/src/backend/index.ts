@@ -214,6 +214,10 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
         GOTRUE_DB_DRIVER: "postgres",
         GOTRUE_DB_DATABASE_URL: dbUrl("supabase_auth_admin"),
         GOTRUE_DB_MIGRATIONS_PATH: l.gotrueMigrations,
+        // GoTrue keeps no idle connections by default. A new Postgres connection costs 100+ ms on
+        // Windows (a process per connection), which made every page's sign-in check take ~0.5 s.
+        GOTRUE_DB_MAX_POOL_SIZE: "10",
+        GOTRUE_DB_MAX_IDLE_POOL_SIZE: "5",
         GOTRUE_SITE_URL: appUrl,
         GOTRUE_URI_ALLOW_LIST: appUrl,
         GOTRUE_JWT_SECRET: secrets.JWT_SECRET,
