@@ -18,9 +18,14 @@ module.exports = {
   copyright: "Copyright © 2026 Moneo contributors",
   electronVersion: require("../node_modules/electron/package.json").version,
   directories: { output: process.env.MONEO_DESKTOP_RELEASE_DIR || "release", buildResources: "icons" },
-  ...(version && { extraMetadata: { version } }),
+  // A test build is a different app to Electron too: its own data folder (%APPDATA%\Moneo QA) and
+  // single-instance lock, so nothing it starts (an update's restart, `--quit`) reaches the owner's Moneo.
+  ...((version || testInstaller) && { extraMetadata: { ...(version && { version }), ...(testInstaller && { name: "moneo-desktop-qa", productName: "Moneo QA" }) } }),
   files: ["package.json", "dist/**", "setup/**", "icons/icon.png"],
   asar: true,
+  // Writes latest*.yml next to the installers: the update check in Settings reads them from the
+  // release (desktop/src/updates.ts). The CI release job uploads them; electron-builder publishes nothing.
+  publish: [{ provider: "github", owner: "indkhan", repo: "Moneo", releaseType: "release" }],
   // desktop/package.json has no dependencies: everything the main process needs is bundled by esbuild.
   npmRebuild: false,
   nodeGypRebuild: false,
