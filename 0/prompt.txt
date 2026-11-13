@@ -1,0 +1,52 @@
+Update on pull request #194 (https://github.com/indkhan/Moneo/pull/194), which T3 Code is watching for you:
+- All 1 required check passed on 08c00cd.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #194 (https://github.com/indkhan/Moneo/pull/194), which T3 Code is watching for you:
+- All 7 checks passed on 08c00cd.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #194 (https://github.com/indkhan/Moneo/pull/194), which T3 Code is watching for you:
+- All 1 required check passed on ee1ac5d.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #194 (https://github.com/indkhan/Moneo/pull/194), which T3 Code is watching for you:
+- All 7 checks passed on ee1ac5d.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+sure do it and also make a landing page using html css and js for github pages so ii dont have to deploy it somewhere make a really nice landing page downloads it for them and also tell them that the code is tehre and all and also make it look clean and modern and all using /awesome-design-md and make the frontend something like t3.code landing page 
+
+if any question about it ask me
+/awesome-design-md and make the frontend something like t3.code landing page 
+
+if any question about it ask me
+
+---
+
+first show me the frontend
+
+---
+
+no show the dashboard and also the artifact features and all there might be a pic or image or something like that to show the things anda ll show them right now it looks like a terminal tool with comands and all which it isnt
+
+---
+
+Continue where you left off.
+
+---
+
+it is really good the only thing is that the mock data u have put in make it look real cuz right now it is on ground and one day it is full uup make it real looking data put fake data for budget as well in ask make it the u asking it to buy something on scalalble and it showing u the card where you can press yes or no and all and before that u asked can you find where i lent money and add and it says it found the transaction and all 
+for artifact so that but also the overview widget that ti makes it look like any widget but it is ur widget
+welth page same amek it look real data thing same for paln and also have a section for call with it calling 3 tasks and all so they actually get what it is for
