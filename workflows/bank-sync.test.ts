@@ -166,6 +166,14 @@ it("asks Enable Banking about the app before calling an unexplained 401 an ended
   bank.application.mockRejectedValueOnce(new EnableBankingError(401, "UNAUTHORIZED", "refused"));
   await sync();
   expect(tables.bank_connections[0]).toMatchObject({ status: "active", last_error: expect.stringContaining("App ID or private key") });
+  // The hourly job doesn't ask again with the same rejected key for 6 hours.
+  expect(tables.bank_connection_accounts[0]).toMatchObject({ next_allowed_at: new Date(now + 6 * 3_600_000).toISOString() });
+  expect(tables.bank_connection_accounts[0].last_error ?? null).toBeNull();
+  bank.bookedTransactions.mockClear();
+  await sync(undefined);
+  expect(bank.bookedTransactions).not.toHaveBeenCalled();
+  // Saving new credentials lifts that wait (app/api/bank/credentials).
+  tables.bank_connection_accounts[0].next_allowed_at = null;
   bank.bookedTransactions.mockRejectedValueOnce(new EnableBankingError(401, "UNAUTHORIZED", "refused"));
   await sync();
   expect(tables.bank_connections[0]).toMatchObject({ status: "expired", last_error: expect.stringContaining("consent expired") });

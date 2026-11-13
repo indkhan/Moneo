@@ -105,6 +105,7 @@ async function bookedSince(client: EnableBankingClient, uid: string, lastBookedO
 
 const CONSENT_ENDED = "Bank consent expired; reconnect to keep syncing";
 const APP_KEY_PROBLEM = "Enable Banking rejected the App ID or private key. Check them under Import → Connected banks; syncing resumes once they work.";
+const APP_KEY_WAIT_MS = 6 * 3_600_000;
 
 // Network trouble, timeouts, rate limits and bank outages pass; a refused request does not.
 function transient(error: unknown) {
@@ -166,8 +167,13 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
           await db.from("bank_connections").update({ status: "expired", last_error: CONSENT_ENDED }).eq("id", connectionId);
           return { ...staged, ended: true };
         }
-        // Every account would be refused the same way; the connection says what to fix.
-        if (cause === "app") return { ...staged, failed: staged.failed + 1, problem: APP_KEY_PROBLEM };
+        // Every account would be refused the same way; the connection says what to fix. The accounts wait 6 hours
+        // (with no account error, so saving new credentials can lift exactly this wait) instead of retrying hourly.
+        if (cause === "app") {
+          const held = await db.from("bank_connection_accounts").update({ next_allowed_at: new Date(now + APP_KEY_WAIT_MS).toISOString() }).eq("connection_id", connectionId);
+          if (held.error) throw new Error(held.error.message);
+          return { ...staged, failed: staged.failed + 1, problem: APP_KEY_PROBLEM };
+        }
       }
       // This account waits, as long as the bank asked when it said; the others still sync.
       staged.failed++;
