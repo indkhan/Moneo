@@ -1,0 +1,73 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7BDE93CJG6CY9FJTNYYA5RM",
+  "session_id": "aa416ad7-1f1c-4865-ad65-aae0d4b7641e",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-13T21:36:29.4487113Z",
+  "branch": "t3/chat-finance-charts",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/ai/chart-spec.test.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "ff7482a30d8b",
+  "checkpoint_transcript_start": 1014,
+  "transcript_lines_at_start": 1014,
+  "compact_transcript_start": 121,
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 2367,
+    "cache_read_tokens": 975851,
+    "output_tokens": 894,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 5,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 4,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_017sFwLtavA8FEo1D3ksbNZ2",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "dataviz"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "ff7482a30d8b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 33,
+        "end": 34,
+        "entry_ids": [
+          "d82a5eab-bcac-4aa5-9295-a526c95090a4"
+        ],
+        "tool_use_id": "toolu_017sFwLtavA8FEo1D3ksbNZ2"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_017sFwLtavA8FEo1D3ksbNZ2"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: dataviz",
+        "default_collapsed": true
+      }
+    }
+  ]
+}
