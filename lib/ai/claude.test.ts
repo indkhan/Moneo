@@ -47,6 +47,32 @@ it("gives Claude only Moneo's tools, its instructions as the system prompt and t
   expect(() => run.accounts_balance.execute({ account: "a", other: "a" }, {})).toThrow("Pick two accounts");
 });
 
+// A one-page PDF; pdf.js rebuilds the cross-reference table, so the offsets can be left out.
+const pdf = (text: string) => {
+  const stream = text ? `BT /F1 24 Tf 20 100 Td (${text}) Tj ET` : "";
+  return new TextEncoder().encode(`%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj
+4 0 obj<</Length ${stream.length}>>stream
+${stream}
+endstream endobj
+5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj
+trailer<</Root 1 0 R/Size 6>>
+%%EOF`);
+};
+
+it("hands Claude a PDF's text, since the adapter would drop the file, and says when a scan has none", async () => {
+  const model = claudeModel("claude-opus-5-5");
+  const file = (bytes: Uint8Array, filename: string) => ({ type: "file" as const, data: { type: "data" as const, data: bytes }, mediaType: "application/pdf", filename });
+  const prompt = [{ role: "user" as const, content: [{ type: "text" as const, text: "What is this?" }, file(pdf("Rent 950 EUR"), "lease.pdf"), file(pdf(""), "scan.pdf")] }];
+  const result = await model.doStream({ prompt } as Parameters<typeof model.doStream>[0]) as unknown as { options: { prompt: { content: { type: string; text?: string }[] }[] } };
+  const parts = result.options.prompt[0].content;
+  expect(parts.map(part => part.type)).toEqual(["text", "text", "text"]);
+  expect(parts[1].text).toContain("--- Page 1 ---\nRent 950 EUR");
+  expect(parts[2].text).toContain("no readable text");
+});
+
 function fakeLogin() {
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), kill: vi.fn() });
   const spawn = vi.fn<(command: string, args: string[]) => ChildProcess>(() => {

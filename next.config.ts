@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   experimental: { staleTimes: { dynamic: 30, static: 30 } },
   // The card sandbox loads its QuickJS WASM from its own package at runtime; bundling would move the file.
   // Claude's Agent SDK starts its bundled Claude Code binary from its own platform package.
-  serverExternalPackages: ["quickjs-emscripten-core", "@jitl/quickjs-wasmfile-release-sync", "ai-sdk-provider-claude-code", "@anthropic-ai/claude-agent-sdk"],
+  serverExternalPackages: ["quickjs-emscripten-core", "@jitl/quickjs-wasmfile-release-sync", "ai-sdk-provider-claude-code", "@anthropic-ai/claude-agent-sdk", "unpdf"],
   ...(desktop && {
     output: "standalone" as const,
     // Files read from disk at runtime, which tracing cannot see. Workflow's local world checks its data

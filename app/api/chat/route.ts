@@ -206,9 +206,6 @@ export async function POST(request: Request) {
     }])) as T;
   }
     const model = await modelPromise;
-    // Claude Code takes photos but would silently drop a PDF, so say so instead of answering without it.
-    if (model.provider === "claude-code" && files.some(file => file.mediaType === "application/pdf"))
-      throw new Error("Claude can read photos here but not PDFs yet. Attach the pages as photos, or switch AI access to ChatGPT or an API key in Settings.");
     // The visible plan is not financial evidence; it only tells the user what the model will check.
     let modelFollowUps: string[] = [];
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
