@@ -42,8 +42,13 @@ export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAge
   return settings?.ai_models[agent] ?? (source === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model);
 }
 
+/** The model ID an agent runs with, given the AI source chosen in Settings. */
+export async function currentModelId(settings: WorkspaceSettings | undefined, agent: AiAgent) {
+  return modelIdFor(settings, agent, (await chatgptStatus()).source);
+}
+
 export async function modelForSettings(settings: WorkspaceSettings | undefined, agent: AiAgent) {
-  return getModel(modelIdFor(settings, agent, (await chatgptStatus()).source));
+  return getModel(await currentModelId(settings, agent));
 }
 
 /**
