@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { serviceClient } from "@/lib/service-db";
 import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import { modelForSettings } from "@/lib/ai/provider";
@@ -26,7 +27,7 @@ type Context = { db: Db; runId: string; workspace: Workspace; settings: Workspac
 export function service(): Db {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Agent service is not configured");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return serviceClient(url, key);
 }
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message);

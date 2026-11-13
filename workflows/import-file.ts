@@ -1,7 +1,7 @@
 "use workflow";
 
 import { createHash } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import { serviceClient } from "@/lib/service-db";
 import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
 import { modelForSettings } from "@/lib/ai/provider";
 import { aiConfigured } from "@/lib/ai/configured";
@@ -39,7 +39,7 @@ export async function importFile(importId: string, workspaceId: string, rowCount
 async function linkOwnTransfersStep(workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   try { await linkOwnTransfers(db, workspaceId); } catch (error) { console.error("Own-account transfers were not linked", error); } // The next import retries.
 }
 
@@ -48,7 +48,7 @@ async function linkOwnTransfersStep(workspaceId: string) {
 async function startAgentTeam(importId: string, workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   try {
     const imported = checked(await db.from("imports").select("new_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number | null };
     if (imported.new_rows) await startAgentRun(db, workspaceId, { importId });
@@ -60,7 +60,7 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Supabase import service is not configured");
-  const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(url, key);
   const imported = checked(await db.from("imports").select("*").eq("id", importId).eq("workspace_id", workspaceId).single()) as { status: string; run_version: number; source_id?: string | null; route_accounts?: Record<string, string>; storage_path: string; file_hash: string; mapping: unknown };
   if (imported.status === "completed") return 0;
   if (!["queued", "running"].includes(imported.status) || imported.run_version !== runVersion) throw new Error("Import worker canceled or superseded");
@@ -132,7 +132,7 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
 
 async function processImportBatch(importId: string, workspaceId: string, offset: number, runVersion: number) {
   "use step";
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   // Retry stale candidate evidence inside the same durable step. Every attempt
   // rereads candidates and every batch transaction fences canceled/old workers.
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -146,20 +146,20 @@ async function processImportBatch(importId: string, workspaceId: string, offset:
 
 async function finishImport(importId: string, workspaceId: string, runVersion: number) {
   "use step";
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   return checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: null })) === "completed";
 }
 
 async function failImport(importId: string, workspaceId: string, error: string, runVersion: number) {
   "use step";
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: error }));
 }
 
 async function maybeStartFirstReview(importId: string, workspaceId: string) {
   "use step";
   if (!(await aiConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   const settings = await loadWorkspaceSettings(db, workspaceId);
   try {
     requireAiScope(settings, "accounts", "transactions");
