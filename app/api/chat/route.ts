@@ -264,6 +264,12 @@ export async function POST(request: Request) {
     const artifactBrief = briefingPromise ? await briefingPromise : null;
     const owner = await briefPromise;
     for (const scope of owner?.scopes ?? []) readScopes.add(scope);
+    // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
+    const takeSteers = async () => {
+      const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
+      if (steers.error) { console.error("take_chat_steers failed", steers.error); return []; }
+      return (steers.data ?? []) as { id: string; content: string }[];
+    };
     const result = streamText({
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
       maxOutputTokens: 3000,
@@ -286,15 +292,12 @@ ${artifactBrief}` : ""}`,
       prepareStep: async ({ messages }) => {
         await stopIfCanceled();
         if (stop.signal.aborted) throw new Error("Request canceled");
-        // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
-        const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
-        if (steers.error) { console.error("take_chat_steers failed", steers.error); return {}; }
-        const taken = (steers.data ?? []) as { id: string; content: string }[];
+        const taken = await takeSteers();
         if (!taken.length) return {};
         emit({ type: "steered", steers: taken });
         return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
       },
-      // Claude runs these inside Claude Code; withTools hands them over there.
+      // Claude runs these inside Claude Code; withTools hands them over there, and steers reach it mid-answer.
       ...withTools(model, { ...planTool, ...retainTools({
         // Designers check the request is still running before they save, so a canceled build saves nothing.
         ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
@@ -363,7 +366,7 @@ ${artifactBrief}` : ""}`,
             },
           }),
         } : {}),
-      }) }),
+      }) }, { take: takeSteers, delivered: steers => emit({ type: "steered", steers }) }),
     });
     // The answer is all text the model wrote, across steps, exactly as streamed to the user.
     let text = "", stepBreak = false;
