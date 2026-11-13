@@ -15,12 +15,12 @@ const PLAN_SCOPE = "chatgpt.tokens.use.direct";
 const file = () => path.join(process.env.MONEO_DATA_DIR ?? path.join(process.cwd(), ".data"), "chatgpt.json");
 const AAD = "moneo:chatgpt";
 
-export type AiSource = "chatgpt" | "api_key";
+export type AiSource = "chatgpt" | "claude" | "api_key";
 const tokensSchema = z.object({ accessToken: z.string(), refreshToken: z.string().nullable(), expiresAt: z.number(), scopes: z.array(z.string()) });
 const stateSchema = z.object({
   hostId: z.string().transform(value => z.uuid().safeParse(value).success ? `urn:uuid:${value}` : value),
   // Which one pays when both are set up; the owner picks it in Settings.
-  source: z.enum(["chatgpt", "api_key"]).default("chatgpt"),
+  source: z.enum(["chatgpt", "claude", "api_key"]).default("chatgpt"),
   account: z.object({ clientId: z.string(), email: z.string().nullable(), idToken: z.string().nullable(), tokens: tokensSchema }).nullable().default(null),
   pending: z.object({ state: z.string(), verifier: z.string(), redirectUri: z.string(), clientId: z.string(), createdAt: z.number() }).nullable().default(null),
 });
@@ -101,7 +101,7 @@ export async function signOut() {
       body: new URLSearchParams({ token: state.account.tokens.refreshToken, token_type_hint: "refresh_token", client_id: state.account.clientId }) }).catch(() => undefined);
   }
   // The registered client id stays with the host id for a later sign-in to the same account.
-  await save({ ...state, account: null, source: "api_key" });
+  await save({ ...state, account: null, source: state.source === "claude" ? "claude" : "api_key" });
 }
 
 export async function setAiSource(source: AiSource) {

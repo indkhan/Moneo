@@ -1,20 +1,28 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
-import { chatgptFetch, usesChatGPT } from "./chatgpt";
+import { defaultSettingsMiddleware, wrapLanguageModel, type LanguageModel, type ToolSet } from "ai";
+import { chatgptFetch, chatgptStatus, usesChatGPT, type AiSource } from "./chatgpt";
+import { claudeAccount, claudeModel } from "./claude";
 import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 
-// Each agent uses the model typed in Settings, else its default. OpenRouter IDs are
-// "vendor/model" and go to OpenRouter; plain IDs ("gpt-6.1-sol") go to OpenAI, paid by the
-// owner's ChatGPT plan (Sign in with ChatGPT) or the OpenAI API key, whichever Settings picks.
-// With only an OpenRouter key, plain IDs go to OpenRouter as "openai/<id>", so the defaults still run.
+// Each agent uses the model typed in Settings, else its default for the chosen AI source. OpenRouter IDs
+// are "vendor/model" and go to OpenRouter; "claude-…" IDs run on the owner's Claude plan through Claude
+// Code; other plain IDs ("gpt-6.1-sol") go to OpenAI, paid by the owner's ChatGPT plan (Sign in with
+// ChatGPT) or the OpenAI API key, whichever Settings picks. With only an OpenRouter key, plain IDs go to
+// OpenRouter as "openai/<id>", so the defaults still run.
 // Docs: https://ai-sdk.dev/providers/ai-sdk-providers/openai + https://openrouter.ai/docs
 export async function getModel(modelId: string) {
   if (modelId.includes("/")) {
     const apiKey = await serviceKey("openrouter_api_key");
     if (!apiKey) throw new Error("Model IDs with a / run on OpenRouter. Add an OpenRouter API key under Settings → AI access.");
     return createOpenRouter({ apiKey }).chat(modelId);
+  }
+  if (modelId.startsWith("claude-")) {
+    // Never falls back to a paid route: without a plan sign-in, a Claude model doesn't run.
+    const account = await claudeAccount();
+    if (!account.signedIn) throw new Error(account.problem ?? "Claude models run on your Claude plan. Sign in with Claude under Settings → AI access.");
+    return claudeModel(modelId);
   }
   if (await usesChatGPT()) {
     // ChatGPT plan usage keeps nothing on OpenAI's side, so the whole history is sent each time.
@@ -25,18 +33,25 @@ export async function getModel(modelId: string) {
   if (apiKey) return createOpenAI({ apiKey })(modelId);
   const openRouterKey = await serviceKey("openrouter_api_key");
   if (openRouterKey) return createOpenRouter({ apiKey: openRouterKey }).chat(`openai/${modelId}`);
-  throw new Error("No AI is set up. Sign in with ChatGPT or add an API key under Settings → AI access.");
+  throw new Error("No AI is set up. Sign in with ChatGPT or Claude, or add an API key under Settings → AI access.");
 }
 
-
-export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent): string {
+export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent, source?: AiSource): string {
   // A voice call uses the chat model until a faster one is chosen for calls.
-  if (agent === "voice_call") return settings?.ai_models.voice_call ?? modelIdFor(settings, "chat");
-  return settings?.ai_models[agent] ?? AI_AGENTS[agent].model;
+  if (agent === "voice_call") return settings?.ai_models.voice_call ?? modelIdFor(settings, "chat", source);
+  return settings?.ai_models[agent] ?? (source === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model);
 }
 
 export async function modelForSettings(settings: WorkspaceSettings | undefined, agent: AiAgent) {
-  return getModel(modelIdFor(settings, agent));
+  return getModel(modelIdFor(settings, agent, (await chatgptStatus()).source));
+}
+
+/**
+ * The model and tools for a call that uses tools. Claude Code runs the tool loop itself, so on Claude the
+ * tools go into the model and the call gets none; other providers get them on the call as usual.
+ */
+export function withTools<T extends ToolSet>(model: LanguageModel, tools: T): { model: LanguageModel; tools: T | undefined } {
+  return typeof model === "object" && model.provider === "claude-code" ? { model: claudeModel(model.modelId, tools), tools: undefined } : { model, tools };
 }
 
 export const SYSTEM_PROMPT = `You are Moneo, the owner's personal finance assistant. Moneo runs on their own computer and your tools read their real records: accounts, transactions, loans, Wealth, recurring payments, plans and Scalable investments. "About the owner" at the end lists what they have, so you already know their accounts and the people they deal with.
