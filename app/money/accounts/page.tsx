@@ -102,7 +102,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
             <Link aria-label={`Transactions in ${account.name}`} className="hover:text-foreground hover:underline" href={`/money/transactions?account=${account.id}`}>Transactions</Link>
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 max-sm:w-full max-sm:justify-between max-sm:px-2">
           <Sparkline points={trend} label={`${account.name} recorded balance, last ${TREND_DAYS} days`} />
           <div className="min-w-36 text-right">
             <p className="font-mono text-base font-semibold tabular-nums">{amount === null ? "—" : formatMoney(amount, account.currency_code, locale)}</p>
