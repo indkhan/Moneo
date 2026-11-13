@@ -1,0 +1,123 @@
+Act as the implementation sub-agent for this task.
+
+Implement GitHub issue #199 in indkhan/Moneo: "Read PDFs in chat when Claude is the AI source". Read the issue first (`gh issue view 199`). Read AGENTS.md first and follow it exactly (tests policy, QA backend only, commit style, never touch the owner's backend/.env or port 3000).
+
+Context: you are in a worktree created from branch `t3/claude-subscription` (PR #201, not yet merged). That PR adds a Claude-plan AI source: `lib/ai/claude.ts` (claudeModel wraps `ai-sdk-provider-claude-code`, which runs the Claude Agent SDK's bundled Claude Code with the owner's claude.ai login), `lib/ai/provider.ts` (`withTools`, model routing for `claude-…` ids). The adapter only forwards image file parts; a PDF part would be dropped silently, so `app/api/chat/route.ts` currently throws "Claude can read photos here but not PDFs yet…" when a Claude model gets a PDF attachment (search for `application/pdf` in that file).
+
+Goal: make PDFs attached in chat readable by Claude, as they are on ChatGPT, and remove that refusal. Pick the simplest robust approach and say why in the PR. Options: (a) extract the PDF text locally (check whether the repo already has a PDF text/parse dependency, e.g. used by imports in lib/import — prefer an existing one) and send it as a text part, ideally inside the Claude path only (e.g. in `claudeModel`'s per-call prompt conversion in lib/ai/claude.ts, converting `file` parts with mediaType application/pdf to text parts), keeping page boundaries; (b) render pages to images. Scanned PDFs with no text layer must not silently produce an empty answer: say clearly that the PDF has no readable text and suggest photos. Keep it local (no new network calls). Respect existing attachment limits (lib/ai/chat-attachments.ts).
+
+Tests: one focused unit test that would fail if a PDF part is dropped or reaches Claude unconverted (mock the adapter like lib/ai/claude.test.ts does). No UI-copy tests.
+
+Verify: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`. Do NOT make real Claude calls in tests. A single optional manual check on the QA backend is fine but not required.
+
+Deliver: commit in small plain-language commits (end each message with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`), push a new branch `t3/claude-pdf`, and open a PR with base `t3/claude-subscription` (stacked on PR #201) that says "Closes #199" and ends with "🤖 Generated with [Claude Code](https://claude.com/claude-code)". Never merge. Your final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>brs2lzt66</task-id>
+<tool-use-id>toolu_013zLWcywEaaHqaoBWktjvAW</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\brs2lzt66.output</output-file>
+<status>failed</status>
+<summary>Background command "rm -rf node_modules &amp;&amp; (npm ci &gt; /tmp/ci.log 2&gt;&amp;1; npm install unpdf &gt;&gt; /tmp/ci.log 2&gt;&amp;1; echo done &gt;&gt; /tmp/ci.log) " failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>btd03zrmx</task-id>
+<tool-use-id>toolu_01L9bEAeTw2TDZ2g22FkQUfi</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\btd03zrmx.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci 2&gt;&amp;1 | tail -3; npm view unpdf version dist.unpackedSize 2&gt;&amp;1 | tail -3; grep -n "files" app/api/chat/route.ts | head -20; cat next.config.* | head -40" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>btpx9a1hl</task-id>
+<summary>Monitor event: "Wait for npm install to finish"</summary>
+<event>[Monitor expired after 10m with no events delivered. Re-arm it if you still need the watch — and widen the filter if silence was unexpected.]</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bkxnyhpqp</task-id>
+<tool-use-id>toolu_01GVpiS4mK94YssXubfq5u5s</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\bkxnyhpqp.output</output-file>
+<status>killed</status>
+<summary>Background command "until grep -q '^done' /tmp/ci.log; do sleep 5; done; tail -6 /tmp/ci.log" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b8xrop5ep</task-id>
+<tool-use-id>toolu_01FwhPtKLERLSbYEccoMHCd8</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\b8xrop5ep.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -rf node_modules; npm ci --no-audit --no-fund &gt; ci2.log 2&gt;&amp;1; tail -3 ci2.log; ls node_modules/.bin | wc -l" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b1rzr0rg2</task-id>
+<tool-use-id>toolu_018KkjaHUVnnH4fQpNCTxUFj</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\b1rzr0rg2.output</output-file>
+<status>completed</status>
+<summary>Background command "cat ci2.log | tail -3; ls node_modules/.bin | wc -l; rm -f ci2.log; npm install unpdf --no-audit --no-fund 2&gt;&amp;1 | tail -4; grep -n unpdf package.json; ls node_modules/unpdf/dist | head -5; git status --short" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bmjgmk31f</task-id>
+<summary>Monitor event: "Wait for rm of node_modules (second watch)"</summary>
+<event>rm-finished-2</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bmjgmk31f</task-id>
+<tool-use-id>toolu_018kb7bFqJCaSP7GBJsqmsC9</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\bmjgmk31f.output</output-file>
+<status>completed</status>
+<summary>Monitor "Wait for rm of node_modules (second watch)" stream ended</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bd64opcdx</task-id>
+<tool-use-id>toolu_01TyDkhJF6taCnwvUnSitStC</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\bd64opcdx.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci --no-audit --no-fund 2&gt;&amp;1 | tail -3; ls node_modules/.bin | wc -l" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>blh9439lp</task-id>
+<tool-use-id>toolu_01SxnqBZxVDxETewjrkbatHW</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\blh9439lp.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -rf node_modules ci2.log; npm ci --no-audit --no-fund &gt; ../ci3.log 2&gt;&amp;1; tail -2 ../ci3.log; npm install unpdf --no-audit --no-fund 2&gt;&amp;1 | tail -3; grep -n unpdf package.json; ls node_modules/unpdf/dist | head -4; ls node_modules/.bin | wc -l; git status --short" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>be8wli3nl</task-id>
+<tool-use-id>toolu_01E4QT1V4tctRcapSveXHv1X</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c34e7e4dfe81b83c\9015899e-ea84-432f-b347-0853210ced2c\tasks\be8wli3nl.output</output-file>
+<status>completed</status>
+<summary>Monitor "Wait for background install shell to exit" stream ended</summary>
+<event>bash-finished</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
