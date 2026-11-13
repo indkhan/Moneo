@@ -1,0 +1,56 @@
+Delegated task node:delegated-task:command%3Amcp%3Ab5df4b0c-f117-4620-995b-673ec0784293%3Adelegate-task%3A158f5391-3455-4ab3-889f-ebc3a7ebb98b (Audit Claude plan PR 201) [completed]:
+What this change does: adds Claude subscription access through bundled Claude Code and bridges Moneo’s tools into its internal tool loop.
+
+**Must fix before merge**
+
+1. **[P1] The adapter restores the paid-route environment variables.**  
+   [lib/ai/claude.ts:127](/C:/Users/mgsuk/.t3/worktrees/Moneo/t3-64f54dae-3df1ae8e1df1576b/lib/ai/claude.ts:127)
+
+   `claudeEnv()` removes the variables, but adapter 4.4.1 builds its final environment as `{ ...getBaseProcessEnv(), ...settings.env }`. Its inherited environment includes `ANTHROPIC_*` and `CLAUDE_*`, so omitted keys return.
+
+   I reproduced this offline: the final SDK options contained both a dummy `ANTHROPIC_API_KEY` and `CLAUDE_CODE_USE_BEDROCK=1`. Meanwhile, `claudeAccount()` checks a genuinely stripped environment and can approve the subscription login. The request can therefore use different billing credentials from the check. [Anthropic documents API-key precedence](https://support.claude.com/en/articles/12304248-manage-api-key-environment-variables-in-claude-code).
+
+   **Fix:** explicitly override every forbidden variable with `undefined`, or scrub the final child environment. Add a regression test through the real adapter; the current adapter mock hides this failure.
+
+2. **[P1] Selecting Claude silently moves GPT overrides from ChatGPT to the OpenAI API key.**  
+   [lib/ai/chatgpt.ts:141](/C:/Users/mgsuk/.t3/worktrees/Moneo/t3-64f54dae-3df1ae8e1df1576b/lib/ai/chatgpt.ts:141)
+
+   Concrete case: ChatGPT is signed in, an OpenAI key exists for voice, and Financial review explicitly uses GPT. Selecting Claude for the default models makes `usesChatGPT()` return false. That unchanged GPT override now bills the API key; Settings’ changed-model check takes the same route.
+
+   I reproduced the routing change with mocked credentials and providers. Claude and OpenRouter overrides continued routing correctly.
+
+   **Fix:** distinguish selecting Claude defaults from selecting API-key billing. Preserve ChatGPT billing for GPT overrides while Claude is selected, unless the owner explicitly chooses API billing.
+
+3. **[P2] Cancel does not stop Claude’s internal tool loop.**  
+   [app/api/chat/route.ts:297](/C:/Users/mgsuk/.t3/worktrees/Moneo/t3-64f54dae-3df1ae8e1df1576b/app/api/chat/route.ts:297)
+
+   Cancellation updates the database. `stopIfCanceled()` normally notices it in `prepareStep`, but Claude’s entire internal loop occupies one AI SDK step. After that step starts, ordinary finance tools never refresh the cancellation state.
+
+   The UI reports cancellation while Claude can continue reading data and consuming plan usage until completion or the timeout. The adapter’s abort support works only once Moneo actually aborts its signal.
+
+   **Fix:** connect saved cancellation to the active controller throughout the run, with cleanup afterward. Check cancellation before each bridged tool too.
+
+4. **[P2] Binary resolution selects the wrong executable on musl Linux.**  
+   [lib/ai/claude.ts:19](/C:/Users/mgsuk/.t3/worktrees/Moneo/t3-64f54dae-3df1ae8e1df1576b/lib/ai/claude.ts:19)
+
+   Both Linux optional packages match the same OS/architecture and have no `libc` restriction. When both install on Alpine, this lookup always returns the glibc executable because it exists. Launch then fails despite the usable musl executable being present.
+
+   **Fix:** detect libc and prefer the matching package, as the SDK’s own resolver does. Align the desktop build assertion with that selection.
+
+**Nice to have**
+
+No additional findings worth adding.
+
+I found no separate pasted-code injection or approval-card bypass. No files changed. Full tests/build were not run because this worktree has no dependencies; offline checks used matching installed dependencies from the implementation worktree. Fresh login and native macOS/musl execution remain unverified.
+
+PR https://github.com/indkhan/Moneo/pull/201, head 1f640f4dd666e87251cbc369e3896e54455cb0b5, checks: CI/Windows/Linux passed, macOS pending; review: fix findings 1–4 before merge, not posted to GitHub.
+
+---
+
+<task-notification>
+<task-id>bga81knb6</task-id>
+<tool-use-id>toolu_01ECE9bSsCuTp953uZVTY6tr</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\9dabb461ba23d33d\7000e3c8-ae48-4316-9527-82228ad8caea\tasks\bga81knb6.output</output-file>
+<status>completed</status>
+<summary>Background command "Verify test catches bug, then full checks" completed (exit code 0)</summary>
+</task-notification>
