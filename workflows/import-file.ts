@@ -7,7 +7,7 @@ import { stableId } from "@/lib/import/row";
 import { linkOwnTransfers } from "@/lib/finance/own-transfers";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
-import { maybeStartFirstReview } from "@/lib/import/follow-up";
+import { maybeStartFirstReview as startFirstReviewIfFirst } from "@/lib/import/follow-up";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
@@ -30,7 +30,7 @@ export async function importFile(importId: string, workspaceId: string, rowCount
   await linkOwnTransfersStep(workspaceId);
   if (!followUps) return;
   await startAgentTeam(importId, workspaceId);
-  await firstReviewStep(importId, workspaceId);
+  await maybeStartFirstReview(importId, workspaceId);
 }
 
 // Transfers between the owner's own accounts are linked as soon as new rows land, so a later
@@ -155,8 +155,9 @@ async function failImport(importId: string, workspaceId: string, error: string, 
   checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: error }));
 }
 
-async function firstReviewStep(importId: string, workspaceId: string) {
+// Keeps its step name so imports already running when Moneo updates resume cleanly.
+async function maybeStartFirstReview(importId: string, workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  await maybeStartFirstReview(serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY), workspaceId, [importId]);
+  await startFirstReviewIfFirst(serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY), workspaceId, [importId]);
 }
