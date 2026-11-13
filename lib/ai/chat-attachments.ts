@@ -1,33 +1,38 @@
 import { z } from "zod";
 
-// Photos and PDFs a person attaches to a chat message. Files live in the private "chat" bucket under the workspace id.
-export const ATTACHMENT_TYPES = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" } as const;
+// Photos and documents a person attaches to a chat message. Files live in the private "chat" bucket under the workspace id.
+export const ATTACHMENT_TYPES = {
+  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "text/csv": "csv", "text/tab-separated-values": "tsv",
+} as const;
 export type AttachmentType = keyof typeof ATTACHMENT_TYPES;
+/** The file picker's accept list; extensions too, since browsers often report CSV as an Excel type or nothing. */
+export const ATTACHMENT_ACCEPT = [...Object.keys(ATTACHMENT_TYPES), ...Object.values(ATTACHMENT_TYPES).map(extension => `.${extension}`)].join(",");
+export const ATTACHMENT_HINT = "a photo (JPEG, PNG, WebP), PDF, Word (DOCX), PowerPoint (PPTX), Excel (XLSX) or CSV file";
 export const MAX_ATTACHMENTS = 4;
 /** Sent when someone attaches files without typing anything. */
 export const ATTACHMENT_ONLY_MESSAGE = "Here is a file I attached.";
-/** Under the 4.5 MB serverless request limit; photos are downscaled before upload. */
-export const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+/** Moneo runs on the owner's computer, so the limit only keeps a single file from swamping memory. */
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_ATTACHMENT_LABEL = "25 MB";
 
+const extensions = Object.values(ATTACHMENT_TYPES).join("|");
 export const attachmentSchema = z.object({
-  path: z.string().regex(/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(?:jpg|png|webp|pdf)$/),
+  path: z.string().regex(new RegExp(`^[0-9a-f-]{36}\\/[0-9a-f-]{36}\\.(?:${extensions})$`)),
   name: z.string().trim().min(1).max(200),
   type: z.enum(Object.keys(ATTACHMENT_TYPES) as [AttachmentType, ...AttachmentType[]]),
 }).strict();
 export type ChatAttachment = z.infer<typeof attachmentSchema>;
 
-/** The file's real type from its first bytes, so a renamed file cannot pass as another. */
-export function sniffType(bytes: Uint8Array): AttachmentType | null {
-  const starts = (...signature: number[]) => signature.every((byte, index) => bytes[index] === byte);
-  if (starts(0xff, 0xd8, 0xff)) return "image/jpeg";
-  if (starts(0x89, 0x50, 0x4e, 0x47)) return "image/png";
-  if (starts(0x52, 0x49, 0x46, 0x46) && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "image/webp";
-  if (starts(0x25, 0x50, 0x44, 0x46)) return "application/pdf";
-  return null;
-}
+export const isImage = (type: AttachmentType) => type.startsWith("image/");
+/** The short id the model uses to cite or reopen a file: the first 8 characters of its random storage name. */
+export const attachmentId = (path: string) => path.slice(37, 45);
 
-/** How an earlier message's files appear to the model; only the current message sends file contents. */
+/** How an earlier message's files appear to the model: by name and id, so document_read can reopen them. */
 export const attachmentNote = (attachments: unknown) => {
   const parsed = z.array(attachmentSchema).safeParse(attachments);
-  return parsed.success && parsed.data.length ? `\n[Attached earlier: ${parsed.data.map(item => item.name).join(", ")}]` : "";
+  return parsed.success && parsed.data.length ? `\n[Attached earlier: ${parsed.data.map(item => `${item.name} (id ${attachmentId(item.path)})`).join(", ")}]` : "";
 };

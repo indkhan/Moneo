@@ -24,7 +24,10 @@ import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction
 import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
 import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/recurring-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
-import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { MAX_ATTACHMENTS, attachmentId, attachmentNote, attachmentSchema, isImage } from "@/lib/ai/chat-attachments";
+import { attachmentParts } from "@/lib/ai/documents/message";
+import { readDocument } from "@/lib/ai/documents/read";
+import { conversationAttachments, documentText, findAttachment } from "@/lib/ai/documents/store";
 import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
@@ -95,6 +98,9 @@ export async function POST(request: Request) {
       .eq("request_id", requestId).eq("role", "user");
     if (saved.error) console.error("saving chat attachments failed", saved.error);
   }
+  // Every file in this conversation, including this message's, for document_read.
+  const conversationFiles = conversationAttachments(supabase, workspace.id, conversationId);
+  conversationFiles.catch(() => {});
   // An artifact's own chat builds its page and Home cards with the same tools, history and durability as chat.
   const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
   const briefingPromise = artifactId ? artifactBriefing(supabase, workspace.id, artifactId) : null;
@@ -141,12 +147,8 @@ export async function POST(request: Request) {
     content: item.role === "assistant" ? withoutCharts(item.content)
       : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),
   }));
-  // Only this message's files are read by the model; earlier ones are named in their text.
-  const files = await Promise.all(attachments.map(async file => {
-    const { data, error } = await supabase.storage.from("chat").download(file.path);
-    if (error || !data) throw new Error(`Could not read ${file.name}`);
-    return { type: "file" as const, data: new Uint8Array(await data.arrayBuffer()), mediaType: file.type, filename: file.name };
-  }));
+  // This message's files are read in full; earlier ones are named with their ids, and document_read reopens them.
+  const files = await attachmentParts(supabase, attachments);
   const last = textMessages.pop()!;
   const modelMessages = [...textMessages, files.length ? { role: "user" as const, content: [{ type: "text" as const, text: last.content }, ...files] } : last];
   const categoryCommand = parseCategoryCommand(message);
@@ -296,6 +298,19 @@ ${artifactBrief}` : ""}`,
       },
       // Claude runs these inside Claude Code; withTools hands them over there, and steers reach it mid-answer.
       ...withTools(model, { ...planTool, ...retainTools({
+        document_read: tool({ description: "Reopen a file attached in this conversation by its id: a location range, or every place a word or phrase appears (with its location). Without location or search it returns the start. Read-only.",
+          inputSchema: z.object({
+            id: z.string().trim().min(1).max(200).describe("The file's 8-character id, or its exact name"),
+            location: z.string().trim().max(140).optional().describe("p.3 or p.3-5 (PDF pages), slide.2-4 (PowerPoint), para.10-40 (Word paragraphs), Sheet1!A1:F200 or A1:F200 (spreadsheet or CSV cells)"),
+            search: z.string().trim().min(1).max(200).optional().describe("Text to find, case-insensitive"),
+          }).strict(),
+          execute: async ({ id, location, search }) => {
+            const files = await conversationFiles;
+            const file = findAttachment(files, id);
+            if (!file) return { error: `No file "${id}" is attached in this conversation.`, files: files.map(item => ({ id: attachmentId(item.path), name: item.name })) };
+            if (isImage(file.type)) return { error: `"${file.name}" is a photo; it can only be seen in the message it was attached to.` };
+            return { text: readDocument(await documentText(supabase, file), { name: file.name, id: attachmentId(file.path), location, search }) };
+          } }),
         // Designers check the request is still running before they save, so a canceled build saves nothing.
         ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
