@@ -2,7 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { defaultSettingsMiddleware, wrapLanguageModel, type LanguageModel, type ToolSet } from "ai";
 import { chatgptFetch, chatgptStatus, usesChatGPT, type AiSource } from "./chatgpt";
-import { claudeAccount, claudeModel } from "./claude";
+import { claudeAccount, claudeModel, type ClaudeSteering } from "./claude";
 import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 
@@ -53,10 +53,11 @@ export async function modelForSettings(settings: WorkspaceSettings | undefined, 
 
 /**
  * The model and tools for a call that uses tools. Claude Code runs the tool loop itself, so on Claude the
- * tools go into the model and the call gets none; other providers get them on the call as usual.
+ * tools go into the model and the call gets none; other providers get them on the call as usual. Only Claude
+ * uses `steering`: the others take steers between steps (prepareStep), Claude Code takes them mid-answer.
  */
-export function withTools<T extends ToolSet>(model: LanguageModel, tools: T): { model: LanguageModel; tools: T | undefined } {
-  return typeof model === "object" && model.provider === "claude-code" ? { model: claudeModel(model.modelId, tools), tools: undefined } : { model, tools };
+export function withTools<T extends ToolSet>(model: LanguageModel, tools: T, steering?: ClaudeSteering): { model: LanguageModel; tools: T | undefined } {
+  return typeof model === "object" && model.provider === "claude-code" ? { model: claudeModel(model.modelId, tools, steering), tools: undefined } : { model, tools };
 }
 
 export const SYSTEM_PROMPT = `You are Moneo, the owner's personal finance assistant. Moneo runs on their own computer and your tools read their real records: accounts, transactions, loans, Wealth, recurring payments, plans and Scalable investments. "About the owner" at the end lists what they have, so you already know their accounts and the people they deal with.
