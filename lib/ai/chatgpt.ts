@@ -135,10 +135,13 @@ export async function chatgptAccessToken(): Promise<string> {
   return refreshing;
 }
 
-/** True when AI requests for plain OpenAI model ids should use the ChatGPT plan. */
+/**
+ * True when AI requests for plain OpenAI model ids should use the ChatGPT plan: unless the owner picked the
+ * API key, a signed-in plan pays, including for GPT models mixed in while Claude is the main source.
+ */
 export async function usesChatGPT() {
   const status = await chatgptStatus();
-  return status.signedIn && (status.source === "chatgpt" || !(await serviceKey("openai_api_key")));
+  return status.signedIn && (status.source !== "api_key" || !(await serviceKey("openai_api_key")));
 }
 
 // Plan usage accepts only streaming Responses calls with store: false and without sampling limits.
