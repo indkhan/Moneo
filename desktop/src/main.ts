@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog, Notification, powerMonitor, shell } from "e
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { backup, restore, startBackend, type BackendPaths, type RunningBackend } from "./backend";
-import { createAppWindow, lockDownSession, openExternal, setAppPort } from "./app-window";
+import { createAppWindow, lockDownSession, openExternal, setAppPort, showReturn } from "./app-window";
+import { startAuthReturn } from "./auth-return";
 import { ensureBankCertificate } from "./certificate";
 import { NextServer } from "./next-server";
 import { backupsDir, home, log, readSettings, resources, setupHome, updateSettings } from "./paths";
@@ -37,6 +38,7 @@ function main() {
   let failed = false;
   let port = 0;
   let backupTimer: NodeJS.Timeout | undefined;
+  let authReturn: Awaited<ReturnType<typeof startAuthReturn>> | undefined;
 
   const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
@@ -75,7 +77,12 @@ function main() {
           fail(`A Moneo service stopped (${service})`, new Error(`It exited with code ${code}. Try again, or open the logs folder.`));
         });
         progress({ id: "app", label: "Starting Moneo", state: "running" });
-        server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: running.env }, error => fail("The Moneo server keeps stopping", error));
+        // Sign-ins that finish in the system browser open their result here (see auth-return.ts).
+        authReturn ??= await startAuthReturn(async returnPath => {
+          if (!window || booting || failed) throw new Error("The app window is not open");
+          await showReturn(window, returnPath);
+        });
+        server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: { ...running.env, MONEO_DESKTOP_AUTH_RETURN: authReturn.url } }, error => fail("The Moneo server keeps stopping", error));
         await server.start();
         progress({ id: "app", label: "Starting Moneo", state: "done" });
         if (quitting) return;

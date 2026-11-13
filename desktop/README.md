@@ -42,7 +42,10 @@ address and ChatGPT's callback name it). If it is taken on the first run, a free
   Quit (tray, Cmd+Q, `Moneo --quit`, OS shutdown) stops the server, then the database, then exits.
 - Daily automatic backup while running; Back up now, Open backups folder and Restore from backup in the tray.
 - Sign-ins (ChatGPT, banks, Scalable) open in the system browser and return to Moneo's loopback
-  callbacks; the window reloads when it regains focus. Every other address also goes to the browser
+  callbacks. The callback then opens its result (Import or Settings) in the app window and brings it
+  to the front; the browser tab says to continue in Moneo. The server reaches the window through a
+  loopback address that is random for each launch and refuses browser requests (`src/auth-return.ts`);
+  if the window cannot take it, the browser shows the result as in a source checkout. Every other address also goes to the browser
   (https only). The window allows only the microphone and copying, for Moneo's own pages.
 
 ### Bank return certificate

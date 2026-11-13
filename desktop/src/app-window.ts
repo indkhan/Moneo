@@ -79,3 +79,16 @@ export function createAppWindow(port: number, hooks: { onClose(event: Electron.E
 }
 
 export const setAppPort = (port: number) => { appPort = port; };
+
+/** Shows a sign-in's result (from the system browser) in the app window and brings it to the front. */
+export async function showReturn(window: BrowserWindow, returnPath: string) {
+  reloadOnFocus = false;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  // Windows only flashes the taskbar for focus() from a background app; topmost for a moment raises it.
+  window.setAlwaysOnTop(true);
+  window.focus();
+  window.setAlwaysOnTop(false);
+  // A redirect during the load is not a failure; the window shows whatever the page became.
+  await window.loadURL(`http://localhost:${appPort}${returnPath}`).catch(error => log(`Returning to ${returnPath}: ${error instanceof Error ? error.message : error}`));
+}
