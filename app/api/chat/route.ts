@@ -35,6 +35,8 @@ import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live
 import { titleChatTurn } from "@/lib/ai/chat-title";
 import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
 import { ownerBrief } from "@/lib/ai/owner-brief";
+import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
+import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -252,6 +254,8 @@ export async function POST(request: Request) {
       // Artifacts are built in their own chat; this chat only hands the request over.
       ...(artifactId ? {} : { suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
         inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) }) };
+    // Exact series a chart block references by datasetId; resolved into the answer before it is shown and saved.
+    const charts = chartDatasets();
     // Trade cards are confirmed one by one, so they are never grouped under an "add all".
     const tradeCards: string[] = [];
     const scalableConnection = await scalablePromise;
@@ -333,6 +337,11 @@ ${artifactBrief}` : ""}`,
           return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId, specification), href: "/ai" };
         }) }) } : {}),
         ...scalableTools,
+        ...(settings.ai_data_scopes.includes("accounts") ? { chart_data: tool({ description: "Exact data for a chart: spending by category, merchant, month or day, income vs spending by month (with month-end balance), an account's daily balance, or net worth over time. Returns a datasetId the moneo-chart block references, so you never copy its numbers.",
+          inputSchema: chartDataInput, execute: input => aiEvidence(chartDataScopes(input.dataset), async latest => {
+            const loaded = await loadChartData(latest, input, { canReadImports: latest.settings.ai_data_scopes.includes("imports") });
+            return describeDataset(charts.add(loaded.dataset), loaded, latest.workspace.locale);
+          }, false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
@@ -386,7 +395,7 @@ ${artifactBrief}` : ""}`,
     // Several cards from one answer are grouped so they can also be added all at once.
     const cards = [...new Set(proposalCards)];
     const cardBlocks = cards.length > 1 ? ["```moneo-proposals\n" + JSON.stringify(cards) + "\n```"] : cards.map(id => "```moneo-proposal\n" + id + "\n```");
-    const answer = [text.trim(), ...cardBlocks, ...[...new Set(tradeCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards)].join("\n\n");
+    const answer = [resolveChartBlocks(text.trim(), charts.get), ...cardBlocks, ...[...new Set(tradeCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (stop.signal.aborted) throw new Error("Request canceled");
