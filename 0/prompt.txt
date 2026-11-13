@@ -1,0 +1,9 @@
+Okay, uh, so there is an issue related to that, but right now, how it works for connected ChatGPT.  That should work with connected lots.  Which would use your clot code subscription, not API, through clot, or through open router, or anything.  It should be only through plot this subscription.  So now check how it works and all of that.  You can look that, it should work for the website as well as the application, it's as well.  The way to activity and all work.  And as you can see, it is open core. Open source application, so it's fine.  So yeah, check it.  Tell me how will you implement it?  And yeah, if you want to do some spike test or something or see how it works, there's that.  You are allowed to do that as well.  And if you have any questions, then ask me.
+
+---
+
+It should work with Claude code subscription ChatGPT work s
+
+---
+
+Sure start implementing commit by commit and then open a pr and in the way of any problem or any issue lmk
