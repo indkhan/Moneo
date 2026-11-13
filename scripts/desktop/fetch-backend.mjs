@@ -238,7 +238,9 @@ async function safeupdate(platform, pg, work) {
     run("cc", ["-fPIC", ...(p.os === "darwin" ? ["-bundle", "-undefined", "dynamic_lookup"] : ["-shared"]),
       `-I${join(pg, "include", "server")}`, `-I${join(pg, "include")}`, "safeupdate.c", "-o", "safeupdate.so"], { cwd: build });
   }
-  await fs.copyFile(join(build, p.os === "win32" ? "safeupdate.dll" : "safeupdate.so"), join(pg, "lib", p.os === "win32" ? "safeupdate.dll" : "safeupdate.so"));
+  // PostgreSQL loads modules by its platform suffix (DLSUFFIX): .dylib on macOS since PostgreSQL 16.
+  const library = `safeupdate${{ win32: ".dll", darwin: ".dylib" }[p.os] ?? ".so"}`;
+  await fs.copyFile(join(build, p.os === "win32" ? "safeupdate.dll" : "safeupdate.so"), join(pg, "lib", library));
 }
 
 async function postgrest(platform, target) {
