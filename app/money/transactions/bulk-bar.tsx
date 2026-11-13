@@ -34,7 +34,7 @@ export function BulkBar({ targets, categories, merchants, query, requestId, loca
     : mode === "tags" ? row.tags?.join(", ") || "no tags" : row.event_name || "no group";
   const change = (fn: () => void) => { fn(); setPreview(false); };
   const control = "min-h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground";
-  return <section aria-label="Bulk edit" className="sticky bottom-4 z-20 rounded-xl border border-border bg-card p-3 shadow-lg">
+  return <section aria-label="Bulk edit" className="sticky bottom-4 z-20 max-lg:bottom-[calc(4rem+env(safe-area-inset-bottom))] rounded-xl border border-border bg-card p-3 shadow-lg">
     <SafeForm action={bulkEditTransactionsSafely} className="space-y-3">
       <input type="hidden" name="rows" value={JSON.stringify(targets.map(row => ({ id: row.id, version: row.version })))} />
       <input type="hidden" name="requestId" value={requestId} /><input type="hidden" name="query" value={query} />

@@ -68,7 +68,7 @@ export default async function InvestigationPage({ searchParams }: { searchParams
   ];
   return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1"><p className="eyebrow">Money · compare periods</p><h1 className="page-title">Investigate your money</h1><p className="mt-1 text-sm text-muted-foreground">Compare two periods and open the transactions behind each change.</p></header>
-    <nav aria-label="Quick comparisons" className="flex flex-wrap gap-2">{presets.map(preset => {
+    <nav aria-label="Quick comparisons" className="flex flex-wrap gap-2 max-lg:flex-nowrap max-lg:overflow-x-auto [&>*]:shrink-0">{presets.map(preset => {
       const { label, ...dates } = preset;
       return <Link key={label} href={spec ? destination({ ...spec, groupBy: spec.groupBy?.length ? spec.groupBy : ["category"], period: { from: dates.from, to: dates.to }, comparison: { from: dates.comparisonFrom, to: dates.comparisonTo }, page: { size: 25, period: "both" } }) : `/money/investigations?${new URLSearchParams({ ...dates, groupBy: "category" })}`} className="rounded-full border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted">{label}</Link>;
     })}</nav>
