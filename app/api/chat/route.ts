@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT, withTools } from "@/lib/ai/provider";
 import { CHAT_MAX_STEPS, moneoToolName } from "@/lib/ai/claude";
+import { DataQueryError, dataQueryDescription, dataQueryInput, dataQueryOutput, runDataQuery } from "@/lib/ai/data-query";
 import { aiConfigured } from "@/lib/ai/configured";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
@@ -337,6 +338,12 @@ ${artifactBrief}` : ""}`,
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
         transactions_search: tool({ description: "Find transactions, newest first within each kind of match. Filter by description text (rows containing it come first with match \"text\", then rows whose description is similar, such as a nickname or typo of the name, with match \"similar_name\": judge those yourself), posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50). Names are loose (nicknames, short forms, typos; messy bank text): a close name alone is not a match, the amount, currency and direction must fit too. An empty result usually means a bad search: try a shorter part of the name, or the amount with a date range, before saying it isn't there.", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        ...(settings.ai_data_scopes.length ? { data_query: tool({ description: dataQueryDescription(settings.ai_data_scopes), inputSchema: dataQueryInput,
+          execute: ({ sql, maxRows }) => aiEvidence(settings.ai_data_scopes, async latest => {
+            try { return dataQueryOutput(await runDataQuery(latest.supabase, sql, settings.ai_data_scopes, maxRows)); }
+            // A rejected query goes back to the model to fix, like any other tool feedback.
+            catch (error) { if (error instanceof DataQueryError) return { error: error.message }; throw error; }
+          }, false, false) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
           execute: () => aiEvidence(["accounts", "transactions"], async latest => {
             const found = await proposeRepayments({ ...latest, chatRequestId: requestId });
