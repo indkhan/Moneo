@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7BCKVFCZMPFV1AJ4BTGV9TF",
+  "strategy": "manual-commit",
+  "branch": "t3/bank-raw-data",
+  "checkpoints_count": 4,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 6606,
+    "cache_read_tokens": 1101364,
+    "output_tokens": 5546,
+    "api_call_count": 4,
+    "subagent_tokens": {
+      "input_tokens": 136,
+      "cache_creation_tokens": 258772,
+      "cache_read_tokens": 13778542,
+      "output_tokens": 72042,
+      "api_call_count": 67
+    }
+  },
+  "redaction": {
+    "replacements": 16,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 10,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
