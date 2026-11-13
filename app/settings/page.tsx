@@ -44,10 +44,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const [runs, update, ai] = await Promise.all([loadRuns(context), isDesktop() ? desktopUpdate("status").catch(() => null) : null, chatgptStatus()]);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
-    <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <nav aria-label="Settings sections" className="lg:sticky lg:top-24 lg:self-start">
-        <ul className="flex flex-wrap gap-1 lg:flex-col">{sectionNav.filter(([id]) => id !== "updates" || update).map(([id, label]) => <li key={id}>
-          <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm hover:bg-muted hover:text-foreground ${id === "danger" ? "text-danger" : "text-muted-foreground"}`}>{label}</a>
+    <div className="mt-8 grid gap-8 max-lg:mt-4 max-lg:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
+      <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+        <ul className="flex flex-wrap gap-1 max-lg:flex-nowrap max-lg:gap-2 max-lg:overflow-x-auto lg:flex-col [&>li]:shrink-0">{sectionNav.filter(([id]) => id !== "updates" || update).map(([id, label]) => <li key={id}>
+          <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm max-lg:rounded-full max-lg:border max-lg:border-border max-lg:bg-card max-lg:px-3.5 max-lg:py-2 hover:bg-muted hover:text-foreground ${id === "danger" ? "text-danger" : "text-muted-foreground"}`}>{label}</a>
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">

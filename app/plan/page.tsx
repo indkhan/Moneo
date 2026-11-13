@@ -24,7 +24,7 @@ import { button, card, eyebrow, field } from "./ui";
 
 export const metadata = { title: "Plan" };
 
-const pill = "inline-flex h-11 items-center gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
+const pill = "inline-flex h-11 items-center max-lg:h-9 max-lg:rounded-full gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
 
 type Plan = Awaited<ReturnType<typeof evaluatePlan>>;
 /** The forecast from the accounts it can use, with the ones left out named on the page. */
@@ -80,7 +80,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     {!requestedHorizon.success && <p role="alert">Choose a whole forecast horizon from 1 to 365 days. Showing 30 days.</p>}
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div className="flex flex-col gap-1"><p className="eyebrow">Forecast · {horizon} days · display currency {currency}</p><h1 className="page-title">Plan</h1><p className="mt-1 text-sm text-muted-foreground">Where your cash is heading, what is due, and what your goals need.</p></div>
-      <nav aria-label="Planning tools" className="flex flex-wrap gap-2"><a href="#forecast-heading" className={pill}>Forecast</a><a href="#goals-heading" className={pill}>Goals</a><a href="#financial-model" className={pill}>Inputs</a><a href="#history-heading" className={pill}>History</a><a href="#what-if" className={`${pill} border-transparent bg-primary text-primary-foreground hover:bg-primary hover:opacity-90`}>New scenario</a></nav>
+      <nav aria-label="Planning tools" className="flex flex-wrap gap-2 max-lg:flex-nowrap max-lg:overflow-x-auto [&>*]:shrink-0"><a href="#forecast-heading" className={pill}>Forecast</a><a href="#goals-heading" className={pill}>Goals</a><a href="#financial-model" className={pill}>Inputs</a><a href="#history-heading" className={pill}>History</a><a href="#what-if" className={`${pill} border-transparent bg-primary text-primary-foreground hover:bg-primary hover:opacity-90`}>New scenario</a></nav>
     </header>
     {selectedScenario && <p role="status" className="rounded-lg bg-muted/60 px-4 py-3 text-sm">Viewing hypothetical scenario: <span className="font-medium">{selectedScenario.name}</span>. <Link href={scenarioHref()} className="font-medium text-brand underline">Back to real plan</Link></p>}
     {params.scenario && !selectedScenario && <p role="status" className="rounded-lg bg-muted/60 px-4 py-3 text-sm">This scenario is unavailable. Showing your real plan. <a href="#what-if" className="font-medium text-brand underline">See your scenarios</a></p>}

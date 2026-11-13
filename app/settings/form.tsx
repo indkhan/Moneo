@@ -114,7 +114,7 @@ export function SettingsForm({ settings, currency, timeZones, aiSource }: { sett
       <p className={help}>Summaries appear in the Activity log and may arrive up to a day late.</p>
     </fieldset>
     {/* Kept in view while scrolling a long form, above the phone's bottom bar. */}
-    <div className="sticky bottom-20 z-10 space-y-2 rounded-xl border border-border bg-card p-3 shadow-sm lg:bottom-4">
+    <div className="sticky bottom-20 z-10 max-lg:bottom-[calc(4rem+env(safe-area-inset-bottom))] space-y-2 rounded-xl border border-border bg-card p-3 shadow-sm lg:bottom-4">
       {state.error && !pending && <p id="settings-error" role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger">{state.error}<span className="block">Your previous settings stay active until this saves.</span></p>}
       <div className="flex flex-wrap items-center gap-3">
         <button disabled={pending} className="min-h-10 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">{pending ? "Saving…" : "Save preferences"}</button>

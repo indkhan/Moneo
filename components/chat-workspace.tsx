@@ -5,8 +5,8 @@ import { VoiceKeyToast } from "@/components/voice-key-toast";
 import { useFollowOutput } from "@/lib/use-follow-output";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Check, Menu, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, Trash2, X } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Check, ChevronLeft, Menu, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, SquarePen, Trash2, X } from "lucide-react";
 import { ChatForm } from "@/app/ai/chat-form";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { usePolling } from "@/lib/ai/use-polling";
@@ -43,6 +43,7 @@ const fetchEntry = (id: string) => json<Loaded>(`/api/conversations/${id}`);
 
 /** Client-side chat workspace: switching, paging, search, rename and delete never re-render the server page. */
 export function ChatWorkspace({ initial, newConversationId, selectionKey, locale, timezone, scope }: { initial: ChatWorkspaceInitial; newConversationId: string; selectionKey: string; locale: string; timezone: string; scope: React.ReactNode }) {
+  const router = useRouter();
   const [seen, setSeen] = useState(initial);
   const [threads, setThreads] = useState(initial.threads);
   const [threadsCursor, setThreadsCursor] = useState(initial.threadsCursor);
@@ -244,7 +245,8 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
       <Link href="/ai/activity?filter=attention" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Notifications</Link>
     </div>
   </>;
-  const summary = "flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground max-sm:min-h-11 [&::-webkit-details-marker]:hidden";
+  const summary = "flex shrink-0 cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground max-lg:size-11 max-lg:justify-center max-lg:rounded-full max-lg:p-0 max-lg:text-foreground [&::-webkit-details-marker]:hidden";
+  const icon = "size-4 max-lg:size-[21px]";
   const empty = !entry?.messages.length && !active;
   const unavailable = selectedId && !entry ? errors[selectedId] : undefined;
 
@@ -254,17 +256,19 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
       {calling && !callBlocked ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [], VOICE_CALL_TITLE)} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
-      <div className="relative flex flex-wrap items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
-        <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
-        {/* On phones the title gets its own row, so the actions cannot squeeze it down to a few letters. */}
-        <h1 title={title} className="min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight max-sm:order-last max-sm:basis-full max-sm:text-xl">{title}</h1>
-        <button type="button" aria-haspopup="dialog" onClick={() => { if (menu.current) menu.current.open = false; setReviewOpen(true); reviewDialog.current?.showModal(); }} className={`${summary} max-sm:ml-auto`}><Sparkles className="size-4" aria-hidden="true" />Run a deep review</button>
+      {/* Phones get a native chat bar (back, title, icon buttons); the app's own header and tab bar step aside on this page. */}
+      <div className="relative flex items-center gap-0.5 border-b border-border px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1 lg:flex-wrap lg:gap-2 lg:px-8 lg:py-4">
+        <button type="button" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} aria-label="Back" className={`${summary} lg:hidden`}><ChevronLeft className="size-7" strokeWidth={1.8} aria-hidden="true" /></button>
+        <h1 title={title} className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight lg:font-display lg:text-2xl">{title}</h1>
+        <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className={icon} aria-hidden="true" /></summary><div className="absolute inset-x-2 top-full z-20 mt-1 max-h-[75dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
+        <Link href={href("new")} onClick={event => open(event, null)} aria-label="New chat" className={`${summary} lg:hidden`}><SquarePen className={icon} aria-hidden="true" /></Link>
+        <button type="button" aria-haspopup="dialog" aria-label="Run a deep review" onClick={() => { if (menu.current) menu.current.open = false; setReviewOpen(true); reviewDialog.current?.showModal(); }} className={summary}><Sparkles className={icon} aria-hidden="true" /><span className="max-lg:hidden">Run a deep review</span></button>
         {/* A modal dialog: the browser moves focus in, keeps it there, closes on Escape and returns focus to the button. It stays mounted, so a running review keeps its place when closed. */}
         <dialog ref={reviewDialog} aria-label="Deep review" className="m-auto max-h-[85dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card text-foreground shadow-lg backdrop:bg-black/50">
           <div className="sticky top-0 z-10 flex justify-end bg-card p-2"><button type="button" onClick={() => reviewDialog.current?.close()} className="flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" />Close</button></div>
           {reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}
         </dialog>
-        <button type="button" onClick={() => setCalling(true)} title={access?.voice === false ? VOICE_NEEDS_OPENAI_KEY : undefined} className={summary}><Phone className="size-4" aria-hidden="true" />Call</button>
+        <button type="button" onClick={() => setCalling(true)} title={access?.voice === false ? VOICE_NEEDS_OPENAI_KEY : undefined} aria-label="Call" className={summary}><Phone className={icon} aria-hidden="true" /><span className="max-lg:hidden">Call</span></button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
