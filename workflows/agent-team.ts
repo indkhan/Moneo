@@ -12,14 +12,15 @@ export async function agentTeam(runId: string, workspaceId: string) {
   try {
     const waves = await planStep(runId, workspaceId, getWorkflowMetadata().workflowRunId);
     if (!waves) return;
+    // The first wave is the categorizer: its changes are applied before anyone else reads categories.
     // The last wave (the writer) briefs on what was merged and applied.
     const writers = waves.at(-1) ?? [];
-    for (const wave of waves.slice(0, -1)) {
+    for (const [index, wave] of waves.slice(0, -1).entries()) {
       const results = await Promise.all(wave.map(agent => agentStep(runId, workspaceId, agent as Exclude<AgentId, "lead">)));
       if (results.includes("canceled")) return void await finishStep(runId, workspaceId);
+      if (index === 0) await autoApplyStep(runId, workspaceId);
     }
     if (!await mergeStep(runId, workspaceId)) return void await finishStep(runId, workspaceId);
-    await autoApplyStep(runId, workspaceId);
     for (const agent of writers) await agentStep(runId, workspaceId, agent as Exclude<AgentId, "lead">);
     await finishStep(runId, workspaceId);
   } catch (error) {

@@ -377,8 +377,8 @@ const appliedResult = (reviewId: string) => ({ reviewId, href: `/money/organizat
 
 /**
  * Applies the Categorizer's proposals right away, as the owner, through the
- * audited organization review. Each lands under "Decided automatically" with
- * an Undo link; anything the lead flagged, or that fails, stays for review.
+ * audited organization review, before the other agents read categories. Each
+ * lands under "Decided automatically" with an Undo link; a failure stays for review.
  */
 export async function autoApplyRun(runId: string, workspaceId: string) {
   const db = service();
