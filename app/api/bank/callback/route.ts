@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { connectionReturn } from "@/lib/desktop-auth-return";
+import { connectionReturn } from "@/lib/desktop-bridge";
 import { enableBankingClient } from "@/lib/bank/enable-banking";
 import { bankAccountNames, psuFrom, serviceDb } from "@/lib/bank/server";
 import { encryptToken } from "@/lib/bank/token-crypto";

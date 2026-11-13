@@ -82,6 +82,9 @@ jobs:
             echo "No signing certificate: building unsigned packages."
           fi
           npm run desktop:dist -- ${{ matrix.builder }} --publish never
+          # Both Mac jobs write latest-mac.yml. Macs only read the version from it (unsigned apps
+          # download from the release page), so the Apple Silicon one is kept.
+          if [ "${{ matrix.id }}" = "mac-x64" ]; then rm -f desktop/release/latest-mac.yml; fi
 
       - name: List packages
         run: ls -la desktop/release
@@ -115,6 +118,8 @@ jobs:
             desktop/release/*.zip
             desktop/release/*.AppImage
             desktop/release/*.deb
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
           if-no-files-found: warn
           retention-days: 7
 
@@ -155,7 +160,7 @@ jobs:
           fi
           cd installers
           ls -la
-          files=$(find . -maxdepth 1 -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.deb' \) -printf '%f\n' | sort)
+          files=$(find . -maxdepth 1 -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.blockmap' -o -name 'latest*.yml' \) -printf '%f\n' | sort)
           if [ -z "$files" ]; then echo "::error::No installers were downloaded."; exit 1; fi
           # shellcheck disable=SC2086
           sha256sum $files > SHA256SUMS.txt

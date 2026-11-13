@@ -8,7 +8,7 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 
 ### Desktop preview
 
-Desktop installers are being validated for Windows, macOS and Linux; no desktop release has been published yet. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
+Desktop installers for Windows, macOS and Linux are attached to [GitHub releases](https://github.com/indkhan/Moneo/releases) once published: download, install and open Moneo; nothing else is needed. Settings → App updates installs newer releases and keeps your data. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
 Scalable questions in chat and voice can combine live holdings, paginated transaction history and transaction details with local JavaScript calculations. The calculation sandbox has no network, filesystem or credentials. Read results remain subject to your AI data scopes and are sent to your configured AI provider as needed to answer. Trades still require accepting an approval card. No additional setup is needed.
 
 ### Easiest: let an AI agent install it

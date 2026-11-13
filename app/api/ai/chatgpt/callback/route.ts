@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/auth";
 import { ChatGPTError, finishSignIn } from "@/lib/ai/chatgpt";
 import { getEnv } from "@/lib/env";
-import { connectionReturn } from "@/lib/desktop-auth-return";
+import { connectionReturn } from "@/lib/desktop-bridge";
 
 // ChatGPT redirects here (on 127.0.0.1, as OpenAI requires) after the owner signs in.
 export async function GET(request: Request) {

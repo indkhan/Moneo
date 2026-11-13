@@ -12,13 +12,15 @@ import { AiAccess } from "./ai-access";
 import { SetupSecrets } from "./setup-secrets";
 import { PhoneAccessSection } from "./phone-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
+import { desktopUpdate, isDesktop } from "@/lib/desktop-bridge";
+import { AppUpdate } from "./app-update";
 
 export const metadata = { title: "Settings" };
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
-  ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
+  ["updates", "App updates"], ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
   ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
 ] as const;
 
@@ -38,16 +40,17 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const query = await searchParams;
   const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
-  const runs = await loadRuns(context);
+  const [runs, update] = await Promise.all([loadRuns(context), isDesktop() ? desktopUpdate("status").catch(() => null) : null]);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
     <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="lg:sticky lg:top-24 lg:self-start">
-        <ul className="flex flex-wrap gap-1 lg:flex-col">{sectionNav.map(([id, label]) => <li key={id}>
+        <ul className="flex flex-wrap gap-1 lg:flex-col">{sectionNav.filter(([id]) => id !== "updates" || update).map(([id, label]) => <li key={id}>
           <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm hover:bg-muted hover:text-foreground ${id === "danger" ? "text-danger" : "text-muted-foreground"}`}>{label}</a>
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
+        {update && <AppUpdate initial={update} />}
         <section id="connections" aria-labelledby="connections-title" className="scroll-mt-20 space-y-4">
           <div><h2 id="connections-title" className="text-base font-semibold">Keys and connections</h2>
             <p className="mt-1 text-sm text-muted-foreground">Every key and outside service Moneo uses is set up here. Keys are checked before they are saved and stored encrypted in your database; there is no file to edit.</p></div>

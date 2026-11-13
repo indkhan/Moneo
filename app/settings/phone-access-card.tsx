@@ -18,7 +18,7 @@ function NextStep({ state }: { state: PhoneAccessState }) {
 }
 
 /** Optional: reach this Moneo from the owner's own phone and tablet through Tailscale. */
-export function PhoneAccessCard({ initial }: { initial: PhoneAccessState }) {
+export function PhoneAccessCard({ initial, desktop }: { initial: PhoneAccessState; desktop: boolean }) {
   const [state, change, pending] = useActionState<PhoneAccessState>(async previous => {
     try { return await (previous.state === "on" ? turnOff(previous) : turnOn(previous)); }
     // Turning off from a phone removes the connection the answer would come back on.
@@ -27,7 +27,7 @@ export function PhoneAccessCard({ initial }: { initial: PhoneAccessState }) {
   return <section aria-labelledby="phone-access" className="rounded-xl border border-border bg-card p-6">
     <h2 id="phone-access" className="text-sm font-medium">Phone and tablet <span className="font-normal text-muted-foreground">· optional</span></h2>
     {state.state === "on" ? <>
-      <p role="status" className="mt-1 text-sm text-muted-foreground">On. Every device on your Tailscale network can open Moneo without a password, so don&apos;t use a network you share with other people. Devices share this computer&apos;s data and connections, so keep it awake with Moneo running. After a restart, start Moneo again here (<code className="rounded bg-muted px-1">npm start</code>).</p>
+      <p role="status" className="mt-1 text-sm text-muted-foreground">On. Every device on your Tailscale network can open Moneo without a password, so don&apos;t use a network you share with other people. Devices share this computer&apos;s data and connections, so keep it awake with Moneo running. {desktop ? "Closing the Moneo window keeps it running in the tray; after a restart, open Moneo again." : <>After a restart, start Moneo again here (<code className="rounded bg-muted px-1">npm start</code>).</>}</p>
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
         {/* eslint-disable-next-line @next/next/no-img-element -- generated on the server for this address */}
         <img alt={`Scan code for ${state.url}`} src={`data:image/svg+xml;utf8,${encodeURIComponent(state.qr)}`} className="size-36 shrink-0 rounded-lg bg-white p-2" />

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { connectionReturn } from "@/lib/desktop-auth-return";
+import { connectionReturn } from "@/lib/desktop-bridge";
 import { serviceDb } from "@/lib/bank/server";
 import { decryptToken } from "@/lib/bank/token-crypto";
 import { exchangeCode } from "@/lib/scalable/client";

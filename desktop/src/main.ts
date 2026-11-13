@@ -3,13 +3,14 @@ import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { backup, restore, startBackend, type BackendPaths, type RunningBackend } from "./backend";
 import { createAppWindow, lockDownSession, openExternal, setAppPort, showReturn } from "./app-window";
-import { startAuthReturn } from "./auth-return";
+import { startBridge } from "./bridge";
 import { ensureBankCertificate } from "./certificate";
 import { NextServer } from "./next-server";
 import { backupsDir, home, log, readSettings, resources, setupHome, updateSettings } from "./paths";
 import { choosePort } from "./port";
 import { closeSetup, focusSetup, progress, registerSetupIpc, setSetupState, showSetup } from "./setup-window";
 import { createTray, openedAtLogin, type TrayActions } from "./tray";
+import { createUpdater } from "./updates";
 
 // MONEO_DESKTOP_DEBUG=1 allows debugging switches and the test hooks below (package smoke tests).
 const debug = process.env.MONEO_DESKTOP_DEBUG === "1";
@@ -38,7 +39,14 @@ function main() {
   let failed = false;
   let port = 0;
   let backupTimer: NodeJS.Timeout | undefined;
-  let authReturn: Awaited<ReturnType<typeof startAuthReturn>> | undefined;
+  let bridge: Awaited<ReturnType<typeof startBridge>> | undefined;
+  let relaunchPath: string | undefined;
+  const updater = createUpdater({
+    log: line => log(`Update: ${line}`),
+    openExternal,
+    relaunchAfterQuit: execPath => { relaunchPath = execPath; },
+    feed: debug ? process.env.MONEO_DESKTOP_UPDATE_FEED : undefined,
+  });
 
   const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
@@ -77,12 +85,15 @@ function main() {
           fail(`A Moneo service stopped (${service})`, new Error(`It exited with code ${code}. Try again, or open the logs folder.`));
         });
         progress({ id: "app", label: "Starting Moneo", state: "running" });
-        // Sign-ins that finish in the system browser open their result here (see auth-return.ts).
-        authReturn ??= await startAuthReturn(async returnPath => {
-          if (!window || booting || failed) throw new Error("The app window is not open");
-          await showReturn(window, returnPath);
+        // What the server asks of the app: sign-in results in the window, and updates (see bridge.ts).
+        bridge ??= await startBridge({
+          onReturn: async returnPath => {
+            if (!window || booting || failed) throw new Error("The app window is not open");
+            await showReturn(window, returnPath);
+          },
+          update: updater,
         });
-        server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: { ...running.env, MONEO_DESKTOP_AUTH_RETURN: authReturn.url } }, error => fail("The Moneo server keeps stopping", error));
+        server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: { ...running.env, MONEO_DESKTOP_BRIDGE: bridge.url, MONEO_DESKTOP_VERSION: app.getVersion() } }, error => fail("The Moneo server keeps stopping", error));
         await server.start();
         progress({ id: "app", label: "Starting Moneo", state: "done" });
         if (quitting) return;
@@ -207,6 +218,7 @@ function main() {
       clearTimeout(notice);
       clearTimeout(force);
       log("Stopped");
+      if (relaunchPath) app.relaunch({ execPath: relaunchPath });
       app.exit(0);
     })();
     return quitPromise;

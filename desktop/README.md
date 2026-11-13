@@ -44,9 +44,21 @@ address and ChatGPT's callback name it). If it is taken on the first run, a free
 - Sign-ins (ChatGPT, banks, Scalable) open in the system browser and return to Moneo's loopback
   callbacks. The callback then opens its result (Import or Settings) in the app window and brings it
   to the front; the browser tab says to continue in Moneo. The server reaches the window through a
-  loopback address that is random for each launch and refuses browser requests (`src/auth-return.ts`);
+  loopback address that is random for each launch and refuses browser requests (`src/bridge.ts`);
   if the window cannot take it, the browser shows the result as in a source checkout. Every other address also goes to the browser
   (https only). The window allows only the microphone and copying, for Moneo's own pages.
+- Updates: Settings → App updates checks the newest published GitHub release only when the owner
+  asks (`src/updates.ts`, electron-updater). On Windows and with the AppImage, Update downloads it,
+  quits Moneo cleanly, installs it and starts Moneo again; data stays in the user folder, and a pending
+  migration makes a `pre-upgrade` backup first. macOS (unsigned) and `.deb` installs open the release
+  page to download instead. Draft and pre-releases are never offered. `npm run desktop:dist` writes
+  the `latest*.yml` files the check reads; the release workflow uploads them with the installers.
+
+## Releasing
+
+Push a `v*` tag matching `desktop/package.json`'s version (bump it first). The Desktop workflow builds
+every platform and drafts a release with the installers, `latest*.yml`, blockmaps and `SHA256SUMS.txt`.
+Publish the draft on GitHub; from then on, Settings → App updates offers it to installed apps.
 
 ### Bank return certificate
 
