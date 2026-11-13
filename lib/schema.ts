@@ -1171,6 +1171,7 @@ export const agentRuns = pgTable("agent_runs", {
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, table => [
   uniqueIndex("agent_runs_import_unique").on(table.importId).where(sql`${table.importId} is not null`),
+  uniqueIndex("agent_runs_one_active").on(table.workspaceId).where(sql`${table.status} in ('queued','running')`),
   index("agent_runs_workspace_created").on(table.workspaceId, table.createdAt),
   check("agent_runs_trigger_check", sql`${table.trigger} in ('import','manual','sync','backlog')`),
   check("agent_runs_status_check", sql`${table.status} in ('queued','running','completed','failed','canceled')`),
