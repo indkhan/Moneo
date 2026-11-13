@@ -165,8 +165,8 @@ export function claudeModel(modelId: string, tools: ToolSet = {}, steering?: Cla
     pathToClaudeCodeExecutable: claudeExecutable() ?? undefined,
     env: claudeEnv(),
     tools: [], settingSources: [], strictMcpConfig: true, persistSession: false,
-    // Matches the chat's stepCountIs(30) guard against runaway loops.
-    maxTurns: 30,
+    // The same guard against runaway loops as the chat's step limit.
+    maxTurns: CHAT_MAX_STEPS,
     ...(names.length ? { mcpServers: { moneo: createAiSdkMcpServer("moneo", checked) }, allowedTools: names.map(name => `mcp__moneo__${name}`) } : {}),
     ...overrides,
   };
@@ -215,6 +215,9 @@ export function claudeModel(modelId: string, tools: ToolSet = {}, steering?: Cla
     },
   });
 }
+
+/** Model steps (tool rounds) one chat answer may take: room for long investigations, a stop for runaway loops. */
+export const CHAT_MAX_STEPS = 60;
 
 /** Tool names as Moneo knows them: Claude reports its MCP tools as mcp__moneo__<name>. */
 export const moneoToolName = (name: string) => name.replace(/^mcp__moneo__/, "");
