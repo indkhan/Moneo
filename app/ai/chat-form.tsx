@@ -94,13 +94,14 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
-  if (empty) return <div className="flex flex-1 flex-col justify-center py-10">
-    <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl">How can I help with your money today?</h2>
-    <div className="mt-8">{composer}{notices}</div>
-    <div className="mt-4 flex flex-wrap justify-center gap-2">{suggestions.map(prompt => <button key={prompt} type="button" onClick={() => { setMessage(prompt); document.getElementById("question")?.focus(); }} className="rounded-full border border-border px-3.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div>
+  // Phones: prompts in the middle, the composer pinned to the bottom like a messaging app.
+  if (empty) return <div className="flex flex-1 flex-col justify-center py-10 max-lg:pt-6 max-lg:pb-0">
+    <h2 className="text-center font-display text-3xl font-semibold tracking-tight max-lg:mt-auto max-lg:text-2xl sm:text-4xl">How can I help with your money today?</h2>
+    <div className="mt-8 max-lg:sticky max-lg:bottom-0 max-lg:order-last max-lg:mt-6 max-lg:bg-background max-lg:pt-2 max-lg:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">{composer}{notices}</div>
+    <div className="mt-4 flex flex-wrap justify-center gap-2 max-lg:mt-6">{suggestions.map(prompt => <button key={prompt} type="button" onClick={() => { setMessage(prompt); document.getElementById("question")?.focus(); }} className="rounded-full border border-border px-3.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted">{prompt}</button>)}</div>
     <p className="mx-auto mt-6 max-w-xl text-center text-xs text-muted-foreground">Ask here for a quick answer. Run a deep review for a saved, evidence-checked report. Call to talk it through. Each one uses AI, tracked under <Link href="/settings" className="underline">Settings</Link>.</p>
-    {scope}
+    <div className="max-lg:mb-auto">{scope}</div>
   </div>;
 
-  return <div className="sticky bottom-0 mt-auto bg-gradient-to-t from-background from-70% to-transparent pt-6 pb-4">{composer}{notices}{scope}</div>;
+  return <div className="sticky bottom-0 mt-auto bg-gradient-to-t from-background from-70% to-transparent pt-6 pb-4 max-lg:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">{composer}{notices}{scope}</div>;
 }
