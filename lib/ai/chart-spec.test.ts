@@ -57,7 +57,7 @@ describe("dataset references", () => {
     expect(resolved).toEqual({ ok: true, chart: { type: "donut", title: "Where it went", unit: eur,
       items: [{ label: "Rent", value: "9500000000000001", href: "/money/transactions?category=none" }, { label: "Other", value: "1" }] } });
     const bars = resolveChart({ type: "bar", title: "x", unit: eur, datasetId: id, labels: { column: "category" }, series: [{ name: "Spent", values: { column: "spending" } }] }, store.get);
-    expect(bars.ok && "series" in bars.chart && bars.chart.series[0].values).toEqual(["9500000000000001", "1"]);
+    expect(bars.ok && "labels" in bars.chart && bars.chart.series[0].values).toEqual(["9500000000000001", "1"]);
   });
 
   it("rejects money in another currency, a missing dataset, and amounts used as labels", () => {
@@ -75,7 +75,7 @@ describe("dataset references", () => {
     const chart = { type: "line", title: "x", unit: eur, datasetId: mixed, labels: { column: "month" }, series: [{ name: "Total", values: { column: "total" } }] };
     expect(resolveChart(chart, rows.get)).toEqual({ ok: false, error: "Column total is in USD, not EUR" });
     const filtered = resolveChart({ ...chart, where: { currency: "EUR" } }, rows.get);
-    expect(filtered.ok && "series" in filtered.chart && filtered.chart.series[0].values).toEqual(["100", "250"]);
+    expect(filtered.ok && "labels" in filtered.chart && filtered.chart.series[0].values).toEqual(["100", "250"]);
   });
 
   it("makes every block in an answer self-contained or says why it can't be drawn", () => {
