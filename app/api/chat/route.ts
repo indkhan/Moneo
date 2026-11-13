@@ -185,6 +185,7 @@ export async function POST(request: Request) {
     return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
+        if (stop.signal.aborted) throw new Error("Request canceled");
         emit({ type: "tool", id: options?.toolCallId, name, state: "running", input });
         // Labels for ids in the output load while the tool runs.
         const names = namesFor(context).catch((): EntityNames => ({}));
@@ -260,6 +261,12 @@ export async function POST(request: Request) {
     const artifactBrief = briefingPromise ? await briefingPromise : null;
     const owner = await briefPromise;
     for (const scope of owner?.scopes ?? []) readScopes.add(scope);
+    // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
+    const takeSteers = async () => {
+      const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
+      if (steers.error) { console.error("take_chat_steers failed", steers.error); return []; }
+      return (steers.data ?? []) as { id: string; content: string }[];
+    };
     const result = streamText({
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
       maxOutputTokens: 3000,
@@ -282,15 +289,12 @@ ${artifactBrief}` : ""}`,
       prepareStep: async ({ messages }) => {
         await stopIfCanceled();
         if (stop.signal.aborted) throw new Error("Request canceled");
-        // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
-        const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
-        if (steers.error) { console.error("take_chat_steers failed", steers.error); return {}; }
-        const taken = (steers.data ?? []) as { id: string; content: string }[];
+        const taken = await takeSteers();
         if (!taken.length) return {};
         emit({ type: "steered", steers: taken });
         return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
       },
-      // Claude runs these inside Claude Code; withTools hands them over there.
+      // Claude runs these inside Claude Code; withTools hands them over there, and steers reach it mid-answer.
       ...withTools(model, { ...planTool, ...retainTools({
         // Designers check the request is still running before they save, so a canceled build saves nothing.
         ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
@@ -359,18 +363,23 @@ ${artifactBrief}` : ""}`,
             },
           }),
         } : {}),
-      }) }),
+      }) }, { take: takeSteers, delivered: steers => emit({ type: "steered", steers }) }),
     });
     // The answer is all text the model wrote, across steps, exactly as streamed to the user.
     let text = "", stepBreak = false;
-    for await (const part of result.fullStream) {
-      if (part.type === "text-delta" && part.text) {
-        const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
-        stepBreak = false; text += delta;
-        emit({ type: "delta", text: delta });
-      } else if (part.type === "finish-step") stepBreak = true;
-      else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
-    }
+    // Claude runs its whole tool loop inside one step, so prepareStep never sees a cancel made mid-answer;
+    // check for one while it streams, and aborting stops Claude Code.
+    const watchCancel = model.provider === "claude-code" ? setInterval(() => void stopIfCanceled(), 2000) : undefined;
+    try {
+      for await (const part of result.fullStream) {
+        if (part.type === "text-delta" && part.text) {
+          const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
+          stepBreak = false; text += delta;
+          emit({ type: "delta", text: delta });
+        } else if (part.type === "finish-step") stepBreak = true;
+        else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
+      }
+    } finally { clearInterval(watchCancel); }
     // totalUsage sums every step; usage is only the last one, which drops the tool-call rounds.
     const [usage, steps] = await Promise.all([result.totalUsage, result.steps]);
     if (!text.trim()) throw new Error("The model returned no answer");

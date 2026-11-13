@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:chil
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { ToolSet } from "ai";
-import { claudeCode, createAiSdkMcpServer, type ClaudeCodeSettings } from "ai-sdk-provider-claude-code";
+import { claudeCode, createAiSdkMcpServer, type ClaudeCodeSettings, type MessageInjector } from "ai-sdk-provider-claude-code";
 import { z } from "zod";
 import { pdfText } from "./pdf-text";
 
@@ -17,7 +17,9 @@ export class ClaudeError extends Error {}
 export function claudeExecutable(): string | null {
   const require = createRequire(import.meta.url);
   const base = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
-  for (const name of process.platform === "linux" ? [base, `${base}-musl`] : [base]) {
+  // Both Linux builds can be installed; a glibc binary won't start on musl (Alpine), so pick by libc.
+  const glibc = process.platform === "linux" && Boolean((process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined)?.header?.glibcVersionRuntime);
+  for (const name of process.platform === "linux" ? glibc ? [base, `${base}-musl`] : [`${base}-musl`, base] : [base]) {
     try {
       const file = require.resolve(/*turbopackIgnore: true*/ `${name}/claude${process.platform === "win32" ? ".exe" : ""}`);
       if (existsSync(/*turbopackIgnore: true*/ file)) return file;
@@ -28,9 +30,13 @@ export function claudeExecutable(): string | null {
 
 // Any of these would make Claude Code bill an API key or a cloud account instead of the plan.
 const PAID_ROUTES = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"];
-/** The environment for Claude Code: this process's, minus everything that routes requests away from the plan. */
+/**
+ * The environment for Claude Code: this process's, with everything that routes requests away from the plan
+ * set to undefined. Undefined, not left out: the adapter merges its own copy of ANTHROPIC_* and CLAUDE_*
+ * variables underneath, so only an explicit undefined removes them (Node skips undefined when spawning).
+ */
 export function claudeEnv(env: Record<string, string | undefined> = process.env) {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => !PAID_ROUTES.includes(key))) as NodeJS.ProcessEnv;
+  return { ...env, ...Object.fromEntries(PAID_ROUTES.map(key => [key, undefined])) } as NodeJS.ProcessEnv;
 }
 
 const statusSchema = z.object({ loggedIn: z.boolean(), authMethod: z.string().nullish(), email: z.string().nullish(), subscriptionType: z.string().nullish() });
@@ -112,11 +118,43 @@ export function cancelClaudeSignIn() {
 }
 
 /**
+ * Where messages sent during an answer come from. `take` claims the pending ones (each is handed out once);
+ * `delivered` says which of them reached the running answer.
+ */
+export type ClaudeSteering = { take: () => Promise<{ id: string; content: string }[]>; delivered: (steers: { id: string; content: string }[]) => void };
+const STEER_POLL_MS = 1500;
+
+/**
+ * While Claude Code runs an answer, hands it the steers taken from `steering`. Claude Code runs the whole tool
+ * loop inside one model step, so unlike other models it can only be steered by pushing messages into its
+ * running query. Returns what ends it: call it when the answer is over so nothing keeps polling.
+ */
+export function steerClaudeRun(injector: MessageInjector, steering: ClaudeSteering, pollMs = STEER_POLL_MS) {
+  let ended = false, polling = false;
+  const poll = async () => {
+    if (ended || polling) return;
+    polling = true;
+    try {
+      const taken = await steering.take();
+      for (const steer of taken) {
+        // A steer taken as the answer ends is not delivered; the owner's queue sends it as the next message.
+        if (ended) break;
+        injector.inject(steer.content, delivered => { if (delivered) steering.delivered([steer]); });
+      }
+    } catch (error) { console.error("Steering Claude failed", error); }
+    finally { polling = false; }
+  };
+  const timer = setInterval(() => void poll(), pollMs);
+  timer.unref?.();
+  return () => { ended = true; clearInterval(timer); injector.close(); };
+}
+
+/**
  * A Claude model run by Claude Code on the owner's plan. Claude Code runs the tool loop itself, so Moneo's
  * tools are handed over here as an in-process MCP server; nothing else is available to it: no built-in
  * tools, no settings, CLAUDE.md or MCP servers from this computer, and no transcripts written to disk.
  */
-export function claudeModel(modelId: string, tools: ToolSet = {}) {
+export function claudeModel(modelId: string, tools: ToolSet = {}, steering?: ClaudeSteering, overrides: Partial<ClaudeCodeSettings> = {}) {
   const names = Object.keys(tools);
   // The MCP bridge checks each field on its own; checking the whole schema again keeps object-level rules
   // (such as "no duplicate overrides") before a tool runs.
@@ -130,6 +168,7 @@ export function claudeModel(modelId: string, tools: ToolSet = {}) {
     // Matches the chat's stepCountIs(30) guard against runaway loops.
     maxTurns: 30,
     ...(names.length ? { mcpServers: { moneo: createAiSdkMcpServer("moneo", checked) }, allowedTools: names.map(name => `mcp__moneo__${name}`) } : {}),
+    ...overrides,
   };
   const base = claudeCode(modelId, settings);
   // The provider folds system messages into the prompt text; Moneo's instructions go in as the system prompt
@@ -149,12 +188,31 @@ export function claudeModel(modelId: string, tools: ToolSet = {}) {
   const forCall = async (options: Options) => {
     const system = options.prompt.flatMap(message => message.role === "system" ? [message.content] : []).join("\n\n");
     const effort = (options.providerOptions?.openai as { reasoningEffort?: unknown } | undefined)?.reasoningEffort;
-    const model = claudeCode(modelId, { ...settings, ...(system ? { systemPrompt: system } : {}), ...(effort === "low" || effort === "medium" || effort === "high" ? { effort } : {}) });
-    return { model, options: { ...options, prompt: await readPdfs(options.prompt.filter(message => message.role !== "system")) } };
+    // Steers reach the answer through streaming input; the call ends them when its stream ends.
+    let endSteering: (() => void) | undefined, finished = false;
+    const model = claudeCode(modelId, { ...settings, ...(system ? { systemPrompt: system } : {}), ...(effort === "low" || effort === "medium" || effort === "high" ? { effort } : {}),
+      ...(steering ? { streamingInput: "always" as const, onStreamStart: (injector: MessageInjector) => { if (finished) injector.close(); else endSteering = steerClaudeRun(injector, steering); } } : {}) });
+    const end = () => { finished = true; endSteering?.(); };
+    options.abortSignal?.addEventListener("abort", end, { once: true });
+    return { model, end, options: { ...options, prompt: await readPdfs(options.prompt.filter(message => message.role !== "system")) } };
+  };
+  /** The stream, ending the call's steering when it finishes, fails or is canceled. */
+  const steered = (stream: ReadableStream<unknown>, end: () => void) => {
+    const reader = stream.getReader();
+    return new ReadableStream({
+      pull: async controller => { try { const next = await reader.read(); if (next.done) { end(); controller.close(); } else controller.enqueue(next.value); } catch (error) { end(); controller.error(error); } },
+      cancel: reason => { end(); return reader.cancel(reason); },
+    });
   };
   return Object.assign(Object.create(base) as typeof base, {
     doGenerate: async (options: Options) => { const call = await forCall(options); return call.model.doGenerate(call.options); },
-    doStream: async (options: Options) => { const call = await forCall(options); return call.model.doStream(call.options); },
+    doStream: async (options: Options) => {
+      const call = await forCall(options);
+      try {
+        const result = await call.model.doStream(call.options);
+        return steering ? { ...result, stream: steered(result.stream, call.end) as typeof result.stream } : result;
+      } catch (error) { call.end(); throw error; }
+    },
   });
 }
 
