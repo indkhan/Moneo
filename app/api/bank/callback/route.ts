@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { connectionReturn } from "@/lib/desktop-bridge";
 import { enableBankingClient } from "@/lib/bank/enable-banking";
 import { bankAccountNames, psuFrom, serviceDb } from "@/lib/bank/server";
 import { encryptToken } from "@/lib/bank/token-crypto";
@@ -11,7 +12,7 @@ const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1)
 
 // The bank redirects here. The state must match a fresh pending connection in the caller's workspace.
 export async function GET(request: Request) {
-  const back = (result: string) => NextResponse.redirect(new URL(`/import?bank=${result}`, request.url), 303);
+  const back = (result: string) => connectionReturn(request.url, `/import?bank=${result}`);
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.redirect(new URL("/setup", request.url), 303); }
   const query = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));

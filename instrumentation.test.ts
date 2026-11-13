@@ -4,9 +4,10 @@ import { createServer, type AddressInfo } from "node:net";
 import { getAllPorts } from "@workflow/utils/get-port";
 const startWorld = vi.hoisted(() => vi.fn(async () => {}));
 const startScheduler = vi.hoisted(() => vi.fn());
+const startBankReturnListener = vi.hoisted(() => vi.fn());
 vi.mock("workflow/runtime", () => ({ getWorld: () => ({ start: startWorld }) }));
 vi.mock("@/lib/scheduler", () => ({ startScheduler }));
-vi.mock("@/lib/bank/return-listener", () => ({ startBankReturnListener: vi.fn() }));
+vi.mock("@/lib/bank/return-listener", () => ({ startBankReturnListener }));
 
 const report = process.report as NodeJS.ProcessReport & { excludeNetwork: boolean };
 const originalExcludeNetwork = report.excludeNetwork;
@@ -31,6 +32,16 @@ it("surfaces runtime initialization failure", async () => {
   startWorld.mockRejectedValueOnce(new Error("persisted world unavailable"));
   await expect(register()).rejects.toThrow("persisted world unavailable");
   expect(startScheduler).not.toHaveBeenCalled();
+});
+
+it.each([["1", "1", false], ["1", "0", true], ["0", "1", true]])("suppresses background work only for an explicit desktop preview (%s, %s)", async (desktop, preview, starts) => {
+  vi.stubEnv("NEXT_RUNTIME", "nodejs");
+  vi.stubEnv("MONEO_DESKTOP", desktop);
+  vi.stubEnv("MONEO_DESKTOP_PREVIEW", preview);
+  await register();
+  expect(startWorld).toHaveBeenCalledTimes(starts ? 1 : 0);
+  expect(startScheduler).toHaveBeenCalledTimes(starts ? 1 : 0);
+  expect(startBankReturnListener).toHaveBeenCalledTimes(starts ? 1 : 0);
 });
 
 it("retains listening socket ports for the actual Workflow lookup", async () => {

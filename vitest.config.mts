@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.{ts,tsx}"],
-    exclude: [...configDefaults.exclude, ".qa/**", ".claude/**"],
+    // Desktop build output and downloads hold copies of the source.
+    exclude: [...configDefaults.exclude, ".qa/**", ".claude/**", ".next-desktop/**", "desktop/.build/**", "desktop/.cache/**", "desktop/release/**", "desktop/release-preview/**"],
   },
 });

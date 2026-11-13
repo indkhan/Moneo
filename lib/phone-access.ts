@@ -33,7 +33,8 @@ const reason = (output: string) => new TailscaleError(output.trim().split("\n")[
 function run(args: string[], untilLink = false) {
   return new Promise<Result>(resolve => {
     let stdout = "", output = "";
-    const child = spawn(cli(), args, { windowsHide: true });
+    // The CLI path is chosen at runtime; the build's file tracing must not follow it.
+    const child = spawn(/*turbopackIgnore: true*/ cli(), args, { windowsHide: true });
     const done = (result: Pick<Result, "ok" | "missing">) => { clearTimeout(timer); resolve({ ...result, stdout, output }); };
     const timer = setTimeout(() => { child.kill(); done({ ok: false }); }, 15_000);
     const read = (chunk: Buffer) => {

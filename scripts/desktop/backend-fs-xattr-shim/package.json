@@ -1,0 +1,7 @@
+{
+  "name": "fs-xattr",
+  "version": "0.4.0-moneo.1",
+  "description": "Moneo Desktop stand-in for fs-xattr 0.4.0 (NTFS alternate data streams on Windows, upstream N-API addon elsewhere)",
+  "license": "MIT",
+  "main": "index.js"
+}

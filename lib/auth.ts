@@ -1,5 +1,5 @@
 import { cache } from "react";
-import type { User } from "@supabase/supabase-js";
+import { isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase-server";
 import { settingsSchema } from "@/lib/settings";
 
@@ -16,6 +16,8 @@ async function confirmUser(supabase: Awaited<ReturnType<typeof createClient>>, u
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user || user.id !== userId) {
     if (key) confirmed.delete(key);
+    // An auth outage (Moneo Desktop's GoTrue failing to open a connection) is not a signed-out owner.
+    if (error && (isAuthRetryableFetchError(error) || (error.status ?? 0) >= 500)) throw new Error("Workspace unavailable");
     throw new Error("Unauthorized");
   }
   if (key) {

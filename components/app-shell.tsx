@@ -165,7 +165,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
       </div>
     </nav>
     <div className={cn("min-w-0 pb-16 lg:pb-0 lg:pl-22 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112", fullHeight && "flex h-full flex-col")}>
-      <header className="shrink-0 border-b border-border bg-background/90 backdrop-blur lg:sticky lg:top-0 lg:z-20">
+      <header className="shrink-0 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur lg:sticky lg:top-0 lg:z-20">
         <div className="flex h-19 items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex h-11 min-w-0 max-w-[620px] flex-1 items-center gap-2.5 rounded-xl border border-input bg-card px-3.5 text-left text-sm text-muted-foreground hover:text-foreground">
             <Search className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Search pages, accounts or ask Moneo…</span>
@@ -187,7 +187,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
       </header>
       <div id="main-content" tabIndex={-1} className={fullHeight ? "min-h-0 flex-1 overflow-hidden" : undefined}>{children}</div>
     </div>
-    <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+    <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur lg:hidden">
       {mobileTabs.map(item => <IntentLink key={item.href} href={item.href} aria-current={section === item ? "page" : undefined}
         className={cn("flex flex-col items-center gap-0.5 py-2 text-[11px]", section === item ? "font-medium text-foreground" : "text-muted-foreground")}>
         <item.icon className={cn("size-5", section === item && "text-brand")} strokeWidth={1.6} aria-hidden="true" />{item.label}

@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { Providers } from "@/components/providers";
 import { AppShell, type ShellData } from "@/components/app-shell";
 import { SyncOnOpen } from "@/components/sync-on-open";
+import { ServiceWorker } from "@/components/service-worker";
 import { cookies } from "next/headers";
 import { ThemePreference } from "@/components/theme-preference";
 import { hasSupabase } from "@/lib/env";
@@ -30,7 +31,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0f1011",
+  // Matches the page background in each mode so the browser bar and iOS status area blend in.
+  themeColor: [{ media: "(prefers-color-scheme: light)", color: "#f4f3ee" }, { media: "(prefers-color-scheme: dark)", color: "#0f1011" }],
 };
 
 type Theme = "light" | "dark" | "system";
@@ -69,6 +71,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         {hasSupabase() ? <Suspense fallback={<ThemePreference preference={theme} />}><WorkspaceTheme fallback={theme} /></Suspense> : <ThemePreference preference={theme} />}
         {hasSupabase() && <SyncOnOpen />}
+        <ServiceWorker />
         <Providers><AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell></Providers>
       </body>
     </html>

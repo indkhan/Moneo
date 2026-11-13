@@ -56,5 +56,5 @@ export default defineConfig([
     ignores: migrationReaders,
     rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip, migrationText] },
   },
-  globalIgnores([".next/**", ".next-qa/**", "out/**", "build/**", "next-env.d.ts", "app/.well-known/workflow/**", ".qa/**", ".claude/**", "promo/**"]),
+  globalIgnores([".next/**", ".next-qa/**", "out/**", "build/**", "next-env.d.ts", "app/.well-known/workflow/**", ".qa/**", ".claude/**", "promo/**", ".next-desktop/**", "desktop/.build/**", "desktop/.cache/**", "desktop/dist/**", "desktop/release/**", "desktop/release-preview/**"]),
 ]);
