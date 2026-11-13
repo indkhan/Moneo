@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moneo: personal finance on your own computer</title>
+<meta name="description" content="Moneo is open-source personal finance that runs on your own computer. See your net worth, sync your bank and investments, ask about your money and build your own reports. Your data never leaves your machine.">
+<meta name="theme-color" content="#0f1011">
+<meta property="og:title" content="Moneo: personal finance on your own computer">
+<meta property="og:description" content="Open source and private. Download the app, or run it from the code.">
+<meta property="og:image" content="https://indkhan.github.io/Moneo/assets/shots/home.webp">
+<link rel="icon" href="assets/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-row">
+    <a class="brand" href="./" aria-label="Moneo home"><img src="assets/icon.png" alt="" width="28" height="28"><span>Moneo</span></a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#run">Get it</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/indkhan/Moneo">GitHub<span class="stars" data-stars hidden></span></a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="#download" data-download-primary>Download</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero wrap">
+    <p class="badge"><span class="chip">New</span> Moneo Desktop: just install and open it. <a href="#download">Download →</a></p>
+    <h1>Your money, on your computer.<br class="wide"> Not someone else's server.</h1>
+    <p class="lede">Moneo shows your net worth, syncs your bank and investments, plans what's coming and answers questions about your money. It's open source and runs entirely on your own machine.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#download" data-download-primary><span aria-hidden="true">↓</span> <span data-download-label>Download Moneo</span></a>
+      <a class="btn btn-secondary" href="https://github.com/indkhan/Moneo">View the source on GitHub</a>
+    </div>
+    <p class="meta" data-release-meta>Free · Windows, macOS, Linux · MIT licensed</p>
+  </section>
+
+  <section class="wrap shot-hero" aria-label="The Moneo overview">
+    <figure class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>Moneo</span></div>
+      <img src="assets/shots/home.webp" width="1920" height="1200" alt="Moneo's overview: net worth of EUR 177,934 rising over a year, with budgets for shopping, going out, transport, eating out and groceries">
+    </figure>
+    <p class="caption">Sample data. Your own numbers never leave your computer.</p>
+  </section>
+
+  <section id="features" class="wrap section">
+    <p class="eyebrow">What it does</p>
+    <h2>Everything about your money, in one private place</h2>
+
+    <article class="feature">
+      <div class="feature-text">
+        <p class="eyebrow">Ask</p>
+        <h3>Ask, and it does the work</h3>
+        <p>“Find where I lent money to Bilal and add it.” Moneo searches your transactions, finds the payment and gives you a card to record the loan. “Buy €900 of MSCI World.” It prepares the order on Scalable and shows you exactly what it will cost.</p>
+        <ul class="ticks"><li>Nothing changes until you tap the card</li><li>Uses your ChatGPT plan or your own API key</li><li>You choose which data the AI may see</li></ul>
+      </div>
+      <figure class="frame"><img src="assets/shots/chat.webp" width="1920" height="1840" loading="lazy" alt="Moneo finding a €250 PayPal payment to Bilal with a card to add the loan, then a Scalable buy order for 8 shares of MSCI World with Buy and Dismiss buttons"></figure>
+    </article>
+
+    <article class="feature flip phone-feature">
+      <div class="feature-text">
+        <p class="eyebrow">Call</p>
+        <h3>Call Moneo and ask several things at once</h3>
+        <p>Tap <b>Call Moneo</b> and just talk. Ask three questions in one breath and Moneo works on all of them in parallel, telling you each answer as it lands. After the call you get a summary, every answer, and any cards to accept.</p>
+        <ul class="ticks"><li>Interrupt, stop a task, or type instead</li><li>Works from your phone too</li></ul>
+      </div>
+      <figure class="phone"><img src="assets/shots/call.webp" width="780" height="1688" loading="lazy" alt="A live call with Moneo working on three tasks: Lisbon trip so far (done), subscriptions per year and Japan goal check (in progress)"></figure>
+    </article>
+
+    <article class="feature">
+      <div class="feature-text">
+        <p class="eyebrow">Artifacts</p>
+        <h3>Build your own pages and reports</h3>
+        <p>Describe the page you want, like a monthly money story, a subscription radar or a goals tracker, and Moneo builds it from your data. Keep it, refine it in chat, and pin it to your Home as a card.</p>
+        <ul class="ticks"><li>Always shows your latest numbers</li><li>Runs in a sandbox with no internet access</li></ul>
+      </div>
+      <figure class="frame"><img src="assets/shots/artifact.webp" width="1920" height="1200" loading="lazy" alt="A Moneo artifact: a monthly money story with money in, money out, spending by category and top merchants"></figure>
+    </article>
+
+    <article class="feature flip">
+      <div class="feature-text">
+        <p class="eyebrow">Your Home</p>
+        <h3>Widgets you design yourself</h3>
+        <p>“Add a card that tracks my eating out against my budget.” Moneo turns any artifact into a Home widget that sits next to the built-in ones: net worth, budgets, goals and what's coming up. Arrange Home the way you want it.</p>
+        <ul class="ticks"><li>Small, medium or large</li><li>Updates with your data every time you open Home</li></ul>
+      </div>
+      <figure class="frame"><img src="assets/shots/widget.webp" width="1920" height="1200" loading="lazy" alt="Moneo's Home with a custom Eating out widget showing €115.40 of €250 with the top places, next to goals and upcoming payments"></figure>
+    </article>
+
+    <article class="feature">
+      <div class="feature-text">
+        <p class="eyebrow">Wealth</p>
+        <h3>Your net worth, traced</h3>
+        <p>Bank accounts, your Scalable Capital portfolio with every holding and its gains, money friends owe you, and assets and debts you add yourself: one number with a year of history, and where every change came from.</p>
+        <ul class="ticks"><li>Bank sync through Enable Banking (Europe)</li><li>Or import CSV and Excel statements, with undo</li></ul>
+      </div>
+      <figure class="frame"><img src="assets/shots/wealth.webp" width="1920" height="1200" loading="lazy" alt="Moneo's wealth page: a Scalable Capital portfolio worth EUR 142,679 with a year of growth and holdings in MSCI World, S&amp;P 500, NVIDIA and emerging markets"></figure>
+    </article>
+
+    <article class="feature flip">
+      <div class="feature-text">
+        <p class="eyebrow">Plan</p>
+        <h3>Goals, budgets and what's coming</h3>
+        <p>Set goals like a house deposit or a trip, and Moneo tells you when you'll get there at your monthly plan. It finds your recurring payments, forecasts your cash and tracks your budgets.</p>
+        <ul class="ticks"><li>Earmark savings for each goal</li><li>Try “what if” scenarios safely</li></ul>
+      </div>
+      <figure class="frame"><img src="assets/shots/plan.webp" width="1920" height="1200" loading="lazy" alt="Moneo's goals: house deposit EUR 12,400 of 30,000 on track for June 2028, Japan EUR 2,100 of 4,500 on track for April 2027, and a full emergency fund"></figure>
+    </article>
+
+    <article class="feature phone-feature">
+      <div class="feature-text">
+        <p class="eyebrow">Phone</p>
+        <h3>On your phone too, still private</h3>
+        <p>Turn on phone access and open Moneo from your own phone and tablet over Tailscale, a free private network for your devices. Add it to your home screen like an app. Your data stays on your computer.</p>
+      </div>
+      <figure class="phone"><img src="assets/shots/phone.webp" width="780" height="1688" loading="lazy" alt="Moneo's overview on a phone"></figure>
+    </article>
+  </section>
+
+  <section id="run" class="wrap section">
+    <p class="eyebrow">Get it</p>
+    <h2>Two ways to run it</h2>
+    <p class="section-lede">Same app, same features. Changes to the code reach both.</p>
+    <div class="ways">
+      <div class="way">
+        <h3>Download the app</h3>
+        <p>For everyone. Install it and open it: no Docker, Node.js or terminal. Updates come from <b>Settings → App updates</b>.</p>
+        <ol>
+          <li>Download Moneo for your computer below.</li>
+          <li>Open it. The first start sets up your private database (about a minute).</li>
+          <li>Add your AI in Settings, then import a statement or connect your bank.</li>
+        </ol>
+        <a class="btn btn-primary" href="#download" data-download-primary><span aria-hidden="true">↓</span> Download</a>
+      </div>
+      <div class="way">
+        <h3>Run from the source</h3>
+        <p>For developers who want to read or change the code. Needs Git, Node.js 22 or newer and Docker.</p>
+        <div class="snippet">
+          <pre><code>git clone https://github.com/indkhan/Moneo.git
+cd Moneo
+npm ci
+npm run setup
+npm run build
+npm start</code></pre>
+          <button class="copy" type="button" data-copy="git clone https://github.com/indkhan/Moneo.git&#10;cd Moneo&#10;npm ci&#10;npm run setup&#10;npm run build&#10;npm start">Copy</button>
+        </div>
+        <a class="btn btn-secondary" href="https://github.com/indkhan/Moneo#readme">Read the setup guide</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" class="wrap section">
+    <p class="eyebrow">Download</p>
+    <h2>Get Moneo for your computer</h2>
+    <p class="section-lede" data-release-status>Looking up the latest release…</p>
+    <div class="downloads" data-downloads>
+      <a class="dl" data-asset="win" href="https://github.com/indkhan/Moneo/releases/latest"><b>Windows</b><span>Windows 10 and 11, 64-bit</span><em data-size></em></a>
+      <a class="dl" data-asset="mac-arm" href="https://github.com/indkhan/Moneo/releases/latest"><b>macOS, Apple silicon</b><span>M1 and newer</span><em data-size></em></a>
+      <a class="dl" data-asset="mac-intel" href="https://github.com/indkhan/Moneo/releases/latest"><b>macOS, Intel</b><span>Intel Macs</span><em data-size></em></a>
+      <a class="dl" data-asset="appimage" href="https://github.com/indkhan/Moneo/releases/latest"><b>Linux AppImage</b><span>Most distributions, updates itself</span><em data-size></em></a>
+      <a class="dl" data-asset="deb" href="https://github.com/indkhan/Moneo/releases/latest"><b>Linux .deb</b><span>Debian and Ubuntu</span><em data-size></em></a>
+    </div>
+    <details class="unsigned">
+      <summary>Your computer may warn you the first time</summary>
+      <p>The installers aren't code-signed yet, so your system doesn't recognise the publisher. You can check each file against <code>SHA256SUMS.txt</code> in the release.</p>
+      <ul>
+        <li><b>Windows:</b> if “Windows protected your PC” appears, choose <i>More info</i>, then <i>Run anyway</i>.</li>
+        <li><b>macOS:</b> right-click Moneo in Applications, choose <i>Open</i>, then <i>Open</i> again.</li>
+        <li><b>Linux AppImage:</b> make it executable (<code>chmod +x Moneo-*.AppImage</code>), then run it.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section id="privacy" class="wrap section">
+    <p class="eyebrow">Privacy</p>
+    <h2>Built so your data stays yours</h2>
+    <div class="cards">
+      <div class="card"><h3>No account, no cloud</h3><p>Moneo runs on your computer. There is no Moneo server and no sign-up.</p></div>
+      <div class="card"><h3>Only what you connect</h3><p>Data goes only to your AI provider, and your bank or Scalable if you connect them. No analytics, no tracking.</p></div>
+      <div class="card"><h3>Numbers come from code</h3><p>Money is stored exactly, in its currency. The AI explains and proposes; it never quietly changes your data.</p></div>
+      <div class="card"><h3>Nothing is lost</h3><p>Imports and changes can be undone, and the desktop app backs up your data every day.</p></div>
+    </div>
+  </section>
+
+  <section id="faq" class="wrap section">
+    <p class="eyebrow">FAQ</p>
+    <h2>Questions</h2>
+    <div class="faq">
+      <details><summary>Is Moneo free?</summary><p>Yes. Moneo is free and open source under the MIT license. The AI uses your own ChatGPT plan or an API key, so any AI costs are between you and your provider.</p></details>
+      <details><summary>Does any of my financial data go online?</summary><p>Only to services you connect yourself: your AI provider when you ask a question, Enable Banking to sync your bank, and Scalable Capital for investments. Everything else stays in the database on your computer.</p></details>
+      <details><summary>What's the difference between the app and running from source?</summary><p>None in features. The app bundles everything, the database included, so you just install it. Running from source is for people who want to change the code; it uses Docker for the database.</p></details>
+      <details><summary>Can I use it on my phone?</summary><p>Yes. Turn on phone access in Settings and connect your phone with Tailscale. Moneo stays on your computer; your phone opens it from there.</p></details>
+      <details><summary>How do updates work?</summary><p>In the app, open <b>Settings → App updates</b> and choose <i>Check for updates</i>. On Windows and Linux (AppImage) Moneo installs the update and restarts with your data. On a Mac it opens the download. From source: <code>git pull</code>, <code>npm ci</code>, <code>npm run setup</code>, <code>npm run build</code>, then <code>npm start</code>.</p></details>
+      <details><summary>Which banks work?</summary><p>Banks available through Enable Banking, which covers many banks across Europe. Any bank works through statement import.</p></details>
+    </div>
+  </section>
+
+  <section class="wrap section closing">
+    <h2>Take your finances back home.</h2>
+    <div class="cta-row center">
+      <a class="btn btn-primary" href="#download" data-download-primary><span aria-hidden="true">↓</span> Download Moneo</a>
+      <a class="btn btn-secondary" href="https://github.com/indkhan/Moneo">Star on GitHub</a>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-row">
+    <a class="brand" href="./"><img src="assets/icon.png" alt="" width="22" height="22"><span>Moneo</span></a>
+    <nav aria-label="Footer">
+      <a href="https://github.com/indkhan/Moneo">GitHub</a>
+      <a href="https://github.com/indkhan/Moneo/releases">Releases</a>
+      <a href="https://github.com/indkhan/Moneo#readme">Docs</a>
+      <a href="https://github.com/indkhan/Moneo/issues">Issues</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </nav>
+    <span class="dim">MIT license</span>
+  </div>
+</footer>
+</body>
+</html>
