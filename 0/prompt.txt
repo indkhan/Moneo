@@ -1,0 +1,25 @@
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it). Goal: chat charts that look like a real finance app, with more chart types and exact data. This is not about artifacts: when the owner's request is better served by an interactive artifact, chat keeps suggesting one via suggest_artifact as it does today.
+
+Current state: the model writes a ```moneo-chart JSON block (spec described in SYSTEM_PROMPT in `lib/ai/provider.ts`; Zod schema and rendering in `components/chat-chart.tsx` using ECharts via `components/chart.tsx` / `components/echarts-lean.tsx`). Types: bar/line/area with at most 24 labels and 4 series, plus pie/donut/treemap/bubble with at most 20 items. The model copies every number by hand. Chart blocks are stripped from history in `app/api/chat/route.ts` (~line 41). Also look at `components/cards/card-chart.tsx` and the home/wealth charts for the app's visual language.
+
+The owner picked:
+1. Visual polish: proper axes with compact money ticks, subtle gridlines, good tooltips with formatted amounts, a legend, reference lines/annotations (e.g. average, budget, today), smooth entry animation, good mobile layout, light and dark. Keep the accessible table toggle. Use the dataviz skill's guidance if you have it. Check `npm run check:bundle` after a build; register only the ECharts pieces you need in echarts-lean.
+2. More types: waterfall (e.g. month-start balance → income → spending categories → month-end), sankey (income → spending categories), combined bar + line (e.g. monthly spending bars + running balance line, dual axis allowed), scatter, calendar heatmap (daily spending), and forecast/range bands (line with a shaded min-max). Keep the strict Zod-only spec: no functions, code or styling from the model.
+3. More and exact data: allow far more points for time series (e.g. up to 400 labels / daily for a year; the chart thins its axis labels). Charts should be able to take their numbers straight from tool results instead of the model copying them. Design: add a chat tool (e.g. `chart_data`) that runs server-side, deterministic queries for common chart datasets (spending by category / merchant / month, income vs spending by month, daily spending, account balance history, net worth history: reuse existing lib/finance functions, never re-implement money logic). It returns the exact minor-unit series plus a `datasetId`. The moneo-chart block can then reference that dataset (e.g. `"data": {"datasetId": ...}`) instead of inline numbers; the server resolves it before the message is saved/streamed so the client gets the validated numbers. Look at how investments tools already return `{ datasetId, data }` (lib/ai/investment-tools.ts) and reuse that pattern if it fits. Keep the data-source interface open: another agent is adding a read-only SQL tool (`data_query`) in parallel, and later its results should be able to feed a chart the same way, so take a dataset of rows + column mapping rather than only named presets. Inline values still work for small ad-hoc charts.
+Update only the chart section of SYSTEM_PROMPT (another agent is rewriting the rest of the prompt in parallel; keep your edit inside that section and keep it tight). Check the voice call and artifacts don't break on the new blocks, and that history stripping still works.
+
+Tests: unit tests for spec validation of the new types and dataset resolution (exact minor units, currency mismatch rejected), and for any new money aggregation. No tests that assert copy. Take before/after screenshots of each chart type in light and dark at phone and desktop widths on the QA server (`npm run qa:server`, seeded QA workspace; never the owner's app on port 3000) and attach them to the PR.
+
+When done: run npm test, lint, typecheck, build and check:bundle. Commit in steps on your branch, push, and open a PR against main (you may open it without asking; never merge it). End the PR body with "🤖 Generated with [Claude Code](https://claude.com/claude-code)" and commits with "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>". Report back the PR URL and any decisions you made yourself.
+
+---
+
+<task-notification>
+<task-id>byh0ahi1x</task-id>
+<tool-use-id>toolu_01NmZfr2dEv9BGMnAtaSDQns</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\877edb7238c32a6c\aa416ad7-1f1c-4865-ad65-aae0d4b7641e\tasks\byh0ahi1x.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci &gt; ../npm-ci-charts.log 2&gt;&amp;1; echo done $?" completed (exit code 0)</summary>
+</task-notification>
