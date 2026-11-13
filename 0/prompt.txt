@@ -1,0 +1,11 @@
+Did u check the call as well that should look like a real call and take full screen and the queries in that page and all and then for each thing don’t only attach pic here in chat but also in the pr for each screen before and after the before only if u have no need to build it
+
+---
+
+<task-notification>
+<task-id>b9w52tgk1</task-id>
+<tool-use-id>toolu_01RrCUXpgHVYdSXvPY51nJVk</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c09642aa4624ab5d\f2ab37f9-0e59-4caf-805f-392ec8e82a27\tasks\b9w52tgk1.output</output-file>
+<status>failed</status>
+<summary>Background command "Run QA dev server" failed with exit code 1</summary>
+</task-notification>
