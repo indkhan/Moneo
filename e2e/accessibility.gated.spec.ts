@@ -39,7 +39,11 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
     await expect(page.locator("h1").first()).toBeVisible();
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
   }
-  await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
+  // Phones open the assistant from search: the Ask tab goes to the full-screen chat instead.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Search or ask Moneo" }).first().click();
+  await page.getByRole("combobox", { name: "Search commands" }).fill("What changed this month?");
+  await page.getByRole("option", { name: /^Ask Moneo/ }).click();
   const dialog = page.getByRole("dialog", { name: "AI assistant" });
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("button", { name: "Close AI assistant" })).toBeFocused();
@@ -53,7 +57,6 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   await expect(page.getByRole("button", { name: "Close AI assistant" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Ask Moneo", exact: true })).toBeFocused();
   await page.screenshot({ path: ".qa/library-mobile-dark.png", fullPage: true });
   } finally {
     try {

@@ -158,7 +158,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
 
   return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onCancel={event => { event.preventDefault(); onClose(); }} className="fixed inset-y-0 right-0 left-auto z-40 m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-xl">
     <div className="flex h-full flex-col">
-      <header className="flex flex-row-reverse items-center gap-1 border-b border-border px-3 py-2.5">
+      <header className="flex flex-row-reverse items-center gap-1 border-b border-border px-3 py-2.5 max-lg:pt-[calc(0.625rem+env(safe-area-inset-top))]">
         <button type="button" onClick={onClose} aria-label="Close AI assistant" className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" /></button>
         <button type="button" disabled={busy || !selectionKey} onClick={() => { selectConversation(selectionKey, "new"); setQuestion(""); if (pathname === "/ai") { router.push("/ai?conversation=new"); router.refresh(); } }} className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><SquarePen className="size-4" aria-hidden="true" />New chat</button>
         <h2 className="mr-auto pl-2 text-base font-semibold">Ask Moneo</h2>
@@ -171,7 +171,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
         <div ref={end} />
         {!history.length && !pending && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
       </div>
-      <div className="px-3 pb-3">
+      <div className="px-3 pb-3 max-lg:pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         {about && <p className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">About: <span className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5 text-foreground">{about.label}</span><button type="button" onClick={() => setAbout(null)} aria-label="Remove context" className="hover:text-foreground"><X className="size-3" aria-hidden="true" /></button></p>}
         <ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} />
         <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" attachments={files} voice={{ onSend: sendSpoken }} />
