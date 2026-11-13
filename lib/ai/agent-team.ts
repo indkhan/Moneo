@@ -11,7 +11,7 @@ import { recurringCadences } from "@/lib/finance/cadences";
 
 export const AGENTS = {
   lead: { name: "Lead", role: "Plans the run, assigns work, merges results and resolves conflicts", scopes: [] },
-  categorizer: { name: "Categorizer", role: "Proposes merchants and categories for unorganized rows and learns rules", scopes: ["transactions"] },
+  categorizer: { name: "Categorizer", role: "Labels unorganized rows with merchants and categories, marked as AI and undoable; unsure ones wait for you", scopes: ["transactions"] },
   recurring: { name: "Recurring detective", role: "Finds subscriptions and bills and raises them on Home", scopes: ["accounts", "transactions"] },
   anomaly: { name: "Anomaly hunter", role: "Finds duplicates, fees, unusual charges and price increases", scopes: ["transactions"] },
   budget: { name: "Budget coach", role: "Proposes monthly category limits from real history", scopes: ["transactions", "planning"] },
@@ -26,7 +26,9 @@ export const WAVES: AgentId[][] = [["categorizer"], ["recurring", "anomaly", "bu
 const versioned = z.object({ id: z.uuid(), version: z.number().int().min(0).max(2147483647) }).strict();
 export const payloadSchemas = {
   categorize: z.object({ rows: z.array(versioned).min(1).max(50), patch: z.object({ merchant_id: z.uuid().nullable().optional(), category_id: z.uuid().nullable().optional() }).strict(),
-    merchantName: z.string().trim().min(1).max(100).nullable(), ruleKey: z.string().min(3).max(1000).nullable(), evidence: z.array(versioned).max(2000) }).strict(),
+    merchantName: z.string().trim().min(1).max(100).nullable(), ruleKey: z.string().min(3).max(1000).nullable(), evidence: z.array(versioned).max(2000),
+    // The organization description key; an undone AI label is suppressed for it. Missing on proposals from before it existed.
+    identityKey: z.string().max(1000).optional() }).strict(),
   recurring: z.object({ accountId: z.uuid(), label: z.string().trim().min(1).max(200), cadence: z.enum(recurringCadences), currencyCode: z.string().regex(/^[A-Z]{3}$/),
     evidence: z.array(versioned).min(3).max(1000), runAnchorId: z.uuid(), evidenceLimited: z.boolean() }).strict(),
   budget: z.object({ categoryId: z.uuid(), currencyCode: z.string().regex(/^[A-Z]{3}$/), limitMinor: z.string().regex(/^[1-9]\d{0,17}$/) }).strict(),
@@ -96,6 +98,8 @@ export function backlogRerunNeeded(backlog: Backlog) {
 }
 
 // ── Categorizer ──────────────────────────────────────────────────────────────
+/** High and medium labels are applied by the organizer itself; low ones wait for the owner. */
+export const aiConfidence = (confidence: number) => confidence >= 85 ? "high" as const : confidence >= 60 ? "medium" as const : "low" as const;
 const BASIS: Record<OrganizationProposal["basis"], string> = {
   "approved-rule": "Your saved rule", "consistent-history": "Consistent history", "provider-suggestion": "AI suggestion (quoted from the description)", "review-required": "Repeated description",
 };
@@ -123,19 +127,21 @@ export function categorizeGroups(proposals: OrganizationProposal[], rows: Map<st
     for (let offset = 0; offset < members.length; offset += 50) {
       const chunk = members.slice(offset, offset + 50);
       const evidence = [...new Map(chunk.flatMap(item => item.evidence).map(item => [item.id, item])).values()].slice(0, 2000);
+      const confidence = basis === "approved-rule" ? 95 : basis === "consistent-history" ? 85 : basis === "provider-suggestion" ? 60 : 45;
       const target = [merchantId ? names.merchants.get(merchantId) ?? "known merchant" : merchantName ? `new merchant “${titleCase(merchantName)}”` : null,
         categoryId ? names.categories.get(categoryId) ?? "known category" : null].filter(Boolean).join(" · ");
       result.push({ agent: "categorizer", kind: "categorize", conflictKey: `categorize:${key}:${offset}`,
         title: `${target} for ${chunk.length} “${descriptionKey.slice(0, 40)}” ${chunk.length === 1 ? "row" : "rows"}`,
-        detail: `${BASIS[basis]}. Applies one audited batch${descriptionKey.length >= 3 ? " and saves a rule for future imports" : ""}; Undo restores every row.`,
+        detail: aiConfidence(confidence) === "low" ? `${BASIS[basis]}. Accepting applies one audited batch${descriptionKey.length >= 3 ? " and saves a rule for future imports" : ""}; Undo restores every row.`
+          : `${BASIS[basis]}. Applied automatically as an AI label, without saving a rule; Undo restores every row.`,
         evidence: { facts: [{ label: "Rows", value: String(chunk.length) }, { label: "Basis", value: BASIS[basis] },
           ...(evidence.length ? [{ label: "Matching history", value: `${evidence.length} earlier rows` }] : []),
           ...(chunk[0].evidenceQuote ? [{ label: "Quoted text", value: chunk[0].evidenceQuote }] : [])],
           transactions: chunk.slice(0, 5).map(item => evidenceRow(rows.get(item.transactionId)!)), links: [{ label: "Organization", href: "/money/organization" }] },
         payload: { rows: chunk.map(item => ({ id: item.transactionId, version: item.version })),
           patch: { ...(merchantId ? { merchant_id: merchantId } : {}), ...(categoryId ? { category_id: categoryId } : {}) },
-          merchantName: merchantName ? titleCase(merchantName) : null, ruleKey: descriptionKey.length >= 3 ? descriptionKey : null, evidence },
-        confidence: basis === "approved-rule" ? 95 : basis === "consistent-history" ? 85 : basis === "provider-suggestion" ? 60 : 45, notes: [] });
+          merchantName: merchantName ? titleCase(merchantName) : null, ruleKey: descriptionKey.length >= 3 ? descriptionKey : null, evidence, identityKey: descriptionKey.slice(0, 1000) },
+        confidence, notes: [] });
     }
   }
   return result.sort((a, b) => b.payload.rows.length - a.payload.rows.length);

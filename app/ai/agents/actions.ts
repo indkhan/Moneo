@@ -13,6 +13,19 @@ export async function decideAgentProposals(ids: string[], decision: "accept" | "
   return outcomes;
 }
 
+/** Takes back one automatic Categorizer decision: every AI label it wrote that hasn't changed since. */
+export async function undoAutoOrganization(proposalId: string) {
+  const id = z.uuid().parse(proposalId);
+  const { supabase, workspace } = await requireWorkspace();
+  const { data, error } = await supabase.from("organizer_ops").select("id").eq("workspace_id", workspace.id).eq("proposal_id", id).is("undone_at", null).limit(500);
+  if (error) throw new Error(error.message);
+  if (!data.length) return { undone: 0, skipped: 0 };
+  const result = await supabase.rpc("undo_ai_organization", { p_op_ids: data.map(row => row.id) });
+  if (result.error) throw new Error(result.error.message);
+  revalidatePath("/", "layout");
+  return z.object({ undone: z.number().int(), skipped: z.number().int() }).parse(result.data);
+}
+
 /** Titles and current statuses for a chat decision card. */
 export async function loadAgentProposals(ids: string[]) {
   const parsed = z.array(z.uuid()).min(1).max(100).parse(ids);

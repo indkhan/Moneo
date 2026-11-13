@@ -1,19 +1,21 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { finishRun, recoverStuckProposals, runAgent } from "@/lib/ai/agent-runtime";
+import { autoApplyRun, finishRun, recoverStuckProposals, runAgent } from "@/lib/ai/agent-runtime";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const db = vi.hoisted(() => ({ run: {} as Record<string, unknown>, settings: {} as Record<string, unknown>, tasks: [] as Record<string, unknown>[], ledger: [] as Record<string, unknown>[],
-  writes: [] as { table: string; op: string; value: unknown }[], dropOnce: null as null | { table: string; op: string } }));
+  writes: [] as { table: string; op: string; value: unknown }[], dropOnce: null as null | { table: string; op: string }, proposals: [] as Record<string, unknown>[],
+  rpcs: [] as { name: string; args: Record<string, unknown> }[] }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => { throw new Error("no model in tests"); }) }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
-  rpc: async () => ({ data: false, error: null }),
+  rpc: async (name: string, args: Record<string, unknown>) => { db.rpcs.push({ name, args }); return { data: name === "apply_ai_organization" ? { applied: 1, transactionIds: [id(10)], skipped: {} } : false, error: null }; },
   from: (table: string) => {
     const filters: Record<string, unknown> = {};
     let op = "select", value: unknown;
-    const rows = () => table === "agent_tasks" ? db.tasks.filter(task => !filters.agent || task.agent === filters.agent) : table === "transactions" ? db.ledger : [];
+    const rows = () => table === "agent_tasks" ? db.tasks.filter(task => !filters.agent || task.agent === filters.agent) : table === "transactions" ? db.ledger
+      : table === "agent_proposals" ? db.proposals.filter(row => !filters.id || row.id === filters.id) : [];
     const result = () => {
       if (db.dropOnce?.table === table && db.dropOnce.op === op) { db.dropOnce = null; return { data: null, error: { message: "rest is not reachable" } }; }
-      if (op !== "select") { db.writes.push({ table, op, value }); if (table === "agent_tasks" && op === "update") for (const task of rows()) Object.assign(task, value); if (table === "agent_tasks" && op === "insert") db.tasks.push(...([value].flat() as Record<string, unknown>[]).map(row => ({ events: [], ...row }))); return { data: null, error: null }; }
+      if (op !== "select") { db.writes.push({ table, op, value }); if (table === "agent_proposals" && op === "update") { for (const row of rows()) Object.assign(row, value); return { data: rows()[0] ?? null, error: null }; } if (table === "agent_tasks" && op === "update") for (const task of rows()) Object.assign(task, value); if (table === "agent_tasks" && op === "insert") db.tasks.push(...([value].flat() as Record<string, unknown>[]).map(row => ({ events: [], ...row }))); return { data: null, error: null }; }
       if (table === "agent_runs") return { data: db.run, error: null };
       if (table === "workspaces") return { data: { id: id(1), display_currency: "EUR" }, error: null };
       if (table === "workspace_settings") return { data: db.settings, error: null };
@@ -33,7 +35,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("OPENAI_API_KEY", "");
   db.run = { status: "running", cancel_requested: false, model_status: "disabled", import_id: null };
-  db.settings = {}; db.tasks = []; db.writes = []; db.dropOnce = null;
+  db.settings = {}; db.tasks = []; db.writes = []; db.dropOnce = null; db.proposals = []; db.rpcs = [];
   db.ledger = [...Array.from({ length: 12 }, (_, n) => ({ id: id(n + 10), version: 1, posted_on: `2026-08-${String(n + 1).padStart(2, "0")}`, description: `SHOP ${n}`, amount_minor: "-2000" })),
     { id: id(40), version: 1, posted_on: "2026-10-01", description: "CAFE LUNA", amount_minor: "-450" }, { id: id(41), version: 1, posted_on: "2026-10-01", description: "CAFE LUNA", amount_minor: "-450" }]
     .map(row => ({ ...row, currency_code: "EUR", account_id: id(2), category_id: null, merchant_id: null, kind: "ordinary", status: "posted", review_reasons: [] }));
@@ -86,7 +88,7 @@ it("a run with a failed agent finishes failed, so it can be resumed and the back
 
 it("returns proposals stuck in applying: landed changes are accepted, the rest wait again", async () => {
   const proposals = [{ id: id(70), workspace_id: id(1), kind: "categorize", status: "applying" }, { id: id(71), workspace_id: id(1), kind: "categorize", status: "applying" }];
-  const reviews = [{ id: id(80), workspace_id: id(1), request_id: id(70), status: "applied" }, { id: id(81), workspace_id: id(1), request_id: id(71), status: "pending" }];
+  const reviews = [{ id: id(80), workspace_id: id(1), proposal_id: id(70), transaction_id: id(90) }];
   const filters: Record<string, [string, unknown][]> = {};
   const fake = { from: (table: string) => {
     const where: [string, unknown][] = filters[table] = [];
@@ -100,6 +102,20 @@ it("returns proposals stuck in applying: landed changes are accepted, the rest w
   } };
   await recoverStuckProposals(fake as never, id(1), Date.parse("2026-11-13T12:00:00Z"));
   expect(filters["agent_proposals.lt"]).toEqual([["decided_at", "2026-11-13T11:55:00.000Z"]]);
-  expect(proposals[0]).toMatchObject({ status: "accepted", result: { reviewId: id(80) } });
+  expect(proposals[0]).toMatchObject({ status: "accepted", result: { auto: true, applied: 1, href: `/money/transactions?transaction=${id(90)}` } });
   expect(proposals[1]).toMatchObject({ status: "proposed", decided_at: null });
+});
+
+// The old auto-apply wrote every Categorizer proposal as the owner's correction and saved it as an owner rule.
+it("auto-applies only high and medium confidence as AI labels and leaves low confidence for the owner", async () => {
+  const payload = (n: number) => ({ rows: [{ id: id(n), version: 2 }], patch: { category_id: id(60) }, merchantName: n === 11 ? "Cafe Luna" : null, ruleKey: "cafe luna", evidence: [], identityKey: "cafe luna" });
+  const evidence = { facts: [{ label: "Basis", value: "Consistent history" }], transactions: [], links: [] };
+  db.proposals = [[id(80), 10, 95], [id(81), 11, 60], [id(82), 12, 45]].map(([pid, n, confidence]) => ({ id: pid, payload: payload(n as number), notes: [], confidence, evidence, status: "proposed" }));
+  await autoApplyRun(id(9), id(1));
+  expect(db.rpcs.map(call => call.name)).toEqual(["apply_ai_organization", "apply_ai_organization"]);
+  expect(db.rpcs[0].args).toEqual({ p_workspace: id(1), p_run: id(9), p_proposal: id(80), p_items: [{ transaction_id: id(10), expected_version: 2, category_id: id(60), merchant_id: null,
+    merchant_name: null, confidence: "high", reason: "Consistent history", identity_key: "cafe luna" }] });
+  expect(db.rpcs[1].args.p_items).toEqual([expect.objectContaining({ transaction_id: id(11), merchant_name: "Cafe Luna", confidence: "medium" })]);
+  expect(db.proposals.map(row => row.status)).toEqual(["accepted", "accepted", "proposed"]);
+  expect(db.proposals[0].result).toMatchObject({ auto: true, applied: 1 });
 });
