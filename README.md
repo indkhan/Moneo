@@ -62,7 +62,8 @@ The build takes a few minutes the first time. Then open **http://localhost:3000*
 
 Go to **Settings → Keys and connections → AI access** and choose one:
 
-- **Sign in with ChatGPT** to use your ChatGPT Go, Plus or Pro plan, or
+- **Sign in with ChatGPT** to use your ChatGPT Go, Plus or Pro plan,
+- **Sign in with Claude** to use your Claude Pro, Max, Team or Enterprise plan (see [Use your Claude plan](#use-your-claude-plan-optional)), or
 - **Paste an OpenAI API key** ([create one here](https://platform.openai.com/api-keys)) and click **Save key**. Usage is billed to that key.
 
 Voice calls and dictation need the OpenAI API key. An OpenRouter key is optional (for other models).
@@ -96,6 +97,21 @@ Opening Moneo or coming back to it also syncs in the background (Scalable at mos
 
 Every key and outside service is set up in the app under **Settings → Keys and connections**. Keys are checked with the provider before they are saved, stored encrypted in your database, shown only by their last four characters, and can be replaced or removed at any time. The same section shows that the secrets made by `npm run setup` are in place.
 
+### Use your Claude plan (optional)
+
+Moneo can run on your Claude subscription instead of an API key. It uses Claude Code, which comes with Moneo, signed in with your own Claude account on this computer. Moneo never sees or stores your Claude login; Claude Code keeps it, the same one the Claude Code app uses.
+
+1. In **Settings → AI access**, click **Sign in with Claude** on this computer. A Claude sign-in page opens in your browser.
+2. Sign in. If the page shows a code, paste it into Moneo and click **Continue**. If you're already signed in to Claude Code, Moneo shows your account straight away; click **Use Claude plan**.
+
+Chat, artifacts, briefings, imports and the agents then run on Claude (Opus 5.5 for the chat, Haiku 5.5 for lighter tasks; change them under **Settings → AI and your data → Advanced**). Requests count toward your plan's usage limits, shown at [claude.ai/settings/usage](https://claude.ai/settings/usage).
+
+- **Never billed to an API key.** Moneo removes `ANTHROPIC_API_KEY` and similar settings before it starts Claude Code, and only runs Claude when Claude Code is signed in with a Claude plan. If you sign out of Claude Code, AI stays off until you sign in again or pick another option.
+- **Only Moneo's tools.** Claude gets Moneo's finance tools and nothing else: no files, no shell, no other MCP servers, and no chat history saved by Claude Code. Changes still go through cards you accept.
+- **Not yet:** PDFs in chat (photos work), and voice calls and dictation, which still need an OpenAI API key for the audio.
+- **Stop using Claude** switches Moneo back to ChatGPT or your API key. It doesn't sign you out of Claude Code.
+- Anthropic's rules say apps may not offer Claude plan sign-in without its approval ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)). Moneo only uses the Claude Code login you set up yourself, on your own computer. Decide for yourself whether that fits your use.
+
 ### Connect your bank (optional)
 
 Moneo syncs booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). It is free for personal use. Each sync is an ordinary import that you can review and undo.
@@ -125,7 +141,7 @@ Artifact Pages and Home cards can show your Scalable portfolio, recent activity 
 
 ### Use it from your phone or tablet (optional)
 
-Your phone becomes another screen on the Moneo running on this computer: same data, same ChatGPT, bank and Scalable connections. It is off until you turn it on, and nothing changes on this computer.
+Your phone becomes another screen on the Moneo running on this computer: same data, same ChatGPT, Claude, bank and Scalable connections. It is off until you turn it on, and nothing changes on this computer.
 
 1. Go to **Settings → Keys and connections → Phone and tablet** and click **Turn on**. Moneo tells you if it needs [Tailscale](https://tailscale.com/download) installed, a sign-in, or one approval for secure addresses.
 2. On your phone or tablet, install Tailscale and sign in with the same account.
@@ -135,7 +151,7 @@ The address and code are your own, from your own Tailscale account. Only devices
 
 Moneo then opens like an app. It never keeps your numbers on the phone: when the computer is off, it says so and shows nothing until the computer is back.
 
-Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, start Docker and run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, bank and Scalable logins start on this computer, because those services only return to its address. On Linux, first run `sudo tailscale set --operator=$USER`.
+Keep this computer on and awake with Moneo running: on a laptop, stay plugged in and set closing the lid to do nothing. After a restart, start Docker and run `npm start` again. On Windows, `tailscale set --unattended=true` keeps Tailscale connected after a restart. New ChatGPT, Claude, bank and Scalable logins start on this computer, because those services only return to its address. On Linux, first run `sudo tailscale set --operator=$USER`.
 
 How it works, step by step: [docs/phone-access-deep-dive.html](docs/phone-access-deep-dive.html).
 
