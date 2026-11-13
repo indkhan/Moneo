@@ -66,13 +66,14 @@ export function CitationChip({ file, citation }: { file: ChatAttachment; citatio
   const where = citation.parsed ? locationLabel(citation.parsed) : "";
   const label = where ? `${file.name} · ${where}` : file.name;
   const chip = "mx-0.5 inline-flex max-w-56 items-center gap-1 rounded-full border border-border bg-muted px-2 py-px align-[1px] text-xs font-normal text-muted-foreground no-underline hover:border-muted-foreground/60 hover:text-foreground";
-  const content = <><FileText className="size-3 shrink-0" aria-hidden="true" /><span className="truncate">{label}</span></>;
+  // A long file name is cut, never the place in it.
+  const content = <><FileText className="size-3 shrink-0" aria-hidden="true" /><span className="min-w-0 truncate">{file.name}</span>{where && <span className="shrink-0">· {where}</span>}</>;
   // PDFs and photos open in the browser's own viewer, a PDF at the cited page.
   if (file.type === "application/pdf" || file.type.startsWith("image/") || !citation.parsed) {
     const page = citation.parsed?.kind === "page" ? `#page=${citation.parsed.from}` : "";
-    return <a href={`${fileUrl(file)}${page}`} target="_blank" rel="noreferrer" className={chip} title={citation.quote ? `“${citation.quote}”` : label}>{content}</a>;
+    return <a href={`${fileUrl(file)}${page}`} target="_blank" rel="noreferrer" className={chip} aria-label={label} title={citation.quote ? `“${citation.quote}”` : label}>{content}</a>;
   }
-  return <><button type="button" onClick={() => setOpen(true)} className={chip} title={citation.quote ? `“${citation.quote}”` : label}>{content}</button>
+  return <><button type="button" onClick={() => setOpen(true)} className={chip} aria-label={label} title={citation.quote ? `“${citation.quote}”` : label}>{content}</button>
     {/* A dialog cannot sit inside the paragraph the chip is in. */}
     {open && createPortal(<DocumentViewer file={file} citation={citation} label={label} onClose={() => setOpen(false)} />, document.body)}</>;
 }

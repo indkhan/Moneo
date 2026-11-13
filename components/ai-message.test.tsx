@@ -88,7 +88,7 @@ it("shows citations as chips only for files in this conversation, opening a PDF 
   const files = [{ path: "00000000-0000-4000-8000-000000000001/a1b2c3d4-0000-4000-8000-000000000002.pdf", name: "statement.pdf", type: "application/pdf" as const },
     { path: "00000000-0000-4000-8000-000000000001/b1b2c3d4-0000-4000-8000-000000000002.xlsx", name: "budget.xlsx", type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const }];
   const html = renderToStaticMarkup(<AiMessage files={files} content={'Rent is 950. {{cite a1b2c3d4 p.3 "Rent 950"}} Power is 60. {{cite b1b2c3d4 Budget!C3}} Made up. {{cite ffffffff p.1}}\n\n```sql\n{{cite a1b2c3d4 p.9}}\n```'} />);
-  expect(html).toContain("statement.pdf · p.3");
+  expect(html).toContain(`aria-label="statement.pdf · p.3"`);
   expect(html).toContain(`href="/api/chat/attachments?path=00000000-0000-4000-8000-000000000001%2Fa1b2c3d4-0000-4000-8000-000000000002.pdf#page=3"`);
   expect(html).toContain("budget.xlsx · Budget!C3");
   expect(html).not.toContain("ffffffff");
