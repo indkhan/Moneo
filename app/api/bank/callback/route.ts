@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { start } from "workflow/api";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { connectionReturn } from "@/lib/desktop-bridge";
 import { enableBankingClient } from "@/lib/bank/enable-banking";
 import { bankAccountNames, psuFrom, serviceDb } from "@/lib/bank/server";
+import { startBankSync } from "@/lib/bank/start-sync";
 import { encryptToken } from "@/lib/bank/token-crypto";
-import { syncBankConnection } from "@/workflows/bank-sync";
 
 const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1).max(2000).optional(), error: z.string().max(200).optional() });
 
@@ -44,7 +43,7 @@ export async function GET(request: Request) {
     // A reconnect supersedes older connections to the same bank; account names match, so imports land in the same accounts.
     await db.from("bank_connections").update({ status: "revoked", session_id_encrypted: null }).eq("workspace_id", workspaceId)
       .eq("aspsp_name", pending.data.aspsp_name).in("status", ["active", "expired", "error"]).neq("id", connectionId);
-    await start(syncBankConnection, [connectionId, workspaceId, psu]);
+    await startBankSync(connectionId, workspaceId, psu);
     return back("connected");
   } catch {
     return fail("The bank session could not be created");
