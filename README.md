@@ -108,7 +108,8 @@ Chat, artifacts, briefings, imports and the agents then run on Claude (Opus 5.5 
 
 - **Never billed to an API key.** Moneo removes `ANTHROPIC_API_KEY` and similar settings before it starts Claude Code, and only runs Claude when Claude Code is signed in with a Claude plan. If you sign out of Claude Code, AI stays off until you sign in again or pick another option.
 - **Only Moneo's tools.** Claude gets Moneo's finance tools and nothing else: no files, no shell, no other MCP servers, and no chat history saved by Claude Code. Changes still go through cards you accept.
-- **Not yet:** PDFs in chat (photos work), and voice calls and dictation, which still need an OpenAI API key for the audio.
+- **PDFs in chat** are read on your computer and sent to Claude as text. A scanned PDF has no text to read, so attach photos of its pages instead.
+- **Not yet:** voice calls and dictation, which still need an OpenAI API key for the audio.
 - **Stop using Claude** switches Moneo back to ChatGPT or your API key. It doesn't sign you out of Claude Code.
 - Anthropic's rules say apps may not offer Claude plan sign-in without its approval ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)). Moneo only uses the Claude Code login you set up yourself, on your own computer. Decide for yourself whether that fits your use.
 
