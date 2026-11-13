@@ -27,6 +27,8 @@ vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: vi.fn(async () => ({ source: "exact evidence" })) }));
 vi.mock("@/lib/finance/edit-preview", async original => ({ ...await original<typeof import("@/lib/finance/edit-preview")>(), loadCategoryPreview: vi.fn(async () => ({ href: "/ai/actions/preview?ids=selected&category=owned", warning: "Preview only" })) }));
+vi.mock("@/lib/ai/chart-data", async original => ({ ...await original<typeof import("@/lib/ai/chart-data")>(),
+  loadChartData: vi.fn(async () => ({ dataset: { columns: { month: { kind: "date" }, spending: { kind: "money", currency: "EUR" } }, rows: [{ month: "2026-09", spending: "123456" }, { month: "2026-10", spending: "7" }] } })) }));
 vi.mock("@/lib/finance/tools", async importOriginal => ({
   ...(await importOriginal<typeof import("@/lib/finance/tools")>()),
   ...Object.fromEntries(["listAccounts", "getBalances", "cashflow", "searchTransactions", "listGoals", "evaluateForecast"].map(name => [name, vi.fn(async () => ({ synthetic: name }))])),
@@ -58,6 +60,17 @@ it("gives the model readable tool output without internal evidence", async () =>
   await POST(request("Show September spending"));
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
   expect(await tools.analytics_cashflow.execute({ from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR" }, {})).toEqual({ currencyCode: "EUR", spendingMinor: "2500", spendingFormatted: "EUR 25.00" });
+});
+it("saves a chart with the exact numbers of the chart_data it references", async () => {
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<{ datasetId: string }> }>;
+    const { datasetId } = await tools.chart_data.execute({ dataset: "spending_by_month", from: "2026-09-01", to: "2026-10-31" }, { toolCallId: "call" });
+    const chart = { type: "bar", title: "Spending", unit: { kind: "money", currency: "EUR" }, datasetId, labels: { column: "month" }, series: [{ name: "Spending", values: { column: "spending" } }] };
+    return { text: `Spending fell.\n\n\`\`\`moneo-chart\n${JSON.stringify(chart)}\n\`\`\`` };
+  });
+  const body = await (await POST(request("Chart my spending"))).json();
+  const block = /```moneo-chart\n(.*)\n```/.exec(body.answer)?.[1];
+  expect(JSON.parse(block!)).toEqual({ type: "bar", title: "Spending", unit: { kind: "money", currency: "EUR" }, labels: ["2026-09", "2026-10"], series: [{ name: "Spending", values: ["123456", "7"] }] });
 });
 it("keeps earlier assistant turns in history without their chart blocks", async () => {
   const context = await requireWorkspace();
