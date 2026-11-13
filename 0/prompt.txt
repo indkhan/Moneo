@@ -1,0 +1,15 @@
+Act as the implementation sub-agent for this task.
+
+Implement GitHub issue #200 in indkhan/Moneo: "Steer a running Claude answer with follow-up messages". Read the issue first (`gh issue view 200`). Read AGENTS.md first and follow it exactly (tests policy, QA backend only, commit style, never touch the owner's backend/.env or port 3000).
+
+Context: you are in a worktree created from branch `t3/claude-subscription` (PR #201, not yet merged). That PR adds a Claude-plan AI source: `lib/ai/claude.ts` (`claudeModel` wraps `ai-sdk-provider-claude-code` v4, which runs the Claude Agent SDK's bundled Claude Code with the owner's claude.ai login; Claude Code runs the whole tool loop inside one AI SDK step), `lib/ai/provider.ts` (`withTools`). In `app/api/chat/route.ts`, `prepareStep` takes steer messages via the `take_chat_steers` RPC and appends them before the next model step, then emits `{type:"steered"}`. On Claude that only happens once before the run, so mid-answer steers wait for the next turn.
+
+Goal: on Claude, a steer sent during a running answer should reach that answer. Investigate the adapter (node_modules/ai-sdk-provider-claude-code/dist/index.d.ts and index.js: look for `streamingInput`, `onQueryCreated`, `onQueryControllerCreated`, `createClaudeCodeQueryController`, and how it feeds user messages) and the Agent SDK's streaming-input support. Prefer the smallest design: e.g. while a Claude run is active, poll/claim steers (reuse the existing take_chat_steers claim so a steer is never taken twice or lost) and push them into the running query as user messages, emitting the same `steered` event. Steers must still be claimed exactly once; if the run ends before a steer is delivered it must stay pending for the next turn as today. Keep ChatGPT/API-key behaviour unchanged. Make sure cancellation still stops everything and no timers/processes leak.
+
+Tests: a focused unit test with a fake query controller/adapter that fails if a steer claimed during a run is not delivered, or is delivered twice. Use fake timers or controlled promises, no real waits (lint rule enforces this). No UI-copy tests.
+
+Verify: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`. No real Claude calls in tests. If you do one optional manual check against the QA backend, use a free port (3100 may be taken by another checkout; see scripts/qa-server.mjs) and only the moneo-qa stack.
+
+If streaming input turns out not to be feasible with this adapter version, stop, document precisely why in the issue as a comment, and report back instead of building a workaround.
+
+Deliver: commit in small plain-language commits (end each message with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`), push a new branch `t3/claude-steering`, and open a PR with base `t3/claude-subscription` (stacked on PR #201) that says "Closes #200" and ends with "🤖 Generated with [Claude Code](https://claude.com/claude-code)". Never merge. Your final line: PR <full URL>, head <SHA>, checks and reviews <state>.

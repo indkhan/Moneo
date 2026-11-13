@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7AXZT702NXV83QX09QDN78Q",
+  "session_id": "fac1eaa5-f1e3-40a4-82e2-c017784da4fc",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-13T17:06:26.9410111Z",
+  "branch": "t3/claude-steering",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/chat/route.ts",
+    "lib/ai/claude.ts",
+    "lib/ai/provider.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "42cb3e83524d",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 48,
+    "cache_creation_tokens": 74841,
+    "cache_read_tokens": 2059578,
+    "output_tokens": 16451,
+    "api_call_count": 24
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
