@@ -50,7 +50,7 @@ const cache = globalThis as typeof globalThis & { moneoClaudeAccount?: { at: num
 export function claudeAccount(): Promise<ClaudeAccount> {
   if (cache.moneoClaudeAccount && Date.now() - cache.moneoClaudeAccount.at < 30_000) return cache.moneoClaudeAccount.value;
   const executable = claudeExecutable();
-  const value = executable ? new Promise<ClaudeAccount>(resolve => execFile(executable, ["auth", "status", "--json"], { env: claudeEnv(), timeout: 20_000, windowsHide: true },
+  const value = executable ? new Promise<ClaudeAccount>(resolve => execFile(/*turbopackIgnore: true*/ executable, ["auth", "status", "--json"], { env: claudeEnv(), timeout: 20_000, windowsHide: true },
     (error, stdout) => resolve(stdout.trim() ? accountFrom(stdout) : { installed: true, signedIn: false, email: null, plan: null, problem: error ? "Claude Code did not answer. Try again." : null })))
     : Promise.resolve({ installed: false, signedIn: false, email: null, plan: null, problem: "Claude Code is missing from this install. Run npm ci, then restart Moneo." });
   cache.moneoClaudeAccount = { at: Date.now(), value };
@@ -74,7 +74,7 @@ export async function startClaudeSignIn(spawnProcess: (command: string, args: st
   const executable = claudeExecutable();
   if (!executable) throw new ClaudeError("Claude Code is missing from this install. Run npm ci, then restart Moneo.");
   cancelClaudeSignIn();
-  const child = spawnProcess(executable, ["auth", "login", "--claudeai"], { env: claudeEnv(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  const child = spawnProcess(/*turbopackIgnore: true*/ executable, ["auth", "login", "--claudeai"], { env: claudeEnv(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
   const state: SignIn = { process: child, url: null, output: "", done: false, error: null };
   login.moneoClaudeSignIn = state;
   const read = (chunk: Buffer) => {
