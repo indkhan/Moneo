@@ -185,6 +185,7 @@ export async function POST(request: Request) {
     return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
+        if (stop.signal.aborted) throw new Error("Request canceled");
         emit({ type: "tool", id: options?.toolCallId, name, state: "running", input });
         // Labels for ids in the output load while the tool runs.
         const names = namesFor(context).catch((): EntityNames => ({}));
@@ -369,14 +370,19 @@ ${artifactBrief}` : ""}`,
     });
     // The answer is all text the model wrote, across steps, exactly as streamed to the user.
     let text = "", stepBreak = false;
-    for await (const part of result.fullStream) {
-      if (part.type === "text-delta" && part.text) {
-        const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
-        stepBreak = false; text += delta;
-        emit({ type: "delta", text: delta });
-      } else if (part.type === "finish-step") stepBreak = true;
-      else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
-    }
+    // Claude runs its whole tool loop inside one step, so prepareStep never sees a cancel made mid-answer;
+    // check for one while it streams, and aborting stops Claude Code.
+    const watchCancel = model.provider === "claude-code" ? setInterval(() => void stopIfCanceled(), 2000) : undefined;
+    try {
+      for await (const part of result.fullStream) {
+        if (part.type === "text-delta" && part.text) {
+          const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
+          stepBreak = false; text += delta;
+          emit({ type: "delta", text: delta });
+        } else if (part.type === "finish-step") stepBreak = true;
+        else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
+      }
+    } finally { clearInterval(watchCancel); }
     // totalUsage sums every step; usage is only the last one, which drops the tool-call rounds.
     const [usage, steps] = await Promise.all([result.totalUsage, result.steps]);
     if (!text.trim()) throw new Error("The model returned no answer");

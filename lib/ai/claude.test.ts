@@ -41,7 +41,6 @@ it("gives Claude only Moneo's tools, its instructions as the system prompt and t
   const settings = provider.calls.at(-1)!.settings;
   expect(settings).toMatchObject({ tools: [], settingSources: [], strictMcpConfig: true, persistSession: false, allowedTools: ["mcp__moneo__accounts_balance"],
     mcpServers: { moneo: { name: "moneo", tools: ["accounts_balance"] } }, systemPrompt: "You are Moneo.", effort: "low" });
-  expect(settings.env).not.toHaveProperty("ANTHROPIC_API_KEY");
   expect(result.options.prompt).toEqual([prompt[1]]);
   // Object-level rules still hold although the bridge checks fields one by one.
   const run = (settings.mcpServers as { moneo: { run: Record<string, { execute: (input: unknown, options: object) => unknown }> } }).moneo.run;

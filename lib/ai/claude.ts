@@ -16,7 +16,9 @@ export class ClaudeError extends Error {}
 export function claudeExecutable(): string | null {
   const require = createRequire(import.meta.url);
   const base = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
-  for (const name of process.platform === "linux" ? [base, `${base}-musl`] : [base]) {
+  // Both Linux builds can be installed; a glibc binary won't start on musl (Alpine), so pick by libc.
+  const glibc = process.platform === "linux" && Boolean((process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined)?.header?.glibcVersionRuntime);
+  for (const name of process.platform === "linux" ? glibc ? [base, `${base}-musl`] : [`${base}-musl`, base] : [base]) {
     try {
       const file = require.resolve(/*turbopackIgnore: true*/ `${name}/claude${process.platform === "win32" ? ".exe" : ""}`);
       if (existsSync(/*turbopackIgnore: true*/ file)) return file;
@@ -27,9 +29,13 @@ export function claudeExecutable(): string | null {
 
 // Any of these would make Claude Code bill an API key or a cloud account instead of the plan.
 const PAID_ROUTES = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"];
-/** The environment for Claude Code: this process's, minus everything that routes requests away from the plan. */
+/**
+ * The environment for Claude Code: this process's, with everything that routes requests away from the plan
+ * set to undefined. Undefined, not left out: the adapter merges its own copy of ANTHROPIC_* and CLAUDE_*
+ * variables underneath, so only an explicit undefined removes them (Node skips undefined when spawning).
+ */
 export function claudeEnv(env: Record<string, string | undefined> = process.env) {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => !PAID_ROUTES.includes(key))) as NodeJS.ProcessEnv;
+  return { ...env, ...Object.fromEntries(PAID_ROUTES.map(key => [key, undefined])) } as NodeJS.ProcessEnv;
 }
 
 const statusSchema = z.object({ loggedIn: z.boolean(), authMethod: z.string().nullish(), email: z.string().nullish(), subscriptionType: z.string().nullish() });
@@ -147,7 +153,7 @@ export function steerClaudeRun(injector: MessageInjector, steering: ClaudeSteeri
  * tools are handed over here as an in-process MCP server; nothing else is available to it: no built-in
  * tools, no settings, CLAUDE.md or MCP servers from this computer, and no transcripts written to disk.
  */
-export function claudeModel(modelId: string, tools: ToolSet = {}, steering?: ClaudeSteering) {
+export function claudeModel(modelId: string, tools: ToolSet = {}, steering?: ClaudeSteering, overrides: Partial<ClaudeCodeSettings> = {}) {
   const names = Object.keys(tools);
   // The MCP bridge checks each field on its own; checking the whole schema again keeps object-level rules
   // (such as "no duplicate overrides") before a tool runs.
@@ -161,6 +167,7 @@ export function claudeModel(modelId: string, tools: ToolSet = {}, steering?: Cla
     // Matches the chat's stepCountIs(30) guard against runaway loops.
     maxTurns: 30,
     ...(names.length ? { mcpServers: { moneo: createAiSdkMcpServer("moneo", checked) }, allowedTools: names.map(name => `mcp__moneo__${name}`) } : {}),
+    ...overrides,
   };
   const base = claudeCode(modelId, settings);
   // The provider folds system messages into the prompt text; Moneo's instructions go in as the system prompt
