@@ -154,3 +154,16 @@ main select { min-width: 0; max-width: 100%; }
 .ai-table td,.ai-table th { padding: 9px; border-bottom: 1px solid var(--color-border); text-align: left; }
 .ai-table th { color: var(--color-muted-foreground); background: var(--color-muted); font-weight: 500; }
 .ai-table td:last-child,.ai-table th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Phones and tablets: behave like an installed app rather than a web page. */
+@media (max-width: 1023px) {
+  html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; scroll-padding-top: calc(3.5rem + env(safe-area-inset-top)); }
+  /* iOS Safari zooms the page into any field smaller than 16px when it gets focus. */
+  input, select, textarea { font-size: 16px; }
+}
+
+/* Phones: inline fields (labels and a button in a wrapping row) stack into full-width fields. */
+@media (max-width: 639px) {
+  main .flex-wrap > label:has(> :is(input:not([type="checkbox"], [type="radio"], [type="hidden"]), select, textarea)) { flex-basis: 100%; }
+  main .flex-wrap > label > :is(input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea) { width: 100%; }
+}

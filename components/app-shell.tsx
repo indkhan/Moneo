@@ -50,8 +50,15 @@ const settingsItem: NavItem = { label: "Settings", href: "/settings", icon: Slid
 // The attention view of the activity feed, linked directly: /notifications only redirects there.
 const notificationsItem: NavItem = { label: "Needs attention", href: "/ai/activity?filter=attention", icon: Bell, go: "n" };
 const allItems: NavItem[] = [...rail.flatMap(item => item.items ?? [item]), settingsItem, notificationsItem];
-// Ask is the sparkle button in the header on every screen, so the fourth place goes to Accounts.
-const mobileTabs = ["/", "/money/transactions", "/money/accounts", "/plan"].map(href => rail.find(item => item.href === href)!);
+// Phones: Ask sits in the middle of the tab bar and opens the full-screen chat; everything else is under More.
+const askTab: NavItem = { label: "Ask", href: "/ai", icon: Sparkles };
+const [homeTab, transactionsTab, planTab] = ["/", "/money/transactions", "/plan"].map(href => rail.find(item => item.href === href)!);
+const mobileTabs: NavItem[] = [{ ...homeTab, label: "Home" }, transactionsTab, askTab, planTab];
+const menuGroups = [{ label: "Money", items: money.filter(item => !item.items) }, ...rail.filter(item => item.items).map(item => ({ label: item.label, items: item.items! })),
+  { label: "Workspace", items: [notificationsItem, settingsItem] }];
+const subscribeScroll = (onChange: () => void) => { window.addEventListener("scroll", onChange, { passive: true }); return () => window.removeEventListener("scroll", onChange); };
+// The phone header shows the page's own title once its large title has scrolled away, as iOS does; empty before that.
+const pastTitle = () => window.scrollY > 48 ? document.querySelector("main h1")?.textContent?.trim() || " " : "";
 
 /** The nav item whose href is the longest prefix of the path ("/" only matches itself). */
 export function activeItem(pathname: string) {
@@ -93,8 +100,8 @@ function RailLink({ item, active, shell }: { item: RailItem | NavItem; active: b
 function MenuLink({ item, current, shell, onNavigate }: { item: NavItem; current?: NavItem; shell: Promise<ShellData>; onNavigate: () => void }) {
   const Icon = item.icon;
   return <IntentLink href={item.href} onClick={onNavigate} aria-current={current === item ? "page" : undefined}
-    className={cn("flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm", current === item ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted")}>
-    <Icon className="size-4 shrink-0" aria-hidden="true" /><span className="mr-auto min-w-0"><span className="block truncate">{item.label}</span>{item.about && <span className="block truncate text-xs font-normal text-muted-foreground">{item.about}</span>}</span>
+    className={cn("flex min-h-12 items-center gap-3 px-4 py-2.5 text-[15px] text-foreground active:bg-muted", current === item && "font-medium")}>
+    <Icon className={cn("size-5 shrink-0", current === item ? "text-brand" : "text-muted-foreground")} strokeWidth={1.7} aria-hidden="true" /><span className="mr-auto min-w-0"><span className="block truncate">{item.label}</span>{item.about && <span className="block truncate text-xs font-normal text-muted-foreground">{item.about}</span>}</span>
     <Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
   </IntentLink>;
 }
@@ -133,6 +140,8 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [router]);
   const apple = useSyncExternalStore(noChanges, isApple, () => false);
+  const scrolledTitle = useSyncExternalStore(subscribeScroll, pastTitle, () => "");
+  const scrolled = scrolledTitle !== "";
 
   if (pathname === "/setup") return <>{children}</>;
 
@@ -151,7 +160,10 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
 
   const artifactEditor = /^\/ai\/artifacts\/[^/]+$/.test(pathname);
   // These pages fill the window and scroll inside their own panes; the page itself stays put.
-  const fullHeight = artifactEditor || pathname === "/ai";
+  const chat = pathname === "/ai";
+  const fullHeight = artifactEditor || chat;
+  const tabFor = (item: NavItem) => item === askTab ? chat : railFor(item === mobileTabs[0] ? homeTab : item) === section;
+  const sectionTabs = !artifactEditor ? section?.items : undefined;
   return <div className={cn("min-h-screen bg-background", fullHeight && "h-dvh overflow-hidden")}>
     <a href="#main-content" className="sr-only z-50 rounded bg-card p-3 text-sm underline focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
     <nav aria-label="Main" className="fixed inset-y-0 left-0 z-30 hidden w-22 flex-col items-center gap-5 overflow-y-auto border-r border-border bg-sidebar px-3 py-5 lg:flex">
@@ -164,8 +176,23 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
         <RailLink item={settingsItem} active={current === settingsItem} shell={shell} />
       </div>
     </nav>
-    <div className={cn("min-w-0 pb-16 lg:pb-0 lg:pl-22 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112", fullHeight && "flex h-full flex-col")}>
-      <header className="shrink-0 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur lg:sticky lg:top-0 lg:z-20">
+    <div className={cn("min-w-0 lg:pb-0", !chat && "pb-[calc(3.5rem+env(safe-area-inset-bottom))]", "lg:pl-22 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112", fullHeight && "flex h-full flex-col")}>
+      {!chat && <header className={cn("sticky top-0 z-20 shrink-0 border-b pt-[env(safe-area-inset-top)] transition-colors lg:hidden", scrolled ? "border-border bg-background/80 backdrop-blur-xl" : "border-transparent bg-background")}>
+        <div className="flex h-12 items-center gap-1 pr-2 pl-4">
+          <p aria-hidden="true" className={cn("min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight transition-opacity", scrolled ? "opacity-100" : "opacity-0")}>{scrolledTitle.trim() || current?.label}</p>
+          <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex size-11 items-center justify-center rounded-full text-foreground active:bg-muted"><Search className="size-[21px]" strokeWidth={1.8} aria-hidden="true" /></button>
+          <IntentLink href={notificationsItem.href} aria-label={notificationsItem.label} className="flex size-11 items-center justify-center rounded-full text-foreground active:bg-muted"><Bell className="size-[21px]" strokeWidth={1.8} aria-hidden="true" /></IntentLink>
+        </div>
+      </header>}
+      {sectionTabs && !chat && <nav aria-label={section!.label} className="overflow-x-auto px-4 pt-1 pb-1 lg:hidden">
+        <div className="flex w-max gap-0.5 rounded-xl bg-muted p-0.5">
+          {sectionTabs.map(item => <IntentLink key={item.href} href={item.href} aria-current={current === item ? "page" : undefined}
+            className={cn("flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] px-3 text-[13px] transition-colors", current === item ? "bg-card font-medium text-foreground shadow-sm" : "text-muted-foreground")}>
+            {item.label}<Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
+          </IntentLink>)}
+        </div>
+      </nav>}
+      <header className="hidden shrink-0 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur lg:sticky lg:top-0 lg:z-20 lg:block">
         <div className="flex h-19 items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex h-11 min-w-0 max-w-[620px] flex-1 items-center gap-2.5 rounded-xl border border-input bg-card px-3.5 text-left text-sm text-muted-foreground hover:text-foreground">
             <Search className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Search pages, accounts or ask Moneo…</span>
@@ -175,33 +202,41 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
             <AiPanel />
             <IntentLink href={notificationsItem.href} aria-label={notificationsItem.label} title={notificationsItem.label}
               className="flex size-11 items-center justify-center rounded-xl border border-input hover:bg-muted"><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></IntentLink>
-            <Link href={settingsItem.href} aria-label="Settings" className="flex size-11 items-center justify-center rounded-full bg-input text-muted-foreground hover:text-foreground lg:hidden"><SlidersHorizontal className="size-[18px]" aria-hidden="true" /></Link>
           </div>
         </div>
-        {section?.items && !artifactEditor && <nav aria-label={section.label} className="flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
-          {section.items.map(item => <IntentLink key={item.href} href={item.href} title={item.about} aria-current={current === item ? "page" : undefined}
-            className={cn("flex h-11 shrink-0 items-center gap-2 rounded-[10px] lg:h-9 px-3.5 text-[13px]", current === item ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+        {sectionTabs && <nav aria-label={section!.label} className="flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
+          {sectionTabs.map(item => <IntentLink key={item.href} href={item.href} title={item.about} aria-current={current === item ? "page" : undefined}
+            className={cn("flex h-9 shrink-0 items-center gap-2 rounded-[10px] px-3.5 text-[13px]", current === item ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
             {item.label}<Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
           </IntentLink>)}
         </nav>}
       </header>
       <div id="main-content" tabIndex={-1} className={fullHeight ? "min-h-0 flex-1 overflow-hidden" : undefined}>{children}</div>
     </div>
-    <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur lg:hidden">
-      {mobileTabs.map(item => <IntentLink key={item.href} href={item.href} aria-current={section === item ? "page" : undefined}
-        className={cn("flex flex-col items-center gap-0.5 py-2 text-[11px]", section === item ? "font-medium text-foreground" : "text-muted-foreground")}>
-        <item.icon className={cn("size-5", section === item && "text-brand")} strokeWidth={1.6} aria-hidden="true" />{item.label}
-      </IntentLink>)}
-      <button type="button" onClick={() => setMenu(true)} aria-haspopup="dialog" className="flex flex-col items-center gap-0.5 py-2 text-[11px] text-muted-foreground"><Menu className="size-5" aria-hidden="true" />More</button>
-    </nav>
+    {!chat && <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/85 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur-xl select-none lg:hidden">
+      {mobileTabs.map(item => {
+        const active = tabFor(item);
+        if (item === askTab) return <IntentLink key={item.href} href={item.href} aria-label="Ask Moneo" className="flex h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-ai">
+          <span className="flex size-9 items-center justify-center rounded-full bg-ai text-background shadow-sm"><Sparkles className="size-5" strokeWidth={1.8} aria-hidden="true" /></span>{item.label}
+        </IntentLink>;
+        return <IntentLink key={item.href} href={item.href} aria-current={active ? "page" : undefined}
+          className={cn("flex h-14 flex-col items-center justify-center gap-1 text-[10px] font-medium", active ? "text-brand" : "text-muted-foreground")}>
+          <item.icon className="size-6" strokeWidth={active ? 2 : 1.6} aria-hidden="true" />{item.label}
+        </IntentLink>;
+      })}
+      <button type="button" onClick={() => setMenu(true)} aria-haspopup="dialog" className={cn("flex h-14 flex-col items-center justify-center gap-1 text-[10px] font-medium", !mobileTabs.some(tabFor) ? "text-brand" : "text-muted-foreground")}><Menu className="size-6" strokeWidth={1.6} aria-hidden="true" />More</button>
+    </nav>}
     <Modal open={menu} onClose={() => setMenu(false)} label="Navigation" className="inset-x-0 bottom-0 top-auto w-full lg:hidden">
-      <nav aria-label="All pages" className="max-h-[80vh] w-full space-y-4 overflow-y-auto rounded-t-2xl border-t border-border bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        <p className="eyebrow px-3">Money</p>
-        {rail.map(item => <div key={item.href} className="space-y-0.5">
-          {item.items && <p className="eyebrow px-3 pb-1">{item.label}</p>}
-          {(item.items ?? [item]).map(child => <MenuLink key={child.href} item={child} current={current} shell={shell} onNavigate={() => setMenu(false)} />)}
-        </div>)}
-        <div className="border-t border-border pt-3">{[notificationsItem, settingsItem].map(item => <MenuLink key={item.href} item={item} current={current} shell={shell} onNavigate={() => setMenu(false)} />)}</div>
+      <nav aria-label="All pages" className="max-h-[85dvh] w-full overflow-y-auto rounded-t-[28px] bg-background px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-input" aria-hidden="true" />
+        <div className="space-y-5">
+          {menuGroups.map(group => <div key={group.label}>
+            <p className="eyebrow px-3 pb-1.5">{group.label}</p>
+            <div className="divide-y divide-border overflow-hidden rounded-2xl bg-card">
+              {group.items.map(child => <MenuLink key={child.href} item={child} current={current} shell={shell} onNavigate={() => setMenu(false)} />)}
+            </div>
+          </div>)}
+        </div>
       </nav>
     </Modal>
     {palette && <Suspense fallback={<CommandPalette commands={commands} {...paletteProps} />}><AccountCommands shell={shell} base={commands} {...paletteProps} /></Suspense>}
