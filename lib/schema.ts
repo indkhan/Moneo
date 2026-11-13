@@ -395,7 +395,10 @@ export const categories = pgTable("categories", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   name: text("name").notNull(),
-}, (table) => [unique("categories_workspace_name_unique").on(table.workspaceId, table.name), unique("categories_id_workspace_key").on(table.id, table.workspaceId)]);
+  createdBy: text("created_by").notNull().default("owner"),
+  ownerTouched: boolean("owner_touched").notNull().default(false),
+}, (table) => [unique("categories_workspace_name_unique").on(table.workspaceId, table.name), unique("categories_id_workspace_key").on(table.id, table.workspaceId),
+  check("categories_created_by_check", sql`${table.createdBy} in ('owner','ai')`)]);
 
 export const merchants = pgTable("merchants", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -403,7 +406,10 @@ export const merchants = pgTable("merchants", {
   name: text("name").notNull(),
   normalizedName: text("normalized_name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text("created_by").notNull().default("owner"),
+  ownerTouched: boolean("owner_touched").notNull().default(false),
 }, (table) => [
+  check("merchants_created_by_check", sql`${table.createdBy} in ('owner','ai')`),
   unique("merchants_workspace_normalized_unique").on(table.workspaceId, table.normalizedName),
   index("merchants_workspace_normalized_idx").on(table.workspaceId, table.normalizedName),
   check("merchants_name_check", sql`char_length(${table.name}) between 1 and 100`),
@@ -448,6 +454,11 @@ export const transactions = pgTable("transactions", {
   refundOfId: uuid("refund_of_id").references((): AnyPgColumn => transactions.id, { onDelete: "set null" }),
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  // Who set category/merchant: null = not organized yet. AI labels carry their confidence, reason and organizer_ops entry.
+  organizedBy: text("organized_by"),
+  aiConfidence: text("ai_confidence"),
+  aiReason: text("ai_reason"),
+  organizeOpId: uuid("organize_op_id"),
 }, (table) => [
   index("transactions_workspace_id").on(table.workspaceId, table.id),
   index("transactions_workspace_posted").on(table.workspaceId, table.postedOn.desc(), table.id.desc()),
@@ -462,6 +473,9 @@ export const transactions = pgTable("transactions", {
   check("transactions_kind_check", sql`${table.kind} in ('ordinary', 'transfer', 'refund')`),
   check("transactions_no_self_transfer", sql`${table.transferId} is null or ${table.transferId} <> ${table.id}`),
   check("transactions_no_self_refund", sql`${table.refundOfId} is null or ${table.refundOfId} <> ${table.id}`),
+  check("transactions_organized_by_check", sql`${table.organizedBy} in ('owner','rule','memory','ai','system')`),
+  check("transactions_ai_confidence_check", sql`${table.aiConfidence} in ('high','medium','low')`),
+  check("transactions_ai_reason_check", sql`char_length(${table.aiReason}) <= 500`),
 ]);
 
 export const transactionSources = pgTable("transaction_sources", {
@@ -503,8 +517,34 @@ export const correctionEvents = pgTable("correction_events", {
   after: jsonb("after").notNull(),
   undone: boolean("undone").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  origin: text("origin").notNull().default("owner"),
 }, (table) => [
   index("correction_events_workspace").on(table.workspaceId),
+  check("correction_events_origin_check", sql`${table.origin} in ('owner','ai')`),
+]);
+
+/** One AI label write: its Undo record and, once undone, a suppressed suggestion for that identity. */
+export const organizerOps = pgTable("organizer_ops", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  runId: uuid("run_id").references(() => agentRuns.id, { onDelete: "set null" }),
+  proposalId: uuid("proposal_id").references(() => agentProposals.id, { onDelete: "set null" }),
+  transactionId: uuid("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  identityKey: text("identity_key").notNull(),
+  categoryId: uuid("category_id"),
+  merchantId: uuid("merchant_id"),
+  before: jsonb("before").notNull(),
+  after: jsonb("after").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  suppressed: boolean("suppressed").notNull().default(false),
+}, table => [
+  index("organizer_ops_workspace_created").on(table.workspaceId, table.createdAt.desc()),
+  index("organizer_ops_transaction").on(table.transactionId),
+  index("organizer_ops_proposal").on(table.proposalId).where(sql`${table.proposalId} is not null`),
+  index("organizer_ops_suppressed").on(table.workspaceId, table.identityKey).where(sql`${table.suppressed}`),
+  check("organizer_ops_identity_key_check", sql`char_length(${table.identityKey}) <= 1000`),
+  check("organizer_ops_check", sql`${table.categoryId} is not null or ${table.merchantId} is not null`),
 ]);
 
 export const goals = pgTable("goals", {

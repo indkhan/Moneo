@@ -87,6 +87,10 @@ begin
   insert into public.agent_runs(id,workspace_id) values(md5('agent_runs'||workspace_b)::uuid,workspace_b);
   insert into public.agent_tasks(run_id,workspace_id,agent) values(md5('agent_runs'||workspace_b)::uuid,workspace_b,'lead');
   insert into public.agent_proposals(run_id,workspace_id,agent,kind,conflict_key,title) values(md5('agent_runs'||workspace_b)::uuid,workspace_b,'lead','finding','synthetic','Synthetic finding');
+  if to_regclass(format('%I.organizer_ops',app_schema)) is not null then
+    insert into public.organizer_ops(id,workspace_id,transaction_id,identity_key,category_id,before,after)
+      values(md5('organizer_ops'||workspace_b)::uuid,workspace_b,md5('transactions'||workspace_b)::uuid,'synthetic',md5('categories'||workspace_b)::uuid,'{}','{}');
+  end if;
   insert into public.bank_connections(id,workspace_id,aspsp_name,aspsp_country) values(md5('bank_connections'||workspace_b)::uuid,workspace_b,'Synthetic Bank','DE');
   insert into public.bank_connection_accounts(connection_id,workspace_id,provider_account_uid,currency_code,account_name)
     values(md5('bank_connections'||workspace_b)::uuid,workspace_b,'synthetic','EUR','Synthetic Bank');
@@ -187,6 +191,7 @@ begin
     format('select public.undo_transaction_batch(%L,%L::jsonb)',md5('transaction_batches'||workspace_b)::uuid,'[]'),
     format('select public.split_transaction(%L,0,%L::jsonb,%L)',foreign_transaction,'[{"amount_minor":"50","category_id":null,"note":""},{"amount_minor":"50","category_id":null,"note":""}]',gen_random_uuid()),
     format('select public.undo_transaction_splits(%L,0)',md5('transaction_split_sets'||workspace_b)::uuid),
+    format('select public.undo_ai_organization(array[%L]::uuid[])',md5('organizer_ops'||workspace_b)::uuid),
     format('select public.claim_scheduled_summary(%L,%L,%L)',workspace_b,'weekly','2026-10-01'),
     format('select public.reserve_goal_funds(%L,%L,%L,1,%L)',foreign_goal,foreign_account,'100',gen_random_uuid()),
     format('select public.undo_goal_reservation(%L,1)',md5('goal_reservation_events'||workspace_b)::uuid),

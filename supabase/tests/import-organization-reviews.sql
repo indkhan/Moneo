@@ -8,7 +8,7 @@ begin
   insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Organization review','EUR');
   insert into public.categories(id,workspace_id,name) values(category,workspace,'Synthetic groceries');
   transaction_id:=(public.create_manual_transaction(account,'2026-09-03','NORTHSTAR MARKET REF:781','-9007199254740993','posted',null,'',gen_random_uuid())->>'id')::uuid;
-  select to_jsonb(t)-array['version','merchant_id','category_id'] into original from public.transactions t where id=transaction_id;
+  select to_jsonb(t)-array['version','merchant_id','category_id','organized_by','ai_confidence','ai_reason','organize_op_id'] into original from public.transactions t where id=transaction_id;
   selection:=jsonb_build_array(jsonb_build_object('id',transaction_id,'version',0));
   review:=public.create_organization_review(selection,jsonb_build_object('category_id',category),'Northstar Market','northstar market','[]',request);
   review_id:=(review->>'id')::uuid;
@@ -19,7 +19,7 @@ begin
   applied:=public.apply_organization_review(review_id,true);
   if public.apply_organization_review(review_id,true)<>applied then raise exception 'Approval retry duplicated effects'; end if;
   if (select count(*) from public.organization_rules where workspace_id=workspace and description_key='northstar market' and category_id=category)<>1 then raise exception 'Approved rule missing'; end if;
-  if (select to_jsonb(t)-array['version','merchant_id','category_id'] from public.transactions t where id=transaction_id)<>original then raise exception 'Organization changed financial truth'; end if;
+  if (select to_jsonb(t)-array['version','merchant_id','category_id','organized_by','ai_confidence','ai_reason','organize_op_id'] from public.transactions t where id=transaction_id)<>original then raise exception 'Organization changed financial truth'; end if;
   begin
     perform public.apply_organization_review(stale_id,false);
     raise exception 'Stale durable review applied';
