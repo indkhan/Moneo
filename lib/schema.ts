@@ -160,6 +160,9 @@ export const bankConnections = pgTable("bank_connections", {
   syncStartedAt: timestamp("sync_started_at", { withTimezone: true }),
   lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
   lastError: text("last_error"),
+  // One sync at a time (202611130003): claim_bank_sync takes the lease, hold_bank_sync keeps it.
+  syncLeaseToken: uuid("sync_lease_token"),
+  syncLeaseUntil: timestamp("sync_lease_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("bank_connections_workspace_idx").on(table.workspaceId),
@@ -179,6 +182,9 @@ export const bankConnectionAccounts = pgTable("bank_connection_accounts", {
   currencyCode: text("currency_code").notNull(),
   accountName: text("account_name").notNull(),
   lastBookedOn: date("last_booked_on"),
+  lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
+  nextAllowedAt: timestamp("next_allowed_at", { withTimezone: true }),
+  lastError: text("last_error"),
 }, (table) => [
   index("bank_connection_accounts_workspace").on(table.workspaceId),
   primaryKey({ columns: [table.connectionId, table.providerAccountUid] }),
@@ -186,6 +192,7 @@ export const bankConnectionAccounts = pgTable("bank_connection_accounts", {
   check("bank_connection_accounts_iban_check", sql`char_length(${table.iban}) <= 34`),
   check("bank_connection_accounts_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
   check("bank_connection_accounts_account_name_check", sql`char_length(${table.accountName}) between 1 and 100`),
+  check("bank_connection_accounts_last_error_check", sql`char_length(${table.lastError}) <= 1000`),
 ]);
 
 // Scalable Capital over the official MCP (202611050001). Verifier and tokens are sealed, service_role only.
