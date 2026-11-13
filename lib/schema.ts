@@ -478,6 +478,38 @@ export const transactions = pgTable("transactions", {
   check("transactions_ai_reason_check", sql`char_length(${table.aiReason}) <= 500`),
 ]);
 
+// The bank's full transaction beside the statement CSV (202611130005), keyed like source_transactions.
+// Context for the organizer only; never used for ledger amounts. Removed when its import is undone and on reset.
+export const bankTransactionRaw = pgTable("bank_transaction_raw", {
+  importId: uuid("import_id").notNull().references(() => imports.id, { onDelete: "cascade" }),
+  rowNumber: integer("row_number").notNull(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  bankId: text("bank_id"),
+  raw: jsonb("raw").notNull().default(sql`'{}'::jsonb`),
+  paymentType: text("payment_type").notNull().default("unknown"),
+  bankCode: text("bank_code"),
+  bankSubCode: text("bank_sub_code"),
+  mcc: text("mcc"),
+  counterpartyName: text("counterparty_name"),
+  counterpartyIban: text("counterparty_iban"),
+  counterpartyBic: text("counterparty_bic"),
+  counterpartyIds: jsonb("counterparty_ids").notNull().default(sql`'[]'::jsonb`),
+  ownSideIds: jsonb("own_side_ids").notNull().default(sql`'[]'::jsonb`),
+  creditorId: text("creditor_id"),
+  mandateRef: text("mandate_ref"),
+  instructedAmount: text("instructed_amount"),
+  instructedCurrency: text("instructed_currency"),
+  exchangeRate: text("exchange_rate"),
+  ownAccount: boolean("own_account").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  primaryKey({ columns: [table.importId, table.rowNumber] }),
+  index("bank_transaction_raw_workspace_idx").on(table.workspaceId),
+  check("bank_transaction_raw_row_number_check", sql`${table.rowNumber} >= 2`),
+  check("bank_transaction_raw_payment_type_check", sql`${table.paymentType} in ('card','transfer','direct_debit','cash','fee_interest','top_up','exchange','unknown')`),
+  check("bank_transaction_raw_raw_check", sql`jsonb_typeof(${table.raw}) = 'object' and octet_length(${table.raw}::text) <= 65536`),
+]);
+
 export const transactionSources = pgTable("transaction_sources", {
   transactionId: uuid("transaction_id").notNull().references(() => transactions.id),
   sourceTransactionId: uuid("source_transaction_id").notNull().unique().references(() => sourceTransactions.id),
