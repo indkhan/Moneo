@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7D6AX7BWA6GCC8NKXM8Y0NJ",
+  "strategy": "manual-commit",
+  "branch": "t3/organize-surfaces",
+  "checkpoints_count": 3,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 14,
+    "cache_creation_tokens": 65231,
+    "cache_read_tokens": 577766,
+    "output_tokens": 1937,
+    "api_call_count": 8,
+    "subagent_tokens": {
+      "input_tokens": 180,
+      "cache_creation_tokens": 267034,
+      "cache_read_tokens": 16338636,
+      "output_tokens": 77746,
+      "api_call_count": 91
+    }
+  },
+  "redaction": {
+    "replacements": 21,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 15,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
