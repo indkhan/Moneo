@@ -77,3 +77,10 @@ GRANT supabase_privileged_role TO supabase_etl_admin WITH INHERIT TRUE GRANTED B
 ALTER DATABASE postgres OWNER TO postgres;
 GRANT CREATE ON DATABASE postgres TO supabase_etl_admin, supabase_storage_admin;
 GRANT ALL ON DATABASE postgres TO dashboard_user;
+
+-- Roles that migrations create. A backup's dump has no roles, so restore() recreates them here
+-- before pg_restore replays the grants; add each new one (see the migration that creates it).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'moneo_reader') THEN CREATE ROLE moneo_reader NOLOGIN NOINHERIT; END IF;
+END $$;
+GRANT moneo_reader TO postgres;
