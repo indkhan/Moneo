@@ -116,7 +116,7 @@ Chat, artifacts, briefings, imports and the agents then run on Claude (Opus 5.5 
 
 ### Connect your bank (optional)
 
-Moneo syncs booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). It is free for personal use. Each sync is an ordinary import that you can review and undo.
+Moneo syncs booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). It is free for personal use. Each sync is an ordinary import that you can review and undo. Moneo also keeps what the bank sent for each transaction (codes, counterparty details, references) on your computer to help organize it; undoing a sync removes it.
 
 1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create an application in the **Production** environment.
 2. Fill in the application form:
