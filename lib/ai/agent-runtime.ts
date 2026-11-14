@@ -12,12 +12,13 @@ import { MAX_ORGANIZATION_RULES, mergeOrganizationSuggestions, organizationPropo
 import { proposeRepayments } from "@/lib/ai/iou-proposals";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
-import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
+import { AGENTS, WAVES, aiConfidence, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
   daysBefore, payloadSchemas, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 // Server-only agent runtime. Agents read through the service role, so every
 // query is fenced by workspace_id; they write only agent_* rows. Canonical
-// data changes happen later, when the owner accepts a proposal.
+// data changes happen later, when the owner accepts a proposal. The one
+// exception is the Categorizer's AI labels (autoApplyRun), marked as AI and undoable.
 
 class RunInactive extends Error {}
 type Db = SupabaseClient;
@@ -115,7 +116,7 @@ async function withNewCategories(context: Context, categories: Map<string, strin
   const byName = new Map([...categories].map(([id, name]) => [name.toLocaleLowerCase("en"), id]));
   const missing = wanted.filter(name => !byName.has(name.toLocaleLowerCase("en")));
   if (missing.length) {
-    checked(await context.db.from("categories").upsert(missing.map(name => ({ workspace_id: context.workspace.id, name })), { onConflict: "workspace_id,name", ignoreDuplicates: true }));
+    checked(await context.db.from("categories").upsert(missing.map(name => ({ workspace_id: context.workspace.id, name, created_by: "ai" })), { onConflict: "workspace_id,name", ignoreDuplicates: true }));
     const created = checked(await context.db.from("categories").select("id, name").eq("workspace_id", context.workspace.id).in("name", missing)) as { id: string; name: string }[];
     for (const row of created) { categories.set(row.id, row.name); byName.set(row.name.toLocaleLowerCase("en"), row.id); }
     await report(context, { type: "note", text: `Created ${created.length} new ${created.length === 1 ? "category" : "categories"}: ${created.map(row => row.name).join(", ")}` });
@@ -134,15 +135,16 @@ async function pages<T>(page: (offset: number) => PromiseLike<{ data: T[] | null
 async function categorizer(context: Context): Promise<{ proposals: Proposal[]; summary: string }> {
   const { db, workspace } = context;
   await report(context, { type: "step", text: "Reading rows without a merchant or category" });
-  const columns = "id, version, description, merchant_id, category_id, kind, review_reasons, posted_on, amount_minor::text, currency_code, account_id, status";
+  const columns = "id, version, description, merchant_id, category_id, kind, review_reasons, posted_on, amount_minor::text, currency_code, account_id, status, organized_by";
   const [targets, history, corrections, rules, owned] = await Promise.all([
     pages(offset => db.from("transactions").select(columns).eq("workspace_id", workspace.id).eq("status", "posted").or("merchant_id.is.null,category_id.is.null").order("posted_on", { ascending: false }).order("id").range(offset, offset + 999)),
     db.from("transactions").select(columns).eq("workspace_id", workspace.id).eq("status", "posted").order("posted_on", { ascending: false }).order("id", { ascending: false }).limit(2000),
-    db.from("correction_events").select("transaction_id").eq("workspace_id", workspace.id).eq("undone", false).limit(5000),
+    db.from("correction_events").select("transaction_id, origin").eq("workspace_id", workspace.id).eq("undone", false).limit(5000),
     db.from("organization_rules").select("id,version,description_key,merchant_id,category_id,approved_by,enabled").eq("workspace_id", workspace.id).order("description_key").limit(MAX_ORGANIZATION_RULES),
     names(db, workspace.id),
   ]);
-  const corrected = new Set((checked(corrections) as { transaction_id: string }[]).map(row => row.transaction_id));
+  // AI labels are never the owner's word: not corrections, and not history evidence for more guesses.
+  const corrected = new Set((checked(corrections) as { transaction_id: string; origin: string }[]).filter(row => row.origin !== "ai").map(row => row.transaction_id));
   // A loan's payout is recorded in Wealth, not spending to categorize.
   const loans = await loadLoanPayoutIds(db, workspace.id).catch(() => new Set<string>());
   const raw = (targets as (RawRow & { status: string })[]).filter(row => !loans.has(row.id));
@@ -150,7 +152,7 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
     kind: row.kind as OrganizationRow["kind"], reviewReasons: row.review_reasons ?? [], userCorrected: corrected.has(row.id) });
   const approved = (checked(rules) as { id: string; version: number; description_key: string; merchant_id: string | null; category_id: string | null; approved_by: string; enabled: boolean }[])
     .map(rule => organizationRuleSchema.parse({ id: rule.id, version: rule.version, descriptionKey: rule.description_key, merchantId: rule.merchant_id, categoryId: rule.category_id, approvedBy: rule.approved_by, enabled: rule.enabled }));
-  const historyRows = (checked(history) as RawRow[]).map(toRow);
+  const historyRows = (checked(history) as (RawRow & { organized_by: string | null })[]).filter(row => row.organized_by !== "ai").map(toRow);
   await report(context, { type: "tool", text: `organization_rules + history: ${approved.length} rules, ${historyRows.length} earlier rows` });
   let proposals: OrganizationProposal[] = [];
   for (let offset = 0; offset < raw.length; offset += 50) proposals.push(...organizationProposals(raw.slice(offset, offset + 50).map(toRow), historyRows, approved));
@@ -373,45 +375,50 @@ export async function mergeRun(runId: string, workspaceId: string) {
   return true;
 }
 
-const appliedResult = (reviewId: string) => ({ reviewId, href: `/money/organization?review=${reviewId}`, undo: "Undo from the organization review", auto: true });
+type AiApplied = { applied: number; transactionIds: string[]; skipped: Record<string, number> };
+const appliedResult = (outcome: AiApplied) => ({ auto: true, applied: outcome.applied, skipped: outcome.skipped,
+  href: outcome.transactionIds[0] ? `/money/transactions?transaction=${outcome.transactionIds[0]}` : "/money/transactions", undo: "Undo below" });
 
 /**
- * Applies the Categorizer's proposals right away, as the owner, through the
- * audited organization review, before the other agents read categories. Each
- * lands under "Decided automatically" with an Undo link; a failure stays for review.
+ * Applies the Categorizer's high- and medium-confidence proposals right away as AI labels, before the
+ * other agents read categories: marked organized_by = 'ai', logged for Undo, never an owner correction
+ * or rule. Low-confidence ones stay proposed for the owner. Each lands under "Decided automatically".
  */
 export async function autoApplyRun(runId: string, workspaceId: string) {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return; throw error; }
   await recoverStuckProposals(db, workspaceId);
-  const proposals = checked(await db.from("agent_proposals").select("id, payload, notes").eq("run_id", runId).eq("workspace_id", workspaceId)
-    .eq("kind", "categorize").eq("status", "proposed")) as { id: string; payload: unknown; notes: string[] }[];
-  for (const proposal of proposals.filter(item => !item.notes.length)) {
+  const proposals = checked(await db.from("agent_proposals").select("id, payload, notes, confidence, evidence").eq("run_id", runId).eq("workspace_id", workspaceId)
+    .eq("kind", "categorize").eq("status", "proposed")) as { id: string; payload: unknown; notes: string[]; confidence: number; evidence: Proposal["evidence"] }[];
+  for (const proposal of proposals.filter(item => !item.notes.length && aiConfidence(item.confidence) !== "low")) {
     const claim = await db.from("agent_proposals").update({ status: "applying", decided_at: new Date().toISOString() }).eq("id", proposal.id).eq("status", "proposed").select("id").maybeSingle();
     if (claim.error || !claim.data) continue;
     const payload = payloadSchemas.categorize.parse(proposal.payload);
-    const { data, error } = await db.rpc("auto_apply_organization_review", { p_workspace: workspaceId, p_rows: payload.rows, p_patch: payload.patch, p_merchant_name: payload.merchantName,
-      p_rule_key: payload.ruleKey, p_evidence: payload.evidence, p_request_id: proposal.id });
-    const result = error ? { error: error.message.slice(0, 500) } : appliedResult(data.reviewId);
+    const fact = (label: string) => proposal.evidence.facts.find(item => item.label === label)?.value;
+    const reason = [fact("Basis"), fact("Quoted text") && `“${fact("Quoted text")}”`].filter(Boolean).join(": ").slice(0, 500) || null;
+    const items = payload.rows.map(row => ({ transaction_id: row.id, expected_version: row.version, category_id: payload.patch.category_id ?? null,
+      merchant_id: payload.patch.merchant_id ?? null, merchant_name: payload.merchantName, confidence: aiConfidence(proposal.confidence), reason,
+      identity_key: payload.identityKey ?? payload.ruleKey ?? "" }));
+    const { data, error } = await db.rpc("apply_ai_organization", { p_workspace: workspaceId, p_run: runId, p_items: items, p_proposal: proposal.id });
+    const result = error ? { error: error.message.slice(0, 500) } : appliedResult(data as AiApplied);
     checked(await db.from("agent_proposals").update({ status: error ? "failed" : "accepted", result }).eq("id", proposal.id).eq("status", "applying"));
   }
 }
 
 /**
  * A crash between claiming a categorize proposal and recording the answer leaves it "applying".
- * Its organization review (request_id = proposal id) tells what happened: applied means the change
- * landed; otherwise nothing changed and the proposal waits again. Other kinds stay put: a trade
- * that may have been sent must never be offered twice.
+ * Its organizer_ops rows (proposal_id) tell what happened: the apply is one transaction, so any
+ * row means it landed; none means nothing changed and the proposal waits again. Other kinds stay
+ * put: a trade that may have been sent must never be offered twice.
  */
 export async function recoverStuckProposals(db: Db, workspaceId: string, now = Date.now()) {
   const stuck = checked(await db.from("agent_proposals").select("id").eq("workspace_id", workspaceId).eq("kind", "categorize").eq("status", "applying")
     .lt("decided_at", new Date(now - 5 * 60_000).toISOString())) as { id: string }[];
   if (!stuck.length) return;
-  const reviews = checked(await db.from("organization_reviews").select("id, request_id, status").eq("workspace_id", workspaceId).in("request_id", stuck.map(item => item.id))) as { id: string; request_id: string; status: string }[];
-  const landed = new Map(reviews.filter(review => review.status === "applied").map(review => [review.request_id, review.id]));
+  const ops = checked(await db.from("organizer_ops").select("proposal_id, transaction_id").eq("workspace_id", workspaceId).in("proposal_id", stuck.map(item => item.id))) as { proposal_id: string; transaction_id: string }[];
   for (const { id } of stuck) {
-    const reviewId = landed.get(id);
-    checked(await db.from("agent_proposals").update(reviewId ? { status: "accepted", result: appliedResult(reviewId) } : { status: "proposed", decided_at: null })
+    const landed = ops.filter(op => op.proposal_id === id).map(op => op.transaction_id);
+    checked(await db.from("agent_proposals").update(landed.length ? { status: "accepted", result: appliedResult({ applied: landed.length, transactionIds: landed, skipped: {} }) } : { status: "proposed", decided_at: null })
       .eq("id", id).eq("workspace_id", workspaceId).eq("status", "applying"));
   }
 }

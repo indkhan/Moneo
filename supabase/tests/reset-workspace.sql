@@ -84,6 +84,8 @@ begin
   insert into public.agent_runs(id,workspace_id) values(md5('agent_runs'||seed_ws)::uuid,seed_ws);
   insert into public.agent_tasks(run_id,workspace_id,agent) values(md5('agent_runs'||seed_ws)::uuid,seed_ws,'lead');
   insert into public.agent_proposals(run_id,workspace_id,agent,kind,conflict_key,title) values(md5('agent_runs'||seed_ws)::uuid,seed_ws,'lead','finding','synthetic','Synthetic finding');
+  insert into public.organizer_ops(workspace_id,transaction_id,identity_key,category_id,before,after)
+    values(seed_ws,md5('transactions'||seed_ws)::uuid,'synthetic',md5('categories'||seed_ws)::uuid,'{}','{}');
   insert into public.bank_connections(id,workspace_id,aspsp_name,aspsp_country) values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'Synthetic Bank','DE');
   insert into public.bank_connection_accounts(connection_id,workspace_id,provider_account_uid,currency_code,account_name)
     values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'synthetic','EUR','Synthetic Bank');

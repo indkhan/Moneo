@@ -23,7 +23,7 @@ begin
   insert into public.imports(id,workspace_id,filename,storage_path,file_hash) values(import_id,workspace,'owned-organization.csv','owned-fixture','owned-'||import_id);
   insert into public.source_transactions(id,workspace_id,import_id,row_number,original_row) values(source_id,workspace,import_id,1,'{"description":"Noisy purchase REF:782","amount":"-1.00"}');
   insert into public.transaction_sources(transaction_id,source_transaction_id) values(second_id,source_id);
-  select jsonb_agg(to_jsonb(t)-array['category_id','merchant_id','version'] order by id) into canonical from public.transactions t where workspace_id=workspace;
+  select jsonb_agg(to_jsonb(t)-array['category_id','merchant_id','version','organized_by','ai_confidence','ai_reason','organize_op_id'] order by id) into canonical from public.transactions t where workspace_id=workspace;
   select jsonb_build_object('imports',(select jsonb_agg(to_jsonb(i)) from public.imports i where workspace_id=workspace),
     'sources',(select jsonb_agg(to_jsonb(s)) from public.source_transactions s where workspace_id=workspace),
     'links',(select jsonb_agg(to_jsonb(l)) from public.transaction_sources l where transaction_id in(first_id,second_id)),
@@ -36,7 +36,7 @@ begin
   if (select count(*) from public.transactions where workspace_id=workspace and merchant_id=merchant and category_id=category and version=1)<>2 then raise exception 'Organization batch did not apply exact metadata'; end if;
   if public.bulk_edit_transactions(rows,jsonb_build_object('merchant_id',merchant,'category_id',category),request)<>result then raise exception 'Organization retry duplicated effects'; end if;
   if (select count(*) from public.correction_events where workspace_id=workspace and after->>'batch_id'=batch::text and before ? 'merchant_id' and after->>'merchant_id'=merchant::text)<>2 then raise exception 'Merchant before/after history missing'; end if;
-  if (select jsonb_agg(to_jsonb(t)-array['category_id','merchant_id','version'] order by id) from public.transactions t where workspace_id=workspace)<>canonical then raise exception 'Organization changed financial truth'; end if;
+  if (select jsonb_agg(to_jsonb(t)-array['category_id','merchant_id','version','organized_by','ai_confidence','ai_reason','organize_op_id'] order by id) from public.transactions t where workspace_id=workspace)<>canonical then raise exception 'Organization changed financial truth'; end if;
 
   begin
     perform public.bulk_edit_transactions(jsonb_build_array(jsonb_build_object('id',first_id,'version',1)),jsonb_build_object('merchant_id',foreign_merchant),gen_random_uuid());

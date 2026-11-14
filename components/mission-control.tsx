@@ -7,7 +7,7 @@ import { Check, ChevronRight, CircleDashed, CircleSlash, Info, LoaderCircle, Pla
 import { AGENTS, WAVES, type AgentId, type ProposalKind } from "@/lib/ai/agent-team";
 import type { AgentProposalView, AgentRunView, AgentTaskView } from "@/lib/ai/agent-state";
 import { formatMoney } from "@/lib/finance/format";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals, undoAutoOrganization } from "@/app/ai/agents/actions";
 import { AskAbout } from "./ask-about";
 import { TeamFlow } from "./team-flow";
 import { PhoneCollapse } from "./phone-collapse";
@@ -79,6 +79,7 @@ function EvidenceView({ proposal, locale }: { proposal: AgentProposalView; local
 export function MissionControl({ initial, locale }: { initial: AgentRunView; locale: string }) {
   const [run, setRun] = useState(initial);
   const [notice, setNotice] = useState("");
+  const [undoNotice, setUndoNotice] = useState("");
   const [pending, startTransition] = useTransition();
   const [lost, setLost] = useState(false);
   const [controlling, setControlling] = useState<"cancel" | "resume" | null>(null);
@@ -120,6 +121,17 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       await refresh();
     } catch { setNotice("Could not reach Moneo. Check your connection and try again."); }
     finally { setControlling(null); }
+  }
+
+  function undoDecision(id: string) {
+    setUndoNotice("");
+    startTransition(async () => {
+      try {
+        const { undone, skipped } = await undoAutoOrganization(id);
+        setUndoNotice(`${undone} ${undone === 1 ? "row" : "rows"} restored${skipped ? `; ${skipped} changed since and kept` : ""}.`);
+        router.refresh();
+      } catch (cause) { setUndoNotice(cause instanceof Error ? cause.message : "Could not undo"); }
+    });
   }
 
   function decide(ids: string[], decision: "accept" | "reject") {
@@ -252,11 +264,13 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
 
     {decided.length > 0 && <PhoneCollapse label={`Decided automatically (${decided.length})`}><section aria-labelledby="decided-heading" className="space-y-2">
       <h2 id="decided-heading" className="text-sm font-medium">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
-      <p className="text-xs text-muted-foreground">The Categorizer applied these itself. Each one is an audited batch; open it to check the rows or Undo.</p>
+      <p className="text-xs text-muted-foreground">The Categorizer labelled these itself, marked as AI. They never become your rules; Undo restores the rows and stops the same suggestion coming back.</p>
+      {undoNotice && <p role="status" className="text-sm">{undoNotice}</p>}
       <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.title}</p>{pill(item.status, "applied")}</div>
         <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
-        {item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open · Undo</Link></p>}
+        {item.result?.href && <p className="mt-1 flex flex-wrap items-center gap-3 text-xs"><Link href={item.result.href} className="text-brand underline">Open</Link>
+          <button type="button" disabled={pending} onClick={() => undoDecision(item.id)} className="min-h-9 rounded-[10px] border border-input px-3 hover:bg-muted disabled:opacity-50">Undo</button></p>}
         <EvidenceView proposal={item} locale={locale} />
       </li>)}</ul>
     </section></PhoneCollapse>}
