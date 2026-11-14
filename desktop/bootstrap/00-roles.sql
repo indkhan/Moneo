@@ -83,4 +83,4 @@ GRANT ALL ON DATABASE postgres TO dashboard_user;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'moneo_reader') THEN CREATE ROLE moneo_reader NOLOGIN NOINHERIT; END IF;
 END $$;
-GRANT moneo_reader TO postgres;
+GRANT moneo_reader TO postgres WITH ADMIN OPTION;
