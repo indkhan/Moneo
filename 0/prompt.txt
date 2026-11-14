@@ -1,0 +1,180 @@
+<task-notification>
+<task-id>a7481c74fb0316ab7</task-id>
+<tool-use-id>toolu_016QECox9CbRpJdx3Vg4EbR3</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\87163e3c6fbbc53e\2ef1e7b1-64cd-4581-b5fd-c475fd596755\tasks\a7481c74fb0316ab7.output</output-file>
+<status>completed</status>
+<summary>Agent "PR1 organizer reliability" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Both follow-ups are done and committed on `t3/organizer-reliability`, not pushed. `npm test`, `npm run lint`, `npm run typecheck` and `npm run build` pass. The new migration is applied to QA. The 4 live-test failures also fail on origin/main, the same way.
+
+## 1. Auto-apply right after the categorizer (`e334018d`)
+- **Workflow (`workflows/agent-team.ts`):** the auto-apply step now runs right after the categorizer's wave. Recurring, anomaly and budget then read categories that are already saved.
+- **Merge:** the lead's merge still runs before the writer and handles the other agents' proposals. The second auto-apply after the merge is gone, because nothing new can be auto-applied by then.
+- **Resume:** auto-apply runs even when that first wave is empty, so a resumed run still applies proposals left waiting.
+- **Test:** new test "applies the categorizer's changes before recurring and budget read categories". It fails with the old order. The 3 existing workflow tests were updated to the new order.
+
+## 2. One queued/running run per workspace (`3c338ac9`)
+- **Migration `202611130002_one_active_agent_run.sql`:**
+  - It first cancels older duplicate active runs and their open tasks. They stay resumable, with the error "Replaced by a newer run".
+  - It then adds the partial unique index `agent_runs_one_active`. `lib/schema.ts` matches it.
+- **Starting a run (`startAgentRun`):**
+  - It returns this import's own run if one exists. Otherwise it returns the workspace's active run, for every trigger including file imports.
+  - Automatic triggers still check the transactions AI scope.
+  - If the insert hits the unique index (23505), it returns the import's run or the active run, whichever exists.
+- **Resume:** resuming while another run is active now fails with "Another agent run is in progress; resume this one after it finishes", instead of a raw duplicate-key error.
+- **Backlog check covers it:** rows from an import that joined an already-running run were created after that run started. If any are still unorganized when it finishes, the next hourly check starts a new run. That causes at most one extra run, then it stops.
+- **One side effect:** an import that joins another run has no run linked to its `import_id`, so the `/ai/agents?import=&lt;id&gt;` link falls back to the run list.
+- **Tests:** new `lib/ai/agent-dispatch.test.ts`, with 3 `vi.mock`s:
+  - "a file import arriving during a bank sync's run reuses that run instead of starting a second"
+  - "two starts racing for an idle workspace end up on one run"
+
+## Before/after evidence
+I checked out origin/main's source files and ran the 5 test files. On main, 23 fail and 17 pass; on the branch all pass:
+- **`lib/ai/agent-dispatch.test.ts`:** both reuse tests above. On main the race test fails partly because main uses `.single()`, which my fake database doesn't support. Main would still have thrown on the duplicate key.
+- **`lib/ai/agent-team.test.ts`:**
+  - "runs agents in waves and explains every skip"
+  - "categorizes alone before anyone reads categories, and coaches budgets only for owners who set limits"
+  - all 10 backlog rerun cases
+- **`workflows/agent-team.test.ts`:**
+  - "runs a wave in parallel, merges before the writer and finishes once"
+  - "applies the categorizer's changes before recurring and budget read categories"
+  - "stops after a wave when the owner cancels, without merging or writing"
+  - "a failed agent does not stop the rest of the team"
+- **`workflows/bank-sync.test.ts`:**
+  - "syncing the same bank data twice adds no second import"
+  - "starts one agent run and one first-review check after every account is imported"
+- **`lib/ai/agent-runtime.test.ts`:**
+  - "a dropped database call leaves the agent for its step to retry, and the retry finishes the work"
+  - "a run with a failed agent finishes failed, so it can be resumed and the backlog check retries it"
+  - "returns proposals stuck in applying: landed changes are accepted, the rest wait again"
+
+## Checks
+- **`npm test`:** 1577 passed, 10 skipped.
+- **Build:** the only error line in the build output is the warning about `process.report` in `instrumentation.ts`, which was there before.
+- **QA:** `npm run setup -- --qa` applied 1 migration.
+- **`npm run test:db`:** the 123 migrations and 53 SQL regressions pass, and schema.ts matches the database. These 4 live tests fail with the same errors on origin/main's source:
+  - `row-undo` and `evidence-receipts` call `delete_account()`, which `202611070001_drop_delete_account.sql` drops.
+  - `reservation-balance`: the "conflicting_ties" case expects "current" and gets "ambiguous".
+  - `review-reservation`: the `.qa/` folder is missing in this worktree (ENOENT).
+
+## Commits (oldest first)
+1. `61314d82` Retry dropped database connections in background service clients
+2. `56774831` Make agent runs survive dropped connections and report failures honestly
+3. `914f3855` Start one agent run per bank sync, after every account is in
+4. `fab9ff3d` Rerun the agent team hourly for rows a failed run left uncategorized
+5. `def7573b` Keep the import workflow's first-review step name
+6. `e334018d` Apply the categorizer's changes before other agents read categories
+7. `3c338ac9` Allow at most one queued or running agent run per workspace</result>
+<usage><subagent_tokens>234272</subagent_tokens><tool_uses>19</tool_uses><duration_ms>338808</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a5719ba53dcb89b14</task-id>
+<tool-use-id>toolu_01RaGZicwmYXqRKdoEDegFmu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\87163e3c6fbbc53e\2ef1e7b1-64cd-4581-b5fd-c475fd596755\tasks\a5719ba53dcb89b14.output</output-file>
+<status>completed</status>
+<summary>Agent "PR2 sync leases and limits" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The app-key fix is in as commit `00a28ca1` ("Hold bank accounts for 6 hours after Enable Banking rejects the app key") on `t3/sync-leases`. `npm test` passes (1580, 10 skipped), and lint and typecheck are clean. Not pushed.
+
+- **Workflow (`workflows/bank-sync.ts`):** when the app check rejects the App ID or key, every account of that connection gets `next_allowed_at` set to now + 6 hours. The connection still shows the existing "App ID or private key" message. Owner-present syncs (opening Moneo, Sync now) are also held back until the key is saved again, because every trigger respects `next_allowed_at`.
+- **Saving credentials (`app/api/bank/credentials/route.ts`):** after the new key passes the check and is saved, the route clears `next_allowed_at` for that workspace's accounts. It only clears accounts with no account error of their own. A wait the bank asked for (Retry-After) always records an account error, so saving a key doesn't cancel it.
+- **Clearing is best effort:** if it fails, the key is still saved and the wait ends by itself within 6 hours.
+- **Test:** I extended "asks Enable Banking about the app before calling an unexplained 401 an ended consent". After a rejected key it now checks that the accounts wait 6 hours with no account error and that a background sync doesn't contact the bank. It then clears the wait the way saving credentials does and continues to the real-expiry case.
+- **Not covered:** no test exercises the clearing in the credentials route. That would need a fourth `vi.mock` in its test file, so I left it out. I also didn't run the clearing query against QA; it's a standard update filtered by workspace, empty account error and a set `next_allowed_at`.</result>
+<usage><subagent_tokens>215853</subagent_tokens><tool_uses>14</tool_uses><duration_ms>175960</duration_ms></usage>
+</task-notification>
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>a35fd6f7da60bb2c7</task-id>
+<tool-use-id>toolu_011FV8tqaMRHQYJp436NCZyp</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\87163e3c6fbbc53e\2ef1e7b1-64cd-4581-b5fd-c475fd596755\tasks\a35fd6f7da60bb2c7.output</output-file>
+<status>completed</status>
+<summary>Agent "PR3 provenance and AI reset" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>PR 3 is done on `t3/organize-provenance` in four commits, nothing pushed. Tests, lint, typecheck and the build pass, and the database checks pass apart from one comparison step broken by a migration another branch put on the shared QA stack (see Checks).
+
+## What changed
+- **Migration** `supabase/migrations/202611130004_organize_provenance.sql`:
+  - **New columns:** transactions get `organized_by`, `ai_confidence`, `ai_reason` (at most 500 characters) and `organize_op_id`. `correction_events` gets `origin` (default `'owner'`). Categories and merchants get `created_by` (default `'owner'`) and `owner_touched`.
+  - **`organizer_ops` table:** one row per AI write, with the identity key, the category or merchant written, `before`/`after` jsonb, `undone_at` and `suppressed`. Owner can read it; writes only go through functions.
+  - **`apply_ai_organization`** (service role only) works as the brief says. It returns `{applied, transactionIds, skipped:{reason: count}}`. Merchants it creates by name are marked `created_by='ai'`.
+  - **`undo_ai_organization(p_op_ids)`** is for the owner: it checks workspace ownership, restores `before`, and marks the op undone and suppressed.
+  - It drops `auto_apply_organization_review` and runs the reset (details below).
+- **`lib/schema.ts`** matches the migration.
+- **`lib/import/organization-loader.ts`** and the Categorizer's own history in `lib/ai/agent-runtime.ts`: rows with `organized_by='ai'` are left out of history evidence, and AI-origin events don't count as owner corrections.
+- **`lib/ai/agent-runtime.ts` / `lib/ai/agent-team.ts`:** `autoApplyRun` now calls `apply_ai_organization`. 85+ is high, 60+ is medium, anything lower stays a proposal. No rule is saved, and categories the AI creates are marked as AI-made.
+- **Agents page:** "Decided automatically" links to the first labelled row and has an Undo button (new `undoAutoOrganization` action in `app/ai/agents/actions.ts`). The manual "accept proposal" path still uses the owner review RPCs.
+- **AGENTS.md:** the bullet you specified, in its own commit.
+
+## Design decisions
+- **Owner precedence uses two triggers on `correction_events` instead of edits to each owner RPC.**
+  - Before an owner event is inserted, if it changes category or merchant, the trigger saves the old provenance into `before`, marks the row `'owner'` and sets `owner_touched` on the category or merchant.
+  - When an event is marked undone, the second trigger puts that provenance back.
+  - So every owner path is covered without rewriting the long `undo_transaction_correction`. Tag-only and note-only edits don't change provenance.
+- **`apply_ai_organization` only fills empty labels.** It never overwrites an existing category or merchant.
+- **Rule-based and history-based proposals are also stored as `organized_by='ai'`**, not `'rule'` or `'memory'`. The proposal payload doesn't record the basis reliably; all the brief asked for was AI provenance.
+- **The reset function is kept** (no grants) so the SQL regression can call it. Running it a second time does nothing.
+
+## Deviations from the brief
+- **Undo checks that the row still holds that op's labels, not the version.** Importing a row also bumps its version, which would have blocked Undo. The test covers this case.
+- **`apply_ai_organization` takes an extra optional `p_proposal`** and `organizer_ops` has a `proposal_id` column. Crash recovery and the Undo button need to know which ops came from which proposal.
+- **Categorize payloads carry an optional `identityKey`.** `ruleKey` is null for keys shorter than 3 characters, so suppression would otherwise miss them.
+- **Rules in the reset:** a rule counts as "unchanged" when its version, merchant, category and enabled flag still match `saved_rule_after`. Rules this reset already restored are compared by those fields alone, so chains of auto-applied reviews unwind newest first. Before deleting a rule, `organization_reviews.saved_rule_id` is set to null; the review's before/after copies are kept.
+- **Merchants in the reset:** a merchant counts as created by an auto-apply review if its name matches the review's `merchant_name` and it was created no earlier than the review. Auto-apply did both in one transaction, so the times match. Unused ones are deleted; used ones are marked `created_by='ai'`.
+- **The reset marks each auto-apply batch as undone** even when some events were kept. That lets the owner undo the leftover rows one at a time; otherwise the organization review page would block it.
+- **Old test files touched:** `import-organization*.sql` now ignore the new provenance columns in their "financial truth" comparisons. `reset-workspace.sql` and `workspace-isolation.sql` got `organizer_ops` fixtures, and the isolation test also tries `undo_ai_organization` on another workspace's op.
+
+## Tests and before/after evidence
+- **New SQL regression** `supabase/tests/organize-provenance.sql` covers:
+  - AI apply: writes provenance, creates no correction events or rules, and skips each protected case (owner, owner-corrected, split, changed, low).
+  - Owner edit of an AI row, then undoing that edit, which brings back the exact AI provenance.
+  - A tag-only edit leaving provenance alone.
+  - Undo from another workspace refused; Undo after an import bump; the same suggestion suppressed; a different one allowed.
+  - A reset fixture built with the real old owner-RPC path, checking restored rows, an owner-edited row kept with its event stamped `'ai'`, rules deleted/restored/kept, merchants deleted or kept, the owner-accepted card untouched, proposals rejected, and that a second run does nothing.
+
+  On the base branch it fails because the functions and columns don't exist.
+- **Unit tests:** loader evidence exclusion (new test), auto-apply tiers (new test), and the stuck-proposal recovery test updated for `organizer_ops`. With the base `organization-loader.ts`, `agent-runtime.ts` and `agent-team.ts` checked out, those 3 tests fail. After `git checkout HEAD -- .` all 9 in those files pass.
+
+## Checks
+- `npm test` (1582 passed), `npm run lint`, `npm run typecheck` and `npm run build` all pass. One earlier `npm test` run had 4 failures that didn't come back on two reruns; I didn't record which tests they were, but they looked like timing flakiness.
+- `npm run setup -- --qa` applied the migration.
+- `supabase/tests/migrations.mjs` passed fully (fresh and upgrade, all 55 SQL regressions) before the migration was applied to QA.
+- After it was applied, `npm run test:db` still passes the fresh replay but fails the fresh-vs-upgraded comparison. Another branch applied `202611130010_chart_answers` to the shared QA stack, which changes `finish_chat_request`; this branch doesn't touch that function.
+- The live tests, run on their own, show only the 4 known failures (row-undo, evidence-receipts, reservation-balance, review-reservation).
+
+## Open issues
+- **The shared QA stack has drifted** because another branch applied `chart_answers` to it. Recreating it from this branch would clear the comparison failure.
+- **Provenance is per row.** If a row already had a legacy category and the AI fills only the merchant, the whole row becomes `'ai'` and drops out of history evidence.
+- **The Undo button stays visible after undoing** (a second press restores 0 rows). There is no list of all AI decisions yet; that's for a later PR.
+- **There is no category or merchant rename path**, so `owner_touched` is only set when the owner assigns a row or split to it.</result>
+<usage><subagent_tokens>262542</subagent_tokens><tool_uses>68</tool_uses><duration_ms>1694119</duration_ms></usage>
+</task-notification>
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>a2c06a6cd473f5ea0</task-id>
+<tool-use-id>toolu_018XEGy7phK6XokeCU8Czj38</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\87163e3c6fbbc53e\2ef1e7b1-64cd-4581-b5fd-c475fd596755\tasks\a2c06a6cd473f5ea0.output</output-file>
+<status>failed</status>
+<summary>Agent "PR5 pairing and identity" failed: Agent terminated early due to an API error: Failed to authenticate: this login reached its time limit and cannot be renewed. Run `claude auth login` to sign in again, or use `claude setup-token` and set CLAUDE_CODE_OAUTH_TOKEN for unattended jobs (error type authentication_failed)</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All SQL regressions pass. Now running typecheck, lint and the unit suite.</result>
+</task-notification>
+
+---
+
+continue and finih
