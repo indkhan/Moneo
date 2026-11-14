@@ -4,40 +4,54 @@ import { agentTeam } from "@/workflows/agent-team";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { backlogRerunNeeded } from "@/lib/ai/agent-team";
 
-async function activeRunId(db: SupabaseClient, workspaceId: string) {
-  const active = await db.from("agent_runs").select("id").eq("workspace_id", workspaceId).in("status", ["queued", "running"]).limit(1).maybeSingle();
+async function activeRun(db: SupabaseClient, workspaceId: string) {
+  const active = await db.from("agent_runs").select("id, status").eq("workspace_id", workspaceId).in("status", ["queued", "running"]).limit(1).maybeSingle();
   if (active.error) throw active.error;
-  return (active.data?.id as string | undefined) ?? null;
+  return active.data as { id: string; status: string } | null;
 }
 
+/** Imports and bank syncs that land within this window share one pass; the pass also waits for bank syncs still running. */
+export const PASS_DEBOUNCE_MS = 3 * 60_000;
+
 /**
- * Creates the run for an import, a bank sync, the backlog check or a manual request and starts the
- * durable team. A workspace has at most one queued or running run (agent_runs_one_active), and every
- * start reuses it: the categorizer reads all unorganized rows, and rows that arrive after a run
- * started get the next one from the backlog check.
+ * Starts the agent team for an import, a bank sync, the backlog check or a manual request. A workspace has at most one
+ * queued or running run (agent_runs_one_active). Imports and syncs request a pass: it starts after PASS_DEBOUNCE_MS, so
+ * everything landing meanwhile joins the waiting run; one landing while a run works marks it, and that run starts a
+ * single follow-up when it finishes. Manual and backlog starts begin at once, or reuse the active run.
  */
-export async function startAgentRun(db: SupabaseClient, workspaceId: string, options: { importId?: string; trigger?: "sync" | "backlog" } = {}) {
+export async function startAgentRun(db: SupabaseClient, workspaceId: string, options: { importId?: string; trigger?: "import" | "sync" | "backlog" } = {}) {
+  const trigger = options.importId ? "import" : options.trigger ?? "manual";
+  const requested = trigger === "import" || trigger === "sync";
   if (options.importId) {
     const existing = await db.from("agent_runs").select("id").eq("workspace_id", workspaceId).eq("import_id", options.importId).maybeSingle();
     if (existing.error) throw existing.error;
     if (existing.data) return existing.data.id as string;
   }
-  const active = await activeRunId(db, workspaceId);
-  if (active) return active;
-  // Automatic runs respect the owner's AI data access; a manual start plans around it instead.
-  if ((options.importId || options.trigger) && !(await loadWorkspaceSettings(db, workspaceId)).ai_data_scopes.includes("transactions")) return null;
-  const inserted = await db.from("agent_runs").insert({ workspace_id: workspaceId, import_id: options.importId ?? null, trigger: options.importId ? "import" : options.trigger ?? "manual" }).select("id").single();
-  if (inserted.error) {
-    if (inserted.error.code !== "23505") throw inserted.error;
-    // Another start won the race: this import's own run, or the workspace's active run.
-    const raced = options.importId ? await db.from("agent_runs").select("id").eq("workspace_id", workspaceId).eq("import_id", options.importId).maybeSingle() : null;
-    if (raced?.error) throw raced.error;
-    const id = (raced?.data?.id as string | undefined) ?? await activeRunId(db, workspaceId);
-    if (!id) throw inserted.error;
-    return id;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const active = await activeRun(db, workspaceId);
+    if (active && (!requested || active.status === "queued")) return active.id;
+    if (active) {
+      // Conditional on running, so it can't land on a run that already finished; then the next try starts a new one.
+      const marked = await db.from("agent_runs").update({ rerun_trigger: trigger }).eq("id", active.id).eq("status", "running").select("id").maybeSingle();
+      if (marked.error) throw marked.error;
+      if (marked.data) return active.id;
+      continue;
+    }
+    // Automatic runs respect the owner's AI data access; a manual start plans around it instead.
+    if (trigger !== "manual" && !(await loadWorkspaceSettings(db, workspaceId)).ai_data_scopes.includes("transactions")) return null;
+    const inserted = await db.from("agent_runs").insert({ workspace_id: workspaceId, import_id: options.importId ?? null, trigger }).select("id").single();
+    if (inserted.error) {
+      if (inserted.error.code !== "23505") throw inserted.error;
+      // Another start won the race: this import's own run, or the workspace's active run, which the next try joins.
+      const raced = options.importId ? await db.from("agent_runs").select("id").eq("workspace_id", workspaceId).eq("import_id", options.importId).maybeSingle() : null;
+      if (raced?.error) throw raced.error;
+      if (raced?.data) return raced.data.id as string;
+      continue;
+    }
+    await dispatch(db, inserted.data.id, workspaceId, requested ? new Date(Date.now() + PASS_DEBOUNCE_MS).toISOString() : undefined);
+    return inserted.data.id as string;
   }
-  await dispatch(db, inserted.data.id, workspaceId);
-  return inserted.data.id as string;
+  throw new Error("The agent run could not be started; the backlog check tries again");
 }
 
 /** The hourly check: a run for rows still lacking a merchant or category, when backlogRerunNeeded says so. */
@@ -57,8 +71,8 @@ export async function startBacklogRun(db: SupabaseClient, workspaceId: string, n
   return due ? startAgentRun(db, workspaceId, { trigger: "backlog" }) : null;
 }
 
-async function dispatch(db: SupabaseClient, runId: string, workspaceId: string) {
-  try { await start(agentTeam, [runId, workspaceId]); }
+async function dispatch(db: SupabaseClient, runId: string, workspaceId: string, notBefore?: string) {
+  try { await start(agentTeam, notBefore ? [runId, workspaceId, notBefore] : [runId, workspaceId]); }
   catch (error) {
     await db.from("agent_runs").update({ status: "failed", error: String(error).slice(0, 2000), finished_at: new Date().toISOString() }).eq("id", runId).eq("workspace_id", workspaceId);
     throw error;

@@ -10,7 +10,7 @@ import { serviceDb } from "@/lib/bank/server";
 import { claimBankSync, holdBankSync, releasedLease } from "@/lib/bank/sync-lease";
 import { accountDue } from "@/lib/bank/sync-state";
 import { loadWorkspaceSettings } from "@/lib/settings";
-import { maybeStartFirstReview, startSyncAgentRun } from "@/lib/import/follow-up";
+import { startSyncAgentRun } from "@/lib/import/follow-up";
 import { importFile } from "@/workflows/import-file";
 
 type BankImport = { importId: string; rowCount: number; uid: string; lastBookedOn: string };
@@ -53,11 +53,9 @@ async function syncAttempt(connectionId: string, workspaceId: string, leaseToken
   }
   await finishBankSync(connectionId, workspaceId, leaseToken, staged);
   if (staged.imports.length) {
-    // Once every account is in: one agent run sees the whole sync, and the first review starts at most once.
-    // Neither is part of the sync; a failure here leaves the rows for the hourly backlog check.
-    const importIds = staged.imports.map(item => item.importId);
-    try { await startAgentTeamStep(workspaceId, importIds); } catch {}
-    try { await firstReviewStep(workspaceId, importIds); } catch {}
+    // Once every account is in, one pass request covers the whole sync; it waits for the workspace's other banks too.
+    // It isn't part of the sync; a failure here leaves the rows for the hourly backlog check.
+    try { await startAgentTeamStep(workspaceId, staged.imports.map(item => item.importId)); } catch {}
   }
   return staged.retryAt;
 }
@@ -81,11 +79,6 @@ async function scheduleFirstSyncRetry(connectionId: string, workspaceId: string,
 async function startAgentTeamStep(workspaceId: string, importIds: string[]) {
   "use step";
   await startSyncAgentRun(serviceDb(), workspaceId, importIds);
-}
-
-async function firstReviewStep(workspaceId: string, importIds: string[]) {
-  "use step";
-  await maybeStartFirstReview(serviceDb(), workspaceId, importIds);
 }
 
 function isoDay(date: Date) { return date.toISOString().slice(0, 10); }

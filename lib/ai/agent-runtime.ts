@@ -418,6 +418,38 @@ export async function mergeRun(runId: string, workspaceId: string) {
   return true;
 }
 
+/** Whether a bank sync of this workspace still holds its lease (lib/bank/sync-lease.ts), so its rows are still landing. */
+export async function banksSyncing(workspaceId: string) {
+  const held = checked(await service().from("bank_connections").select("id").eq("workspace_id", workspaceId).eq("status", "active")
+    .gt("sync_lease_until", new Date().toISOString()).limit(1)) as unknown[];
+  return held.length > 0;
+}
+
+/**
+ * Whether the analysis agents run: only when rows landed, changed or got labels since the last completed analysis
+ * (a manual run always does). Otherwise their tasks are skipped and the run ends after organizing.
+ */
+export async function startAnalysis(runId: string, workspaceId: string) {
+  const db = service();
+  try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return false; throw error; }
+  const run = checked(await db.from("agent_runs").select("trigger, data_fingerprint").eq("id", runId).eq("workspace_id", workspaceId).single()) as { trigger: string; data_fingerprint: string | null };
+  if (run.data_fingerprint) return true; // Resumed after its analysis began.
+  const [fingerprint, last] = await Promise.all([db.rpc("agent_data_fingerprint", { p_workspace_id: workspaceId }),
+    db.from("agent_runs").select("data_fingerprint").eq("workspace_id", workspaceId).eq("status", "completed").not("data_fingerprint", "is", null)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle()]);
+  const current = checked(fingerprint) as string;
+  if (run.trigger !== "manual" && (checked(last) as { data_fingerprint: string } | null)?.data_fingerprint === current) {
+    const reason = "Nothing changed since the last analysis";
+    checked(await db.from("agent_tasks").update({ status: "skipped", step: reason, summary: reason, finished_at: new Date().toISOString() })
+      .eq("run_id", runId).eq("workspace_id", workspaceId).eq("status", "pending").not("agent", "in", "(lead,categorizer)"));
+    const { workspace } = await loadWorkspace(db, workspaceId);
+    await report({ db, runId, workspace, agent: "lead" }, { type: "note", text: "No rows landed or changed since the last analysis, so only organizing ran" });
+    return false;
+  }
+  checked(await db.from("agent_runs").update({ data_fingerprint: current }).eq("id", runId).eq("workspace_id", workspaceId));
+  return true;
+}
+
 type AiApplied = { applied: number; transactionIds: string[]; skipped: Record<string, number> };
 const appliedResult = (outcome: AiApplied) => ({ auto: true, applied: outcome.applied, skipped: outcome.skipped,
   href: outcome.transactionIds[0] ? `/money/transactions?transaction=${outcome.transactionIds[0]}` : "/money/transactions", undo: "Undo below" });
@@ -466,17 +498,20 @@ export async function recoverStuckProposals(db: Db, workspaceId: string, now = D
   }
 }
 
-export async function finishRun(runId: string, workspaceId: string, error?: string) {
+/** Closes the run; rerun is the trigger of an import or sync that landed while it worked, which gets one follow-up run. */
+export async function finishRun(runId: string, workspaceId: string, error?: string): Promise<{ status: string; rerun: "import" | "sync" | null }> {
   const db = service();
   const now = new Date().toISOString();
   const run = checked(await db.from("agent_runs").select("status, cancel_requested").eq("id", runId).eq("workspace_id", workspaceId).single()) as { status: string; cancel_requested: boolean };
-  if (!["queued", "running"].includes(run.status)) return run.status;
+  if (!["queued", "running"].includes(run.status)) return { status: run.status, rerun: null };
   // A run whose agents failed did not finish its work; saying "completed" hid 417 uncategorized rows.
   const failed = (checked(await db.from("agent_tasks").select("agent, status").eq("run_id", runId).eq("workspace_id", workspaceId)) as { agent: AgentId; status: string }[])
     .filter(task => task.status === "failed").map(task => AGENTS[task.agent].name);
   error ??= failed.length ? `${failed.join(", ")} failed; resume the run to try again` : undefined;
   const status = run.cancel_requested ? "canceled" : error ? "failed" : "completed";
-  checked(await db.from("agent_runs").update({ status, error: error?.slice(0, 2000) ?? null, finished_at: now, updated_at: now }).eq("id", runId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]));
+  // One statement with the status change, so a request either marked this run first or sees it finished and starts its own.
+  const closed = checked(await db.from("agent_runs").update({ status, error: error?.slice(0, 2000) ?? null, finished_at: now, updated_at: now }).eq("id", runId).eq("workspace_id", workspaceId)
+    .in("status", ["queued", "running"]).select("rerun_trigger").maybeSingle()) as { rerun_trigger: "import" | "sync" | null } | null;
   checked(await db.from("agent_tasks").update({ status: status === "completed" ? "done" : "canceled", finished_at: now }).eq("run_id", runId).eq("workspace_id", workspaceId).in("status", ["pending", "running"]));
-  return status;
+  return { status, rerun: closed?.rerun_trigger ?? null };
 }

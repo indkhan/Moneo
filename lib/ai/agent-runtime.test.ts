@@ -80,10 +80,10 @@ it("a dropped database call leaves the agent for its step to retry, and the retr
 
 it("a run with a failed agent finishes failed, so it can be resumed and the backlog check retries it", async () => {
   db.tasks = [{ agent: "categorizer", status: "failed", events: [] }, { agent: "anomaly", status: "done", events: [] }, { agent: "writer", status: "done", events: [] }];
-  expect(await finishRun(id(9), id(1))).toBe("failed");
+  expect(await finishRun(id(9), id(1))).toMatchObject({ status: "failed" });
   expect(db.writes.find(write => write.table === "agent_runs")!.value).toMatchObject({ status: "failed", error: expect.any(String) });
   db.tasks = [{ agent: "categorizer", status: "done", events: [] }]; db.writes = [];
-  expect(await finishRun(id(9), id(1))).toBe("completed");
+  expect(await finishRun(id(9), id(1))).toMatchObject({ status: "completed" });
 });
 
 it("returns proposals stuck in applying: landed changes are accepted, the rest wait again", async () => {

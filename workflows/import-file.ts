@@ -8,14 +8,13 @@ import { linkOwnTransfers } from "@/lib/finance/own-transfers";
 import { resolveNewIdentities } from "@/lib/organize/resolve";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
-import { maybeStartFirstReview as startFirstReviewIfFirst } from "@/lib/import/follow-up";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
   return result.data;
 }
 
-// followUps is false for a bank sync, which starts the agent team and first review once for all its accounts.
+// followUps is false for a bank sync, which requests one agent pass for all its accounts.
 export async function importFile(importId: string, workspaceId: string, rowCount: number, runVersion = 1, followUps = true) {
   "use workflow";
   try {
@@ -31,7 +30,6 @@ export async function importFile(importId: string, workspaceId: string, rowCount
   await linkOwnTransfersStep(workspaceId);
   if (!followUps) return;
   await startAgentTeam(importId, workspaceId);
-  await maybeStartFirstReview(importId, workspaceId);
 }
 
 // As soon as new rows land: each gets its identity, then transfers between the owner's own accounts are linked
@@ -46,8 +44,8 @@ async function linkOwnTransfersStep(workspaceId: string) {
   try { await linkOwnTransfers(db, workspaceId); } catch (error) { console.error("Own-account transfers were not linked", error); } // The next import retries.
 }
 
-// The agent team starts the moment an import's rows are in. It only proposes;
-// a failure here never affects the completed import.
+// An import's rows request an agent pass (lib/ai/agent-dispatch.ts); it only proposes,
+// and a failure here never affects the completed import.
 async function startAgentTeam(importId: string, workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
@@ -157,11 +155,4 @@ async function failImport(importId: string, workspaceId: string, error: string, 
   "use step";
   const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: error }));
-}
-
-// Keeps its step name so imports already running when Moneo updates resume cleanly.
-async function maybeStartFirstReview(importId: string, workspaceId: string) {
-  "use step";
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  await startFirstReviewIfFirst(serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY), workspaceId, [importId]);
 }
