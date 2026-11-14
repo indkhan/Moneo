@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cashWithdrawals } from "./own-transfers";
-import { findOwnTransfers, normalizeIban, ownNameSuggestions, sourceIbans, type TransferCandidate } from "./own-transfers";
+import { findExchanges, findOwnTransfers, internalMoves, normalizeIban, ownNameSuggestions, sourceIbans, uncertainPairs, withBankContext, type TransferCandidate } from "./own-transfers";
+import type { RawContext } from "@/lib/bank/raw-context";
 
 const CURRENT = "DE89370400440532013000", SAVINGS = "DE02120300000000202051", ELSEWHERE = "DE75512108001245126199";
 const row = (id: string, accountId: string, amount: bigint, postedOn = "2026-10-01", extra: Partial<TransferCandidate> = {}): TransferCandidate =>
@@ -121,5 +122,63 @@ describe("cash machine withdrawals", () => {
   });
   it("leaves out deposits, other wording, linked rows and old withdrawals", () => {
     expect(cashWithdrawals([row({ amountMinor: 100n }), row({ text: "Coffee" }), row({ transferId: "b" }), row({ postedOn: "2026-09-01" })], "2026-11-08")).toEqual([]);
+  });
+});
+
+describe("bank context", () => {
+  const ctx = (over: Partial<RawContext> = {}): RawContext => ({ bank_id: null, payment_type: "transfer", bank_code: null, bank_sub_code: null, mcc: null, counterparty_name: null,
+    counterparty_iban: null, counterparty_bic: null, counterparty_ids: [], own_side_ids: [], creditor_id: null, mandate_ref: null, instructed_amount: null,
+    instructed_currency: null, exchange_rate: null, own_account: false, ...over });
+
+  it("only proposes two unrelated equal opposite amounts across own accounts, never pairs them", () => {
+    const rows = [row("rent", "current", -50000n, "2026-10-01"), row("salary", "savings", 50000n, "2026-10-02")];
+    expect(findOwnTransfers(rows, own).pairs).toEqual([]);
+    expect(uncertainPairs(rows)).toEqual([{ outId: "rent", inId: "salary" }]);
+    // A third matching leg makes it ambiguous, and a row with someone else's IBAN is never a candidate.
+    expect(uncertainPairs([...rows, row("gift", "other", 50000n, "2026-10-02")])).toEqual([]);
+    expect(uncertainPairs([rows[0], { ...rows[1], raw: ctx({ counterparty_iban: "DE44500105175407324931", counterparty_name: "Example Employer" }) }])).toEqual([]);
+  });
+
+  it("pairs a leg whose bank context names an own IBAN, and marks an unpaired top-up as a transfer", () => {
+    const out = row("out", "current", -100n, "2026-10-01"), into = row("in", "savings", 100n, "2026-10-01");
+    const raw = new Map([["out", ctx({ counterparty_iban: "DE02 1203 0000 0000 2020 51", own_account: true })]]);
+    expect(findOwnTransfers(withBankContext([out, into], raw), own).pairs).toEqual([{ outId: "out", inId: "in" }]);
+    const topUp = withBankContext([row("top", "current", -2500n, "2026-10-01")], new Map([["top", ctx({ payment_type: "top_up", counterparty_iban: SAVINGS, own_account: true })]]));
+    expect(findOwnTransfers(topUp, own).single).toEqual([{ transactionId: "top", iban: SAVINGS }]);
+  });
+
+  it("pairs a leg sent to the bank's id for another own account", () => {
+    const ownWithIds = { ...own, ids: new Map([["acct-savings", "savings"]]) };
+    const out = row("out", "current", -100n, "2026-10-01", { raw: ctx({ counterparty_ids: [{ identification: "acct-savings" }] }) });
+    expect(findOwnTransfers([out, row("in", "savings", 100n, "2026-10-01")], ownWithIds).pairs).toEqual([{ outId: "out", inId: "in" }]);
+  });
+
+  it("leaves a proven leg alone when two other sides are equally close", () => {
+    const out = row("out", "current", -100n, "2026-10-02", { ibans: [SAVINGS] });
+    expect(findOwnTransfers([out, row("a", "savings", 100n, "2026-10-01"), row("b", "savings", 100n, "2026-10-03")], own).pairs).toEqual([]);
+  });
+
+  it("keeps a card paid in a foreign currency as spending", () => {
+    const card = row("card", "current", -2300n, "2026-10-01", { raw: ctx({ payment_type: "card", counterparty_name: "Example Shop", instructed_amount: "25.00", instructed_currency: "USD", exchange_rate: "1.087" }) });
+    expect(findExchanges([card])).toEqual({ pairs: [], single: [] });
+  });
+
+  it("pairs exchange legs in two currencies and never invents a missing one", () => {
+    const eur = row("eur", "eur-wallet", -10000n, "2026-10-01", { raw: ctx({ payment_type: "exchange", instructed_amount: "108.70", instructed_currency: "USD" }) });
+    const usd = row("usd", "usd-wallet", 10870n, "2026-10-01", { currencyCode: "USD", raw: ctx({ payment_type: "unknown" }) });
+    expect(findExchanges([eur, usd])).toEqual({ pairs: [{ outId: "eur", inId: "usd" }], single: [] });
+    // The bank's stated foreign amount must match the other side, and a lone leg is marked on its own.
+    expect(findExchanges([eur, { ...usd, amountMinor: 9999n }])).toEqual({ pairs: [], single: ["eur"] });
+    expect(findExchanges([eur])).toEqual({ pairs: [], single: ["eur"] });
+  });
+
+  it("groups moves with nobody on the other side into one question per description", () => {
+    const moves = [row("a", "current", -2000n, "2026-10-01", { text: "To EUR MB:1234", raw: ctx({ payment_type: "unknown" }), identityId: "id-1" }),
+      row("b", "current", 2000n, "2026-10-05", { text: "To EUR MB:5678", raw: ctx({ payment_type: "unknown" }), identityId: "id-1" }),
+      row("c", "current", -500n, "2026-10-06", { text: "To EUR", raw: ctx({ payment_type: "unknown" }) }),
+      row("d", "current", -900n, "2026-10-06", { text: "Rent October", raw: ctx({ counterparty_name: "Example Landlord", counterparty_iban: "DE44500105175407324931" }) })];
+    // "To EUR" only went one way and has no transfer code, so it isn't asked about.
+    expect(internalMoves(moves)).toEqual([{ key: "to eur mb", transactionIds: ["a", "b"], identityId: "id-1" }]);
+    expect(internalMoves([{ ...moves[2], raw: ctx({ payment_type: "top_up" }) }])).toEqual([{ key: "to eur", transactionIds: ["c"], identityId: null }]);
   });
 });
