@@ -130,3 +130,33 @@ begin
   if (select count(*) from public.agent_proposals where id in (pa,pb,pc,pd) and status='rejected' and result='{"reset":true}')<>4 then raise exception 'Reset proposals can apply again'; end if;
   if public.reset_auto_organization()->>'proposals'<>'0' then raise exception 'Reset is not idempotent'; end if;
 end $$;
+
+-- The organizer never relabels rows from the owner's memory or the owner's own rows, and its non-AI labels keep their source.
+do $$
+declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid:=gen_random_uuid(); food uuid:=gen_random_uuid();
+  m1 uuid:=gen_random_uuid(); o1 uuid:=gen_random_uuid(); b1 uuid:=gen_random_uuid(); result jsonb; tx public.transactions%rowtype;
+begin
+  insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
+  select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Sources','EUR');
+  insert into public.categories(id,workspace_id,name) values(food,workspace,'Synthetic food');
+  insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code)
+    select id,workspace,account,'2026-10-01','MARKET '||n,-450,'EUR' from unnest(array[m1,o1,b1]) with ordinality as source(id,n);
+  -- m1 has its category from the owner's memory but no merchant yet; o1 is the owner's.
+  update public.transactions set organized_by='memory',category_id=food where id=m1;
+  update public.transactions set organized_by='owner' where id=o1;
+  result:=public.apply_ai_organization(workspace,null,jsonb_build_array(
+    jsonb_build_object('transaction_id',m1,'expected_version',0,'merchant_name','Synthetic Market','confidence','high','identity_key','market'),
+    jsonb_build_object('transaction_id',o1,'expected_version',0,'category_id',food,'confidence','high','identity_key','market','source','system'),
+    jsonb_build_object('transaction_id',b1,'expected_version',0,'category_id',food,'confidence','high','reason','Bank: MCC 5411','identity_key','market','source','system')));
+  if result->>'applied'<>'1' or result->'skipped'<>'{"memory":1,"owner":1}'::jsonb then raise exception 'Organizer touched owner or memory rows: %',result; end if;
+  if (select merchant_id from public.transactions where id=m1) is not null or (select organized_by from public.transactions where id=m1)<>'memory'
+    or (select category_id from public.transactions where id=o1) is not null then raise exception 'A protected row changed'; end if;
+  select * into strict tx from public.transactions where id=b1;
+  if tx.organized_by<>'system' or tx.ai_confidence is not null or tx.ai_reason<>'Bank: MCC 5411' or tx.category_id<>food
+    or (select after->>'organized_by' from public.organizer_ops where transaction_id=b1)<>'system' then raise exception 'Bank label lost its source'; end if;
+  begin
+    perform public.apply_ai_organization(workspace,null,jsonb_build_array(jsonb_build_object('transaction_id',b1,'expected_version',1,'category_id',food,'confidence','high','identity_key','market','source','owner')));
+    raise exception 'The organizer wrote as the owner';
+  exception when sqlstate '22023' then null; end;
+end $$;
