@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>by2b53c71</task-id>
+<tool-use-id>toolu_01LDXbEyZPBeXNomKmvJxKyq</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\b68994dd97651644\628f847c-fdf2-4791-919c-a5648afded6d\tasks\by2b53c71.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for the v0.1.2 release build rerun" completed (exit code 0)</summary>
+</task-notification>
