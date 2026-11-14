@@ -3,7 +3,7 @@
 //   node scripts/desktop/build.mjs --main   only the main process (npm run desktop:dev)
 // The native backend (desktop/.build/backend, storage-api) comes from scripts/desktop/fetch-backend.mjs.
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -81,6 +81,23 @@ function assemble() {
   }
 }
 
+// codesign refuses a Mac app whose bundle holds a symlink that leaves it ("invalid destination for
+// symbolic link in bundle"). The few links in desktop/.build (library aliases in the native backend)
+// become copies of what they point at; a broken one is dropped. Each change is logged.
+function replaceSymlinks(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) { replaceSymlinks(full); continue; }
+    if (!entry.isSymbolicLink()) continue;
+    const link = readlinkSync(full);
+    let target = null;
+    try { target = realpathSync(full); } catch { /* broken */ }
+    rmSync(full, { force: true });
+    if (target) cpSync(target, full, { recursive: true, dereference: true });
+    console.log(`desktop build: ${target ? "copied" : "removed broken link"} ${path.relative(out, full)} -> ${link}`);
+  }
+}
+
 async function buildMain() {
   const common = { bundle: true, platform: "node", format: "cjs", target: "node22", external: ["electron"], sourcemap: "linked", logLevel: "warning", absWorkingDir: desktop };
   await build({ ...common, entryPoints: { main: "src/main.ts" }, outdir: "dist" });
@@ -94,6 +111,7 @@ if (!mainOnly) {
 }
 rmSync(path.join(desktop, "dist"), { recursive: true, force: true });
 await buildMain();
+if (!mainOnly && existsSync(out)) replaceSymlinks(out);
 for (const part of ["backend", "storage-api"]) {
   if (!existsSync(path.join(out, part))) console.warn(`desktop build: desktop/.build/${part} is missing; run scripts/desktop/fetch-backend.mjs before packaging.`);
 }
