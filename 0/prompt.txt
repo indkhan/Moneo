@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bko2bw4qa</task-id>
+<tool-use-id>toolu_01Ctcqwn4AK68P5TqCYiwRbr</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\b68994dd97651644\628f847c-fdf2-4791-919c-a5648afded6d\tasks\bko2bw4qa.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for the updated PR's Desktop build" completed (exit code 0)</summary>
+</task-notification>

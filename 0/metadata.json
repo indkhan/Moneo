@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7CXCA23MEP8KERRGGZ0N8SP",
+  "session_id": "628f847c-fdf2-4791-919c-a5648afded6d",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-14T11:34:16.2734266Z",
+  "branch": "t3/mac-release-symlinks",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "desktop/bootstrap/00-roles.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "c8cd52804946",
+  "checkpoint_transcript_start": 1055,
+  "transcript_lines_at_start": 1055,
+  "compact_transcript_start": 120,
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 3672,
+    "cache_read_tokens": 1058629,
+    "output_tokens": 2068,
+    "api_call_count": 5
+  },
+  "redaction": {
+    "replacements": 4,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 4,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 6
+  }
+}
