@@ -43,12 +43,13 @@ it("describes only the tables the AI may read", () => {
 });
 
 describe("charting a data_query result", () => {
-  it("charts exact amounts in the chart's currency only, and rejects a column the query didn't return", () => {
+  it("charts exact amounts, refuses rows in another currency unless filtered out, and rejects a column the query didn't return", () => {
     const result = shapeDataQuery({ columns: ["month", "spent", "currency_code"], rows: [["2026-09", "9007199254740993", "EUR"], ["2026-09", "500", "USD"], ["2026-10", "1250", "EUR"]], truncated: null });
     const store = chartDatasets();
     const id = store.add(dataQueryChartDataset(result, { month: { kind: "text" }, spent: { kind: "money", currencyColumn: "currency_code" }, currency_code: { kind: "text" } }));
-    const chart = resolveChart({ type: "bar", title: "Spending", unit: { kind: "money", currency: "EUR" }, datasetId: id, labels: { column: "month" }, series: [{ name: "Spent", values: { column: "spent" } }] }, store.get);
-    expect(chart).toMatchObject({ ok: true, chart: { labels: ["2026-09", "2026-10"], series: [{ values: ["9007199254740993", "1250"] }] } });
+    const spec = { type: "bar", title: "Spending", unit: { kind: "money", currency: "EUR" }, datasetId: id, labels: { column: "month" }, series: [{ name: "Spent", values: { column: "spent" } }] };
+    expect(resolveChart(spec, store.get)).toMatchObject({ ok: false, error: expect.stringContaining("USD") });
+    expect(resolveChart({ ...spec, where: { currency_code: "EUR" } }, store.get)).toMatchObject({ ok: true, chart: { labels: ["2026-09", "2026-10"], series: [{ values: ["9007199254740993", "1250"] }] } });
     expect(() => dataQueryChartDataset(result, { amount: { kind: "count" } })).toThrow(DataQueryError);
   });
 });
