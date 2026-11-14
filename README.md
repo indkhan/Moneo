@@ -110,7 +110,7 @@ Moneo syncs booked transactions and balances from EU banks (for example Revolut 
 5. In Moneo, go to **Settings → Keys and connections → Connected banks** (also on the Import page). Paste the application ID, paste the private key or upload the `.pem` file, and click **Save and check**.
 6. Click **Choose a bank**, pick yours, click **Connect bank** and approve access at your bank.
 
-Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days before it ends. Pending transactions are not synced. Banks usually share your full history only right after you approve access, so if that first sync fails Moneo tries again up to three times within about an hour. When the bank limits one account, that account waits as long as the bank asks while your other accounts keep syncing. If Enable Banking says it rejected the return address, add the Redirect URL from step 2 to your application and try again.
+Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days before it ends. Pending transactions are not synced. Your banks sync together once a day, and a few minutes after the last one lands Moneo organizes and checks the new rows in one go; if the AI's plan limit is reached, the rest waits until the limit resets. Banks usually share your full history only right after you approve access, so if that first sync fails Moneo tries again up to three times within about an hour. When the bank limits one account, that account waits as long as the bank asks while your other accounts keep syncing. If Enable Banking says it rejected the return address, add the Redirect URL from step 2 to your application and try again.
 
 ### Connect Scalable Capital (optional)
 
