@@ -15,7 +15,9 @@ type Connection = {
 };
 type Bank = { name: string; country: string };
 
-const COUNTRIES = ["DE", "AT", "BE", "ES", "FI", "FR", "IE", "IT", "LT", "NL", "PT"];
+// Countries Enable Banking serves (its changelog lists banks in each). A country without banks just shows an empty list.
+const COUNTRIES = ["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IS", "IT", "LT", "LU", "LV", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK"];
+const countryName = (code: string) => { try { return new Intl.DisplayNames(undefined, { type: "region" }).of(code) ?? code; } catch { return code; } };
 const RESULTS: Record<string, string> = {
   connected: "Bank connected. The first sync is running and appears in import history.",
   error: "The bank connection was cancelled or failed. Try again.",
@@ -109,6 +111,9 @@ export function ConnectedBanks() {
     fetchConnections().then(loaded => {
       if (!live) return;
       setData(loaded);
+      // Start the bank picker on this computer's country (en-GB → GB isn't served, so it stays on DE).
+      const region = navigator.language.split("-")[1]?.toUpperCase();
+      if (region && COUNTRIES.includes(region)) setCountry(region);
       const result = new URLSearchParams(window.location.search).get("bank");
       if (result && RESULTS[result]) setMessage(RESULTS[result]);
       if (result === "connected" && loaded.connections[0]) setRequested({ [loaded.connections[0].id]: Date.now() });
@@ -153,7 +158,7 @@ export function ConnectedBanks() {
     try {
       const response = await fetch(`/api/bank/aspsps?country=${country}`);
       const body = await response.json().catch(() => ({}));
-      if (response.ok) setBanks(body.banks); else setError(body.error ?? "Banks could not be loaded");
+      if (response.ok) { setBanks(body.banks); if (!body.banks.length) setError(`Enable Banking has no banks for ${countryName(country)}. You can still import statements from your bank.`); } else setError(body.error ?? "Banks could not be loaded");
     } catch { setError("Banks could not be loaded. Check your connection and try again."); }
     finally { setBusy(null); }
   }
@@ -206,12 +211,13 @@ export function ConnectedBanks() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1.5 text-sm font-medium">Country
           <select value={country} onChange={event => { setCountry(event.target.value); setBanks(null); }} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal">
-            {COUNTRIES.map(code => <option key={code}>{code}</option>)}</select></label>
+            {COUNTRIES.map(code => [code, countryName(code)]).sort((a, b) => a[1].localeCompare(b[1])).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
         {banks ? <>
           <label className="grid min-w-56 flex-1 gap-1.5 text-sm font-medium">Bank
             <select value={bank} onChange={event => setBank(event.target.value)} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal">
               <option value="">Choose your bank</option>{banks.map(item => <option key={item.name}>{item.name}</option>)}</select></label>
           <Button className="min-h-10" disabled={!bank || !!busy} onClick={() => void connect(bank, country)}>{busy?.startsWith("connect:") ? "Opening bank…" : "Connect bank"}</Button>
+          <p className="basis-full text-xs text-muted-foreground">Your bank&apos;s login opens in the browser. Some banks ask you to approve twice: once for access and once for history older than 90 days.</p>
         </> : <Button variant="outline" className="min-h-10" disabled={!!busy} onClick={() => void loadBanks()}>{busy === "banks" ? "Loading banks…" : "Choose a bank"}</Button>}
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

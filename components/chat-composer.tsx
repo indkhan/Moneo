@@ -1,9 +1,9 @@
 import { ArrowUp, FileText, LoaderCircle, Paperclip, Square, X } from "lucide-react";
 import type { ChatAttachments } from "@/lib/ai/use-chat-attachments";
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "@/lib/ai/chat-attachments";
+import { ATTACHMENT_ACCEPT, ATTACHMENT_HINT, MAX_ATTACHMENTS, MAX_ATTACHMENT_LABEL } from "@/lib/ai/chat-attachments";
 import { VoiceInput } from "./voice-input";
 
-const ATTACH_HINT = `Attach a photo or PDF: JPEG, PNG, WebP or PDF, up to ${MAX_ATTACHMENTS} files of 4 MB each`;
+const ATTACH_HINT = `Attach ${ATTACHMENT_HINT}: up to ${MAX_ATTACHMENTS} files of ${MAX_ATTACHMENT_LABEL} each`;
 
 /** Spoken words added after whatever is already typed. */
 export const withSpoken = (typed: string, spoken: string) => [typed.trim(), spoken].filter(Boolean).join(" ");
@@ -19,7 +19,7 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
 }) {
   const button = `flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 ${compact ? "size-9" : "size-11"}`;
   const files = attachments?.items ?? [];
-  // A message can be just a photo or PDF; files still uploading or failed hold the send.
+  // A message can be just a photo or document; files still uploading or failed hold the send.
   const sendable = (value.trim() || attachments?.ready.length) && !attachments?.uploading && !files.some(item => item.error);
   return <form onSubmit={onSubmit} onPaste={event => { if (attachments && event.clipboardData.files.length) { event.preventDefault(); attachments.add(event.clipboardData.files); } }}
     className="relative rounded-2xl border border-input bg-card p-2.5 transition-colors focus-within:border-muted-foreground/60">
@@ -38,7 +38,7 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
         {/* On phones the picker offers the camera as well as files. */}
         {attachments && <label className={`flex shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground has-disabled:cursor-default has-disabled:opacity-40 ${compact ? "size-8" : "size-9"}`} title={ATTACH_HINT}>
           <span className="sr-only">{ATTACH_HINT}</span><Paperclip className="size-4" aria-hidden="true" />
-          <input type="file" accept={Object.keys(ATTACHMENT_TYPES).join(",")} multiple disabled={disabled || attachments.full} className="sr-only" onChange={event => { if (event.target.files) attachments.add(event.target.files); event.target.value = ""; }} />
+          <input type="file" accept={ATTACHMENT_ACCEPT} multiple disabled={disabled || attachments.full} className="sr-only" onChange={event => { if (event.target.files) attachments.add(event.target.files); event.target.value = ""; }} />
         </label>}
         <span role={busy ? "status" : undefined} className="truncate text-xs text-muted-foreground">{busy ? files.length ? "Files send after this reply finishes." : busyText : ""}</span>
       </div>

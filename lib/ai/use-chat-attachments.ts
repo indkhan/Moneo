@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, type ChatAttachment } from "./chat-attachments";
+import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_LABEL, type ChatAttachment } from "./chat-attachments";
 
 type Item = { id: string; name: string; preview?: string; file?: ChatAttachment; error?: string };
 
@@ -31,7 +31,7 @@ export function useChatAttachments() {
       void (async () => {
         try {
           const blob = await shrink(file);
-          if (blob.size > MAX_ATTACHMENT_BYTES) throw new Error("Files must be under 4 MB");
+          if (blob.size > MAX_ATTACHMENT_BYTES) throw new Error(`Files must be under ${MAX_ATTACHMENT_LABEL}`);
           const form = new FormData();
           form.set("file", blob, blob === file ? file.name : file.name.replace(/\.\w+$/, "") + ".jpg");
           const response = await fetch("/api/chat/attachments", { method: "POST", body: form });

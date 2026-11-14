@@ -1,6 +1,6 @@
 "use client";
 
-import { isValidElement, useState } from "react";
+import { createContext, isValidElement, useContext, useMemo, useState } from "react";
 import Link from "next/link";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -10,6 +10,9 @@ import { ChatChart } from "./chat-chart";
 import { IouCard } from "./iou-card";
 import { DecisionCard } from "./decision-card";
 import { ProposalGroup } from "./proposal-group";
+import { CitationChip } from "./citation-chip";
+import { CITATION_PATTERN, parseCitation, type Citation } from "@/lib/ai/citations";
+import { attachmentId, type ChatAttachment } from "@/lib/ai/chat-attachments";
 
 // Only link known application paths in text nodes, never inside SQL/code blocks.
 const appLinks: Plugin<[], Root> = () => tree => {
@@ -41,6 +44,33 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
   }}>{copied ? "Copied" : "Copy code"}</button></div><pre>{children}</pre></div>;
 }
 
+type Cited = { file: ChatAttachment; citation: Citation };
+/** The citations of the reply being drawn, which its links point into by index. */
+const Citations = createContext<Cited[]>([]);
+const CITE_HREF = /^#moneo-cite-(\d+)$/;
+
+/**
+ * Citation markers become links to `#moneo-cite-n`, drawn as chips. Only markers naming a file attached in
+ * this conversation become chips; any other marker is dropped, and so is one still being written.
+ */
+export function withCitations(content: string, files: ChatAttachment[], streaming = false) {
+  const cited: Cited[] = [];
+  const text = (streaming ? content.replace(/\{\{[^}]*\}?$/, "") : content).split(/(```[\s\S]*?(?:```|$))/).map((part, index) => index % 2 ? part
+    : part.replace(CITATION_PATTERN, (...match) => {
+      const citation = parseCitation(match as unknown as RegExpMatchArray);
+      const file = citation && files.findLast(item => attachmentId(item.path) === citation.id);
+      if (!citation || !file) return "";
+      cited.push({ file, citation });
+      return `[source](#moneo-cite-${cited.length - 1})`;
+    })).join("");
+  return { text, cited };
+}
+
+function CitationLink({ href, children }: { href: string; children?: React.ReactNode }) {
+  const cited = useContext(Citations)[Number(CITE_HREF.exec(href)?.[1])];
+  return cited ? <CitationChip file={cited.file} citation={cited.citation} /> : <span>{children}</span>;
+}
+
 // Outside the component: new functions on each render would make React remount everything in a reply,
 // so a tapped card would flash "Loading…" and lose its place whenever the page refreshes.
 const remarkPlugins = [remarkGfm, appLinks];
@@ -60,6 +90,7 @@ const components: Components = {
   table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
   a: ({ href, children }) => {
     if (!href) return <span>{children}</span>;
+    if (CITE_HREF.test(href)) return <CitationLink href={href}>{children}</CitationLink>;
     // App paths navigate client-side; anything else opens in a new tab.
     if (href.startsWith("/") && !href.startsWith("//")) return <Link href={href}>{children}</Link>;
     // External links are shown as text only; answers never link off the app.
@@ -70,6 +101,9 @@ const components: Components = {
 /** A link the model is still writing would show as raw text and a long URL until its last character arrives. */
 const withoutUnfinishedLink = (text: string) => text.replace(/\[[^\]\n]*(\]\([^)\n]*)?$/, "");
 
-export function AiMessage({ content, streaming = false }: { content: string; streaming?: boolean }) {
-  return <div className="ai-markdown"><Markdown remarkPlugins={remarkPlugins} skipHtml components={components}>{streaming ? withoutUnfinishedLink(content) : content}</Markdown></div>;
+/** `files` are the conversation's attachments, which the reply's citation chips may point to. */
+export function AiMessage({ content, streaming = false, files = NO_FILES }: { content: string; streaming?: boolean; files?: ChatAttachment[] }) {
+  const { text, cited } = useMemo(() => withCitations(content, files, streaming), [content, files, streaming]);
+  return <Citations.Provider value={cited}><div className="ai-markdown"><Markdown remarkPlugins={remarkPlugins} skipHtml components={components}>{streaming ? withoutUnfinishedLink(text) : text}</Markdown></div></Citations.Provider>;
 }
+const NO_FILES: ChatAttachment[] = [];

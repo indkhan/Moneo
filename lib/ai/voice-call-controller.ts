@@ -31,7 +31,7 @@ const STEPS: Record<string, string> = {
   transaction_propose: "making a card", iou_propose: "making a loan card", balance_propose: "making a balance card", recurring_propose: "making a recurring card",
   organize_review: "checking what the organizer did", organize_propose: "making a labelling card",
   iou_findRepayments: "looking for repayments", investments_portfolio: "checking your Scalable portfolio", investments_transactions: "checking your Scalable trades",
-  investments_security: "looking up the security", investments_watchlist: "checking your watchlist", investments_order: "getting Scalable's order preview", investments_cancelOrder: "making a cancel card", call_replace_task: "replacing the earlier request", app_help: "checking how Moneo works",
+  investments_security: "looking up the security", investments_watchlist: "checking your watchlist", investments_order: "getting Scalable's order preview", investments_cancelOrder: "making a cancel card", call_replace_task: "replacing the earlier request", app_help: "checking how Moneo works", document_read: "reading the attached file",
 };
 export const stepFor = (tool: string) => STEPS[tool] ?? "working";
 
@@ -41,7 +41,7 @@ export function answerCards(answer: string) {
 }
 /** An answer as words to speak: no card, chart or decision blocks, bounded. */
 export function spokenAnswer(answer: string, max = 1500) {
-  const text = answer.replace(/```[\w-]*\n[\s\S]*?```/g, "").replace(/[*_#`>|]/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim();
+  const text = answer.replace(/```[\w-]*\n[\s\S]*?```/g, "").replace(/\{\{cite\b[^}]*\}\}/g, "").replace(/[*_#`>|]/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim();
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 

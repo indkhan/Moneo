@@ -196,6 +196,7 @@ it("hands a typed message's result to GPT-Live to say, without a delegation", as
 it("reads card ids and strips blocks for speech", () => {
   expect(answerCards(`a\n\`\`\`moneo-proposals\n["${card}"]\n\`\`\``)).toEqual([card]);
   expect(spokenAnswer("Hi **there** [link](/x)\n```moneo-chart\n{}\n```", 10)).toBe("Hi there …");
+  expect(spokenAnswer("Rent is 950. {{cite a1b2c3d4 p.3 \"Rent 950\"}}")).toBe("Rent is 950.");
 });
 
 it("cuts each request at its hand-off's offset, leaving later words for the next one", () => {

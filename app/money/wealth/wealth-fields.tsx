@@ -12,7 +12,7 @@ export function WealthFields({ itemId, requestId, kind, item, accounts, assumpti
   // Which accounts and repayments can match this value follows the currency as it is chosen.
   const [code, setCode] = useState(item?.currency_code ?? currency);
   const field = "mt-1 block min-h-10 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground";
-  return <SafeForm action={saveWealthItemSafely} className="mt-4 grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 [&_label]:text-muted-foreground">
+  return <SafeForm action={saveWealthItemSafely} className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2 [&_label]:text-muted-foreground [&>*]:min-w-0">
     {!item && kind !== "debt" && <p className="text-xs text-muted-foreground sm:col-span-2">{kind === "holding" ? "Something with a quantity and a price, like shares or a fund." : "Something with one value, like a home or a car."}</p>}
     <input type="hidden" name="id" value={itemId} /><input type="hidden" name="version" value={item?.version ?? 0} /><input type="hidden" name="requestId" value={requestId} /><input type="hidden" name="kind" value={kind} />
     <label>Name<input name="name" required maxLength={120} defaultValue={item?.name} className={field} /></label>

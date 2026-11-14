@@ -12,7 +12,7 @@ const program = (cluster: Pick<Cluster, "bin">, name: string) => path.join(clust
 export const isInitialized = (data: string) => existsSync(path.join(data, "PG_VERSION"));
 
 export async function bundledMajor(bin: string) {
-  const output = await mustRun(program({ bin }, "postgres"), ["--version"]);
+  const output = await mustRun(program({ bin }, "postgres"), ["--version"], { waitForClose: true });
   const major = output.match(/PostgreSQL\)\s+(\d+)/)?.[1];
   if (!major) throw new Error(`Could not read the bundled PostgreSQL version from "${output.trim()}"`);
   return major;

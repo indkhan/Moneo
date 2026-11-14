@@ -1,17 +1,18 @@
 import { requireWorkspace } from "@/lib/auth";
-import { ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES, attachmentSchema, sniffType } from "@/lib/ai/chat-attachments";
+import { ATTACHMENT_HINT, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_LABEL, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { sniffType } from "@/lib/ai/documents/sniff";
 
-/** Stores one photo or PDF for a chat message and returns its reference. */
+/** Stores one photo or document for a chat message and returns its reference. */
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
   if (!(file instanceof File)) return Response.json({ error: "Choose a file" }, { status: 400 });
-  if (file.size > MAX_ATTACHMENT_BYTES) return Response.json({ error: "Files must be under 4 MB" }, { status: 413 });
+  if (file.size > MAX_ATTACHMENT_BYTES) return Response.json({ error: `Files must be under ${MAX_ATTACHMENT_LABEL}` }, { status: 413 });
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const type = sniffType(bytes);
-  if (!type) return Response.json({ error: "Attach a photo (JPEG, PNG, WebP) or a PDF" }, { status: 415 });
+  const type = await sniffType(bytes, file.name);
+  if (!type) return Response.json({ error: `Attach ${ATTACHMENT_HINT}` }, { status: 415 });
   const path = `${context.workspace.id}/${crypto.randomUUID()}.${ATTACHMENT_TYPES[type]}`;
   const { error } = await context.supabase.storage.from("chat").upload(path, bytes, { contentType: type, upsert: false });
   if (error) return Response.json({ error: error.message }, { status: 400 });

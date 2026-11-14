@@ -3,7 +3,7 @@
 //   node scripts/desktop/build.mjs --main   only the main process (npm run desktop:dev)
 // The native backend (desktop/.build/backend, storage-api) comes from scripts/desktop/fetch-backend.mjs.
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -67,7 +67,8 @@ function assemble() {
   cpSync(path.join(built, "static"), path.join(app, distDir, "static"), { recursive: true });
   cpSync(path.join(root, "public"), path.join(app, "public"), { recursive: true });
   // Read from disk at runtime (outputFileTracingIncludes in next.config.ts); fail early if tracing missed them.
-  for (const file of ["node_modules/echarts/dist/echarts.min.js", "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm", "node_modules/@workflow/world-local/package.json"]) {
+  for (const file of ["node_modules/echarts/dist/echarts.min.js", "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm", "node_modules/@workflow/world-local/package.json",
+    `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude${process.platform === "win32" ? ".exe" : ""}`]) {
     if (!existsSync(path.join(app, file))) fail(`${file} is missing from the standalone server`);
   }
   const migrations = path.join(out, "migrations");
@@ -77,6 +78,23 @@ function assemble() {
   if (existsSync(bootstrap)) {
     rmSync(path.join(out, "bootstrap"), { recursive: true, force: true });
     cpSync(bootstrap, path.join(out, "bootstrap"), { recursive: true });
+  }
+}
+
+// codesign refuses a Mac app whose bundle holds a symlink that leaves it ("invalid destination for
+// symbolic link in bundle"). The few links in desktop/.build (library aliases in the native backend)
+// become copies of what they point at; a broken one is dropped. Each change is logged.
+function replaceSymlinks(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) { replaceSymlinks(full); continue; }
+    if (!entry.isSymbolicLink()) continue;
+    const link = readlinkSync(full);
+    let target = null;
+    try { target = realpathSync(full); } catch { /* broken */ }
+    rmSync(full, { force: true });
+    if (target) cpSync(target, full, { recursive: true, dereference: true });
+    console.log(`desktop build: ${target ? "copied" : "removed broken link"} ${path.relative(out, full)} -> ${link}`);
   }
 }
 
@@ -93,6 +111,7 @@ if (!mainOnly) {
 }
 rmSync(path.join(desktop, "dist"), { recursive: true, force: true });
 await buildMain();
+if (!mainOnly && existsSync(out)) replaceSymlinks(out);
 for (const part of ["backend", "storage-api"]) {
   if (!existsSync(path.join(out, part))) console.warn(`desktop build: desktop/.build/${part} is missing; run scripts/desktop/fetch-backend.mjs before packaging.`);
 }

@@ -62,7 +62,7 @@
         <p class="eyebrow">Ask</p>
         <h3>Ask, and it does the work</h3>
         <p>“Find where I lent money to Bilal and add it.” Moneo searches your transactions, finds the payment and gives you a card to record the loan. “Buy €900 of MSCI World.” It prepares the order on Scalable and shows you exactly what it will cost.</p>
-        <ul class="ticks"><li>Nothing changes until you tap the card</li><li>Uses your ChatGPT plan or your own API key</li><li>You choose which data the AI may see</li></ul>
+        <ul class="ticks"><li>Nothing changes until you tap the card</li><li>Uses your ChatGPT or Claude plan, or your own API key</li><li>You choose which data the AI may see</li></ul>
       </div>
       <figure class="frame"><img src="assets/shots/chat.webp" width="1920" height="1840" loading="lazy" alt="Moneo finding a €250 PayPal payment to Bilal with a card to add the loan, then a Scalable buy order for 8 shares of MSCI World with Buy and Dismiss buttons"></figure>
     </article>
@@ -138,7 +138,7 @@
         <ol>
           <li>Download Moneo for your computer below.</li>
           <li>Open it. The first start sets up your private database (about a minute).</li>
-          <li>Add your AI in Settings, then import a statement or connect your bank.</li>
+          <li>On Home, follow the three steps: turn on AI (sign in with ChatGPT or Claude, or paste an API key), then import a statement from your bank. Connecting your bank directly is optional and takes about 10 minutes once.</li>
         </ol>
         <a class="btn btn-primary" href="#download" data-download-primary><span aria-hidden="true">↓</span> Download</a>
       </div>
@@ -196,12 +196,12 @@ npm start</code></pre>
     <p class="eyebrow">FAQ</p>
     <h2>Questions</h2>
     <div class="faq">
-      <details><summary>Is Moneo free?</summary><p>Yes. Moneo is free and open source under the MIT license. The AI uses your own ChatGPT plan or an API key, so any AI costs are between you and your provider.</p></details>
+      <details><summary>Is Moneo free?</summary><p>Yes. Moneo is free and open source under the MIT license. The AI uses your own ChatGPT or Claude plan or an API key, so any AI costs are between you and your provider.</p></details>
       <details><summary>Does any of my financial data go online?</summary><p>Only to services you connect yourself: your AI provider when you ask a question, Enable Banking to sync your bank, and Scalable Capital for investments. Everything else stays in the database on your computer.</p></details>
       <details><summary>What's the difference between the app and running from source?</summary><p>None in features. The app bundles everything, the database included, so you just install it. Running from source is for people who want to change the code; it uses Docker for the database.</p></details>
       <details><summary>Can I use it on my phone?</summary><p>Yes. Turn on phone access in Settings and connect your phone with Tailscale. Moneo stays on your computer; your phone opens it from there.</p></details>
       <details><summary>How do updates work?</summary><p>In the app, open <b>Settings → App updates</b> and choose <i>Check for updates</i>. On Windows and Linux (AppImage) Moneo installs the update and restarts with your data. On a Mac it opens the download. From source: <code>git pull</code>, <code>npm ci</code>, <code>npm run setup</code>, <code>npm run build</code>, then <code>npm start</code>.</p></details>
-      <details><summary>Which banks work?</summary><p>Banks available through Enable Banking, which covers many banks across Europe. Any bank works through statement import.</p></details>
+      <details><summary>Which banks work?</summary><p>Any bank works through statement import: download a CSV or Excel export from your online banking and drop it into Moneo. To sync automatically, Moneo uses Enable Banking, which covers banks across Europe and is free for personal use. You create a free Enable Banking account once and Moneo walks you through it in <b>Settings → Connected banks</b>.</p></details>
     </div>
   </section>
 
