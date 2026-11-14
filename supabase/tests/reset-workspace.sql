@@ -86,6 +86,12 @@ begin
   insert into public.agent_proposals(run_id,workspace_id,agent,kind,conflict_key,title) values(md5('agent_runs'||seed_ws)::uuid,seed_ws,'lead','finding','synthetic','Synthetic finding');
   insert into public.organizer_ops(workspace_id,transaction_id,identity_key,category_id,before,after)
     values(seed_ws,md5('transactions'||seed_ws)::uuid,'synthetic',md5('categories'||seed_ws)::uuid,'{}','{}');
+  if to_regclass(format('%I.organize_identities',app_schema)) is not null then
+    insert into public.organize_identities(id,workspace_id,kind,display_name) values(md5('organize_identities'||seed_ws)::uuid,seed_ws,'merchant','Synthetic foreign');
+    insert into public.organize_identity_aliases(workspace_id,identity_id,alias_type,value) values(seed_ws,md5('organize_identities'||seed_ws)::uuid,'description_key','synthetic foreign');
+    insert into public.organize_questions(id,workspace_id,identity_key,question,created_by) values(md5('organize_questions'||seed_ws)::uuid,seed_ws,'internal:synthetic','Synthetic question?','system');
+    insert into public.organize_memory(workspace_id,identity_id,category_id,source,confirmed_at) values(seed_ws,md5('organize_identities'||seed_ws)::uuid,md5('categories'||seed_ws)::uuid,'owner',now());
+  end if;
   insert into public.bank_connections(id,workspace_id,aspsp_name,aspsp_country) values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'Synthetic Bank','DE');
   insert into public.bank_connection_accounts(connection_id,workspace_id,provider_account_uid,currency_code,account_name)
     values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'synthetic','EUR','Synthetic Bank');

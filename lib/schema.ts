@@ -459,6 +459,8 @@ export const transactions = pgTable("transactions", {
   aiConfidence: text("ai_confidence"),
   aiReason: text("ai_reason"),
   organizeOpId: uuid("organize_op_id"),
+  // The identity the row resolved to when it landed (202611130006); never financial data.
+  identityId: uuid("identity_id").references((): AnyPgColumn => organizeIdentities.id, { onDelete: "set null" }),
 }, (table) => [
   index("transactions_workspace_id").on(table.workspaceId, table.id),
   index("transactions_workspace_posted").on(table.workspaceId, table.postedOn.desc(), table.id.desc()),
@@ -467,6 +469,7 @@ export const transactions = pgTable("transactions", {
   index("transactions_account_posted_at_idx").on(table.workspaceId, table.accountId, table.postedAt).where(sql`${table.postedAt} is not null`),
   index("transactions_transfer_id_idx").on(table.transferId).where(sql`${table.transferId} is not null`),
   index("transactions_refund_of_id_idx").on(table.refundOfId).where(sql`${table.refundOfId} is not null`),
+  index("transactions_identity_idx").on(table.identityId).where(sql`${table.identityId} is not null`),
   check("transactions_review_reasons_check", sql`${table.reviewReasons} <@ array['source_transfer','source_exchange','source_type','refund_sign','fee_semantics']::text[]`),
   check("transactions_tags_count", sql`cardinality(${table.tags}) <= 20`),
   check("transactions_event_name_length", sql`length(${table.eventName}) <= 120`),
@@ -577,6 +580,83 @@ export const organizerOps = pgTable("organizer_ops", {
   index("organizer_ops_suppressed").on(table.workspaceId, table.identityKey).where(sql`${table.suppressed}`),
   check("organizer_ops_identity_key_check", sql`char_length(${table.identityKey}) <= 1000`),
   check("organizer_ops_check", sql`${table.categoryId} is not null or ${table.merchantId} is not null`),
+]);
+
+// Who a payment is with (202611130006): evidence from the bank's data and the description, with aliases so spellings unify.
+export const organizeIdentities = pgTable("organize_identities", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  displayName: text("display_name").notNull(),
+  merchantId: uuid("merchant_id").references(() => merchants.id, { onDelete: "set null" }),
+  createdBy: text("created_by").notNull().default("system"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  index("organize_identities_workspace").on(table.workspaceId),
+  check("organize_identities_kind_check", sql`${table.kind} in ('merchant','person','processor','own_account','internal')`),
+  check("organize_identities_display_name_check", sql`char_length(btrim(${table.displayName})) between 1 and 200`),
+  check("organize_identities_created_by_check", sql`${table.createdBy} in ('system','ai','owner')`),
+]);
+
+export const organizeIdentityAliases = pgTable("organize_identity_aliases", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  identityId: uuid("identity_id").notNull().references(() => organizeIdentities.id, { onDelete: "cascade" }),
+  aliasType: text("alias_type").notNull(),
+  value: text("value").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  unique("organize_identity_aliases_workspace_id_alias_type_value_key").on(table.workspaceId, table.aliasType, table.value),
+  index("organize_identity_aliases_identity").on(table.identityId),
+  check("organize_identity_aliases_alias_type_check", sql`${table.aliasType} in ('creditor_id','iban','card_merchant','counterparty_name','description_key')`),
+  check("organize_identity_aliases_value_check", sql`char_length(${table.value}) between 1 and 1000`),
+]);
+
+// "Needs you": one question per identity, raised by the landing checks or the organizer.
+export const organizeQuestions = pgTable("organize_questions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  identityKey: text("identity_key").notNull(),
+  identityId: uuid("identity_id").references(() => organizeIdentities.id, { onDelete: "set null" }),
+  question: text("question").notNull(),
+  transactionIds: uuid("transaction_ids").array().notNull().default(sql`'{}'::uuid[]`),
+  status: text("status").notNull().default("open"),
+  answer: jsonb("answer"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+}, table => [
+  unique("organize_questions_workspace_id_identity_key_key").on(table.workspaceId, table.identityKey),
+  index("organize_questions_open").on(table.workspaceId, table.createdAt.desc()).where(sql`${table.status} = 'open'`),
+  check("organize_questions_identity_key_check", sql`char_length(${table.identityKey}) between 1 and 1000`),
+  check("organize_questions_question_check", sql`char_length(btrim(${table.question})) between 1 and 500`),
+  check("organize_questions_transaction_ids_check", sql`cardinality(${table.transactionIds}) <= 500`),
+  check("organize_questions_status_check", sql`${table.status} in ('open','answered','dismissed')`),
+  check("organize_questions_answer_check", sql`${table.answer} is null or (jsonb_typeof(${table.answer}) = 'object' and octet_length(${table.answer}::text) <= 8192)`),
+  check("organize_questions_created_by_check", sql`${table.createdBy} in ('system','ai')`),
+]);
+
+// What an identity is, as the owner confirmed it (source 'owner'); only those rows are memory the organizer trusts.
+export const organizeMemory = pgTable("organize_memory", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  identityId: uuid("identity_id").notNull().references(() => organizeIdentities.id, { onDelete: "cascade" }),
+  categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+  merchantId: uuid("merchant_id").references(() => merchants.id, { onDelete: "set null" }),
+  purpose: text("purpose"),
+  source: text("source").notNull(),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  suppressed: jsonb("suppressed").notNull().default(sql`'[]'::jsonb`),
+}, table => [
+  unique("organize_memory_workspace_id_identity_id_key").on(table.workspaceId, table.identityId),
+  check("organize_memory_purpose_check", sql`char_length(btrim(${table.purpose})) between 1 and 200`),
+  check("organize_memory_source_check", sql`${table.source} in ('owner','ai')`),
+  check("organize_memory_suppressed_check", sql`jsonb_typeof(${table.suppressed}) = 'array' and jsonb_array_length(${table.suppressed}) <= 200`),
+  check("organize_memory_check", sql`${table.source} <> 'owner' or ${table.confirmedAt} is not null`),
 ]);
 
 export const goals = pgTable("goals", {
