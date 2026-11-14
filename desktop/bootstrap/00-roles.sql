@@ -83,4 +83,5 @@ GRANT ALL ON DATABASE postgres TO dashboard_user;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'moneo_reader') THEN CREATE ROLE moneo_reader NOLOGIN NOINHERIT; END IF;
 END $$;
-GRANT moneo_reader TO postgres;
+-- With ADMIN OPTION, as the migration (run as postgres) grants it again and hands it function ownership.
+GRANT moneo_reader TO postgres WITH ADMIN OPTION, INHERIT TRUE GRANTED BY supabase_admin;
