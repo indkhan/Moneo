@@ -13,6 +13,8 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 Download the installer for your computer from the [website](https://indkhan.github.io/Moneo/#download) or [GitHub releases](https://github.com/indkhan/Moneo/releases), install it and open Moneo; nothing else is needed. Windows and Linux installers are published; macOS arrives with the next release (until then, use the source installation below). Home then shows three first steps: turn on AI, add your money, run the agent team. Settings → App updates installs newer releases and keeps your data. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
 Scalable questions in chat and voice can combine live holdings, paginated transaction history and transaction details with local JavaScript calculations. The calculation sandbox has no network, filesystem or credentials. Read results remain subject to your AI data scopes and are sent to your configured AI provider as needed to answer. Trades still require accepting an approval card. No additional setup is needed.
 
+Chat can also answer questions no built-in tool covers by running a read-only SQL query over your finance records. It runs as you, only within your own data and AI data scopes, can't change anything, and can't see stored bank or Scalable tokens, AI keys or settings; each query is shown under the answer's tools.
+
 ### Easiest: let an AI agent install it
 
 If you use an AI coding agent such as Claude Code or Codex, it can do the install for you with the `moneo-setup` skill that comes with Moneo. Open the agent in an empty folder and paste:
@@ -108,7 +110,6 @@ Chat, artifacts, briefings, imports and the agents then run on Claude (Opus 5.5 
 
 - **Never billed to an API key.** Moneo removes `ANTHROPIC_API_KEY` and similar settings before it starts Claude Code, and only runs Claude when Claude Code is signed in with a Claude plan. If you sign out of Claude Code, AI stays off until you sign in again or pick another option.
 - **Only Moneo's tools.** Claude gets Moneo's finance tools and nothing else: no files, no shell, no other MCP servers, and no chat history saved by Claude Code. Changes still go through cards you accept.
-- **PDFs in chat** are read on your computer and sent to Claude as text. A scanned PDF has no text to read, so attach photos of its pages instead.
 - **Not yet:** voice calls and dictation, which still need an OpenAI API key for the audio.
 - **Stop using Claude** switches Moneo back to ChatGPT or your API key. It doesn't sign you out of Claude Code.
 - Anthropic's rules say apps may not offer Claude plan sign-in without its approval ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)). Moneo only uses the Claude Code login you set up yourself, on your own computer. Decide for yourself whether that fits your use.
@@ -159,6 +160,7 @@ How it works, step by step: [docs/phone-access-deep-dive.html](docs/phone-access
 ## Good to know
 
 - Moneo only listens on `127.0.0.1`, so other devices on your network can't open it unless you turn on [phone and tablet access](#use-it-from-your-phone-or-tablet-optional).
+- **Files in chat:** attach photos, PDFs, Word (DOCX), PowerPoint (PPTX), Excel (XLSX) or CSV files, up to four of 25 MB each. Documents are turned into text on your computer, the same way for every AI source; scanned PDF pages are sent as images. Answers show small chips such as `statement.pdf · p.3` that open the page, slide, paragraph or cell they came from.
 - Your data lives in the Docker volumes `moneo_db-data` and `moneo_storage-data`. `docker compose down` keeps them; **`docker compose down -v` deletes all your data**.
 - If ports 54321 or 54322 are already in use, add `API_PORT=` and `DB_PORT=` with free ports to `.env` and run `npm run setup` again.
 

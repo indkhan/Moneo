@@ -2,7 +2,8 @@ import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions 
 import { after } from "next/server";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT, withTools } from "@/lib/ai/provider";
-import { moneoToolName } from "@/lib/ai/claude";
+import { CHAT_MAX_STEPS, moneoToolName } from "@/lib/ai/claude";
+import { DataQueryError, dataQueryChartDataset, dataQueryDescription, dataQueryInput, dataQueryOutput, runDataQuery } from "@/lib/ai/data-query";
 import { aiConfigured } from "@/lib/ai/configured";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
@@ -24,7 +25,10 @@ import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction
 import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
 import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/recurring-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
-import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { MAX_ATTACHMENTS, attachmentId, attachmentNote, attachmentSchema, isImage } from "@/lib/ai/chat-attachments";
+import { attachmentParts } from "@/lib/ai/documents/message";
+import { readDocument } from "@/lib/ai/documents/read";
+import { conversationAttachments, documentText, findAttachment } from "@/lib/ai/documents/store";
 import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
@@ -35,14 +39,16 @@ import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live
 import { titleChatTurn } from "@/lib/ai/chat-title";
 import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
 import { ownerBrief } from "@/lib/ai/owner-brief";
+import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
+import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
 }
 
-// A run keeps going after the user leaves; this covers the model run (90 s, or 280 s in an artifact's chat,
-// where designers write pages and cards) plus reads and publication.
+// A run keeps going after the user leaves; this covers the model run (180 s for longer investigations, or 280 s
+// in an artifact's chat, where designers write pages and cards) plus reads and publication.
 export const maxDuration = 300;
 /** How long a finished answer waits for its title, so the sidebar can update without holding up the answer. */
 const TITLE_WAIT_MS = 2000;
@@ -95,6 +101,9 @@ export async function POST(request: Request) {
       .eq("request_id", requestId).eq("role", "user");
     if (saved.error) console.error("saving chat attachments failed", saved.error);
   }
+  // Every file in this conversation, including this message's, for document_read.
+  const conversationFiles = conversationAttachments(supabase, workspace.id, conversationId);
+  conversationFiles.catch(() => {});
   // An artifact's own chat builds its page and Home cards with the same tools, history and durability as chat.
   const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
   const briefingPromise = artifactId ? artifactBriefing(supabase, workspace.id, artifactId) : null;
@@ -141,12 +150,8 @@ export async function POST(request: Request) {
     content: item.role === "assistant" ? withoutCharts(item.content)
       : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),
   }));
-  // Only this message's files are read by the model; earlier ones are named in their text.
-  const files = await Promise.all(attachments.map(async file => {
-    const { data, error } = await supabase.storage.from("chat").download(file.path);
-    if (error || !data) throw new Error(`Could not read ${file.name}`);
-    return { type: "file" as const, data: new Uint8Array(await data.arrayBuffer()), mediaType: file.type, filename: file.name };
-  }));
+  // This message's files are read in full; earlier ones are named with their ids, and document_read reopens them.
+  const files = await attachmentParts(supabase, attachments);
   const last = textMessages.pop()!;
   const modelMessages = [...textMessages, files.length ? { role: "user" as const, content: [{ type: "text" as const, text: last.content }, ...files] } : last];
   const categoryCommand = parseCategoryCommand(message);
@@ -216,13 +221,13 @@ export async function POST(request: Request) {
     const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
-      iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the date and amount of the matching transfer when transactions_search found one; otherwise the user's exact amount, person and currency.",
+      iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. First look for the transfer with transactions_search (by name, then by amount and dates): if one fits, tell them which (date, account, name on it) and propose with its date and amount; if several fit, ask which; if none, propose with their figures and say no matching transfer was found. Check wealth_list too: a loan for the same person, amount and currency dated around the same day is already recorded, so say so instead of proposing it. Another loan to the same person is a new one; mention what they already owe. For whether someone paid them back, use iou_findRepayments.",
         inputSchema: iouInputSchema, execute: async input => {
           const created = await proposeIou({ ...await requireWorkspace(), chatRequestId: requestId }, input, [...earlierCards, ...proposalCards]);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: `A card with Add and Dismiss is shown to the user below your answer.${created.replaced ? " It replaces the earlier card for this loan, which was dismissed." : ""} Say it is waiting for their approval; do not repeat the details.` };
         } }),
-      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, not per line item, with the exact amount, currency and date from the user or document. For an attachment, read the merchant, total, currency and date printed on it, tell the user what you read and what you couldn't, and never guess an unreadable amount.",
+      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, not per line item, with the exact amount, currency and date from the user or document (default to the display currency and today). For an attachment, read the merchant, total, currency and date printed on it, tell the user what you read and what you couldn't, and never guess an unreadable amount.",
         inputSchema: transactionInputSchema, execute: async input => {
           const created = await proposeTransaction({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
@@ -252,6 +257,8 @@ export async function POST(request: Request) {
       // Artifacts are built in their own chat; this chat only hands the request over.
       ...(artifactId ? {} : { suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
         inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) }) };
+    // Exact series a chart block references by datasetId; resolved into the answer before it is shown and saved.
+    const charts = chartDatasets();
     // Trade cards are confirmed one by one, so they are never grouped under an "add all".
     const tradeCards: string[] = [];
     const scalableConnection = await scalablePromise;
@@ -268,7 +275,7 @@ export async function POST(request: Request) {
       return (steers.data ?? []) as { id: string; content: string }[];
     };
     const result = streamText({
-      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
+      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 180_000)]),
       maxOutputTokens: 3000,
       // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
       providerOptions: { openai: { reasoningEffort: "low" } },
@@ -283,8 +290,8 @@ ${artifactModePrompt(scalableConnection ? settings.artifact_scalable_data : null
 Current state:
 ${artifactBrief}` : ""}`,
       messages: modelMessages,
-      // A guard against runaway loops, not a budget: the prompt's stop rules decide when an answer is done.
-      stopWhen: stepCountIs(30),
+      // A guard against runaway loops, not a budget: the model decides when an answer is done.
+      stopWhen: stepCountIs(CHAT_MAX_STEPS),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
         await stopIfCanceled();
@@ -296,6 +303,19 @@ ${artifactBrief}` : ""}`,
       },
       // Claude runs these inside Claude Code; withTools hands them over there, and steers reach it mid-answer.
       ...withTools(model, { ...planTool, ...retainTools({
+        document_read: tool({ description: "Reopen a file attached in this conversation by its id: a location range, or every place a word or phrase appears (with its location). Without location or search it returns the start. Read-only.",
+          inputSchema: z.object({
+            id: z.string().trim().min(1).max(200).describe("The file's 8-character id, or its exact name"),
+            location: z.string().trim().max(140).optional().describe("p.3 or p.3-5 (PDF pages), slide.2-4 (PowerPoint), para.10-40 (Word paragraphs), Sheet1!A1:F200 or A1:F200 (spreadsheet or CSV cells)"),
+            search: z.string().trim().min(1).max(200).optional().describe("Text to find, case-insensitive"),
+          }).strict(),
+          execute: async ({ id, location, search }) => {
+            const files = await conversationFiles;
+            const file = findAttachment(files, id);
+            if (!file) return { error: `No file "${id}" is attached in this conversation.`, files: files.map(item => ({ id: attachmentId(item.path), name: item.name })) };
+            if (isImage(file.type)) return { error: `"${file.name}" is a photo; it can only be seen in the message it was attached to.` };
+            return { text: readDocument(await documentText(supabase, file), { name: file.name, id: attachmentId(file.path), location, search }) };
+          } }),
         // Designers check the request is still running before they save, so a canceled build saves nothing.
         ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
@@ -333,10 +353,24 @@ ${artifactBrief}` : ""}`,
           return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId, specification), href: "/ai" };
         }) }) } : {}),
         ...scalableTools,
+        ...(settings.ai_data_scopes.includes("accounts") ? { chart_data: tool({ description: "Exact data for a chart: spending by category, merchant, month or day, income vs spending by month (with month-end balance), an account's daily balance, or net worth over time. Returns a datasetId the moneo-chart block references, so you never copy its numbers.",
+          inputSchema: chartDataInput, execute: input => aiEvidence(chartDataScopes(input.dataset), async latest => {
+            const loaded = await loadChartData(latest, input, { canReadImports: latest.settings.ai_data_scopes.includes("imports") });
+            return describeDataset(charts.add(loaded.dataset), loaded, latest.workspace.locale);
+          }, false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
-        transactions_search: tool({ description: "Find transactions, newest first within each kind of match. Filter by description text (rows containing it come first with match \"text\", then rows whose description is similar, such as a nickname or typo of the name, with match \"similar_name\": judge those yourself), posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        transactions_search: tool({ description: "Find transactions, newest first within each kind of match. Filter by description text (rows containing it come first with match \"text\", then rows whose description is similar, such as a nickname or typo of the name, with match \"similar_name\": judge those yourself), posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50). Names are loose (nicknames, short forms, typos; messy bank text): a close name alone is not a match, the amount, currency and direction must fit too. An empty result usually means a bad search: try a shorter part of the name, or the amount with a date range, before saying it isn't there.", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        ...(settings.ai_data_scopes.length ? { data_query: tool({ description: dataQueryDescription(settings.ai_data_scopes), inputSchema: dataQueryInput,
+          execute: ({ sql, maxRows, chart }) => aiEvidence(settings.ai_data_scopes, async latest => {
+            try {
+              const result = await runDataQuery(latest.supabase, sql, settings.ai_data_scopes, maxRows);
+              return { ...dataQueryOutput(result), ...(chart && { datasetId: charts.add(dataQueryChartDataset(result, chart.columns)) }) };
+            }
+            // A rejected query goes back to the model to fix, like any other tool feedback.
+            catch (error) { if (error instanceof DataQueryError) return { error: error.message }; throw error; }
+          }, false, false) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
           execute: () => aiEvidence(["accounts", "transactions"], async latest => {
             const found = await proposeRepayments({ ...latest, chatRequestId: requestId });
@@ -386,7 +420,7 @@ ${artifactBrief}` : ""}`,
     // Several cards from one answer are grouped so they can also be added all at once.
     const cards = [...new Set(proposalCards)];
     const cardBlocks = cards.length > 1 ? ["```moneo-proposals\n" + JSON.stringify(cards) + "\n```"] : cards.map(id => "```moneo-proposal\n" + id + "\n```");
-    const answer = [text.trim(), ...cardBlocks, ...[...new Set(tradeCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards)].join("\n\n");
+    const answer = [resolveChartBlocks(text.trim(), charts.get), ...cardBlocks, ...[...new Set(tradeCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (stop.signal.aborted) throw new Error("Request canceled");
