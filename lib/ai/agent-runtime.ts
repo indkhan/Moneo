@@ -8,7 +8,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
-import { StopWork } from "@/lib/organize/batcher";
+import { StopWork, retryLeftoversAt } from "@/lib/organize/batcher";
 import { calibration } from "@/lib/organize/calibration";
 import { loadJudgedLabels, loadOrganizeInput } from "@/lib/organize/load";
 import { answersSchema, organize, type Ask, type AskRequest, type Decided, type Label, type OrganizeInput, type Source } from "@/lib/organize/organizer";
@@ -189,7 +189,11 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
   if (calibrated.reason) await report(context, { type: "note", text: calibrated.reason });
   await report(context, { type: "tool", text: `${plural(input.rows.length, "row")} to organize; ${plural(input.rules.length, "rule")}, ${plural(input.memory.size, "confirmed payee")}, ${plural(input.history.length, "labelled row")} as examples` });
   const run = await activeRun(db, runId, workspace.id);
-  const model = run.model_status === "available" ? await modelForSettings(context.settings, "agents").catch(() => null) : null;
+  // A limit an earlier run hit holds until it resets (organize_after): asking sooner would only fail again.
+  const previous = checked(await db.from("agent_runs").select("organize_after").eq("workspace_id", workspace.id).neq("id", runId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle()) as { organize_after: string | null } | null;
+  const pausedUntil = previous?.organize_after && Date.parse(previous.organize_after) > Date.now() ? previous.organize_after : null;
+  const model = run.model_status === "available" && !pausedUntil ? await modelForSettings(context.settings, "agents").catch(() => null) : null;
   const ask: Ask | null = model && (async request => {
     try { await activeRun(db, runId, workspace.id); } catch (error) { if (error instanceof RunInactive) throw new StopWork("The run was stopped"); throw error; }
     if (!checked(await db.rpc("reserve_agent_model_call", { p_run_id: runId, p_workspace_id: workspace.id }))) throw new StopWork("The model budget for this run is spent");
@@ -202,8 +206,13 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
     await report(context, { type: "step", text: `Asking the AI about the rest in ${plural(batches, "batch", "batches")}, one decision per payee` });
   } });
   await activeRun(db, runId, workspace.id);
-  if (!ask && result.left.length) await report(context, { type: "note", text: `No AI available; ${plural(result.left.length, "row")} the bank's data and your rules couldn't decide wait for the next run` });
+  const resumes = pausedUntil && new Date(pausedUntil).toLocaleTimeString(workspace.locale, { timeZone: workspace.timezone, hour: "2-digit", minute: "2-digit" });
+  if (!ask && result.left.length) await report(context, { type: "note", text: pausedUntil ? `The AI hit its limit in an earlier run and is asked again at ${resumes}; ${plural(result.left.length, "row")} wait until then`
+    : `No AI available; ${plural(result.left.length, "row")} the bank's data and your rules couldn't decide wait for the next run` });
   if (result.stopped) await report(context, { type: "note", text: `${result.stopped instanceof StopWork ? result.stopped.message : "The AI plan's usage limit was reached"}; ${plural(result.left.length, "row")} wait for the next run` });
+  // Rows left blank are retried by the hourly check at this time (backlogRerunNeeded); rows the AI failed on are not.
+  const retryAt = !result.left.length ? null : pausedUntil ?? (ask ? new Date(retryLeftoversAt(result.stopped, Date.now())).toISOString() : null);
+  if (retryAt) checked(await db.from("agent_runs").update({ organize_after: retryAt }).eq("id", runId).eq("workspace_id", workspace.id));
   for (const failure of result.failed.slice(0, 3)) await report(context, { type: "note", text: `The AI failed on ${plural(failure.rows.length, "row")} (${failure.error instanceof Error ? failure.error.message : String(failure.error)}); they wait for the next run` });
 
   const labels: Decided[] = [], asking: Decided[] = [];

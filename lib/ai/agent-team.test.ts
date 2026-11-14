@@ -32,7 +32,8 @@ describe("lead plan", () => {
 
 // 417 bank rows stayed uncategorized after a failed run: later syncs added nothing, so no run started again.
 describe("backlog rerun", () => {
-  const base = { transactionsAllowed: true, unorganized: 417, recentRuns: ["completed"], unorganizedSinceLatestRun: false };
+  const now = Date.parse("2026-11-14T12:00:00Z");
+  const base = { transactionsAllowed: true, unorganized: 417, recentRuns: ["completed"], unorganizedSinceLatestRun: false, retryAt: null, now };
   it.each([
     ["the latest run failed", { recentRuns: ["failed", "completed"] }, true],
     ["new rows arrived after the latest run", { unorganizedSinceLatestRun: true }, true],
@@ -44,6 +45,9 @@ describe("backlog rerun", () => {
     ["AI may not read transactions", { transactionsAllowed: false, recentRuns: ["failed"] }, false],
     ["three runs in a row failed", { recentRuns: ["failed", "failed", "failed"] }, false],
     ["three failures, then new rows", { recentRuns: ["failed", "failed", "failed"], unorganizedSinceLatestRun: true }, true],
+    // A ChatGPT plan limit left rows blank in a completed run; nothing retried them until new rows arrived.
+    ["a plan limit left rows and has reset", { retryAt: "2026-11-14T11:00:00Z" }, true],
+    ["a plan limit left rows and holds, even for new rows", { retryAt: "2026-11-14T14:00:00Z", unorganizedSinceLatestRun: true }, false],
   ])("%s", (_case, change, expected) => {
     expect(backlogRerunNeeded({ ...base, ...change })).toBe(expected);
   });

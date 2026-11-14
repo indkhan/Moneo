@@ -32,6 +32,25 @@ export function modelFailure(error: unknown): "stop" | "retry" | "fail" {
   return "fail";
 }
 
+const LEFTOVER_COOLDOWN_MS = 3_600_000, LONGEST_PAUSE_MS = 7 * 86_400_000;
+
+/**
+ * When rows a run left blank are worth another try: right away after a spent run budget, when the plan's limit resets
+ * if the provider says (ChatGPT sends resets_at or resets_in_seconds, others Retry-After), otherwise in an hour.
+ */
+export function retryLeftoversAt(stopped: unknown, now: number) {
+  if (stopped instanceof StopWork) return now;
+  if (APICallError.isInstance(stopped)) {
+    let body: { error?: Record<string, unknown> } & Record<string, unknown> = {};
+    try { body = JSON.parse(stopped.responseBody ?? "{}") ?? {}; } catch {}
+    const detail = body.error ?? body, at = Number(detail.resets_at) * 1000;
+    const wait = Number(detail.resets_in_seconds ?? stopped.responseHeaders?.["retry-after"]) * 1000;
+    const reset = at > now ? at : wait > 0 ? now + wait : null;
+    if (reset) return Math.min(reset, now + LONGEST_PAUSE_MS);
+  }
+  return now + LEFTOVER_COOLDOWN_MS;
+}
+
 export type AdaptiveResult<T, R> = { done: { job: T; result: R }[]; left: T[]; failed: { job: T; error: unknown }[]; stopped: unknown; peak: number };
 export type AdaptiveOptions = { start?: number; max?: number; retries?: number; backoffMs?: number; classify?: (error: unknown) => "stop" | "retry" | "fail" };
 

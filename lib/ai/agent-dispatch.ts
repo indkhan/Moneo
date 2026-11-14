@@ -41,18 +41,19 @@ export async function startAgentRun(db: SupabaseClient, workspaceId: string, opt
 }
 
 /** The hourly check: a run for rows still lacking a merchant or category, when backlogRerunNeeded says so. */
-export async function startBacklogRun(db: SupabaseClient, workspaceId: string) {
+export async function startBacklogRun(db: SupabaseClient, workspaceId: string, now = Date.now()) {
   const settings = await loadWorkspaceSettings(db, workspaceId);
   const transactionsAllowed = settings.ai_data_scopes.includes("transactions");
   if (!transactionsAllowed) return null;
   const unorganized = () => db.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "posted").or("merchant_id.is.null,category_id.is.null");
-  const [runs, backlog] = await Promise.all([db.from("agent_runs").select("status, created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(3), unorganized()]);
+  const [runs, backlog] = await Promise.all([db.from("agent_runs").select("status, created_at, organize_after").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(3), unorganized()]);
   if (runs.error) throw runs.error;
   if (backlog.error) throw backlog.error;
-  const latest = runs.data[0] as { status: string; created_at: string } | undefined;
+  const latest = runs.data[0] as { status: string; created_at: string; organize_after: string | null } | undefined;
   const since = latest && backlog.count ? await unorganized().gt("created_at", latest.created_at) : null;
   if (since?.error) throw since.error;
-  const due = backlogRerunNeeded({ transactionsAllowed, unorganized: backlog.count ?? 0, recentRuns: runs.data.map(run => run.status as string), unorganizedSinceLatestRun: (since?.count ?? 0) > 0 });
+  const due = backlogRerunNeeded({ transactionsAllowed, unorganized: backlog.count ?? 0, recentRuns: runs.data.map(run => run.status as string),
+    unorganizedSinceLatestRun: (since?.count ?? 0) > 0, retryAt: latest?.organize_after ?? null, now });
   return due ? startAgentRun(db, workspaceId, { trigger: "backlog" }) : null;
 }
 
