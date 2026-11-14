@@ -7,7 +7,7 @@ import { z } from "zod";
 import { APICallError, generateText } from "ai";
 import { requireWorkspace } from "@/lib/auth";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
-import { modelForSettings } from "@/lib/ai/provider";
+import { getModel } from "@/lib/ai/provider";
 import { minorDigits } from "@/lib/finance/fx";
 import { revokeBankSessions } from "@/lib/bank/server";
 
@@ -31,7 +31,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
     for (const agent of AI_AGENT_KEYS) {
       if (!settings.ai_models[agent] || settings.ai_models[agent] === previous?.ai_models[agent]) continue;
       field = `model:${agent}`;
-      const check = await generateText({ model: await modelForSettings(settings, agent), prompt: "Reply with the single word OK.",
+      const check = await generateText({ model: await getModel(settings.ai_models[agent]!), prompt: "Reply with the single word OK.",
         maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(30000) })
         .catch(error => APICallError.isInstance(error) && error.statusCode === 429 ? "rate-limited" as const : null);
       // A rate-limited model exists and answers later; only a missing or silent one blocks saving.

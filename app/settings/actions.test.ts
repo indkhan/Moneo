@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { resetAllData, saveSettings } from "./actions";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { modelForSettings } from "@/lib/ai/provider";
+import { getModel } from "@/lib/ai/provider";
 import { APICallError, generateText } from "ai";
 import { settingsSchema } from "@/lib/settings";
 
@@ -11,7 +11,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/supabase-server", () => ({ createClient: vi.fn() }));
-vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn() }));
+vi.mock("@/lib/ai/provider", () => ({ getModel: vi.fn() }));
 vi.mock("ai", async importOriginal => ({ ...await importOriginal<typeof import("ai")>(), generateText: vi.fn() }));
 
 function form() {
@@ -30,7 +30,7 @@ function workspaceWith(previousChat: string | null, rpc: ReturnType<typeof vi.fn
 }
 
 beforeEach(() => {
-  vi.mocked(modelForSettings).mockReset();
+  vi.mocked(getModel).mockReset();
   vi.mocked(generateText).mockReset();
   vi.mocked(requireWorkspace).mockReset();
   vi.mocked(generateText).mockResolvedValue({ text: "OK" } as unknown as Awaited<ReturnType<typeof generateText>>);
@@ -76,7 +76,7 @@ it("live-checks only the changed agent and saves it", async () => {
   vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith("gpt-old", rpc));
   const data = form(); data.set("model:chat", "gpt-old"); data.set("model:imports", "gpt-new");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
-  expect(modelForSettings).toHaveBeenCalledExactlyOnceWith(expect.anything(), "imports");
+  expect(getModel).toHaveBeenCalledExactlyOnceWith("gpt-new");
   expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ ai_models: { chat: "gpt-old", imports: "gpt-new" } }) }));
 });
 
@@ -99,6 +99,17 @@ it("saves a changed model that is rate-limited upstream", async () => {
   const data = form(); data.set("model:chat", "busy-free");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
   expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ ai_models: { chat: "busy-free" } }) }));
+});
+
+it("rejects a custom ID for a disconnected provider rather than checking a fallback", async () => {
+  const rpc = vi.fn();
+  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
+  vi.mocked(getModel).mockRejectedValueOnce(new Error("Sign in with Claude"));
+  const data = form(); data.set("model:chat", "claude-future");
+  expect(await saveSettings({}, data)).toMatchObject({ error: "Sign in with Claude", field: "model:chat" });
+  expect(getModel).toHaveBeenCalledExactlyOnceWith("claude-future");
+  expect(generateText).not.toHaveBeenCalled();
+  expect(rpc).not.toHaveBeenCalled();
 });
 
 function resetForm(confirmation: string) {
