@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7CRR9KSQM6CC04WQMXJ4WGX",
+  "session_id": "2ef1e7b1-64cd-4581-b5fd-c475fd596755",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-14T10:13:27.0490495Z",
+  "branch": "t3/pairing-identity",
+  "checkpoints_count": 6,
+  "save_step_count": 7,
+  "files_touched": [
+    "lib/schema.ts",
+    "supabase/migrations/202611130006_organize_identity.sql",
+    "supabase/tests/organize-identity.sql",
+    "supabase/tests/reset-workspace.sql",
+    "supabase/tests/workspace-isolation.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "4ebc650f1f76",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 365726,
+    "cache_read_tokens": 2186176,
+    "output_tokens": 6929,
+    "api_call_count": 14,
+    "subagent_tokens": {
+      "input_tokens": 248,
+      "cache_creation_tokens": 646606,
+      "cache_read_tokens": 18986611,
+      "output_tokens": 142206,
+      "api_call_count": 126
+    }
+  },
+  "redaction": {
+    "replacements": 19,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 13,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 20
+  }
+}

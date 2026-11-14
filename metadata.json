@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7CRR9KSQM6CC04WQMXJ4WGX",
+  "strategy": "manual-commit",
+  "branch": "t3/pairing-identity",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "lib/schema.ts",
+    "supabase/migrations/202611130006_organize_identity.sql",
+    "supabase/tests/organize-identity.sql",
+    "supabase/tests/reset-workspace.sql",
+    "supabase/tests/workspace-isolation.sql"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 365726,
+    "cache_read_tokens": 2186176,
+    "output_tokens": 6929,
+    "api_call_count": 14,
+    "subagent_tokens": {
+      "input_tokens": 248,
+      "cache_creation_tokens": 646606,
+      "cache_read_tokens": 18986611,
+      "output_tokens": 142206,
+      "api_call_count": 126
+    }
+  },
+  "redaction": {
+    "replacements": 19,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 13,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
