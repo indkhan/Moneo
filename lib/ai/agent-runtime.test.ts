@@ -1,9 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { runAgent } from "@/lib/ai/agent-runtime";
+import { finishRun, recoverStuckProposals, runAgent } from "@/lib/ai/agent-runtime";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const db = vi.hoisted(() => ({ run: {} as Record<string, unknown>, settings: {} as Record<string, unknown>, tasks: [] as Record<string, unknown>[], ledger: [] as Record<string, unknown>[],
-  writes: [] as { table: string; op: string; value: unknown }[] }));
+  writes: [] as { table: string; op: string; value: unknown }[], dropOnce: null as null | { table: string; op: string } }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => { throw new Error("no model in tests"); }) }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
   rpc: async () => ({ data: false, error: null }),
@@ -12,6 +12,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
     let op = "select", value: unknown;
     const rows = () => table === "agent_tasks" ? db.tasks.filter(task => !filters.agent || task.agent === filters.agent) : table === "transactions" ? db.ledger : [];
     const result = () => {
+      if (db.dropOnce?.table === table && db.dropOnce.op === op) { db.dropOnce = null; return { data: null, error: { message: "rest is not reachable" } }; }
       if (op !== "select") { db.writes.push({ table, op, value }); if (table === "agent_tasks" && op === "update") for (const task of rows()) Object.assign(task, value); if (table === "agent_tasks" && op === "insert") db.tasks.push(...([value].flat() as Record<string, unknown>[]).map(row => ({ events: [], ...row }))); return { data: null, error: null }; }
       if (table === "agent_runs") return { data: db.run, error: null };
       if (table === "workspaces") return { data: { id: id(1), display_currency: "EUR" }, error: null };
@@ -32,7 +33,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("OPENAI_API_KEY", "");
   db.run = { status: "running", cancel_requested: false, model_status: "disabled", import_id: null };
-  db.settings = {}; db.tasks = []; db.writes = [];
+  db.settings = {}; db.tasks = []; db.writes = []; db.dropOnce = null;
   db.ledger = [...Array.from({ length: 12 }, (_, n) => ({ id: id(n + 10), version: 1, posted_on: `2026-08-${String(n + 1).padStart(2, "0")}`, description: `SHOP ${n}`, amount_minor: "-2000" })),
     { id: id(40), version: 1, posted_on: "2026-10-01", description: "CAFE LUNA", amount_minor: "-450" }, { id: id(41), version: 1, posted_on: "2026-10-01", description: "CAFE LUNA", amount_minor: "-450" }]
     .map(row => ({ ...row, currency_code: "EUR", account_id: id(2), category_id: null, merchant_id: null, kind: "ordinary", status: "posted", review_reasons: [] }));
@@ -59,4 +60,46 @@ it("respects Settings scopes, stops when canceled and never reruns finished agen
   expect(db.writes.filter(write => write.op === "upsert")).toEqual([]);
   db.run = { ...db.run, cancel_requested: true };
   expect(await runAgent(id(9), id(1), "anomaly")).toBe("canceled");
+});
+
+// The desktop gateway dropped one request ("rest is not reachable") and the agent was marked failed for good.
+it("a dropped database call leaves the agent for its step to retry, and the retry finishes the work", async () => {
+  db.tasks = [{ agent: "anomaly", status: "pending", events: [] }];
+  db.dropOnce = { table: "agent_proposals", op: "upsert" };
+  await expect(runAgent(id(9), id(1), "anomaly", true)).rejects.toThrow("rest is not reachable");
+  expect(db.tasks[0].status).toBe("running");
+  expect(await runAgent(id(9), id(1), "anomaly", true)).toBe("done");
+  expect(db.writes.filter(write => write.op === "upsert")).toHaveLength(1);
+  // On the last attempt the failure stays inside the task so the rest of the team continues.
+  db.tasks = [{ agent: "anomaly", status: "pending", events: [] }];
+  db.dropOnce = { table: "agent_proposals", op: "upsert" };
+  expect(await runAgent(id(9), id(1), "anomaly", false)).toBe("failed");
+});
+
+it("a run with a failed agent finishes failed, so it can be resumed and the backlog check retries it", async () => {
+  db.tasks = [{ agent: "categorizer", status: "failed", events: [] }, { agent: "anomaly", status: "done", events: [] }, { agent: "writer", status: "done", events: [] }];
+  expect(await finishRun(id(9), id(1))).toBe("failed");
+  expect(db.writes.find(write => write.table === "agent_runs")!.value).toMatchObject({ status: "failed", error: expect.any(String) });
+  db.tasks = [{ agent: "categorizer", status: "done", events: [] }]; db.writes = [];
+  expect(await finishRun(id(9), id(1))).toBe("completed");
+});
+
+it("returns proposals stuck in applying: landed changes are accepted, the rest wait again", async () => {
+  const proposals = [{ id: id(70), workspace_id: id(1), kind: "categorize", status: "applying" }, { id: id(71), workspace_id: id(1), kind: "categorize", status: "applying" }];
+  const reviews = [{ id: id(80), workspace_id: id(1), request_id: id(70), status: "applied" }, { id: id(81), workspace_id: id(1), request_id: id(71), status: "pending" }];
+  const filters: Record<string, [string, unknown][]> = {};
+  const fake = { from: (table: string) => {
+    const where: [string, unknown][] = filters[table] = [];
+    let patch: Record<string, unknown> | null = null;
+    const rows = () => (table === "agent_proposals" ? proposals : reviews).filter(row => where.every(([column, value]) => Array.isArray(value) ? value.includes(row[column as "id"]) : row[column as "id"] === value));
+    const query = { select: () => query, lt: (column: string, value: unknown) => { filters[`${table}.lt`] = [[column, value]]; return query; },
+      eq: (column: string, value: unknown) => { where.push([column, value]); return query; }, in: (column: string, value: unknown) => { where.push([column, value]); return query; },
+      update: (value: Record<string, unknown>) => { patch = value; return query; },
+      then: (resolve: (value: unknown) => unknown) => { if (patch) rows().forEach(row => Object.assign(row, patch)); return Promise.resolve({ data: rows(), error: null }).then(resolve); } };
+    return query;
+  } };
+  await recoverStuckProposals(fake as never, id(1), Date.parse("2026-11-13T12:00:00Z"));
+  expect(filters["agent_proposals.lt"]).toEqual([["decided_at", "2026-11-13T11:55:00.000Z"]]);
+  expect(proposals[0]).toMatchObject({ status: "accepted", result: { reviewId: id(80) } });
+  expect(proposals[1]).toMatchObject({ status: "proposed", decided_at: null });
 });

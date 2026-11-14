@@ -5,6 +5,7 @@ import { EnableBankingError, enableBankingClient, type EnableBankingClient, type
 import { bankObservation, bankStatement } from "@/lib/bank/statement";
 import { serviceDb } from "@/lib/bank/server";
 import { loadWorkspaceSettings } from "@/lib/settings";
+import { maybeStartFirstReview, startSyncAgentRun } from "@/lib/import/follow-up";
 import { importFile } from "@/workflows/import-file";
 
 type BankImport = { importId: string; rowCount: number; uid: string; lastBookedOn: string };
@@ -16,11 +17,27 @@ export async function syncBankConnection(connectionId: string, workspaceId: stri
   "use workflow";
   const { imports, observations, error, ended } = await stageBankImports(connectionId, workspaceId, psu);
   for (const item of imports) {
-    // importFile runs flattened into this run, so a throw from its optional tail (first review,
-    // agent team) would end the sync here. The import's stored status is the truth; finishBankSync reads it.
-    try { await importFile(item.importId, workspaceId, item.rowCount, 1); } catch {}
+    // importFile runs flattened into this run, so a throw from it would end the sync here.
+    // The import's stored status is the truth; finishBankSync reads it.
+    try { await importFile(item.importId, workspaceId, item.rowCount, 1, false); } catch {}
   }
   await finishBankSync(connectionId, workspaceId, imports, observations, error, ended);
+  if (!imports.length) return;
+  // Once every account is in: one agent run sees the whole sync, and the first review starts at most once.
+  // Neither is part of the sync; a failure here leaves the rows for the hourly backlog check.
+  const importIds = imports.map(item => item.importId);
+  try { await startAgentTeamStep(workspaceId, importIds); } catch {}
+  try { await firstReviewStep(workspaceId, importIds); } catch {}
+}
+
+async function startAgentTeamStep(workspaceId: string, importIds: string[]) {
+  "use step";
+  await startSyncAgentRun(serviceDb(), workspaceId, importIds);
+}
+
+async function firstReviewStep(workspaceId: string, importIds: string[]) {
+  "use step";
+  await maybeStartFirstReview(serviceDb(), workspaceId, importIds);
 }
 
 function isoDay(date: Date) { return date.toISOString().slice(0, 10); }

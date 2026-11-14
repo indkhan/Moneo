@@ -2,11 +2,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { enableBankingClient, EnableBankingError, type BankTransaction } from "@/lib/bank/enable-banking";
 import { serviceDb } from "@/lib/bank/server";
 import { importFile } from "@/workflows/import-file";
+import { maybeStartFirstReview, startSyncAgentRun } from "@/lib/import/follow-up";
 import { syncBankConnection } from "./bank-sync";
 
 vi.mock("@/workflows/import-file", () => ({ importFile: vi.fn() }));
 vi.mock("@/lib/settings", () => ({ loadWorkspaceSettings: async () => ({ timezone: "Europe/Berlin" }) }));
 vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/import/follow-up", () => ({ startSyncAgentRun: vi.fn(), maybeStartFirstReview: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", async original => ({ ...await original<typeof import("@/lib/bank/enable-banking")>(), enableBankingClient: vi.fn() }));
 
 // A minimal in-memory Supabase: the imports(workspace_id, file_hash) unique index is what makes a repeated sync a no-op.
@@ -61,7 +63,7 @@ it("syncing the same bank data twice adds no second import", async () => {
   await syncBankConnection("c1", "w1");
   expect(tables.imports).toHaveLength(1);
   expect(importFile).toHaveBeenCalledTimes(1);
-  expect(importFile).toHaveBeenCalledWith("import-1", "w1", 2, 1);
+  expect(importFile).toHaveBeenCalledWith("import-1", "w1", 2, 1, false);
   expect(tables.imports[0].mapping).toMatchObject({ externalIdColumn: "id", accountName: "Revolut ••1234", currencyCode: "EUR" });
   expect(tables.bank_connection_accounts[0].last_booked_on).toBe("2026-10-02");
   expect(bank.bookedTransactions).toHaveBeenLastCalledWith("u1", "2026-09-25", undefined);
@@ -143,4 +145,18 @@ it("asks for full history on the first sync and falls back to 90 days when the b
   expect(bank.bookedTransactions).toHaveBeenCalledTimes(2);
   expect(bank.bookedTransactions.mock.calls[1][1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   expect(bank.bookedTransactions.mock.calls[1][1]).not.toBe("2000-01-01");
+});
+
+// A bank with two accounts started two agent runs, each seeing one account; the first review ran after the first account only.
+it("starts one agent run and one first-review check after every account is imported", async () => {
+  tables.bank_connection_accounts.push({ connection_id: "c1", provider_account_uid: "u2", currency_code: "EUR", account_name: "Revolut ••5678", last_booked_on: null });
+  bank.bookedTransactions.mockImplementation(async (uid: string) => [tx(`${uid}-a`, "2026-10-01", "5.00")]);
+  await syncBankConnection("c1", "w1");
+  expect(importFile).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(importFile).mock.calls.every(call => call[4] === false)).toBe(true);
+  expect(startSyncAgentRun).toHaveBeenCalledOnce();
+  expect(startSyncAgentRun).toHaveBeenCalledWith(expect.anything(), "w1", ["import-1", "import-2"]);
+  expect(maybeStartFirstReview).toHaveBeenCalledOnce();
+  expect(maybeStartFirstReview).toHaveBeenCalledWith(expect.anything(), "w1", ["import-1", "import-2"]);
+  expect(vi.mocked(startSyncAgentRun).mock.invocationCallOrder[0]).toBeGreaterThan(Math.max(...vi.mocked(importFile).mock.invocationCallOrder));
 });
