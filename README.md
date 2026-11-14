@@ -8,9 +8,9 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 
 ## Install
 
-### Desktop preview
+### Download the app (no terminal needed)
 
-Desktop installers for Windows, macOS and Linux are attached to [GitHub releases](https://github.com/indkhan/Moneo/releases) once published (none is published yet; until then, use the source installation below): download, install and open Moneo; nothing else is needed. Settings → App updates installs newer releases and keeps your data. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
+Download the installer for your computer from the [website](https://indkhan.github.io/Moneo/#download) or [GitHub releases](https://github.com/indkhan/Moneo/releases), install it and open Moneo; nothing else is needed. Windows and Linux installers are published; macOS arrives with the next release (until then, use the source installation below). Home then shows three first steps: turn on AI, add your money, run the agent team. Settings → App updates installs newer releases and keeps your data. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
 Scalable questions in chat and voice can combine live holdings, paginated transaction history and transaction details with local JavaScript calculations. The calculation sandbox has no network, filesystem or credentials. Read results remain subject to your AI data scopes and are sent to your configured AI provider as needed to answer. Trades still require accepting an approval card. No additional setup is needed.
 
 ### Easiest: let an AI agent install it
@@ -125,7 +125,7 @@ Moneo syncs booked transactions and balances from EU banks (for example Revolut 
 3. Let the control panel make the key pair, and keep the downloaded private key file (`<application-id>.pem`).
 4. In the control panel, link your own bank accounts to the application. Only linked accounts can be synced.
 5. In Moneo, go to **Settings → Keys and connections → Connected banks** (also on the Import page). Paste the application ID, paste the private key or upload the `.pem` file, and click **Save and check**.
-6. Click **Choose a bank**, pick yours, click **Connect bank** and approve access at your bank.
+6. Click **Choose a bank**, pick yours, click **Connect bank** and approve access at your bank. Some banks (for example in Italy, Sweden and the Baltics) ask you to approve twice: once for access and once for history older than 90 days. Questions about the Enable Banking control panel go to support.api@enablebanking.com, where an assistant answers personal-use applications.
 
 Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days before it ends. Pending transactions are not synced. If Enable Banking says it rejected the return address, add the Redirect URL from step 2 to your application and try again.
 

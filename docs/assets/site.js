@@ -61,9 +61,18 @@ async function setUpDownloads() {
   const published = new Date(release.published_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
   status.textContent = `Moneo ${release.tag_name}, released ${published}. Free, and your data stays on your computer.`;
   meta.textContent = `${release.tag_name} · Windows · macOS · Linux · MIT licensed`;
+  const missing = [];
   for (const card of cards) {
     const asset = release.assets.find(item => ASSETS[card.dataset.asset](item.name));
-    if (!asset) { card.href = release.html_url; continue; }
+    if (!asset) {
+      // Not built for this release (the first macOS builds came later): say so instead of sending people to a page without it.
+      card.href = "#run";
+      card.setAttribute("aria-disabled", "true");
+      card.querySelector("[data-size]").textContent = "Not in this release yet";
+      missing.push(card.querySelector("b").textContent);
+      if (card.dataset.asset === mine && label) label.textContent = "Not ready for your computer yet";
+      continue;
+    }
     card.href = asset.browser_download_url;
     card.querySelector("[data-size]").textContent = `${asset.name} · ${size(asset.size)}`;
     if (card.dataset.asset === mine) {
@@ -72,6 +81,7 @@ async function setUpDownloads() {
       if (label) label.textContent = `${LABELS[mine]} · ${release.tag_name}`;
     }
   }
+  if (missing.length) status.textContent += ` Not in this release yet: ${missing.join(", ")}. Those computers can run Moneo from source for now.`;
 }
 
 async function showStars() {
