@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bi0e1xo2a</task-id>
+<tool-use-id>toolu_016cchQSQ1vY6v5oJRDwJsrm</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\b68994dd97651644\628f847c-fdf2-4791-919c-a5648afded6d\tasks\bi0e1xo2a.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for PR Mac jobs and show symlink log" completed (exit code 0)</summary>
+</task-notification>
