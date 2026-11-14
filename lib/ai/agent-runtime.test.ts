@@ -108,14 +108,14 @@ it("returns proposals stuck in applying: landed changes are accepted, the rest w
 
 // The old auto-apply wrote every Categorizer proposal as the owner's correction and saved it as an owner rule.
 it("auto-applies only high and medium confidence as AI labels and leaves low confidence for the owner", async () => {
-  const payload = (n: number) => ({ rows: [{ id: id(n), version: 2 }], patch: { category_id: id(60) }, merchantName: n === 11 ? "Cafe Luna" : null, ruleKey: "cafe luna", evidence: [], identityKey: "cafe luna" });
+  const payload = (n: number) => ({ rows: [{ id: id(n), version: 2 }], patch: { category_id: id(60) }, merchantName: n === 11 ? "Cafe Luna" : null, ruleKey: "cafe luna", evidence: [], identityKey: "cafe luna", ...(n === 10 ? { source: "rule" } : {}) });
   const evidence = { facts: [{ label: "Basis", value: "Consistent history" }], transactions: [], links: [] };
   db.proposals = [[id(80), 10, 95], [id(81), 11, 60], [id(82), 12, 45]].map(([pid, n, confidence]) => ({ id: pid, payload: payload(n as number), notes: [], confidence, evidence, status: "proposed" }));
   await autoApplyRun(id(9), id(1));
   expect(db.rpcs.map(call => call.name)).toEqual(["apply_ai_organization", "apply_ai_organization"]);
   expect(db.rpcs[0].args).toEqual({ p_workspace: id(1), p_run: id(9), p_proposal: id(80), p_items: [{ transaction_id: id(10), expected_version: 2, category_id: id(60), merchant_id: null,
-    merchant_name: null, confidence: "high", reason: "Consistent history", identity_key: "cafe luna" }] });
-  expect(db.rpcs[1].args.p_items).toEqual([expect.objectContaining({ transaction_id: id(11), merchant_name: "Cafe Luna", confidence: "medium" })]);
+    merchant_name: null, confidence: "high", reason: "Consistent history", identity_key: "cafe luna", source: "rule" }] });
+  expect(db.rpcs[1].args.p_items).toEqual([expect.objectContaining({ transaction_id: id(11), merchant_name: "Cafe Luna", confidence: "medium", source: "ai" })]);
   expect(db.proposals.map(row => row.status)).toEqual(["accepted", "accepted", "proposed"]);
   expect(db.proposals[0].result).toMatchObject({ auto: true, applied: 1 });
 });

@@ -87,10 +87,14 @@ export function maskAccountNumber(value: string): string {
   return /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/i.test(compact) || /^\d{6,}$/.test(compact) ? `••${compact.slice(-4)}` : value;
 }
 
+/** Every IBAN and long account number inside a text, masked the same way. */
+export function maskAccountNumbers(text: string): string {
+  return text.replace(/(?<![A-Z0-9])[A-Z]{2}\d{2}[A-Z0-9]{10,30}|(?<!\d)\d{9,}(?!\d)/gi, maskAccountNumber);
+}
+
 // A readable default from a statement filename: no extension, dates, long numbers or separators.
 export function friendlyAccountName(filename: string): string {
-  const name = filename.replace(/\.(csv|xlsx)$/i, "")
-    .replace(/(?<![A-Z0-9])[A-Z]{2}\d{2}[A-Z0-9]{10,30}|(?<!\d)\d{9,}(?!\d)/gi, maskAccountNumber)
+  const name = maskAccountNumbers(filename.replace(/\.(csv|xlsx)$/i, ""))
     .replace(/(?<!\d)\d{4}[-_.]?\d{2}(?:[-_.]?\d{2})?(?!\d)/g, " ")
     .replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
   return Array.from(name).slice(0, 100).join("") || "Imported account";

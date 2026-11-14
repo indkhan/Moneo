@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { AiDataScope } from "@/lib/settings";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
-import type { OrganizationProposal } from "@/lib/import/organization";
 import { recurringCadences } from "@/lib/finance/cadences";
 
 // The agent team's deterministic core. Every number here is computed from
@@ -11,7 +10,7 @@ import { recurringCadences } from "@/lib/finance/cadences";
 
 export const AGENTS = {
   lead: { name: "Lead", role: "Plans the run, assigns work, merges results and resolves conflicts", scopes: [] },
-  categorizer: { name: "Categorizer", role: "Labels unorganized rows with merchants and categories, marked as AI and undoable; unsure ones wait for you", scopes: ["transactions"] },
+  categorizer: { name: "Categorizer", role: "Organizes every unorganized row: your rules, memory and the bank's data first, then the AI; sure labels are applied, marked and undoable, and the rest become questions for you", scopes: ["transactions"] },
   recurring: { name: "Recurring detective", role: "Finds subscriptions and bills and raises them on Home", scopes: ["accounts", "transactions"] },
   anomaly: { name: "Anomaly hunter", role: "Finds duplicates, fees, unusual charges and price increases", scopes: ["transactions"] },
   budget: { name: "Budget coach", role: "Proposes monthly category limits from real history", scopes: ["transactions", "planning"] },
@@ -27,8 +26,10 @@ const versioned = z.object({ id: z.uuid(), version: z.number().int().min(0).max(
 export const payloadSchemas = {
   categorize: z.object({ rows: z.array(versioned).min(1).max(50), patch: z.object({ merchant_id: z.uuid().nullable().optional(), category_id: z.uuid().nullable().optional() }).strict(),
     merchantName: z.string().trim().min(1).max(100).nullable(), ruleKey: z.string().min(3).max(1000).nullable(), evidence: z.array(versioned).max(2000),
-    // The organization description key; an undone AI label is suppressed for it. Missing on proposals from before it existed.
-    identityKey: z.string().max(1000).optional() }).strict(),
+    // The identity (or description) key; an undone label is suppressed for it. Missing on proposals from before it existed.
+    identityKey: z.string().max(1000).optional(),
+    // Who decided: the AI, or the owner's rule or memory or the bank's own data ('system'). Missing means the AI.
+    source: z.enum(["ai", "rule", "memory", "system"]).optional() }).strict(),
   recurring: z.object({ accountId: z.uuid(), label: z.string().trim().min(1).max(200), cadence: z.enum(recurringCadences), currencyCode: z.string().regex(/^[A-Z]{3}$/),
     evidence: z.array(versioned).min(3).max(1000), runAnchorId: z.uuid(), evidenceLimited: z.boolean() }).strict(),
   budget: z.object({ categoryId: z.uuid(), currencyCode: z.string().regex(/^[A-Z]{3}$/), limitMinor: z.string().regex(/^[1-9]\d{0,17}$/) }).strict(),
@@ -54,7 +55,6 @@ const median = (values: bigint[]) => {
   const sorted = [...values].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle] + 1n) / 2n;
 };
-const titleCase = (key: string) => key.replace(/\b\p{L}/gu, letter => letter.toLocaleUpperCase("en")).slice(0, 100);
 export const reviewed = (row: LedgerRow) => row.status === "posted" && row.kind === "ordinary" && !row.reviewReasons.length;
 export const daysBefore = (today: string, days: number) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
 
@@ -100,52 +100,6 @@ export function backlogRerunNeeded(backlog: Backlog) {
 // ── Categorizer ──────────────────────────────────────────────────────────────
 /** High and medium labels are applied by the organizer itself; low ones wait for the owner. */
 export const aiConfidence = (confidence: number) => confidence >= 85 ? "high" as const : confidence >= 60 ? "medium" as const : "low" as const;
-const BASIS: Record<OrganizationProposal["basis"], string> = {
-  "approved-rule": "Your saved rule", "consistent-history": "Consistent history", "provider-suggestion": "AI suggestion (quoted from the description)", "review-required": "Repeated description",
-};
-/**
- * Groups row-level organization proposals into one reviewable change per
- * description key. Lone review-required rows are left for a person.
- */
-export function categorizeGroups(proposals: OrganizationProposal[], rows: Map<string, LedgerRow>, names: { categories: Map<string, string>; merchants: Map<string, string> }): Proposal<"categorize">[] {
-  const groups = new Map<string, OrganizationProposal[]>();
-  for (const proposal of proposals) {
-    const row = rows.get(proposal.transactionId);
-    if (!row || proposal.financialReviewRequired) continue;
-    const patch = { merchant: !row.merchantId && proposal.merchantId ? proposal.merchantId : null, category: !row.categoryId && proposal.categoryId ? proposal.categoryId : null };
-    const merchantName = !row.merchantId && !proposal.merchantId ? proposal.merchantName : null;
-    if (!patch.merchant && !patch.category && !merchantName) continue;
-    const key = JSON.stringify([proposal.descriptionKey, patch.merchant, patch.category, merchantName, proposal.basis === "provider-suggestion"]);
-    groups.set(key, [...groups.get(key) ?? [], proposal]);
-  }
-  const result: Proposal<"categorize">[] = [];
-  for (const [key, members] of groups) {
-    const [descriptionKey, merchantId, categoryId, merchantName] = JSON.parse(key) as [string, string | null, string | null, string | null];
-    const basis = members[0].basis;
-    // A new merchant name taken only from the description needs repetition to be worth a rule.
-    if (basis === "review-required" && members.length < 2) continue;
-    for (let offset = 0; offset < members.length; offset += 50) {
-      const chunk = members.slice(offset, offset + 50);
-      const evidence = [...new Map(chunk.flatMap(item => item.evidence).map(item => [item.id, item])).values()].slice(0, 2000);
-      const confidence = basis === "approved-rule" ? 95 : basis === "consistent-history" ? 85 : basis === "provider-suggestion" ? 60 : 45;
-      const target = [merchantId ? names.merchants.get(merchantId) ?? "known merchant" : merchantName ? `new merchant “${titleCase(merchantName)}”` : null,
-        categoryId ? names.categories.get(categoryId) ?? "known category" : null].filter(Boolean).join(" · ");
-      result.push({ agent: "categorizer", kind: "categorize", conflictKey: `categorize:${key}:${offset}`,
-        title: `${target} for ${chunk.length} “${descriptionKey.slice(0, 40)}” ${chunk.length === 1 ? "row" : "rows"}`,
-        detail: aiConfidence(confidence) === "low" ? `${BASIS[basis]}. Accepting applies one audited batch${descriptionKey.length >= 3 ? " and saves a rule for future imports" : ""}; Undo restores every row.`
-          : `${BASIS[basis]}. Applied automatically as an AI label, without saving a rule; Undo restores every row.`,
-        evidence: { facts: [{ label: "Rows", value: String(chunk.length) }, { label: "Basis", value: BASIS[basis] },
-          ...(evidence.length ? [{ label: "Matching history", value: `${evidence.length} earlier rows` }] : []),
-          ...(chunk[0].evidenceQuote ? [{ label: "Quoted text", value: chunk[0].evidenceQuote }] : [])],
-          transactions: chunk.slice(0, 5).map(item => evidenceRow(rows.get(item.transactionId)!)), links: [{ label: "Organization", href: "/money/organization" }] },
-        payload: { rows: chunk.map(item => ({ id: item.transactionId, version: item.version })),
-          patch: { ...(merchantId ? { merchant_id: merchantId } : {}), ...(categoryId ? { category_id: categoryId } : {}) },
-          merchantName: merchantName ? titleCase(merchantName) : null, ruleKey: descriptionKey.length >= 3 ? descriptionKey : null, evidence, identityKey: descriptionKey.slice(0, 1000) },
-        confidence, notes: [] });
-    }
-  }
-  return result.sort((a, b) => b.payload.rows.length - a.payload.rows.length);
-}
 
 // ── Anomaly hunter ───────────────────────────────────────────────────────────
 const FEE = /\b(?:fee|fees|commission|overdraft|penalty|late charge|interest charge|atm|service charge)\b/i;

@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { organizationProposals } from "@/lib/import/organization";
-import { anomalyFindings, backlogRerunNeeded, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
+import { anomalyFindings, backlogRerunNeeded, budgetProposals, deterministicBriefing, mergeProposals, planRun, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const account = id(900);
 const row = (n: number, date: string, description: string, amountMinor: bigint, extra: Partial<LedgerRow> = {}): LedgerRow => ({
   id: id(n), version: 1, date, description, amountMinor, currency: "EUR", accountId: account, categoryId: null, merchantId: null, kind: "ordinary", status: "posted", reviewReasons: [], ...extra });
-const organizationRow = (item: LedgerRow) => ({ id: item.id, version: item.version, description: item.description, merchantId: item.merchantId, categoryId: item.categoryId,
-  kind: item.kind as "ordinary", reviewReasons: item.reviewReasons, userCorrected: false });
 
 describe("lead plan", () => {
   it("runs agents in waves and explains every skip", () => {
@@ -49,26 +46,6 @@ describe("backlog rerun", () => {
     ["three failures, then new rows", { recentRuns: ["failed", "failed", "failed"], unorganizedSinceLatestRun: true }, true],
   ])("%s", (_case, change, expected) => {
     expect(backlogRerunNeeded({ ...base, ...change })).toBe(expected);
-  });
-});
-
-describe("categorizer", () => {
-  it("groups consistent history into one rule-learning change per description", () => {
-    const history = [1, 2, 3].map(n => row(n, `2026-0${n}-03`, `CARD PAYMENT NORTHSTAR MARKET REF:${n}`, -1200n, { merchantId: id(50), categoryId: id(60) }));
-    const fresh = [4, 5].map(n => row(n, `2026-09-0${n}`, `CARD PAYMENT NORTHSTAR MARKET REF:9${n}`, -1500n));
-    const proposals = organizationProposals(fresh.map(organizationRow), history.map(organizationRow), []);
-    const groups = categorizeGroups(proposals, new Map(fresh.map(item => [item.id, item])), { categories: new Map([[id(60), "Groceries"]]), merchants: new Map([[id(50), "Northstar"]]) });
-    expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({ kind: "categorize", title: expect.stringContaining("Groceries"), confidence: 85,
-      payload: { rows: [{ id: id(4), version: 1 }, { id: id(5), version: 1 }], patch: { merchant_id: id(50), category_id: id(60) }, merchantName: null, ruleKey: "northstar market" } });
-    expect(payloadSchemas.categorize.parse(groups[0].payload)).toEqual(groups[0].payload);
-  });
-  it("proposes a new merchant only for repeated descriptions, never for one-offs or financial reviews", () => {
-    const rows = [row(1, "2026-09-01", "STREAMFLIX", -999n), row(2, "2026-10-01", "STREAMFLIX", -999n), row(3, "2026-10-02", "ONE OFF SHOP", -500n),
-      row(4, "2026-10-03", "MYSTERY", -100n, { reviewReasons: ["kind:unrecognized"] }), row(5, "2026-10-04", "MYSTERY", -100n, { reviewReasons: ["kind:unrecognized"] })];
-    const groups = categorizeGroups(organizationProposals(rows.map(organizationRow), [], []), new Map(rows.map(item => [item.id, item])), { categories: new Map(), merchants: new Map() });
-    expect(groups.map(group => group.payload.merchantName)).toEqual(["Streamflix"]);
-    expect(groups[0].payload.patch).toEqual({});
   });
 });
 
