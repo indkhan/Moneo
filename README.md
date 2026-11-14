@@ -92,6 +92,8 @@ While Moneo runs it does its background work by itself: scheduled summaries, and
 
 Opening Moneo or coming back to it also syncs in the background (Scalable at most every 15 minutes, banks at most every hour): you see the last numbers right away and the page updates when the sync lands. If a value can't be refreshed, it still counts in your net worth and Wealth marks it as not from today. A short message in the corner of Home tells you once about old values and about a connection that failed or needs reconnecting.
 
+New transactions are organized for you. Moneo first uses what your bank sent (merchant codes, counterparty, your own accounts for transfers and currency exchanges) and what you have already confirmed; the AI labels the rest. Labels the AI is sure about are applied right away and marked as AI; the ones it isn't sure about wait for you. **Money → AI organizer** lists both: answer a question once and every row from that payee follows, confirm or undo any AI decision, and edit what Moneo remembers. You can also ask about them in chat.
+
 ## Keys and connections
 
 Every key and outside service is set up in the app under **Settings → Keys and connections**. Keys are checked with the provider before they are saved, stored encrypted in your database, shown only by their last four characters, and can be replaced or removed at any time. The same section shows that the secrets made by `npm run setup` are in place.
