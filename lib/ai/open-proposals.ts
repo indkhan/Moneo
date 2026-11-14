@@ -3,7 +3,7 @@ import { transactionAccountOptions } from "@/lib/ai/transaction-proposals";
 import { cashAccountOptions } from "@/lib/ai/cash-proposals";
 
 /** Card kinds that live outside an agent run: raised by chat or detection, decided one at a time. */
-export const STANDALONE_KINDS = ["iou_create", "iou_settle", "transaction_create", "balance_set", "recurring_edit", "own_transfer", "cash_withdrawal"];
+export const STANDALONE_KINDS = ["iou_create", "iou_settle", "transaction_create", "balance_set", "recurring_edit", "own_transfer", "cash_withdrawal", "organize_answer"];
 
 /** Card ids an assistant answer shows in its moneo-proposal(s) blocks. */
 export function answerCardIds(content: string | null | undefined): string[] {

@@ -5,6 +5,7 @@ import { iouCreateSchema, iouRecord, iouSettleSchema } from "@/lib/finance/iou";
 import { applyCashWithdrawal } from "@/lib/ai/cash-proposals";
 import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
+import { applyOrganizeAnswer } from "@/lib/ai/organize-proposals";
 import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recurring-proposals";
 import type { ScheduleFields } from "@/app/money/recurring/schedules";
 import { applyScalableProposal, OrderOutcomeUnknown, TRADE_KINDS } from "@/lib/scalable/orders";
@@ -14,7 +15,7 @@ import { ownTransferPayloadSchema } from "@/lib/finance/own-transfers";
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel" | "own_transfer" | "cash_withdrawal"; payload: unknown };
+export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel" | "own_transfer" | "cash_withdrawal" | "organize_answer"; payload: unknown };
 /** Choices made on the card itself: the account a chat expense is paid from, or what the person set when confirming a recurring payment. */
 export type DecideOptions = { accountId?: string; recurring?: Partial<ScheduleFields> };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
@@ -72,6 +73,8 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       return applyTransactionProposal(context, proposal.id, proposal.payload, options.accountId);
     case "cash_withdrawal":
       return applyCashWithdrawal(context, proposal.id, proposal.payload, options.accountId);
+    case "organize_answer":
+      return applyOrganizeAnswer(context, proposal.payload);
     case "balance_set":
       return applyBalanceProposal(context, proposal.id, proposal.payload);
     case "recurring_edit":

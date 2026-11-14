@@ -29,6 +29,7 @@ const STEPS: Record<string, string> = {
   forecast_evaluate: "running the forecast", goals_list: "checking goals", wealth_list: "checking what you lent and own", recurring_list: "checking recurring payments", reviews_investigate: "reviewing finances",
   reviews_start: "starting a deep review", imports_status: "checking imports", agents_findings: "reading agent findings", agents_decide: "making a confirmation card",
   transaction_propose: "making a card", iou_propose: "making a loan card", balance_propose: "making a balance card", recurring_propose: "making a recurring card",
+  organize_review: "checking what the organizer did", organize_propose: "making a labelling card",
   iou_findRepayments: "looking for repayments", investments_portfolio: "checking your Scalable portfolio", investments_transactions: "checking your Scalable trades",
   investments_security: "looking up the security", investments_watchlist: "checking your watchlist", investments_order: "getting Scalable's order preview", investments_cancelOrder: "making a cancel card", call_replace_task: "replacing the earlier request", app_help: "checking how Moneo works",
 };
