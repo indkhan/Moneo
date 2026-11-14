@@ -2,7 +2,8 @@ import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions 
 import { after } from "next/server";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT, withTools } from "@/lib/ai/provider";
-import { moneoToolName } from "@/lib/ai/claude";
+import { CHAT_MAX_STEPS, moneoToolName } from "@/lib/ai/claude";
+import { DataQueryError, dataQueryChartDataset, dataQueryDescription, dataQueryInput, dataQueryOutput, runDataQuery } from "@/lib/ai/data-query";
 import { aiConfigured } from "@/lib/ai/configured";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
@@ -46,8 +47,8 @@ function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
 }
 
-// A run keeps going after the user leaves; this covers the model run (90 s, or 280 s in an artifact's chat,
-// where designers write pages and cards) plus reads and publication.
+// A run keeps going after the user leaves; this covers the model run (180 s for longer investigations, or 280 s
+// in an artifact's chat, where designers write pages and cards) plus reads and publication.
 export const maxDuration = 300;
 /** How long a finished answer waits for its title, so the sidebar can update without holding up the answer. */
 const TITLE_WAIT_MS = 2000;
@@ -220,13 +221,13 @@ export async function POST(request: Request) {
     const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
-      iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the date and amount of the matching transfer when transactions_search found one; otherwise the user's exact amount, person and currency.",
+      iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. First look for the transfer with transactions_search (by name, then by amount and dates): if one fits, tell them which (date, account, name on it) and propose with its date and amount; if several fit, ask which; if none, propose with their figures and say no matching transfer was found. Check wealth_list too: a loan for the same person, amount and currency dated around the same day is already recorded, so say so instead of proposing it. Another loan to the same person is a new one; mention what they already owe. For whether someone paid them back, use iou_findRepayments.",
         inputSchema: iouInputSchema, execute: async input => {
           const created = await proposeIou({ ...await requireWorkspace(), chatRequestId: requestId }, input, [...earlierCards, ...proposalCards]);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: `A card with Add and Dismiss is shown to the user below your answer.${created.replaced ? " It replaces the earlier card for this loan, which was dismissed." : ""} Say it is waiting for their approval; do not repeat the details.` };
         } }),
-      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, not per line item, with the exact amount, currency and date from the user or document. For an attachment, read the merchant, total, currency and date printed on it, tell the user what you read and what you couldn't, and never guess an unreadable amount.",
+      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, not per line item, with the exact amount, currency and date from the user or document (default to the display currency and today). For an attachment, read the merchant, total, currency and date printed on it, tell the user what you read and what you couldn't, and never guess an unreadable amount.",
         inputSchema: transactionInputSchema, execute: async input => {
           const created = await proposeTransaction({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
@@ -274,7 +275,7 @@ export async function POST(request: Request) {
       return (steers.data ?? []) as { id: string; content: string }[];
     };
     const result = streamText({
-      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
+      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 180_000)]),
       maxOutputTokens: 3000,
       // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
       providerOptions: { openai: { reasoningEffort: "low" } },
@@ -289,8 +290,8 @@ ${artifactModePrompt(scalableConnection ? settings.artifact_scalable_data : null
 Current state:
 ${artifactBrief}` : ""}`,
       messages: modelMessages,
-      // A guard against runaway loops, not a budget: the prompt's stop rules decide when an answer is done.
-      stopWhen: stepCountIs(30),
+      // A guard against runaway loops, not a budget: the model decides when an answer is done.
+      stopWhen: stepCountIs(CHAT_MAX_STEPS),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
         await stopIfCanceled();
@@ -360,7 +361,16 @@ ${artifactBrief}` : ""}`,
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
-        transactions_search: tool({ description: "Find transactions, newest first within each kind of match. Filter by description text (rows containing it come first with match \"text\", then rows whose description is similar, such as a nickname or typo of the name, with match \"similar_name\": judge those yourself), posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        transactions_search: tool({ description: "Find transactions, newest first within each kind of match. Filter by description text (rows containing it come first with match \"text\", then rows whose description is similar, such as a nickname or typo of the name, with match \"similar_name\": judge those yourself), posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50). Names are loose (nicknames, short forms, typos; messy bank text): a close name alone is not a match, the amount, currency and direction must fit too. An empty result usually means a bad search: try a shorter part of the name, or the amount with a date range, before saying it isn't there.", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        ...(settings.ai_data_scopes.length ? { data_query: tool({ description: dataQueryDescription(settings.ai_data_scopes), inputSchema: dataQueryInput,
+          execute: ({ sql, maxRows, chart }) => aiEvidence(settings.ai_data_scopes, async latest => {
+            try {
+              const result = await runDataQuery(latest.supabase, sql, settings.ai_data_scopes, maxRows);
+              return { ...dataQueryOutput(result), ...(chart && { datasetId: charts.add(dataQueryChartDataset(result, chart.columns)) }) };
+            }
+            // A rejected query goes back to the model to fix, like any other tool feedback.
+            catch (error) { if (error instanceof DataQueryError) return { error: error.message }; throw error; }
+          }, false, false) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
           execute: () => aiEvidence(["accounts", "transactions"], async latest => {
             const found = await proposeRepayments({ ...latest, chatRequestId: requestId });

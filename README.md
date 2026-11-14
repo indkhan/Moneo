@@ -13,6 +13,8 @@ Everything stays on your computer. There are no accounts and no sign-in screen: 
 Desktop installers for Windows, macOS and Linux are attached to [GitHub releases](https://github.com/indkhan/Moneo/releases) once published (none is published yet; until then, use the source installation below): download, install and open Moneo; nothing else is needed. Settings → App updates installs newer releases and keeps your data. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
 Scalable questions in chat and voice can combine live holdings, paginated transaction history and transaction details with local JavaScript calculations. The calculation sandbox has no network, filesystem or credentials. Read results remain subject to your AI data scopes and are sent to your configured AI provider as needed to answer. Trades still require accepting an approval card. No additional setup is needed.
 
+Chat can also answer questions no built-in tool covers by running a read-only SQL query over your finance records. It runs as you, only within your own data and AI data scopes, can't change anything, and can't see stored bank or Scalable tokens, AI keys or settings; each query is shown under the answer's tools.
+
 ### Easiest: let an AI agent install it
 
 If you use an AI coding agent such as Claude Code or Codex, it can do the install for you with the `moneo-setup` skill that comes with Moneo. Open the agent in an empty folder and paste:

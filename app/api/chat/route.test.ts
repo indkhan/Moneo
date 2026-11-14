@@ -109,7 +109,7 @@ it("leaves this call's still-running questions out of a call request's history",
 it("offers scoped investigation and question-bound review start within the model step guard", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
   const options = vi.mocked(generateText).mock.calls[0][0];
-  expect(options.stopWhen).toBe(30);
+  expect(options.stopWhen).toBe(60);
   const tools = options.tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   expect(await tools.reviews_investigate.execute()).toEqual({ source: "exact evidence" });
   expect(await tools.reviews_start.execute()).toMatchObject({ jobId: "job", status: "queued", href: "/ai" });

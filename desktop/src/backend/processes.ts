@@ -51,7 +51,7 @@ export function pipeTo(log: WriteStream, child: { stdout: NodeJS.ReadableStream 
 
 // Runs a program to its exit. Resolves on "exit", not "close": pg_ctl start leaves a server
 // running that may hold inherited handles open.
-export function runProgram(file: string, args: string[], options: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; log?: WriteStream } = {}) {
+export function runProgram(file: string, args: string[], options: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; log?: WriteStream; waitForClose?: boolean } = {}) {
   return new Promise<{ code: number | null; output: string }>((resolve, reject) => {
     const child = spawn(file, args, { env: options.env ?? process.env, cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let output = "";
@@ -60,7 +60,7 @@ export function runProgram(file: string, args: string[], options: { env?: NodeJS
     child.stderr.on("data", collect);
     const timer = options.timeoutMs ? setTimeout(() => { child.kill(); reject(new Error(`${path.basename(file)} timed out after ${options.timeoutMs} ms\n${output}`)); }, options.timeoutMs) : undefined;
     child.once("error", error => { clearTimeout(timer); reject(error); });
-    child.once("exit", code => { clearTimeout(timer); resolve({ code, output }); });
+    child.once(options.waitForClose ? "close" : "exit", code => { clearTimeout(timer); resolve({ code, output }); });
   });
 }
 

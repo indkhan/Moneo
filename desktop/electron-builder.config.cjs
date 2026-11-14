@@ -62,8 +62,8 @@ module.exports = {
     category: "public.app-category.finance",
     icon: "icons/icon.png",
     hardenedRuntime: true,
-    entitlements: "electron-builder.entitlements.mac.plist",
-    entitlementsInherit: "electron-builder.entitlements.mac.plist",
+    entitlements: require("node:path").join(__dirname, "electron-builder.entitlements.mac.plist"),
+    entitlementsInherit: require("node:path").join(__dirname, "electron-builder.entitlements.mac.plist"),
     // Ad-hoc signature without credentials (Apple Silicon refuses to run unsigned code).
     identity: signed ? undefined : "-",
     notarize: signed && notarize,

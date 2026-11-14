@@ -174,17 +174,17 @@ export function parseChart(source: unknown): ParsedChart {
   return { ok: false, error: issue?.message && !issue.message.startsWith("Invalid") ? issue.message : "The chart data doesn't fit its type" };
 }
 
-// ---- Datasets: exact rows from tools (chart_data, and later data_query) that a chart references instead of copying numbers.
+// ---- Datasets: exact rows from tools (chart_data and data_query) that a chart references instead of copying numbers.
 
 const columnName = z.string().min(1).max(60);
-const columnSchema = z.union([
+export const chartColumnSchema = z.union([
   z.object({ kind: z.enum(["text", "date", "count"]) }).strict(),
   z.object({ kind: z.literal("money"), currency }).strict(),
   /** Rows in several currencies: each row names its own, and a chart takes only rows in its unit's currency. */
   z.object({ kind: z.literal("money"), currencyColumn: columnName }).strict(),
 ]);
 export const chartDatasetSchema = z.object({
-  columns: z.record(columnName, columnSchema),
+  columns: z.record(columnName, chartColumnSchema),
   rows: z.array(z.record(columnName, z.string().max(200).nullable())).max(5000),
 }).strict().refine(dataset => Object.values(dataset.columns).every(column => !("currencyColumn" in column) || dataset.columns[column.currencyColumn]?.kind === "text"), "A currency column must be a text column");
 export type ChartDataset = z.infer<typeof chartDatasetSchema>;
