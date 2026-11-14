@@ -111,13 +111,13 @@ export function ConnectedBanks() {
     fetchConnections().then(loaded => {
       if (!live) return;
       setData(loaded);
+      // Start the bank picker on this computer's country (en-GB → GB isn't served, so it stays on DE).
+      const region = navigator.language.split("-")[1]?.toUpperCase();
+      if (region && COUNTRIES.includes(region)) setCountry(region);
       const result = new URLSearchParams(window.location.search).get("bank");
       if (result && RESULTS[result]) setMessage(RESULTS[result]);
       if (result === "connected" && loaded.connections[0]) setRequested({ [loaded.connections[0].id]: Date.now() });
     }, () => { if (live) setError("Connected banks are unavailable."); });
-    // Start the bank picker on this computer's country (en-GB → GB isn't served, so it stays on DE).
-    const region = navigator.language.split("-")[1]?.toUpperCase();
-    if (region && COUNTRIES.includes(region)) setCountry(region);
     return () => { live = false; };
   }, []);
 
