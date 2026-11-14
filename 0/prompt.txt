@@ -1,0 +1,258 @@
+Your main task is to think from a new user's perspective and download the application from the landing page. They start by seeing the ways you are going, how easy it is, and whether the things are detailed enough for you to know what to do and just start. For everything that you find an issue with, fix it and continue like that until you're actively in.
+ Also keep in mind the open pRs because they are solving something that you might solve so don't do that. Keep that out. Only solve things which are not there. 
+Once everything is done make a PR saying what all problems you found on the way and what fixes you chose (so that first-time 
+
+
+
+
+users who are not technical can still operate this application, even though it's a bit hard because of the enable banking or tail scale and all). It should be as simply coded and as easy to use as possible.
+
+There was a new enable banking, which I will attach as well. If you find anything that you think would be useful, then use that as well only if it is useful first check then think can it help us if not then it is fine . 
+
+
+
+
+
+"""
+
+
+Enable Banking Changelog | October 2026
+Enable Banking September 2026 Changelog
+This month there’s a change to how we support personal-use applications. On the integration side, most major French banks now return account holder names, Italian banks offer transaction history beyond 90 days, and SEPA Instant Credit Transfer is live at a long list of French and Belgian banks.
+Significant Changes and Updates
+Swedbank: BankID Login Fixed for Customers of Multiple Banks
+
+Restricted applications let anyone build with Enable Banking using their own bank accounts for personal use. We’ve kept this option open on purpose, because we want to support side projects and people experimenting with new ideas. We love seeing what people are building with our infrastructure.
+
+Over the past months, the number of people using restricted applications has grown significantly. AI tools have made it much easier to build your own application, even without a background in software development. Our CMO built her first application with Claude, and plenty of others are exploring what is possible.
+
+It’s great to see. More people can experiment, build and work with financial data than ever before. To keep giving our partners the support they rely on, we’ve changed how we handle support requests.
+
+Since late October 2026, support works as follows:
+Partners and companies in a trial or evaluation with our team continue to get support from our team, as before. If you’re already in touch with us about working together, nothing changes for you. 
+Restricted applications used for personal purposes are supported by our AI assistant. Email support.api@enablebanking.com as usual, and the assistant will reply. It answers from our docs, knowledge base, and code samples, and is there to help with questions it can answer.
+This lets our team focus on hands-on support for partners and companies preparing to work with us, while making technical guidance easier to reach for everyone building with us.
+
+We can’t wait to see what you build next.
+
+Account Holder Names from French Banks
+
+Many French banks now return the account holder's name in the "AccountResource name" property. These include BNP Paribas, Hello bank!, Banque Populaire & Caisse d'Epargne banks, La Banque Postale, Société Générale, and Arkéa banks such as Crédit Mutuel de Bretagne, Fortuneo and AXA Banque.
+
+This makes it possible to check who owns an account, for example, to match it against your own customer data. For joint accounts, all holders are listed when the bank provides them.
+
+Why the name is sometimes missing
+
+Holder names are optional under the French STET standard, and banks expose them differently. Most of the banks above return the holders of each account. Société Générale only provides the identity of the person who logged in, so a joint account shows only that person. Some banks return no holder information for certain accounts or account types.
+
+We handle these differences on our side, so your integration works the same way across banks. When the bank gives us no name, the name is then "null".
+Transaction History Beyond 90 Days in Italy
+
+Most integrations towards Italian banks using CBI Globe to provide Open Banking APIs now support consent extension for access to historic transactions over 90 days old. These include Intesa Sanpaolo, BancoPosta, Monte dei Paschi, Banco BPM, BNL, BPER, Credem, Crédit Agricole Italia, Raiffeisen Südtirol, Nexi and the Allitude banks.
+
+Previously, transaction history from these banks was limited to 90 days. We now request the extended consent automatically during authorisation, so that your application receives as much history beyond the 90 days as the bank makes available. That’s how it already works with many banks, so you don’t need to change anything in your integration to get it.
+
+The difference is that these banks ask for an additional Strong Customer Authentication before sharing the older transactions. In practice, your end users may have to authenticate twice when connecting an account. Italy isn’t the only market that works this way. Swedbank, Luminor, Artea and Šiaulių bankas, among others, also require an extra SCA for history beyond 90 days.
+Control Panel Updates: Multi-Factor Authentication Changes and Account Deletion
+Authenticator App Support for MFA
+You can now secure your Control Panel account with time-based authenticator apps, such as Google Authenticator, 1Password, or Authy.
+
+To set it up, go to your profile page and click “Enable” next to the Authenticator app. Scan the QR code or enter the setup key manually, then type in the 6-digit code shown in your app. You’ll be signed out and prompted to sign in again using a code from your app. Once MFA is enabled, it can’t be turned off again from your account.
+
+Enabling MFA is a sensitive operation, so it requires a recent authentication session. If enabling MFA fails, clicking “Try again” won’t fix it. Instead, sign out of the Control Panel, sign back in, and enable MFA from your profile straight away.
+
+SMS verification codes are no longer available for new MFA setups. If you already use SMS-based MFA, it keeps working as before. If you have both SMS and an authenticator app enabled, the Control Panel asks for your app code first, with a “Send a code by SMS instead” option below the input field.
+Self-Service Account Deletion
+
+You can now delete your Control Panel account yourself, without contacting us. On your profile page, click “Delete account” next to your email address, type your email address to confirm, and press “Delete account”. For security reasons, this also requires a recent sign-in. If it isn’t working, try signing out and back in, and then try again.
+
+
+Deleting your account:
+Permanently removes your account data, including your email address, full name, phone number, Mock ASPSP data, and identifiers of accounts linked to production applications
+Deactivates your applications, except applications shared with other users, which stay active and accessible to those users
+Cancels your subscriptions to ASPSP availability notifications
+Account deletion can’t be undone. If you sign in with the same email address afterwards, a new, empty account is created.
+Deleting your Control Panel account doesn’t unsubscribe you from our changelog emails. To stop receiving them, use the Unsubscribe link at the bottom of any changelog email.
+Integration Updates
+
+New Integrations
+
+We've added support for the following institutions:
+
+Banca 360 FVG (IT)
+Banca Veneto Centrale (IT)
+Coop Mastercard (SE)
+Forex Mastercard (SE)
+Genome (EU)
+LO Mervärde Mastercard (SE)
+MBH Bank (ex-Budapest Bank) (HU)
+MoreGolf Mastercard (SE)
+Payoneer (EU)
+PlusGuldkort (DK)
+PRO Mervärde Mastercard (SE)
+re:member (DK, NO, SE)
+Sparebanken Norge (NO) – Following the merger of Sparebanken Vest and Sparebanken Sør
+Sumeria (BE, DE, ES, FR, IE, IT, PT)
+Swedbank Mastercard (SE)
+Extended Integrations
+
+The following integrations have been extended:
+
+Banque Européenne du Crédit Mutuel (FR) – Added SEPA Instant Credit Transfer support
+Banque Transatlantique (FR) – Added SEPA Instant Credit Transfer support
+Beobank (BE) – Added SEPA Instant Credit Transfer support
+CBC (BE) – Added SEPA Instant Credit Transfer support
+CBI Globe-supported banks (IT) – Transaction history beyond 90 days through consent extension
+CIC (FR) – Added SEPA Instant Credit Transfer support
+CIC Banque Privée (FR) – Added SEPA Instant Credit Transfer support
+Creatis (FR) – Added SEPA Instant Credit Transfer support
+Crédit Mutuel (FR) – Added SEPA Instant Credit Transfer support
+Crelan (BE) – Added SEPA Instant Credit Transfer support
+KBC (BE) – Added SEPA Instant Credit Transfer support
+KBC Brussels (BE) – Added SEPA Instant Credit Transfer support
+Keytrade Bank (BE) – Added SEPA Instant Credit Transfer support
+LHV Pank (EE) – Option to skip the extra authorization for transactions older than 90 days
+Monabanq (FR) – Added SEPA Instant Credit Transfer support
+Neuflize OBC (FR) – Added SEPA Instant Credit Transfer support
+Rietumu Banka (LV) – Added payment initiation (PIS) support
+Fixed and Improved Integrations
+
+We’ve rolled out fixes and improvements across integrations towards many ASPSPs:
+  
+Abanca (ES, PT)
+AIB (IE)
+AirPlus (DK, FI, NO, SE)
+Aktia (FI)
+Alior Bank (PL)
+Allianz Banque (FR)
+Allitude-supported banks (IT)
+Alpha Bank (CY, GR)
+apoBank (DE)
+Argenta (BE)
+Arion banki (IS)
+Arkea Banking Services (FR)
+Arkea Banque Entreprises (FR)
+Arkea Banque Privee (FR)
+ATLANTICO Europa (PT)
+Atruvia-supported banks (DE)
+AXA Banque (FR)
+Banca AideXa (IT)
+Banca Patrimoni Sella & C. (IT)
+Banca Sella (IT)
+Banco Santander (ES)
+Bank Millennium (PL)
+Bank Norwegian (DE, DK, ES, FI, NO, SE)
+Bank Pekao (PL)
+Bankhaus Lampe (DE)
+Bankinter (ES)
+Bethmann Bank (DE)
+BGL BNP Paribas (LU)
+BKS Bank (AT, SI, SK)
+BNP Paribas (FR, PL)
+BNP Paribas Wealth Management - Private Banking (DE)
+BNPParibas Personal Finance (DE)
+BRD (RO)
+BTG Pactual (LU)
+BTV (AT)
+Bulder (NO)
+Bundesbank (DE)
+C24 (DE)
+Caja Rural Group banks (ES)
+Cajamar Caja Rural Group banks (ES)
+CartaBCC (IT)
+CBC (BE)
+CBI Globe-supported banks (IT)
+CEC Bank (RO)
+Citadele (EE, LT, LV)
+Consors Finanz (DE)
+Consorsbank (DE)
+Coop Pank (EE)
+Credia Bank (GR)
+Credit Agricole (PL)
+Crédit Agricole Group banks (FR)
+Crédit Commercial de France (FR)
+Crédit Mutuel (FR)
+Crédit Mutuel de Bretagne (FR)
+Crédit Mutuel du Sud-Ouest (FR)
+DAB BNP Paribas (DE)
+DBS Bank (SI)
+Delavska Hranilnica (SI)
+Deutsche Bank (BE, DE, ES, IT, LU, NL, PL)
+DKB (DE)
+DNB (NO)
+DNB Corporate Mastercard (NO)
+EBS (IE)
+Erste Bank Polska (PL)
+Eurobank (ex-Hellenic Bank) (CY)
+Exim Banca Românească (RO)
+Fortuneo (FR)
+FYRST (DE)
+Gorenjska banka (SI)
+Handelsbanken (NL, SE)
+Hello Bank (FR)
+Holvi (DE, FI)
+HPB (HR)
+HYPE (IT)
+HypoVereinsbank (DE)
+iBanFirst (AT, BE, BG, CY, DE, DK, EE, ES, FI, FR, GR, HR, HU, IE, IT, LT, LU, MT, NL, NO, PL, PT, RO, SE, SI, SK)
+ICA Banken (SE)
+illimity Bank (IT)
+Indo (IS)
+ING (BE, DE, ES, IT, LU, NL, RO)
+ING Bank Śląski (PL)
+ING Wholesale Banking (AT, BE, BG, CZ, DE, ES, FR, HU, IE, IT, LU, NL, PT, RO, SK)
+Isbank (DE)
+Jyske Mastercard (DK)
+K&H (HU)
+KBC (BE)
+KBC Brussels (BE)
+La Banque Postale (FR)
+LON (SI)
+Louvre Banque Privée (FR)
+Lunar (DK, NO, SE)
+Länsförsäkringar Bank (SE)
+mBank (CZ, PL, SK)
+Merck Finck (DE)
+Morrow Bank (FI, NO, SE)
+MUFG Bank (DE)
+Nest Bank (PL)
+NLB (SI)
+Nordea (DK, FI, NO, SE)
+Nordea Corporate (DK, FI, NO, SE)
+Norisbank (DE)
+Numia (IT)
+Oberbank (AT, CZ, DE, HU, SK)
+ODDO BHF Bank (DE)
+Oma Säästöpankki (FI)
+OP Corporate Gold Card (FI)
+Openbank (DE, ES, NL, PT)
+Optima bank (GR)
+OTP banka (SI)
+PKO Bank Polski (PL)
+POP Pankki (FI)
+Postbank (DE)
+Primorska hranilnica Vipava (SI)
+Qonto (DE, ES, FR, IT) – Now available for business accounts only
+Raiffeisen Bank (AT, SK)
+Resurs Bank (DK, FI, NO, SE)
+Rietumu Banka (LV)
+S-Pankki (FI)
+Santander (DE)
+SBAB Bank (SE)
+SEB (EE, LT, LV, SE) – Payment initiation migrated to the bank's latest API
+SEB Corporate Card (SE)
+"""
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>b1wwh2nzy</task-id>
+<tool-use-id>toolu_018QVjxMr1Y1ZsAYaTpBsSXw</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\b68994dd97651644\628f847c-fdf2-4791-919c-a5648afded6d\tasks\b1wwh2nzy.output</output-file>
+<status>completed</status>
+<summary>Background command "Install dependencies" completed (exit code 0)</summary>
+</task-notification>
