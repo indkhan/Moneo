@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
 import {
   ArrowLeftRight, Bell, ChartLine, ChartPie, Coins, CreditCard, LayoutGrid, Layers, ListChecks, Menu, MessageSquare,
-  Network, Repeat, Search, SearchCheck, SlidersHorizontal, Sparkles, Tags, Target, TrendingUp, Upload, type LucideIcon,
+  Network, Repeat, Search, SearchCheck, SlidersHorizontal, Sparkles, Tags, Target, TrendingUp, Upload, WandSparkles, type LucideIcon,
 } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
 import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
@@ -25,6 +25,7 @@ const money: RailItem[] = [
   { label: "Transactions", href: "/money/transactions", icon: ArrowLeftRight, items: [
     { label: "Ledger", href: "/money/transactions", icon: ArrowLeftRight, go: "t" },
     { label: "Organization", href: "/money/organization", icon: Tags, go: "o" },
+    { label: "AI organizer", href: "/money/organize", icon: WandSparkles, about: "What the AI labelled, and what needs you" },
     { label: "Investigations", href: "/money/investigations", icon: SearchCheck },
     { label: "Import", href: "/import", icon: Upload, go: "i" },
   ] },

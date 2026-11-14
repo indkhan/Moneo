@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {readFileSync, unlinkSync, writeFileSync} from "node:fs";
+import {mkdirSync, readFileSync, unlinkSync, writeFileSync} from "node:fs";
 import postgres from "postgres";
 import {expect, it} from "vitest";
 import {resolveReviewRequest} from "./review-request";
@@ -14,6 +14,7 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("elects only o
   let history: {version: string}[] | undefined;
   try {
     history = await db<{version: string}[]>`select version from supabase_migrations.schema_migrations order by version`;
+    mkdirSync(".qa", {recursive: true});
     writeFileSync(journal, JSON.stringify({schema, marker, job, workspace, purpose: "owned private synthesis race", status: "prepared"}));
     journalWritten = true;
     const specification = resolveReviewRequest({version: 1, question: "Synthetic reservation race", budget: {maxQueries: 1}}, "2026-10-07");

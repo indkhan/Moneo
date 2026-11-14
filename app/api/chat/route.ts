@@ -24,6 +24,7 @@ import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-prop
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
 import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
 import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/recurring-proposals";
+import { organizeInputSchema, organizeReview, organizeReviewSchema, proposeOrganizeAnswer } from "@/lib/ai/organize-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentId, attachmentNote, attachmentSchema, isImage } from "@/lib/ai/chat-attachments";
 import { attachmentParts } from "@/lib/ai/documents/message";
@@ -245,6 +246,12 @@ export async function POST(request: Request) {
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
+      organize_propose: tool({ description: "The user decides what a payee is for the organizer: answers one of its open questions, or says what their payments to someone are (a category and/or merchant that already exist). Call organize_review with view questions first to get the ids. Shows a card; nothing is labelled until they accept, and then all that payee's blank or AI-labelled rows get it and future payments follow.",
+        inputSchema: organizeInputSchema, execute: async input => {
+          const created = await proposeOrganizeAnswer({ ...await requireWorkspace(), chatRequestId: requestId }, input);
+          proposalCards.push(created.proposalId);
+          return { proposed: created.title, note: "A card with Label rows and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
       app_help: tool({ description: "How Moneo works: its pages, what each does, and what this chat can do. Use for any question about the app itself.",
         inputSchema: z.object({}).strict(), execute: async () => ({ guide: APP_GUIDE }) }),
       agents_decide: tool({ description: "The user asks to accept, approve, mark as seen/watched, or dismiss agent-team findings. Pass the proposal ids from agents_findings. Shows one confirmation card; nothing changes until they press it.",
@@ -331,6 +338,8 @@ ${artifactBrief}` : ""}`,
           } }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
           inputSchema: z.object({ includeDecided: z.boolean().optional() }).strict(), execute: ({ includeDecided }) => aiEvidence(["transactions"], latest => agentFindings(latest.supabase, workspace.id, { includeDecided })) }) } : {}),
+        ...(settings.ai_data_scopes.includes("transactions") ? { organize_review: tool({ description: "Read what the organizer (the AI that labels categories and merchants) has done and what it needs: view questions lists open questions with the payee, its rows and ids; decisions lists rows labelled by the AI, a rule, a confirmed payee or the bank's data with who decided, confidence and reason; memory lists what the owner told it each payee is. Read-only; the owner reviews and undoes on the AI organizer page (/money/organize).",
+          inputSchema: organizeReviewSchema, execute: input => aiEvidence(["transactions"], latest => organizeReview(latest, input)) }) } : {}),
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
           description: "Read recorded import workflow status and row counts. Completed means processing finished, not that all financial classifications or current balances are complete. Use this to answer whether imports are still running; do not infer status from balance freshness or filenames.",
           inputSchema: z.object({}).strict(), execute: () => aiEvidence(["imports"], async latest => {

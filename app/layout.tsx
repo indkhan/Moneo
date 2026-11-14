@@ -50,15 +50,16 @@ async function loadShellData(): Promise<ShellData> {
   try {
     const { supabase, workspace } = await requireWorkspace();
     const pending = (table: string) => supabase.from(table).select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id);
-    const [accounts, recurring, reviews, jobs] = await Promise.all([
+    const [accounts, recurring, reviews, jobs, questions] = await Promise.all([
       supabase.from("accounts").select("id, name").eq("workspace_id", workspace.id).is("archived_at", null).order("name").limit(200),
       pending("recurring_series").eq("status", "pending"),
       pending("organization_reviews").eq("status", "pending"),
       pending("background_jobs").in("status", ["queued", "running"]),
+      pending("organize_questions").eq("status", "open"),
     ]);
     return {
       accounts: accounts.data ?? [],
-      counts: { "/money/recurring": recurring.count ?? 0, "/money/organization": reviews.count ?? 0, "/ai/activity": jobs.count ?? 0 },
+      counts: { "/money/recurring": recurring.count ?? 0, "/money/organization": reviews.count ?? 0, "/money/organize": questions.count ?? 0, "/ai/activity": jobs.count ?? 0 },
     };
   } catch { return null; }
 }

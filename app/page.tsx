@@ -25,6 +25,7 @@ import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing } from "./agent-briefing";
+import { HomeOrganize } from "./home-organize";
 import { FirstSteps } from "./first-steps";
 import { aiConfigured } from "@/lib/ai/configured";
 import { HomeBudgets } from "./home-budgets";
@@ -225,6 +226,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <IntentLink href="/ai?conversation=new&call=1" aria-label="Call Moneo: starts a voice call using your microphone" title="Starts a voice call in a new chat using your microphone. You can stop it at any time, or type in Ask instead." className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
       </header>
       {/* Review summaries and recurring detection stream independently; detection reloads only when a card changes. */}
+      <Suspense fallback={null}><HomeOrganize db={supabase} workspace={workspace} /></Suspense>
       <Suspense fallback={null}><HomeAttention waiting={waitingPromise} review={reviewPromise} locale={locale} /></Suspense>
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}

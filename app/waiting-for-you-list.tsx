@@ -9,9 +9,9 @@ import { useBusy } from "@/components/use-busy";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { FindingsSheet, RecurringSheet, SummaryCard, UncategorizedSheet } from "./home-review";
 
-const FILTERS = [["loans", "Loans"], ["transactions", "Transactions"], ["balances", "Balances"]] as const;
+const FILTERS = [["loans", "Loans"], ["transactions", "Transactions"], ["balances", "Balances"], ["organize", "Labels"]] as const;
 type Filter = (typeof FILTERS)[number][0];
-const filterOf = (kind: string): Filter => kind.startsWith("iou_") ? "loans" : kind === "transaction_create" ? "transactions" : "balances";
+const filterOf = (kind: string): Filter => kind.startsWith("iou_") ? "loans" : kind === "transaction_create" ? "transactions" : kind === "organize_answer" ? "organize" : "balances";
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 // Home answers where you stand first; the rest of the queue is a press away and stays mounted.
 const VISIBLE = 3;
