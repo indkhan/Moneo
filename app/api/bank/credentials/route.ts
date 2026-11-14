@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { checkEnableBankingCredentials, EnableBankingError } from "@/lib/bank/enable-banking";
-import { enableBankingErrorMessage } from "@/lib/bank/server";
+import { enableBankingErrorMessage, serviceDb } from "@/lib/bank/server";
 import { removeServiceKeys, saveServiceKeys } from "@/lib/service-keys";
 
 const bodySchema = z.object({
@@ -12,7 +12,8 @@ const bodySchema = z.object({
 
 // The owner's Enable Banking application, checked with Enable Banking before it is saved.
 export async function POST(request: Request) {
-  try { await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
+  let context: Awaited<ReturnType<typeof requireWorkspace>>;
+  try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!process.env.BANK_TOKEN_ENCRYPTION_KEY) return NextResponse.json({ error: "Moneo isn't set up yet. Run npm run setup, then restart Moneo." }, { status: 503 });
   const body = bodySchema.safeParse(await request.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: body.error.issues[0].message }, { status: 400 });
@@ -27,6 +28,10 @@ export async function POST(request: Request) {
   }
   try { await saveServiceKeys({ enable_banking_app_id: appId, enable_banking_private_key: privateKey }); }
   catch { return NextResponse.json({ error: "The App ID and key could not be saved" }, { status: 500 }); }
+  // Accounts held back by the rejected key can sync again right away. A bank's own wait carries an account
+  // error and stays. Best effort: the key is saved either way, and the wait ends by itself.
+  try { await serviceDb().from("bank_connection_accounts").update({ next_allowed_at: null }).eq("workspace_id", context.workspace.id).is("last_error", null).not("next_allowed_at", "is", null); }
+  catch {}
   return NextResponse.json({ saved: true });
 }
 

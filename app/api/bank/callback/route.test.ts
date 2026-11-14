@@ -37,7 +37,7 @@ beforeEach(() => {
     };
     return builder;
   };
-  vi.mocked(serviceDb).mockReturnValue({ from: query } as never);
+  vi.mocked(serviceDb).mockReturnValue({ from: query, rpc: async () => ({ data: true, error: null }) } as never);
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
@@ -69,5 +69,5 @@ it("stores the session encrypted, links accounts and starts the first sync", asy
   expect(activated.status).toBe("active");
   expect(activated.session_id_encrypted).not.toContain("secret-session");
   expect(decryptToken(activated.session_id_encrypted, connectionId)).toBe("secret-session");
-  expect(start).toHaveBeenCalledWith(expect.anything(), [connectionId, "ws-1", expect.any(Object)]);
+  expect(start).toHaveBeenCalledWith(expect.anything(), [connectionId, "ws-1", expect.any(String), expect.any(Object)]);
 });

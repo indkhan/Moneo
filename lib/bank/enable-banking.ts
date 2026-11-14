@@ -60,10 +60,19 @@ export const bankTransactionSchema = z.object({
 export type BankTransaction = z.infer<typeof bankTransactionSchema>;
 
 export class EnableBankingError extends Error {
-  constructor(readonly status: number, readonly code: string | undefined, message: string) { super(message); }
-  // Consent ended at the bank or Enable Banking: the user must reconnect.
-  get expired() { return this.status === 401 || /EXPIRED|REVOKED|CLOSED|INVALID_SESSION/i.test(this.code ?? ""); }
+  /** retryAfter: seconds from the response's Retry-After header, when it sent one. */
+  constructor(readonly status: number, readonly code: string | undefined, message: string, readonly retryAfter?: number) { super(message); }
+  // Consent ended at the bank or Enable Banking: the user must reconnect. A 401 without one of these codes
+  // can also be a wrong App ID, key or clock, so it isn't taken as an ended consent on its own.
+  get expired() { return /EXPIRED|REVOKED|CLOSED|INVALID_SESSION/i.test(this.code ?? ""); }
   get rateLimited() { return this.status === 429; }
+}
+
+// Retry-After is seconds or an HTTP date; anything past a day is capped, since the bank limits reset daily.
+function retryAfterSeconds(value: string | null, now = Date.now()) {
+  if (!value) return undefined;
+  const seconds = /^\d+$/.test(value.trim()) ? Number(value) : (Date.parse(value) - now) / 1000;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(Math.ceil(seconds), 86_400) : undefined;
 }
 
 export type EnableBankingCredentials = { appId: string; privateKey: string };
@@ -122,7 +131,8 @@ function clientFor({ appId, privateKey }: EnableBankingCredentials, fetcher: typ
     if (!response.ok) {
       const error = z.object({ error: z.string().optional(), code: z.union([z.string(), z.number()]).optional(), message: z.string().optional() }).passthrough().safeParse(json);
       const code = error.success ? String(error.data.error ?? error.data.code ?? "") || undefined : undefined;
-      throw new EnableBankingError(response.status, code, `Enable Banking ${method} ${path.split("?")[0]} failed (${response.status}${code ? ` ${code}` : ""})`);
+      throw new EnableBankingError(response.status, code, `Enable Banking ${method} ${path.split("?")[0]} failed (${response.status}${code ? ` ${code}` : ""})`,
+        retryAfterSeconds(response.headers.get("retry-after")));
     }
     return schema.parse(json);
   }

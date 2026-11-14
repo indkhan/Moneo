@@ -3,7 +3,7 @@ import { start } from "workflow/api";
 import { serviceDb } from "@/lib/bank/server";
 import { GET } from "./route";
 
-vi.mock("workflow/api", () => ({ start: vi.fn() }));
+vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({ runId: "run" })) }));
 vi.mock("@/workflows/bank-sync", () => ({ syncBankConnection: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", () => ({ enableBankingConfigured: async () => true }));
 vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
@@ -16,15 +16,20 @@ it("denies missing or incorrect cron credentials before reading connections", as
   expect(serviceDb).not.toHaveBeenCalled();
 });
 
-it("starts one background sync per active connection, without PSU headers", async () => {
+// One account's rate limit used to hold every account of its bank for 20 hours, and the others never synced.
+it("starts a background sync for each connection with an account due, without PSU headers", async () => {
   vi.stubEnv("CRON_SECRET", "synthetic-secret");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.supabase.co");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-key");
-  const builder = { select: vi.fn(() => builder), eq: vi.fn(() => builder), or: vi.fn(() => builder), order: vi.fn(() => builder),
-    limit: vi.fn(async () => ({ data: [{ id: "c1", workspace_id: "w1" }, { id: "c2", workspace_id: "w2" }], error: null })) };
-  vi.mocked(serviceDb).mockReturnValue({ from: () => builder } as never);
+  const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+  const account = (connection_id: string, last_attempted_at: string | null, next_allowed_at: string | null = null) => ({ connection_id, workspace_id: `w-${connection_id}`, last_attempted_at, next_allowed_at });
+  const rows = [account("tried-a-day-ago", ago(21)), account("tried-recently", ago(2)), account("bank-asked-to-wait", null, ago(-1)),
+    account("one-account-due", ago(2)), account("one-account-due", ago(25)), account("already-syncing", null)];
+  const builder = { select: vi.fn(() => builder), eq: vi.fn(() => builder), order: vi.fn(() => builder), limit: vi.fn(async () => ({ data: rows, error: null })) };
+  const rpc = vi.fn(async (_name: string, args: { p_connection_id: string }) => ({ data: args.p_connection_id !== "already-syncing", error: null }));
+  vi.mocked(serviceDb).mockReturnValue({ from: () => builder, rpc } as never);
   const response = await GET(new Request("http://localhost/api/cron/bank-sync", { headers: { authorization: "Bearer synthetic-secret" } }));
-  expect(await response.json()).toEqual({ started: 2, failed: 0 });
-  expect(builder.eq).toHaveBeenCalledWith("status", "active");
-  expect(vi.mocked(start).mock.calls.map(call => call[1])).toEqual([["c1", "w1"], ["c2", "w2"]]);
+  expect(await response.json()).toEqual({ started: 2, busy: 1, failed: 0 });
+  expect(builder.eq).toHaveBeenCalledWith("bank_connections.status", "active");
+  expect(vi.mocked(start).mock.calls.map(call => call[1])).toEqual([["tried-a-day-ago", "w-tried-a-day-ago", expect.any(String)], ["one-account-due", "w-one-account-due", expect.any(String)]]);
 });
