@@ -67,7 +67,10 @@ export async function claudeAccount(): Promise<ClaudeAccount> {
     if (error.code === "ENOENT") return "false";
     throw error;
   });
-  if (connected !== "true") return { installed: Boolean(claudeExecutable()), signedIn: false, email: null, plan: null, problem: null };
+  if (connected !== "true") {
+    const installed = Boolean(claudeExecutable());
+    return { installed, signedIn: false, email: null, plan: null, problem: installed ? null : "Claude Code is missing from this install. Run npm ci, then restart Moneo." };
+  }
   return availableClaudeAccount();
 }
 
