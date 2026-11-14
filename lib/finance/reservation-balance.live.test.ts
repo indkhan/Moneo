@@ -4,7 +4,7 @@ import postgres from "postgres";
 import { expect, it } from "vitest";
 import { resolveBalances } from "./balances";
 
-it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches private SQL balance evidence to the application resolver on current, stale, tied and row-boundary fixtures", async () => {
+it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches balance evidence on dated and row-boundary fixtures and refuses conflicting reservations", async () => {
   process.loadEnvFile(".env.qa");
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
@@ -42,7 +42,14 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches private SQL bal
           values(${snapshot.id},${workspace},${account.id},${snapshot.amount_minor},'EUR',${snapshot.as_of},'synthetic',${snapshot.boundary_kind},${snapshot.source_transaction_id})`;
         const [sql] = await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`;
         const application = resolveBalances([account], snapshots, ledger, asOf)[0].balance;
-        expect(sql.evidence, fixture).toMatchObject({ status: application.status, amount_minor: application.amount_minor, estimated_amount_minor: application.estimated_amount_minor });
+        if (fixture === "conflicting_ties") {
+          // Display can choose a recorded balance with a warning; reservations require certainty.
+          expect(application.conflicts).toHaveLength(1);
+          expect(application.status).toBe("current");
+          expect(sql.evidence).toMatchObject({ status: "ambiguous", amount_minor: null, estimated_amount_minor: null });
+        } else {
+          expect(sql.evidence, fixture).toMatchObject({ status: application.status, amount_minor: application.amount_minor, estimated_amount_minor: application.estimated_amount_minor });
+        }
       }
       throw rollback;
     }); } catch (error) { if (error !== rollback) throw error; }

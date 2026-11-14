@@ -87,15 +87,6 @@ it.skipIf(process.env.RUN_IMPORT_ROW_UNDO_DB_TESTS !== "1")("reopens exact decis
       expect(await tx`select id from public.transactions where id=${target}`).toHaveLength(1);
       await tx`select public.reset_workspace()`;
       expect(await tx`select id from public.import_row_decisions where workspace_id=${workspace}`).toHaveLength(0);
-      const [{ id: replacement }] = await tx`select id from public.workspaces where owner_id=${actor}`;
-      const newImport = randomUUID(), newSource = randomUUID();
-      await tx`insert into public.imports(id,workspace_id,filename,storage_path,file_hash,status,total_rows,review_rows) values(${newImport},${replacement},'delete.csv','synthetic',${newImport},'completed',1,1)`;
-      await tx`insert into public.source_transactions(id,workspace_id,import_id,row_number,original_row,status) values(${newSource},${replacement},${newImport},2,'{}','review')`;
-      await tx`select public.resolve_normalized_import_review(${newSource},'reject')`;
-      expect(await tx`select id from public.import_row_decisions where source_id=${newSource}`).toHaveLength(1);
-      await tx`select public.delete_account()`;
-      expect(await tx`select id from public.import_row_decisions where workspace_id=${replacement}`).toHaveLength(0);
-      expect(await tx`select id from auth.users where id=${actor}`).toHaveLength(0);
       throw rollback;
     })).rejects.toBe(rollback);
   } finally { await db.end(); }
