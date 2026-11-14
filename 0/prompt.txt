@@ -1,0 +1,141 @@
+Right now in the chat, only PDF with Claude, I think, works but the PDF and other document types like PPTX, docs, and all of those things need to work (or CSV as well, Excel as well). Whenever the AI gives an answer using them, it references where it got it from. Not only Claude but it should work for each single type of AI, whether it's through API, whether it's through ChatGPT sign-in, whether it's through Claude sign-in, or anything.
+
+Another thing is the chat one. We need to talk a bit about how that works and all of that so that it works better. Right now chat itself is really good but we can make it better. 
+I want the AI because the AI models are so good nowadays that they are as free as possible so that they can do what they want with the tools available. The only thing that we need to do is give as good tools as possible and, in the system prompt for them, tell them to be as free as possible to be able to do what the user wants.
+Let's think about it. If you have any questions then ask me. I know I asked a few different things:
+- Making different document types and references as well to work on whatever
+- Making the chat and all better
+- having better charts and all which look real (not related to artifact if a users query looks like artifact are better it should suggest artifact the way it does)
+We will be using subagents for different things, which is up to you how you want to implement or call them 
+
+if any questions ask me
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ab2d7cdfb-9620-48b5-962a-e691b980b5c3%3Adelegate-task%3Ada0ab476-c571-4075-a08c-290be8803bc1 (Freer chat: prompt + SQL tool) [completed]:
+I opened PR #208. It has the shorter, trusting system prompt, longer chat runs, and the read-only `data_query` SQL tool. `npm test`, lint, typecheck, build, the new SQL regression and the new live tests all pass. Two checks fail on the shared QA backend because of other branches' work, not this one (details under Tests).
+
+**Prompt and limits**
+- **Prompt:** `SYSTEM_PROMPT` is now about 20 lines. It states the goal (do what the owner wants, end to end, using the tools freely and in combination) and only the rules you listed. I added one extra rule: if there are no `investments_` tools, Scalable isn't connected, so point to /import.
+- **Moved guidance:**
+  - Loan/IOU matching went into `iou_propose`.
+  - Loose name matching and retrying empty searches went into `transactions_search`.
+  - The default currency and today's date went into `transaction_propose`.
+  - Scalable pagination and calculation checks went into the investment tools.
+- **Not touched:** the moneo-chart section is unchanged, and the prompt has no citation paragraph yet. The voice and artifact prompts don't refer to anything I removed.
+- **Limits:** an answer can now take 60 tool steps (was 30) and 180 s (was 90). Claude's `maxTurns` uses the same constant.
+
+**`data_query`**
+- **How it's locked down:** the query runs inside a function owned by `moneo_reader`, a role that can only read the views in a new `moneo_query` schema. Running inside that function means the query can't switch to `service_role`. Without it, it could, because the database connection is allowed to use that role.
+- **Workspace isolation:** each view filters on a temporary table that `data_query` fills before the query runs and the query can't write. So even changing the sign-in claims inside the query doesn't reach another workspace. A view whose AI data scope is turned off returns an error.
+- **Caps:**
+  - The query runs read-only, and everything it changes is rolled back afterwards.
+  - One statement only.
+  - At most 500 rows and 200 KB, with a note when cut.
+  - A 5 s timeout, confirmed through PostgREST.
+- **Results:** every number comes back as exact text. Rows get formatted amounts and account/category/merchant names like other tools, and the query and result show in "tools used".
+- **For the chart agent:** `runDataQuery(supabase, sql, scopes)` in `lib/ai/data-query.ts` runs a validated query and returns the rows.
+
+**Final allowlist** (views in `moneo_query`)
+
+| AI scope | Views |
+|---|---|
+| accounts | `accounts`, `balance_snapshots` (undone ones left out), `scalable_transfers`, `scalable_value_history` |
+| transactions | `transactions`, `effective_transactions` (split parts and transfer fees), `categories`, `merchants`, `fx_rates` |
+| planning | `recurring_series`, `recurring_series_transactions`, `goals`, `wealth_items` (removed ones left out), `iou_repayments` (undone ones left out), `spending_plans` |
+| imports | `imports` (no storage path, hash or mapping) |
+
+Everything else is unreachable, including:
+- bank and Scalable connection tokens, `service_keys`
+- settings, chats, voice calls, artifacts and agent runs
+- event and audit tables
+- import internals and `own_account_identifiers` (IBANs)
+- the `auth`, `storage` and `vault` schemas
+
+**Decisions I made myself**
+- I used a dedicated reader role plus views, not just a SECURITY INVOKER function. Running as `authenticated` alone would have allowed the role switch above.
+- Data-scope rules are enforced inside the views, and the tool only exists when at least one scope is on.
+- I exposed `effective_transactions` next to `transactions`, so category totals count split parts and transfer fees correctly.
+- Every number comes back as text, not just money columns.
+- Repeated column names get a `_2` suffix so no value is lost.
+- The migration is `202611130021`. Other branches had already applied 0001–0010 to the shared QA database, and the setup script skipped my lower number.
+- I added a short paragraph to `README.md` and a line to the in-app guide (`lib/ai/app-guide.ts`).
+
+**Tests**
+- **New and passing:**
+  - The SQL regression covers isolation (including changed claims), rejected writes, blocked sensitive tables, role switching, multiple statements, disabled scopes and the row cap.
+  - A live test checks the tool description against the real view columns and confirms the 5 s timeout through PostgREST.
+  - Unit tests cover input validation and result shaping.
+- **Failing on the shared QA backend:**
+  - `npm run test:db` fails in its upgrade step at `import-organization-reviews.sql`. Another branch's unmerged migration (`202611130004_organize_provenance`) is applied to that database, and the check fails even with my objects dropped.
+  - Three other live tests (`evidence-receipts`, `reservation-balance`, `row-undo`) fail there too, for example because `delete_account()` doesn't exist in that database.
+- **Timeouts on a cold run:** two UI tests in files I didn't touch timed out the first time and passed when run again.
+
+PR https://github.com/indkhan/Moneo/pull/208, head 19f9a132ed53bf626c4926b121b46748267a754f, checks and reviews: checks running (1 passed, 5 queued or in progress), no reviews yet.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ab2d7cdfb-9620-48b5-962a-e691b980b5c3%3Adelegate-task%3A6c902e16-e07a-4437-85df-5ef1e8eb3c9c (Chat documents + citations) [completed]:
+PR #210 is open (not merged): chat attachments now work for every document type on every AI source, and answers cite where facts came from with small clickable chips. One gap: no real AI call was made, because `.env.qa` has no AI key. The model side is covered only by stubbed replies and unit tests.
+
+**Checks:**
+- `npm test`: everything passes except one run where `supabase/tests/migration-replay.test.ts` timed out under load. It passes on its own, and I didn't touch migrations.
+- `npm run lint`, `npm run typecheck`, `npm run build` and `npm run check:bundle` pass.
+- The new browser journey `e2e/chat-attachments.gated.spec.ts` passes against the QA backend. It uploads a generated XLSX, stubs a reply with one valid and one foreign citation, and opens the valid chip on its highlighted cell.
+- I looked at phone and desktop screenshots in light and dark. That caught long file names hiding the location on chips, which I fixed: the name is cut, the location always shows.
+- Ports 3100 and 3101 were taken by other sessions' servers, which I left alone. I ran this checkout's QA server on 3137 and stopped it afterwards.
+
+**What changed:**
+- **Types and limits:** PDF, DOCX, PPTX, XLSX, CSV/TSV and photos, up to 25 MB each, still 4 per message. Types are sniffed from the bytes. The upload hint, accept list and error messages are updated.
+- **Shared extraction:** every document becomes text on the computer, the same for all sources, with pages, slides, numbered paragraphs, or sheets with row numbers and column letters. PDF pages with no text are drawn as JPEG images, at most 10 per message, with a note naming any skipped pages. The old "ask for photos" path and the Claude-only PDF code are gone.
+- **`document_read`:** a read-only tool that reopens any earlier file in the conversation by id, with a location range or a text search. Earlier files now appear with their ids in the history note. Extracted text is cached in memory by storage path, so there's no migration.
+- **Citations:** the model writes `{{cite ID LOCATION "quote"}}`. The chat shows chips only for files in this conversation and drops the rest. PDFs open at the page (`#page=n`). Word, PowerPoint and spreadsheet chips open a viewer showing that part of the file with the quote or cell highlighted. Voice calls leave the markers out of what they say.
+- **Prompt:** I added one paragraph on citations to `SYSTEM_PROMPT` and touched nothing else in it.
+- **Also updated:** `README.md`, the app guide and tool-progress labels.
+
+**Decisions I made:**
+- **No XLS (old binary Excel):** `exceljs` can't read it, and support would need a heavy extra parser.
+- **New dependency `@napi-rs/canvas` 1.0.11:** it renders scanned PDF pages, and is the renderer `unpdf` documents for Node. It's a native package with prebuilt binaries.
+- **`jszip` is now a direct dependency:** it was already installed through `exceljs`. DOCX and PPTX are read with a small XML tokenizer, no XML library.
+- **Larger request limit:** I set `proxyClientMaxBodySize: "26mb"`, because the proxy only buffers 10 MB by default, which would break 25 MB uploads.
+- **Scan threshold:** a PDF page counts as a scan when it has fewer than 10 non-space characters.
+- **File ids:** each id is the first 8 hex characters of the file's random storage name.
+- **Known limits:**
+  - In a very long chat, a citation to a file on an older page that isn't loaded shows no chip.
+  - `document_read` can't reopen photos.
+  - UTF-16 CSV files are refused.
+- No AGENTS.md change needed.
+
+PR https://github.com/indkhan/Moneo/pull/210, head 808476d2, checks and reviews pending.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ab2d7cdfb-9620-48b5-962a-e691b980b5c3%3Adelegate-task%3A7e61d649-8a1f-4aaf-b1fa-dcfb28065b0d (Better chat charts) [completed]:
+I opened PR #211 against main and did not merge it. Locally everything passes: `npm test` (1572 tests), lint, typecheck, build and `check:bundle`. CI checks are still pending.
+
+**What changed**
+- **Look:** chat charts now have compact money ticks, light gridlines, legends and tooltips with exact formatted amounts. They also have reference lines (a fixed amount, or the average of a series worked out by the app), markers such as "Today", an entry animation, phone sizing, and their own light and dark colours. The exact-values table is still there, behind a "Show values" toggle.
+- **New types:** combo (bars plus lines), forecast band, waterfall, sankey, scatter and calendar heatmap. Time series take up to 400 labels, and long daily series label only month starts. The spec is still strict Zod with no functions, code or styling.
+- **Exact data:** a new `chart_data` chat tool returns exact minor-unit series and a `datasetId`. It covers spending by category, merchant, month or day; income vs spending by month with the month-end balance; an account's daily balance; and net worth history. It reuses the investigation engine, the balance series behind Home and Wealth, and `readNetWorth`. I ran every dataset against the QA backend and each one loaded.
+- **How charts use it:** a chart block points at a dataset's columns instead of copying numbers. Before the answer is shown and saved, the server swaps those references for the exact values, so saved answers stand on their own. A chart that can't be drawn shows the reason instead.
+- **Ready for `data_query`:** a dataset is just rows plus typed columns, added with `chartDatasets().add()` in `lib/ai/chart-spec.ts`. Money columns must match the chart's currency; rows in several currencies have to be filtered to one first.
+- **Prompt:** only the chart section of `SYSTEM_PROMPT` changed.
+- **Voice and history:** the voice call and history stripping already drop every chart block, so the new blocks don't break them. Artifact chats get the same chart handling because they use the same route.
+
+**Decisions I made myself**
+- **Bigger answer limit:** a new migration, `202611130010_chart_answers`, raises the saved answer limit from 20,000 to 200,000 characters. A year of daily data can go past the old limit.
+- **Migration number:** I used `…0010` because `202611130001`–`0003` were already applied to the shared QA database by other work. Applying mine there also raised the limit for the other worktrees using that database, which does them no harm.
+- **Second axis:** a right-hand axis is allowed only on combo lines. You allowed dual axes, but the dataviz guidance advises against them, so I kept it to that one case.
+- **Values toggle:** the table now sits behind a toggle because series can have 400 rows. Pie, donut, treemap and bubble charts show an always-visible legend with shares instead.
+- **Currency in `chart_data`:** spending is converted to the display currency by default. Rows without an exchange rate are left out, and the tool's note says so. Net worth history stays in the display currency without conversion, the same as the `net_worth` tool.
+- **Colours:** I used the dataviz skill's validated colour order, which already matches the app's chart colours. A ninth series or item and beyond is grey rather than reusing a colour.
+
+**Screenshots:** the before and after sheets (light and dark, phone and desktop, every chart type) are embedded in the PR. They live on a separate branch, `pr-assets/chat-charts`, so delete that branch after merging. Port 3100 was already taken by a process I didn't start, so I ran this checkout's QA server on 3101 and stopped it when I was done.
+
+No AGENTS.md changes needed.
+
+PR https://github.com/indkhan/Moneo/pull/211, head 43e2ab2dc47a6189abd78c487e11f811fc64ba75, checks pending, no reviews yet.
+
+---
+
+Continue where you left off.
