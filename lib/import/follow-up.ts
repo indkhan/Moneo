@@ -9,7 +9,7 @@ import { startAgentRun } from "@/lib/ai/agent-dispatch";
 // What follows once new rows are in. A bank sync requests one pass for all its accounts, and the first
 // review waits for every bank and a finished pass.
 
-/** One agent-team run for everything a bank sync added; a run already going is reused. */
+/** One pass request for everything a bank sync added (see startAgentRun). */
 export async function startSyncAgentRun(db: SupabaseClient, workspaceId: string, importIds: string[]) {
   const landed = await db.from("imports").select("id").eq("workspace_id", workspaceId).in("id", importIds).eq("status", "completed").gt("new_rows", 0).limit(1);
   if (landed.error) throw new Error(landed.error.message);
