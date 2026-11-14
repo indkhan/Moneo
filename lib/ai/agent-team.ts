@@ -83,17 +83,21 @@ export function planRun(profile: Profile): PlannedTask[] {
   }));
 }
 
-export type Backlog = { transactionsAllowed: boolean; unorganized: number; recentRuns: string[]; unorganizedSinceLatestRun: boolean };
+export type Backlog = { transactionsAllowed: boolean; unorganized: number; recentRuns: string[]; unorganizedSinceLatestRun: boolean; retryAt: string | null; now: number };
 
 /**
  * Whether the hourly check should start a run for rows still lacking a merchant or category.
- * recentRuns holds the newest runs' statuses, newest first. Rows a finished run looked at and
- * left alone stay alone; new rows or a failed run are worth another go, up to three failures in a row.
+ * recentRuns holds the newest runs' statuses, newest first; retryAt is when the latest run's organizer may try
+ * the rows it left blank (a plan limit until it resets, a spent budget right away). Until then nothing starts,
+ * not even for new rows, which would hit the same limit. Rows a finished run looked at and left alone stay
+ * alone; new rows or a failed run are worth another go, up to three failures in a row.
  */
 export function backlogRerunNeeded(backlog: Backlog) {
   const [latest] = backlog.recentRuns;
   if (!backlog.transactionsAllowed || !backlog.unorganized || backlog.recentRuns.some(status => status === "queued" || status === "running")) return false;
-  if (!latest || backlog.unorganizedSinceLatestRun) return true;
+  if (!latest) return true;
+  if (backlog.retryAt && latest !== "canceled") return Date.parse(backlog.retryAt) <= backlog.now;
+  if (backlog.unorganizedSinceLatestRun) return true;
   return latest === "failed" && !(backlog.recentRuns.length >= 3 && backlog.recentRuns.slice(0, 3).every(status => status === "failed"));
 }
 

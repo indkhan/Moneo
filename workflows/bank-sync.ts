@@ -8,9 +8,9 @@ import { bankRawRows } from "@/lib/bank/normalize";
 import { bankObservation, bankStatement } from "@/lib/bank/statement";
 import { serviceDb } from "@/lib/bank/server";
 import { claimBankSync, holdBankSync, releasedLease } from "@/lib/bank/sync-lease";
-import { accountDue } from "@/lib/bank/sync-state";
+import { ALIGNED_SPACING_MS, accountDue } from "@/lib/bank/sync-state";
 import { loadWorkspaceSettings } from "@/lib/settings";
-import { maybeStartFirstReview, startSyncAgentRun } from "@/lib/import/follow-up";
+import { startSyncAgentRun } from "@/lib/import/follow-up";
 import { importFile } from "@/workflows/import-file";
 
 type BankImport = { importId: string; rowCount: number; uid: string; lastBookedOn: string };
@@ -25,9 +25,10 @@ const FIRST_SYNC_RETRY_MS = 20 * 60_000;
 // One sync = one ordinary import per bank account, run through the existing import workflow
 // so dedupe (bank id as external_id), review, undo and source history are unchanged.
 // The trigger took the connection's lease (lib/bank/start-sync.ts); this run gives it back when it finishes.
-export async function syncBankConnection(connectionId: string, workspaceId: string, leaseToken: string, psu?: PsuContext) {
+// aligned: the daily sync of the workspace's banks together, where accounts tried 12 hours ago join.
+export async function syncBankConnection(connectionId: string, workspaceId: string, leaseToken: string, psu?: PsuContext, aligned = false) {
   "use workflow";
-  const retryAt = await syncAttempt(connectionId, workspaceId, leaseToken, psu, false);
+  const retryAt = await syncAttempt(connectionId, workspaceId, leaseToken, psu, false, aligned);
   if (retryAt) await scheduleFirstSyncRetry(connectionId, workspaceId, 1, retryAt);
 }
 
@@ -43,8 +44,8 @@ export async function retryFirstBankSync(connectionId: string, workspaceId: stri
   if (retryAt && attempt < FIRST_SYNC_RETRIES) await scheduleFirstSyncRetry(connectionId, workspaceId, attempt + 1, retryAt);
 }
 
-async function syncAttempt(connectionId: string, workspaceId: string, leaseToken: string, psu: PsuContext | undefined, firstSyncRetry: boolean) {
-  const staged = await stageBankImports(connectionId, workspaceId, leaseToken, psu, firstSyncRetry);
+async function syncAttempt(connectionId: string, workspaceId: string, leaseToken: string, psu: PsuContext | undefined, firstSyncRetry: boolean, aligned = false) {
+  const staged = await stageBankImports(connectionId, workspaceId, leaseToken, psu, firstSyncRetry, aligned);
   for (const item of staged.imports) {
     // importFile runs flattened into this run, so a throw from it would end the sync here.
     // The import's stored status is the truth; finishBankSync reads it.
@@ -53,11 +54,9 @@ async function syncAttempt(connectionId: string, workspaceId: string, leaseToken
   }
   await finishBankSync(connectionId, workspaceId, leaseToken, staged);
   if (staged.imports.length) {
-    // Once every account is in: one agent run sees the whole sync, and the first review starts at most once.
-    // Neither is part of the sync; a failure here leaves the rows for the hourly backlog check.
-    const importIds = staged.imports.map(item => item.importId);
-    try { await startAgentTeamStep(workspaceId, importIds); } catch {}
-    try { await firstReviewStep(workspaceId, importIds); } catch {}
+    // Once every account is in, one pass request covers the whole sync; it waits for the workspace's other banks too.
+    // It isn't part of the sync; a failure here leaves the rows for the hourly backlog check.
+    try { await startAgentTeamStep(workspaceId, staged.imports.map(item => item.importId)); } catch {}
   }
   return staged.retryAt;
 }
@@ -81,11 +80,6 @@ async function scheduleFirstSyncRetry(connectionId: string, workspaceId: string,
 async function startAgentTeamStep(workspaceId: string, importIds: string[]) {
   "use step";
   await startSyncAgentRun(serviceDb(), workspaceId, importIds);
-}
-
-async function firstReviewStep(workspaceId: string, importIds: string[]) {
-  "use step";
-  await maybeStartFirstReview(serviceDb(), workspaceId, importIds);
 }
 
 function isoDay(date: Date) { return date.toISOString().slice(0, 10); }
@@ -121,7 +115,7 @@ async function unauthorizedCause(client: EnableBankingClient): Promise<"app" | "
   }
 }
 
-async function stageBankImports(connectionId: string, workspaceId: string, leaseToken: string, psu: PsuContext | undefined, firstSyncRetry: boolean): Promise<Staged> {
+async function stageBankImports(connectionId: string, workspaceId: string, leaseToken: string, psu: PsuContext | undefined, firstSyncRetry: boolean, aligned: boolean): Promise<Staged> {
   "use step";
   const db = serviceDb();
   const staged: Staged = { imports: [], observations: [], fetched: 0, failed: 0, problem: null, ended: true, retryAt: null };
@@ -141,7 +135,7 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   // Each account keeps its own timing. A first-sync retry fetches only accounts whose history never arrived.
   const due = accounts.data.filter(account => firstSyncRetry
     ? !account.last_booked_on && accountDue({ ...account, last_attempted_at: null }, false, now)
-    : accountDue(account, !!psu, now));
+    : accountDue(account, !!psu, now, aligned ? ALIGNED_SPACING_MS : undefined));
   if (!due.length) return staged;
   const settings = await loadWorkspaceSettings(db, workspaceId);
   const client = await enableBankingClient();

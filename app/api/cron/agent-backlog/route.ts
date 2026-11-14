@@ -1,9 +1,11 @@
 import { serviceClient } from "@/lib/service-db";
 import { startBacklogRun } from "@/lib/ai/agent-dispatch";
+import { maybeStartFirstReview } from "@/lib/import/follow-up";
 
 export const maxDuration = 60;
 
-// Hourly: rows a failed agent run left uncategorized, or that arrived after the last run, get another run.
+// Hourly: rows a failed agent run left uncategorized, that arrived after the last run, or that a plan limit left
+// blank once it resets, get another run; and the first review starts here once its 24-hour deadline passed.
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,6 +19,7 @@ export async function GET(request: Request) {
   for (const row of data ?? []) {
     try { if (await startBacklogRun(db, row.id)) started++; }
     catch { failed++; } // The next hour tries again.
+    try { await maybeStartFirstReview(db, row.id); } catch { failed++; }
   }
   return Response.json({ started, failed }, { status: failed ? 503 : 200 });
 }

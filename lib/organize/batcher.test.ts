@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { APICallError } from "ai";
-import { runAdaptive, tokenBatches } from "./batcher";
+import { StopWork, retryLeftoversAt, runAdaptive, tokenBatches } from "./batcher";
 
 const throttled = (body: string) => new APICallError({ message: "Too Many Requests", url: "https://synthetic.invalid", requestBodyValues: {}, statusCode: 429, responseBody: body });
 afterEach(() => vi.useRealTimers());
@@ -50,4 +50,13 @@ it("stops at the plan's usage limit and leaves the rest for the next run without
   expect([...result.done.map(item => item.job), ...result.left].sort()).toEqual([1, 2, 3, 4, 5]);
   expect(result.failed).toEqual([]);
   expect(APICallError.isInstance(result.stopped)).toBe(true);
+});
+
+// Rows a ChatGPT plan limit left blank were never tried again; retrying hourly instead would burn a call on every try.
+it("retries left rows when the plan's limit resets, right away after a spent budget, else after an hour", () => {
+  const now = Date.parse("2026-11-14T12:00:00Z");
+  expect(retryLeftoversAt(throttled(`{"error":{"type":"usage_limit_reached","resets_at":${now / 1000 + 7200}}}`), now)).toBe(now + 7_200_000);
+  expect(retryLeftoversAt(throttled('{"error":{"type":"usage_limit_reached","resets_in_seconds":600}}'), now)).toBe(now + 600_000);
+  expect(retryLeftoversAt(throttled('{"error":{"type":"usage_limit_reached"}}'), now)).toBe(now + 3_600_000);
+  expect(retryLeftoversAt(new StopWork("The model budget for this run is spent"), now)).toBe(now);
 });

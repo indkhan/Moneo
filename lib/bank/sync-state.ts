@@ -11,8 +11,11 @@ export function syncRunning(connection: { sync_started_at: string | null; last_s
 // PSD2 allows about 4 background fetches a day per account, so without the owner present an account
 // waits 20 hours after its last try. A bank's Retry-After (next_allowed_at) holds every trigger back.
 export const BACKGROUND_SPACING_MS = 20 * 3_600_000;
+// A workspace's banks sync together so one agent pass follows them all: once any account is due, the others join if their
+// last try was at least 12 hours ago. That is one extra fetch on the day they line up, then they stay together.
+export const ALIGNED_SPACING_MS = 12 * 3_600_000;
 
-export function accountDue(account: { last_attempted_at: string | null; next_allowed_at: string | null }, ownerPresent: boolean, now = Date.now()) {
+export function accountDue(account: { last_attempted_at: string | null; next_allowed_at: string | null }, ownerPresent: boolean, now = Date.now(), spacing = BACKGROUND_SPACING_MS) {
   if (account.next_allowed_at && Date.parse(account.next_allowed_at) > now) return false;
-  return ownerPresent || !account.last_attempted_at || now - Date.parse(account.last_attempted_at) >= BACKGROUND_SPACING_MS;
+  return ownerPresent || !account.last_attempted_at || now - Date.parse(account.last_attempted_at) >= spacing;
 }

@@ -8,7 +8,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
-import { StopWork } from "@/lib/organize/batcher";
+import { StopWork, retryLeftoversAt } from "@/lib/organize/batcher";
 import { calibration } from "@/lib/organize/calibration";
 import { loadJudgedLabels, loadOrganizeInput } from "@/lib/organize/load";
 import { answersSchema, organize, type Ask, type AskRequest, type Decided, type Label, type OrganizeInput, type Source } from "@/lib/organize/organizer";
@@ -189,7 +189,11 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
   if (calibrated.reason) await report(context, { type: "note", text: calibrated.reason });
   await report(context, { type: "tool", text: `${plural(input.rows.length, "row")} to organize; ${plural(input.rules.length, "rule")}, ${plural(input.memory.size, "confirmed payee")}, ${plural(input.history.length, "labelled row")} as examples` });
   const run = await activeRun(db, runId, workspace.id);
-  const model = run.model_status === "available" ? await modelForSettings(context.settings, "agents").catch(() => null) : null;
+  // A limit an earlier run hit holds until it resets (organize_after): asking sooner would only fail again.
+  const previous = checked(await db.from("agent_runs").select("organize_after").eq("workspace_id", workspace.id).neq("id", runId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle()) as { organize_after: string | null } | null;
+  const pausedUntil = previous?.organize_after && Date.parse(previous.organize_after) > Date.now() ? previous.organize_after : null;
+  const model = run.model_status === "available" && !pausedUntil ? await modelForSettings(context.settings, "agents").catch(() => null) : null;
   const ask: Ask | null = model && (async request => {
     try { await activeRun(db, runId, workspace.id); } catch (error) { if (error instanceof RunInactive) throw new StopWork("The run was stopped"); throw error; }
     if (!checked(await db.rpc("reserve_agent_model_call", { p_run_id: runId, p_workspace_id: workspace.id }))) throw new StopWork("The model budget for this run is spent");
@@ -202,8 +206,13 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
     await report(context, { type: "step", text: `Asking the AI about the rest in ${plural(batches, "batch", "batches")}, one decision per payee` });
   } });
   await activeRun(db, runId, workspace.id);
-  if (!ask && result.left.length) await report(context, { type: "note", text: `No AI available; ${plural(result.left.length, "row")} the bank's data and your rules couldn't decide wait for the next run` });
+  const resumes = pausedUntil && new Date(pausedUntil).toLocaleTimeString(workspace.locale, { timeZone: workspace.timezone, hour: "2-digit", minute: "2-digit" });
+  if (!ask && result.left.length) await report(context, { type: "note", text: pausedUntil ? `The AI hit its limit in an earlier run and is asked again at ${resumes}; ${plural(result.left.length, "row")} wait until then`
+    : `No AI available; ${plural(result.left.length, "row")} the bank's data and your rules couldn't decide wait for the next run` });
   if (result.stopped) await report(context, { type: "note", text: `${result.stopped instanceof StopWork ? result.stopped.message : "The AI plan's usage limit was reached"}; ${plural(result.left.length, "row")} wait for the next run` });
+  // Rows left blank are retried by the hourly check at this time (backlogRerunNeeded); rows the AI failed on are not.
+  const retryAt = !result.left.length ? null : pausedUntil ?? (ask ? new Date(retryLeftoversAt(result.stopped, Date.now())).toISOString() : null);
+  if (retryAt) checked(await db.from("agent_runs").update({ organize_after: retryAt }).eq("id", runId).eq("workspace_id", workspace.id));
   for (const failure of result.failed.slice(0, 3)) await report(context, { type: "note", text: `The AI failed on ${plural(failure.rows.length, "row")} (${failure.error instanceof Error ? failure.error.message : String(failure.error)}); they wait for the next run` });
 
   const labels: Decided[] = [], asking: Decided[] = [];
@@ -409,6 +418,38 @@ export async function mergeRun(runId: string, workspaceId: string) {
   return true;
 }
 
+/** Whether a bank sync of this workspace still holds its lease (lib/bank/sync-lease.ts), so its rows are still landing. */
+export async function banksSyncing(workspaceId: string) {
+  const held = checked(await service().from("bank_connections").select("id").eq("workspace_id", workspaceId).eq("status", "active")
+    .gt("sync_lease_until", new Date().toISOString()).limit(1)) as unknown[];
+  return held.length > 0;
+}
+
+/**
+ * Whether the analysis agents run: only when rows landed, changed or got labels since the last completed analysis
+ * (a manual run always does). Otherwise their tasks are skipped and the run ends after organizing.
+ */
+export async function startAnalysis(runId: string, workspaceId: string) {
+  const db = service();
+  try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return false; throw error; }
+  const run = checked(await db.from("agent_runs").select("trigger, data_fingerprint").eq("id", runId).eq("workspace_id", workspaceId).single()) as { trigger: string; data_fingerprint: string | null };
+  if (run.data_fingerprint) return true; // Resumed after its analysis began.
+  const [fingerprint, last] = await Promise.all([db.rpc("agent_data_fingerprint", { p_workspace_id: workspaceId }),
+    db.from("agent_runs").select("data_fingerprint").eq("workspace_id", workspaceId).eq("status", "completed").not("data_fingerprint", "is", null)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle()]);
+  const current = checked(fingerprint) as string;
+  if (run.trigger !== "manual" && (checked(last) as { data_fingerprint: string } | null)?.data_fingerprint === current) {
+    const reason = "Nothing changed since the last analysis";
+    checked(await db.from("agent_tasks").update({ status: "skipped", step: reason, summary: reason, finished_at: new Date().toISOString() })
+      .eq("run_id", runId).eq("workspace_id", workspaceId).eq("status", "pending").not("agent", "in", "(lead,categorizer)"));
+    const { workspace } = await loadWorkspace(db, workspaceId);
+    await report({ db, runId, workspace, agent: "lead" }, { type: "note", text: "No rows landed or changed since the last analysis, so only organizing ran" });
+    return false;
+  }
+  checked(await db.from("agent_runs").update({ data_fingerprint: current }).eq("id", runId).eq("workspace_id", workspaceId));
+  return true;
+}
+
 type AiApplied = { applied: number; transactionIds: string[]; skipped: Record<string, number> };
 const appliedResult = (outcome: AiApplied) => ({ auto: true, applied: outcome.applied, skipped: outcome.skipped,
   href: outcome.transactionIds[0] ? `/money/transactions?transaction=${outcome.transactionIds[0]}` : "/money/transactions", undo: "Undo below" });
@@ -457,17 +498,20 @@ export async function recoverStuckProposals(db: Db, workspaceId: string, now = D
   }
 }
 
-export async function finishRun(runId: string, workspaceId: string, error?: string) {
+/** Closes the run; rerun is the trigger of an import or sync that landed while it worked, which gets one follow-up run. */
+export async function finishRun(runId: string, workspaceId: string, error?: string): Promise<{ status: string; rerun: "import" | "sync" | null }> {
   const db = service();
   const now = new Date().toISOString();
   const run = checked(await db.from("agent_runs").select("status, cancel_requested").eq("id", runId).eq("workspace_id", workspaceId).single()) as { status: string; cancel_requested: boolean };
-  if (!["queued", "running"].includes(run.status)) return run.status;
+  if (!["queued", "running"].includes(run.status)) return { status: run.status, rerun: null };
   // A run whose agents failed did not finish its work; saying "completed" hid 417 uncategorized rows.
   const failed = (checked(await db.from("agent_tasks").select("agent, status").eq("run_id", runId).eq("workspace_id", workspaceId)) as { agent: AgentId; status: string }[])
     .filter(task => task.status === "failed").map(task => AGENTS[task.agent].name);
   error ??= failed.length ? `${failed.join(", ")} failed; resume the run to try again` : undefined;
   const status = run.cancel_requested ? "canceled" : error ? "failed" : "completed";
-  checked(await db.from("agent_runs").update({ status, error: error?.slice(0, 2000) ?? null, finished_at: now, updated_at: now }).eq("id", runId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]));
+  // One statement with the status change, so a request either marked this run first or sees it finished and starts its own.
+  const closed = checked(await db.from("agent_runs").update({ status, error: error?.slice(0, 2000) ?? null, finished_at: now, updated_at: now }).eq("id", runId).eq("workspace_id", workspaceId)
+    .in("status", ["queued", "running"]).select("rerun_trigger").maybeSingle()) as { rerun_trigger: "import" | "sync" | null } | null;
   checked(await db.from("agent_tasks").update({ status: status === "completed" ? "done" : "canceled", finished_at: now }).eq("run_id", runId).eq("workspace_id", workspaceId).in("status", ["pending", "running"]));
-  return status;
+  return { status, rerun: closed?.rerun_trigger ?? null };
 }
