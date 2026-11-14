@@ -71,6 +71,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # electron-builder skips signing on pull requests; sign (ad hoc without a certificate) so
+          # codesign's checks fail here instead of first on a release tag.
+          CSC_FOR_PULL_REQUEST: "true"
         run: |
           # Secrets that do not exist arrive as empty strings; unset them so electron-builder
           # treats the build as unsigned.
