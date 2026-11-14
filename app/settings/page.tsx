@@ -15,6 +15,7 @@ import { PhoneAccessSection } from "./phone-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
 import { desktopUpdate, isDesktop } from "@/lib/desktop-bridge";
 import { AppUpdate } from "./app-update";
+import { modelConnections } from "@/lib/ai/provider";
 
 export const metadata = { title: "Settings" };
 
@@ -41,6 +42,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const query = await searchParams;
   const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
+  const connections = await modelConnections();
   const [runs, update, ai] = await Promise.all([loadRuns(context), isDesktop() ? desktopUpdate("status").catch(() => null) : null, chatgptStatus()]);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
@@ -61,7 +63,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div id="phone" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={2} />}><PhoneAccessSection /></Suspense></div>
           <SetupSecrets />
         </section>
-        <SettingsForm settings={settings} aiSource={ai.source} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
+        <SettingsForm settings={settings} aiSource={ai.source} connections={connections} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>

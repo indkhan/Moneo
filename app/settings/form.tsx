@@ -8,6 +8,7 @@ import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, INSIGHT_TYPES, VOICES, type W
 import { saveSettings } from "./actions";
 import type { AiSource } from "@/lib/ai/chatgpt";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
+import { connectedDefault, modelIsConnected, modelOptions, type ModelConnections } from "@/lib/ai/model-options";
 import { VoiceKeyToast } from "@/components/voice-key-toast";
 
 const input = "min-h-10 min-w-0 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal text-foreground";
@@ -21,6 +22,22 @@ const scopeDescriptions = { accounts: "Account names and dated balances", transa
 const LOCALES = [["en-GB", "English (United Kingdom)"], ["en-US", "English (United States)"], ["en-IE", "English (Ireland)"], ["de-DE", "German (Germany)"], ["de-AT", "German (Austria)"], ["de-CH", "German (Switzerland)"],
   ["fr-FR", "French (France)"], ["es-ES", "Spanish (Spain)"], ["it-IT", "Italian (Italy)"], ["nl-NL", "Dutch (Netherlands)"], ["pt-PT", "Portuguese (Portugal)"], ["pl-PL", "Polish (Poland)"], ["sv-SE", "Swedish (Sweden)"], ["tr-TR", "Turkish (Turkey)"], ["ur-PK", "Urdu (Pakistan)"]];
 const muteLabels: Partial<Record<(typeof INSIGHT_TYPES)[number], string>> = { asset_debt: "asset and debt changes", upcoming_obligations: "upcoming payments" };
+
+function ModelPicker({ name, initial, placeholder, options, invalid }: { name: string; initial: string; placeholder: string; options: string[]; invalid: object }) {
+  const [value, setValue] = useState(initial);
+  const [custom, setCustom] = useState(Boolean(initial && !options.includes(initial)));
+  return <>
+    <select id={name} className={input} {...(!custom ? invalid : {})} name={custom ? undefined : name} aria-label={`${name} model choice`} value={custom ? "custom" : value} onChange={event => {
+      setCustom(event.target.value === "custom");
+      setValue(event.target.value === "custom" ? "" : event.target.value);
+    }}>
+      <option value="">Default: {placeholder}</option>
+      {options.map(model => <option key={model} value={model}>{model}</option>)}
+      <option value="custom">Type a model ID…</option>
+    </select>
+    {custom && <input aria-label={`${name} custom model ID`} className={input} {...invalid} name={name} value={value} onChange={event => setValue(event.target.value)} placeholder="Model ID" maxLength={200} autoComplete="off" spellCheck={false} />}
+  </>;
+}
 
 /** The voice choice for calls, with a short sample of whichever voice is selected. */
 function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
@@ -58,7 +75,7 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
     {state === "failed" && <span role="alert" className="text-sm font-normal text-danger">{"Couldn’t play the sample. Check your sound and try again."}</span>}</div>;
 }
 
-export function SettingsForm({ settings, currency, timeZones, aiSource }: { settings: WorkspaceSettings; currency: string; timeZones: string[]; aiSource: AiSource }) {
+export function SettingsForm({ settings, currency, timeZones, aiSource, connections }: { settings: WorkspaceSettings; currency: string; timeZones: string[]; aiSource: AiSource; connections: ModelConnections }) {
   const [state, action, pending] = useActionState(saveSettings, {});
   const [dirty, setDirty] = useState(false);
   const [locale, setLocale] = useState(settings.locale);
@@ -102,9 +119,9 @@ export function SettingsForm({ settings, currency, timeZones, aiSource }: { sett
       <div className="divide-y divide-border">{AI_DATA_SCOPES.map(scope => <label key={scope} className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_data_scopes" value={scope} defaultChecked={settings.ai_data_scopes.includes(scope)} /><span><strong className="block capitalize">{scope}</strong><span className="text-muted-foreground">{scopeDescriptions[scope]}</span></span></label>)}
         <label className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="artifact_scalable_data" value="live" defaultChecked={settings.artifact_scalable_data === "live"} /><span><strong className="block">Live Scalable data in artifacts</strong><span className="text-muted-foreground">Off: artifact Pages and Home cards show your Scalable portfolio as of the last sync, the same figures as Wealth. On: they read Scalable live each time they open, with current prices and quotes and charts for any security, but they load slower and show an error when Scalable can&apos;t be reached.</span></span></label></div>
       <details className="text-sm"><summary className="cursor-pointer font-medium">Advanced: choose AI models</summary><div className="mt-3 space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">{AI_AGENT_KEYS.map(agent => <label key={agent} className={label}>{AI_AGENTS[agent].label} model
-        <input className={input} {...invalid(`model:${agent}`)} name={`model:${agent}`} defaultValue={settings.ai_models[agent] ?? ""} placeholder={agent === "voice_call" ? "Same as the chat assistant" : aiSource === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model} maxLength={200} autoComplete="off" spellCheck={false} /></label>)}</div>
-      <p className={help}>Type an OpenAI model ID (gpt-6.1-sol), a Claude one for your Claude plan (claude-opus-5-5) or an OpenRouter one (vendor/model, e.g. nvidia/nemotron-3.5-lightning:free), or leave blank for the default shown. A changed model is tested before saving. Voice call follows the chat assistant unless you pick a faster model for it.</p>
+      <div className="grid gap-3 sm:grid-cols-2">{AI_AGENT_KEYS.map(agent => <div key={agent} className={label}><label htmlFor={`model:${agent}`}>{AI_AGENTS[agent].label} model</label>
+        <ModelPicker key={`${connections.openai}:${connections.claude}:${connections.openrouter}`} invalid={invalid(`model:${agent}`)} name={`model:${agent}`} initial={settings.ai_models[agent] && modelIsConnected(settings.ai_models[agent], connections) ? settings.ai_models[agent] : ""} placeholder={agent === "voice_call" ? "Same as the chat assistant" : connectedDefault(agent, connections, aiSource === "claude")} options={modelOptions(connections)} /></div>)}</div>
+      <p className={help}>Choose a suggested model from your connected providers, or type a model ID. OpenRouter IDs include vendor/model. Leave blank for the default shown. A changed model is tested before saving. Voice call follows the chat assistant unless you choose another model.</p>
       </div></details>
     </fieldset>
     <fieldset id="insights" className={card}><legend className={legend}>Insights and summaries</legend>

@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasSupabase } from "@/lib/env";
+import { supabaseFetch } from "@/lib/supabase-fetch";
 
 // Self-hosted Moneo has one owner and no sign-in screen: without a session, the proxy signs the
 // owner in with the login `npm run setup` wrote to .env. The app is only reachable on this computer
@@ -18,6 +19,7 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      global: { fetch: supabaseFetch },
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookies, headers) => {
