@@ -1325,6 +1325,10 @@ export const agentRuns = pgTable("agent_runs", {
   modelBudget: integer("model_budget").notNull().default(6),
   modelStatus: text("model_status").notNull().default("unknown"),
   error: text("error"),
+  // 202611130008: a request that arrived while the run worked; what the analysis saw; when blank rows are retried.
+  rerunTrigger: text("rerun_trigger"),
+  dataFingerprint: text("data_fingerprint"),
+  organizeAfter: timestamp("organize_after", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
@@ -1337,6 +1341,8 @@ export const agentRuns = pgTable("agent_runs", {
   check("agent_runs_model_status_check", sql`${table.modelStatus} in ('unknown','available','unavailable','budget_exhausted','disabled')`),
   check("agent_runs_budget_check", sql`${table.modelBudget} between 0 and 200 and ${table.modelCalls} between 0 and ${table.modelBudget}`),
   check("agent_runs_plan_check", sql`jsonb_typeof(${table.plan})='array'`),
+  check("agent_runs_rerun_trigger_check", sql`${table.rerunTrigger} in ('import','sync')`),
+  check("agent_runs_data_fingerprint_check", sql`char_length(${table.dataFingerprint}) <= 200`),
 ]);
 
 export const agentTasks = pgTable("agent_tasks", {
