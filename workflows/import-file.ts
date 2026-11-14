@@ -5,6 +5,7 @@ import { serviceClient } from "@/lib/service-db";
 import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
 import { stableId } from "@/lib/import/row";
 import { linkOwnTransfers } from "@/lib/finance/own-transfers";
+import { resolveNewIdentities } from "@/lib/organize/resolve";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
 import { maybeStartFirstReview as startFirstReviewIfFirst } from "@/lib/import/follow-up";
@@ -33,12 +34,15 @@ export async function importFile(importId: string, workspaceId: string, rowCount
   await maybeStartFirstReview(importId, workspaceId);
 }
 
-// Transfers between the owner's own accounts are linked as soon as new rows land, so a later
-// import from the other bank completes the pair. A failure never affects the completed import.
+// As soon as new rows land: each gets its identity, then transfers between the owner's own accounts are linked
+// (so a later import from the other bank completes the pair), exchanges marked, and unproven pairs and moves with
+// nobody on the other side go to the owner. Failures never affect the completed import; the next import retries.
+// One step under its old name, so imports already running when Moneo updates resume cleanly.
 async function linkOwnTransfersStep(workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
   const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  try { await resolveNewIdentities(db, workspaceId); } catch (error) { console.error("Identities were not resolved", error); }
   try { await linkOwnTransfers(db, workspaceId); } catch (error) { console.error("Own-account transfers were not linked", error); } // The next import retries.
 }
 

@@ -82,6 +82,16 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       return applyScalableProposal(proposal.kind, proposal.payload, connectionId => work => withScalable(connectionId, workspace.id, work));
     case "own_transfer": {
       const payload = ownTransferPayloadSchema.parse(proposal.payload);
+      if ("pairWith" in payload) {
+        // The owner says both legs are theirs: one verified transfer link, undone from either transaction.
+        const rows = await supabase.from("transactions").select("id, version").eq("workspace_id", workspace.id).in("id", [payload.transactionId, payload.pairWith]);
+        const version = (id: string) => rows.data?.find(row => row.id === id)?.version;
+        if (rows.error || version(payload.transactionId) === undefined || version(payload.pairWith) === undefined) throw new Error("This transaction was removed");
+        const { error } = await supabase.rpc("link_transactions", { p_operation: "transfer", p_primary_id: payload.transactionId, p_expected_version: version(payload.transactionId),
+          p_other_id: payload.pairWith, p_other_version: version(payload.pairWith), p_fx_rate_id: null, p_fees: [], p_request_id: proposal.id });
+        if (error) throw new Error(error.message);
+        return { href: `/money/transactions?transaction=${payload.transactionId}`, undo: "Undo from the transaction" };
+      }
       const row = await supabase.from("transactions").select("version").eq("workspace_id", workspace.id).eq("id", payload.transactionId).maybeSingle();
       if (row.error || !row.data) throw new Error("This transaction was removed");
       const { error } = await supabase.rpc("mark_own_named_transfer", { p_transaction_id: payload.transactionId, p_expected_version: row.data.version, p_kind: "owner", p_label: payload.name });
