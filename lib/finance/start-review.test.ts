@@ -8,6 +8,8 @@ vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({runId: "run"})), get
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 const service = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({createClient: () => service}));
+vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
+vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-test-key");
 beforeEach(() => {
   Object.assign(state, { status: "queued", workflow_run_id: null, runtimeStatus: "running", registerError: false, started: true });
   vi.clearAllMocks();

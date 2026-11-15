@@ -1,14 +1,10 @@
 import { maskAccountNumber } from "@/lib/import/csv";
-import { serviceClient } from "@/lib/service-db";
+import { serviceDb } from "@/lib/service-db";
 import { EnableBankingError, enableBankingClient, enableBankingConfigured, type BankAccount, type PsuContext } from "./enable-banking";
 import { BANK_REDIRECT_URL } from "./return-listener";
 import { decryptToken } from "./token-crypto";
 
-export function serviceDb() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Bank sync service is not configured");
-  return serviceClient(url, key);
-}
+export { serviceDb };
 
 export function enableBankingErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof EnableBankingError)) return fallback;

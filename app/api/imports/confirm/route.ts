@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
-import { createClient } from "@supabase/supabase-js";
+import { serviceDb } from "@/lib/service-db";
 import { requireWorkspace } from "@/lib/auth";
 import { parseCsv, parseExcel, workbookScopeSchema, validateImportConfirmation } from "@/lib/import/csv";
 import { importFile } from "@/workflows/import-file";
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     try {
       await start(importFile, [importId, workspace.id, rows.length, 1]);
     } catch (error) {
-      const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+      const service = serviceDb();
       const failed = await service.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspace.id, p_run_version: 1, p_error: String(error) });
       if (failed.error) throw failed.error;
       throw error;

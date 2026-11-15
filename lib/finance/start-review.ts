@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@supabase/supabase-js";
+import { serviceDb } from "@/lib/service-db";
 import { getRun, start } from "workflow/api";
 import { getWorld } from "workflow/runtime";
 import { financialReview } from "@/workflows/financial-review";
@@ -11,7 +11,7 @@ export async function startFinancialReview(db: SupabaseClient, workspaceId: stri
     : await db.rpc("start_financial_review", { p_request_id: requestId, p_chat_request_id: chatRequestId ?? null });
   if (claimed.error) throw claimed.error;
   const { jobId } = claimed.data as { jobId: string };
-  const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const service = serviceDb();
   return dispatchFinancialReview(service, jobId, workspaceId, false);
 }
 

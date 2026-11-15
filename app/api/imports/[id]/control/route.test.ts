@@ -13,6 +13,7 @@ it("returns effective cancellation and starts only a newly resumed version", asy
     .mockResolvedValueOnce({ data: { status: "running", started: false, runVersion: 3 }, error: null });
   vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { rpc }, workspace: { id: "workspace" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
   const id = "00000000-0000-4000-8000-000000000001", requestId = "00000000-0000-4000-8000-000000000002";
   const call = (action: string) => POST(new Request("http://localhost", { method: "POST", body: JSON.stringify({ action, requestId }) }), { params: Promise.resolve({ id }) });
   expect(await (await call("cancel")).json()).toMatchObject({ status: "canceled" });
@@ -31,6 +32,7 @@ it("persists a launch failure against its version and preserves a concurrent can
   vi.mocked(createClient).mockReturnValue({ rpc: finish } as unknown as ReturnType<typeof createClient>);
   vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { rpc }, workspace: { id: "workspace" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
   const id = "00000000-0000-4000-8000-000000000001";
   const call = () => POST(new Request("http://localhost", { method: "POST", body: JSON.stringify({ action: "resume", requestId: "00000000-0000-4000-8000-000000000002" }) }), { params: Promise.resolve({ id }) });
   const failed = await call();

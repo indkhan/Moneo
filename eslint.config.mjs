@@ -174,6 +174,28 @@ export default defineConfig([
   },
   { linterOptions: { reportUnusedDisableDirectives: "error" } },
   {
+    files: ["app/**", "components/**", "lib/**", "workflows/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/service-db.ts", "lib/service-keys.ts", "lib/supabase-server.ts", "workflows/financial-review.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [{
+        name: "@supabase/supabase-js",
+        importNames: ["createClient"],
+        message: "Use serviceDb() from lib/service-db.ts for the service role (it retries transient failures) or createClient() from lib/supabase-server.ts for the owner's session (AGENTS.md Rules).",
+      }] }],
+    },
+  },
+  {
+    files: ["app/**", "components/**", "lib/**", "workflows/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/cron.ts", "lib/scheduler.ts", "app/settings/**"],
+    rules: {
+      "no-restricted-properties": ["error", {
+        object: "env",
+        property: "CRON_SECRET",
+        message: "Scheduled routes check the secret through cronRoute() in lib/cron.ts: export const GET = cronRoute(async () => { ... }) (AGENTS.md Rules).",
+      }],
+    },
+  },
+  {
     files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts"],
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress] },

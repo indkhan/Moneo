@@ -1,16 +1,15 @@
-import { createClient } from "@supabase/supabase-js";
+import { cronRoute } from "@/lib/cron";
+import { serviceClient } from "@/lib/service-db";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { settingsSchema } from "@/lib/settings";
 import { dueSummaryPeriod } from "@/lib/summary-schedule";
 
 export const maxDuration = 60;
 
-export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = cronRoute(async () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return Response.json({ error: "Summary service unavailable" }, { status: 503 });
-  const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const db = serviceClient(url, key);
   const { data, error, count } = await db.from("workspace_settings").select("*", { count: "exact" }).neq("summary_cadence", "none").order("workspace_id").limit(500);
   if (error) return Response.json({ error: "Summary preferences unavailable" }, { status: 503 });
   let started = 0, failed = 0, invalid = 0;
@@ -27,4 +26,4 @@ export async function GET(request: Request) {
     catch { failed++; }
   }
   return Response.json({ started, failed, invalid, capacityExceeded: (count ?? 0) > 500 });
-}
+});

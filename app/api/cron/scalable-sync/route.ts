@@ -1,3 +1,4 @@
+import { cronRoute } from "@/lib/cron";
 import { serviceDb } from "@/lib/bank/server";
 import { calendarDate } from "@/lib/finance/calendar";
 import { loadWorkspaceSettings } from "@/lib/settings";
@@ -6,9 +7,7 @@ import { syncScalable } from "@/lib/scalable/sync";
 
 export const maxDuration = 300;
 
-export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = cronRoute(async () => {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !scalableConfigured()) return Response.json({ error: "Scalable sync unavailable" }, { status: 503 });
   const db = serviceDb();
   const { data, error } = await db.from("scalable_connections").select("id, workspace_id, last_synced_at").eq("status", "active").order("id").limit(100);
@@ -22,4 +21,4 @@ export async function GET(request: Request) {
     } catch { failed++; }
   }
   return Response.json({ synced, failed });
-}
+});

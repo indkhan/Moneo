@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { start } from "workflow/api";
-import { createClient } from "@supabase/supabase-js";
+import { serviceDb } from "@/lib/service-db";
 import { requireWorkspace } from "@/lib/auth";
 import { importFile } from "@/workflows/import-file";
 
@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (input.data.action === "resume" && result.data.started) {
     try { await start(importFile, [id.data, context.workspace.id, result.data.totalRows, result.data.runVersion]); }
     catch (error) {
-      const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+      const service = serviceDb();
       const failed = await service.rpc("finish_import_run", { p_import_id: id.data, p_workspace_id: context.workspace.id, p_run_version: result.data.runVersion, p_error: String(error) });
       if (failed.error) return Response.json({ error: "Could not persist import launch failure" }, { status: 500 });
       return Response.json({ error: "Could not resume import", status: failed.data }, { status: 503 });

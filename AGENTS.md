@@ -114,6 +114,8 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | The modules every page loads (`lib/auth`, `lib/settings`, `lib/safe-action`, `lib/env`) never import `lib/ai` | `moneo/import-boundaries` (lint) |
 | No hard-coded port 3000 or app address outside `lib/env.ts` | `no-restricted-syntax` (lint) |
 | Tests never wait on a real timer, skip from inside a test, read migration text, or touch port 3000 | `no-restricted-syntax` (lint) |
+| One way to make a database client: `serviceDb()` for the service role, `createClient()` in `lib/supabase-server.ts` for the owner | `no-restricted-imports` (lint) |
+| Every scheduled route checks the cron secret, through `cronRoute()` | `lib/cron.test.ts` walks every route; `no-restricted-properties` (lint) |
 | No `eslint-disable` that suppresses nothing | `reportUnusedDisableDirectives` (lint) |
 | Every code path returns; overrides are marked; no switch fall-through | `tsconfig.json` |
 | A stored preference this version cannot read never blocks sign-in | `lib/settings.test.ts` |

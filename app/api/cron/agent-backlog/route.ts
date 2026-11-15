@@ -1,12 +1,11 @@
+import { cronRoute } from "@/lib/cron";
 import { serviceClient } from "@/lib/service-db";
 import { startBacklogRun } from "@/lib/ai/agent-dispatch";
 import { maybeStartFirstReview } from "@/lib/import/follow-up";
 
 export const maxDuration = 60;
 
-export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = cronRoute(async () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return Response.json({ error: "Agent service unavailable" }, { status: 503 });
   const db = serviceClient(url, key);
@@ -19,4 +18,4 @@ export async function GET(request: Request) {
     try { await maybeStartFirstReview(db, row.id); } catch { failed++; }
   }
   return Response.json({ started, failed }, { status: failed ? 503 : 200 });
-}
+});

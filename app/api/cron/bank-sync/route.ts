@@ -1,3 +1,4 @@
+import { cronRoute } from "@/lib/cron";
 import { enableBankingConfigured } from "@/lib/bank/enable-banking";
 import { serviceDb } from "@/lib/bank/server";
 import { startBankSync } from "@/lib/bank/start-sync";
@@ -5,9 +6,7 @@ import { ALIGNED_SPACING_MS, accountDue } from "@/lib/bank/sync-state";
 
 export const maxDuration = 60;
 
-export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = cronRoute(async () => {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !(await enableBankingConfigured())) return Response.json({ error: "Bank sync unavailable" }, { status: 503 });
   const { data, error } = await serviceDb().from("bank_connection_accounts").select("connection_id, workspace_id, last_attempted_at, next_allowed_at, bank_connections!inner(status)")
     .eq("bank_connections.status", "active").order("connection_id").limit(1000);
@@ -22,4 +21,4 @@ export async function GET(request: Request) {
     catch { failed++; }
   }
   return Response.json({ started, busy, failed });
-}
+});
