@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01U7Gg7MVM26nXc6gB5QMeSg",
+  "agent_id": "a238ea67e2a99beb6",
+  "subagent_type": "general-purpose",
+  "task_description": "Turn head on Whistle embeddings",
+  "token_usage": {
+    "input_tokens": 76,
+    "cache_creation_tokens": 205757,
+    "cache_read_tokens": 3217046,
+    "output_tokens": 48614,
+    "api_call_count": 40
+  },
+  "started_at": "2026-11-14T15:09:52.9185889+01:00",
+  "completed_at": "2026-11-14T20:54:41.5973961+01:00"
+}

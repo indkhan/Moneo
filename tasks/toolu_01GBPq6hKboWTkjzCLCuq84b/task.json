@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01GBPq6hKboWTkjzCLCuq84b",
+  "agent_id": "ab4b93fd5cb00dd3a",
+  "subagent_type": "general-purpose",
+  "task_description": "Make Woof TTS stream",
+  "token_usage": {
+    "input_tokens": 46,
+    "cache_creation_tokens": 180153,
+    "cache_read_tokens": 2275773,
+    "output_tokens": 60808,
+    "api_call_count": 24
+  },
+  "started_at": "2026-11-14T15:16:24.4458382+01:00",
+  "completed_at": "2026-11-15T02:57:23.3534454+01:00"
+}

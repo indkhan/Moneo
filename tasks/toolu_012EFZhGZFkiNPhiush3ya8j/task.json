@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_012EFZhGZFkiNPhiush3ya8j",
+  "agent_id": "a55e23328bf69d9de",
+  "subagent_type": "general-purpose",
+  "task_description": "Tiny router and talker models",
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 256802,
+    "cache_read_tokens": 4660644,
+    "output_tokens": 78205,
+    "api_call_count": 41
+  },
+  "started_at": "2026-11-14T15:16:24.4452936+01:00",
+  "completed_at": "2026-11-15T02:57:23.1900531+01:00"
+}
