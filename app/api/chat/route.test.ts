@@ -8,10 +8,8 @@ import { loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { listAccounts, getBalances, cashflow, searchTransactions, listGoals, evaluateForecast } from "@/lib/finance/tools";
 import { startFinancialReview } from "@/lib/finance/start-review";
-// The model run is mocked as one async call returning the final text and steps; streamText wraps it.
 type Run = { text: string; usage?: unknown; steps?: unknown[] };
 const { generateObject, generateText } = vi.hoisted(() => ({ generateObject: vi.fn(async (): Promise<{ object: { title: string; vague: boolean } }> => ({ object: { title: "Spending explained", vague: false } })), generateText: vi.fn(async (options: { tools: unknown; stopWhen?: unknown; instructions?: string; messages?: unknown }): Promise<Run> => { void options; return { text: "Evidence reviewed" }; }) }));
-// Keys come from the stubbed env only; the synthetic Supabase URL must not be fetched.
 vi.mock("@/lib/service-keys", () => ({ serviceKey: async (name: string) => process.env[name.toUpperCase()] || undefined }));
 vi.mock("@/lib/finance/investigation-reader", async original => ({ ...await original<typeof import("@/lib/finance/investigation-reader")>(), investigationDetail: vi.fn(async () => ({ synthetic: "detail" })) }));
 vi.mock("ai", () => ({ generateObject, tool: (value: unknown) => value, stepCountIs: (value: number) => value, streamText: (options: Parameters<typeof generateText>[0]) => {
@@ -212,7 +210,6 @@ it.each(readTools)("withholds %s when %s is revoked during its paused read", asy
     vi.mocked(requireWorkspace).mockResolvedValue({ ...current, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(value => value !== scope) } });
     release({ synthetic: "withheld evidence" } as never);
     await expect(result).rejects.toThrow(/disabled|permission/i);
-    // The provider mock receives only resolved tool outputs.
     received = await result.catch(() => undefined);
     return { text: "Permission unavailable" };
   });
@@ -411,7 +408,6 @@ it("keeps running and publishes the answer after the client goes away", async ()
   const client = new AbortController();
   const response = await POST(new Request("http://localhost/api/chat", { method: "POST", signal: client.signal, headers: { Accept: "application/x-ndjson" },
     body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "Explain my spending" }) }));
-  // The reader leaves: the request is aborted and the stream canceled before the model answers.
   client.abort();
   await response.body!.cancel();
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));

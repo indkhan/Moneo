@@ -4,34 +4,27 @@ import { STANDALONE_KINDS } from "./open-proposals";
 import { callTaskSchema, callTurnSchema, type CallTurn } from "./voice-call-record";
 
 export type CallExchange = { id: string; role: string; content: string; created_at: string };
-/** A finished call as the chat shows it: the summary, its cards, the transcript and the chat messages it produced. */
 export type CallCard = {
   id: string; durationSeconds: number; summary: string | null; summaryStatus: "pending" | "done" | "failed";
   transcript: CallTurn[];
-  /** Requests still running when the call ended, with where they stand now. */
   unfinished: { text: string; status: "running" | "completed" | "failed" | "canceled" }[];
-  /** Card ids made during the call, oldest first; each card loads its own current state. */
   cards: string[];
   exchanges: CallExchange[];
 };
 type CallRow = { id: string; duration_seconds: number; transcript: unknown; tasks: unknown; request_ids: string[]; summary: string | null; summary_status: CallCard["summaryStatus"]; created_at: string };
 
 type CallStub = Pick<CallRow, "id" | "request_ids" | "created_at">;
-// A conversation rarely has more than a handful of calls; the list holds ids only, never transcripts.
 const STUB_LIMIT = 200;
 
-/** Which calls a conversation has and the requests each started. Start it beside the page of messages so it adds no round trip. */
 export const callStubs = (supabase: SupabaseClient, workspace: string, conversation: string) =>
   Promise.resolve(supabase.from("voice_calls").select("id,request_ids,created_at").eq("workspace_id", workspace).eq("conversation_id", conversation)
     .order("created_at", { ascending: false }).limit(STUB_LIMIT));
 
-/** Calls to show on a page of messages (saved within its time range) and the request ids whose messages they replace. */
 export async function loadCalls(supabase: SupabaseClient, workspace: string, conversation: string, stubs: Awaited<ReturnType<typeof callStubs>>, page: { requestIds: string[]; from?: string; to?: string }) {
   if (stubs.error) throw new Error("Could not load calls. Try again.");
   const all = (stubs.data ?? []) as CallStub[];
   const inPage = (stub: CallStub) => (!page.from || Date.parse(stub.created_at) >= Date.parse(page.from)) && (!page.to || Date.parse(stub.created_at) < Date.parse(page.to));
   const shown = all.filter(inPage).slice(0, 20);
-  // A call whose card is on a newer page can still own messages on this one.
   const own = new Set(page.requestIds);
   const hidden = new Set([...shown, ...all.filter(stub => stub.request_ids.some(id => own.has(id)))].flatMap(stub => stub.request_ids));
   if (!shown.length) return { hidden, items: [] };

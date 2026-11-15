@@ -6,7 +6,6 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")
 vi.mock("@/lib/import/organization-loader", () => ({ loadOrganizationSuggestions: vi.fn() }));
 vi.mock("@/lib/scalable/orders", async importOriginal => { const original = await importOriginal<typeof import("@/lib/scalable/orders")>();
   return { ...original, applyScalableProposal: vi.fn(async () => { throw new original.OrderOutcomeUnknown("Scalable didn't confirm this."); }) }; });
-// Detection reads the ledger; these cases decide the stored series as it is.
 vi.mock("@/app/money/recurring/suggestions", async importOriginal => ({ ...await importOriginal<object>(), loadSuggestions: async () => ({ candidates: [], superseded: [] }) }));
 
 type Call = { kind: "rpc" | "update" | "insert"; name: string; args: unknown; filters: unknown[][] };
@@ -38,7 +37,6 @@ it("accepts a categorization through the audited organization review and saves i
   const { calls, context } = fakeContext({ rpc: { create_organization_review: { data: { id: id(70) }, error: null } } });
   const result = await applyProposal(context, { id: id(5), kind: "categorize", payload: categorize });
   expect(calls.map(call => call.name)).toEqual(["create_organization_review", "apply_organization_review"]);
-  // Fresh evidence versions, the proposal id as idempotency key, and the rule saved.
   expect(calls[0].args).toMatchObject({ p_rows: categorize.rows, p_patch: categorize.patch, p_rule_key: "cafe luna", p_evidence: [{ id: id(11), version: 2 }], p_request_id: id(5) });
   expect(calls[1].args).toEqual({ p_review_id: id(70), p_save_rule: true });
   expect(result.href).toBe(`/money/organization?review=${id(70)}`);
@@ -89,7 +87,6 @@ it("remembers “Not recurring” on the series, but dismissing a price change k
   const series = { accountId: id(20), label: "Gym", cadence: "monthly", currencyCode: "EUR", evidence: [1, 2, 3].map(n => ({ id: id(n + 30), version: 1 })), runAnchorId: id(31), evidenceLimited: false };
   const fresh = fakeContext({ rejected: { id: id(8), conflict_key: `recurring_new:${id(31)}`, payload: { action: "confirm", series, changes: {} } } });
   expect(await decideProposals(fresh.context, [id(8)], "reject")).toEqual([{ id: id(8), status: "rejected" }]);
-  // The series is dismissed first, so a failure leaves the card open to retry.
   expect(fresh.calls.map(call => call.name)).toEqual(["review_recurring_series_versions", "agent_proposals"]);
   expect(fresh.calls[0]).toMatchObject({ args: { p_decision: "dismissed", p_run_anchor_id: id(31) } });
   const price = fakeContext({ rejected: { id: id(9), conflict_key: `recurring_price:${id(32)}`, payload: { action: "confirm", series, changes: { amountMinor: "-1299" } } } });
@@ -103,6 +100,5 @@ it("never accepts Scalable orders in bulk, and never reopens one Scalable may ha
   expect(bulk.calls.filter(call => call.kind === "update").every(call => call.filters.some(filter => filter[0] === "not" && filter[1] === "kind" && String(filter[3]).includes("scalable_order")))).toBe(true);
   const lost = fakeContext({ claim: { id: id(42), kind: "scalable_order", payload: {} } });
   expect(await decideProposals(lost.context, [id(42)], "accept")).toEqual([{ id: id(42), status: "unknown", error: "Scalable didn't confirm this." }]);
-  // Still "applying": the card can't be pressed again.
   expect(lost.calls.filter(call => call.kind === "update").map(call => (call.args as { status?: string }).status)).toEqual(["applying", undefined]);
 });

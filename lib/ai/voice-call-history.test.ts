@@ -7,7 +7,6 @@ const [r1, r2, r3] = ["00000000-0000-4000-8000-0000000000a1", "00000000-0000-400
 const at = (second: number) => `2026-01-01T00:00:${String(second).padStart(2, "0")}+00:00`;
 const base = { workspace_id: workspace, conversation_id: conversation };
 
-// A typed chat before the call (r3), then two call requests (r1 answered, r2 still running), then the call record.
 const tables: Record<string, Record<string, unknown>[]> = {
   conversations: [{ id: conversation, workspace_id: workspace, title: "T", created_at: at(0) }],
   messages: [
@@ -59,9 +58,7 @@ it("shows a finished call as one card and moves its request messages inside it",
   expect(card).toMatchObject({ id: "call1", durationSeconds: 30, summary: "- Netto", summaryStatus: "done" });
   expect(card.exchanges.map(item => item.id)).toEqual(["u1", "a1", "u2", "a2"]);
   expect(card.transcript).toHaveLength(2);
-  // Only this workspace's cards made by this call's requests.
   expect(card.cards).toEqual(["card1"]);
-  // A request still running at hang-up shows where it stands now.
   expect(card.unfinished).toEqual([{ text: "Rent?", status: "completed" }]);
   expect(messages.at(-1)).toMatchObject({ role: "assistant", content: "", created_at: at(30) });
 });

@@ -7,8 +7,6 @@ import { mapRows, parseCsv } from "@/lib/import/csv";
 import { importRowPayload, stableId } from "@/lib/import/row";
 import { POST } from "./route";
 
-// Mock only the storage/Supabase transport boundary; all reads and RPCs below
-// execute against actual PostgreSQL roles/RLS in one rolled-back fresh schema.
 const fixture = vi.hoisted(() => ({ workspaceId: "", csv: "", tampered: false,
   read: (async () => ({ data: null as unknown, error: null })) as (table: string, filters: [string, unknown][]) => Promise<{ data: unknown; error: null }>,
   rpc: (async () => ({ data: null as unknown, error: null })) as (service: boolean, name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: null }>,

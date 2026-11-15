@@ -3,7 +3,6 @@ import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
 
-// The net worth flows in the browser, on the QA workspace, with made-up data seeded straight into its tables.
 const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
@@ -72,7 +71,6 @@ test("archiving an account with money asks what happened to it, and moving it ke
   await article.getByRole("combobox").last().selectOption({ label: target });
   await article.getByRole("button", { name: "Archive account", exact: true }).click();
   await expect(page.getByRole("region", { name: "Archived accounts" }).getByRole("textbox", { name: `Name of ${name}`, exact: true })).toBeVisible({ timeout: 30_000 });
-  // Linked rows, equal and opposite, with the money now in the other account.
   const rows = await db`select amount_minor::text,kind,transfer_id is not null linked from public.transactions where account_id in (${accounts[0].id},${accounts[1].id}) order by amount_minor`;
   expect(rows).toEqual([{ amount_minor: "-25000", kind: "transfer", linked: true }, { amount_minor: "25000", kind: "transfer", linked: true }]);
   expect(totalBefore[0].total).toBe("30000");
@@ -130,19 +128,16 @@ test("a cash machine card adds the money to Cash once, counts nothing until acce
     const card = page.getByRole("region", { name: "Cash withdrawal proposal" }).filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.getByRole("button", { name: `${label}: ${title}`, exact: true }).click();
-    // The card shows the decision at once, so the saved state is what proves it landed.
     await expect.poll(async () => (await db`select status from public.agent_proposals where workspace_id=${workspace} and title=${title}`)[0].status, { timeout: 30_000 }).toBe("accepted");
   };
   const cashBalance = async () => { await page.goto("/money/accounts"); return page.getByRole("region", { name: "Your accounts" }).getByRole("article", { name: "Cash", exact: true }); };
 
-  // No Cash account yet: accepting makes one, and the withdrawal is the money in it.
   await accept(await raise(4000, day(-4)), "Create Cash account and add");
   const [cash] = await db`select id from public.accounts where workspace_id=${workspace} and type='cash' and archived_at is null`;
   await expect(await cashBalance()).toContainText("EUR 40.00");
   const rows = await db`select amount_minor::text,kind from public.transactions where account_id=${cash.id}`;
   expect(rows).toEqual([{ amount_minor: "4000", kind: "transfer" }]);
 
-  // The owner typed a balance after that; a second, older-dated withdrawal must still add to it.
   await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,created_at) values(${workspace},${cash.id},3000,'EUR',${`${day(-1)}T08:00:00Z`},'manual','date_only',now())`;
   await accept(await raise(1500, day(-3)), "Add to cash");
   await expect(await cashBalance()).toContainText("EUR 45.00");
@@ -202,7 +197,6 @@ test("archiving into a bank-synced account adds only the outgoing row, and the b
     await expect(page.getByRole("region", { name: "Archived accounts" }).getByRole("textbox", { name: `Name of ${name}`, exact: true })).toBeVisible({ timeout: 30_000 });
     expect(await db`select amount_minor::text,kind from public.transactions where account_id=${old}`).toEqual([{ amount_minor: "-8100", kind: "ordinary" }]);
     expect(await db`select id from public.transactions where account_id=${synced}`).toEqual([]);
-    // The bank's own row arrives, and looking for transfers links the two.
     await db`insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind) values(${workspace},${synced},${day(0)},'Synthetic bank row',8100,'EUR','posted','ordinary')`;
     await page.reload();
     await page.getByRole("button", { name: "Mark transfers between my accounts" }).click();

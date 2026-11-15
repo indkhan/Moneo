@@ -1,12 +1,10 @@
 "use client";
 import { useId, useState } from "react";
 
-// Points carry their exact formatted amount from the server; `y` is only used for pixel scale.
 export type NetWorthPoint = { date: string; label: string; amount: string; y: number; uncertain?: string };
 
 const WIDTH = 640, HEIGHT = 140, PAD = 6;
 
-/** Net worth over time; hovering (or tapping) shows the exact amount and date at that point. */
 export function NetWorthChart({ points, label }: { points: NetWorthPoint[]; label: string }) {
   const [active, setActive] = useState<number | null>(null);
   const gradient = useId();

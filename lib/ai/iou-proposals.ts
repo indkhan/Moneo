@@ -8,7 +8,6 @@ import { wealthAmount } from "@/lib/finance/wealth";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
-/** The model's view of a new IOU: a decimal amount; the application turns it into exact minor units. */
 export const iouInputSchema = z.object({ direction: z.enum(["lent", "borrowed"]).describe("lent: the user gave money to the person; borrowed: the user received money from the person"),
   person: z.string().trim().min(1).max(100), amount: z.string().trim().regex(/^\d{1,15}(\.\d{1,4})?$/).describe("Positive decimal amount, e.g. 500 or 12.50"),
   currency: z.string().regex(/^[A-Z]{3}$/), date: z.iso.date().optional().describe("When the money changed hands; defaults to today") }).strict();
@@ -17,9 +16,6 @@ const sentence = (direction: "lent" | "borrowed", person: string, amount: string
 
 const firstName = (person: string) => person.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase().split(/\s+/)[0];
 
-/** Stores a pending "add this loan to Wealth" proposal. Nothing is written to Wealth until the owner accepts.
- * `earlier` are the cards this chat already showed: an open one for the same loan is dismissed, so a correction
- * ("his name is Bilal Amin, it was in September") cannot be added twice. */
 export async function proposeIou({ supabase, workspace, chatRequestId }: Context, input: z.infer<typeof iouInputSchema>, earlier: string[] = []) {
   minorDigits(input.currency);
   const today = calendarDate(new Date(), workspace.timezone);
@@ -46,7 +42,6 @@ export async function proposeIou({ supabase, workspace, chatRequestId }: Context
   return { proposalId: data.id as string, title: sentence(payload.direction, payload.person, formatted), replaced };
 }
 
-/** Looks for bank transactions that repay an open IOU and proposes each one once, whatever its later outcome. */
 export async function proposeRepayments({ supabase, workspace, chatRequestId }: Context) {
   const { data: rows, error } = await supabase.from("wealth_items").select("id, kind, name, currency_code, amount_minor::text, as_of, version, removed_at, linked_account_id")
     .eq("workspace_id", workspace.id).is("removed_at", null).is("linked_account_id", null).in("kind", ["asset", "debt"]).limit(1000);
@@ -76,12 +71,10 @@ export async function proposeRepayments({ supabase, workspace, chatRequestId }: 
   });
   if (!fresh.length) return [];
   const inserted = await supabase.from("agent_proposals").insert(fresh).select("id, title");
-  // A concurrent run inserted the same match first; its proposals are the ones to show.
   if (inserted.error && inserted.error.code !== "23505") throw new Error(inserted.error.message);
   return inserted.data ?? [];
 }
 
-/** Open standalone IOU proposals, oldest first. */
 export async function openIouProposals(supabase: SupabaseClient, workspaceId: string) {
   const { data, error } = await supabase.from("agent_proposals").select("id, kind, title, detail, evidence").eq("workspace_id", workspaceId).is("run_id", null)
     .in("kind", ["iou_create", "iou_settle"]).in("status", ["proposed", "failed"]).order("created_at").limit(50);

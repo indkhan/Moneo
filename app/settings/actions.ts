@@ -27,14 +27,12 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
     field = "display_currency";
     const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Use a three-letter currency code, such as EUR").parse(form.get("display_currency"));
     minorDigits(currency);
-    // Typed models are free text, so each newly changed one must answer before it is saved.
     for (const agent of AI_AGENT_KEYS) {
       if (!settings.ai_models[agent] || settings.ai_models[agent] === previous?.ai_models[agent]) continue;
       field = `model:${agent}`;
       const check = await generateText({ model: await modelForSettings(settings, agent), prompt: "Reply with the single word OK.",
         maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(30000) })
         .catch(error => APICallError.isInstance(error) && error.statusCode === 429 ? "rate-limited" as const : null);
-      // A rate-limited model exists and answers later; only a missing or silent one blocks saving.
       if (check === "rate-limited") continue;
       if (!check?.text.trim()) throw new Error(`Model "${settings.ai_models[agent]}" did not respond; check the name and its API key`);
     }
@@ -51,8 +49,6 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
   }
 }
 
-// Storage RLS is keyed to the current workspace folder, so files go first while it is still ours.
-// ponytail: a failure after this leaves rows pointing at removed files; retrying clears them.
 async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>) {
   for (const bucket of ["imports", "chat"]) {
     for (;;) {
@@ -61,7 +57,7 @@ async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<
       if (!listed.data.length) break;
       const removed = await supabase.storage.from(bucket).remove(listed.data.map(file => `${workspace.id}/${file.name}`));
       if (removed.error) throw removed.error;
-      if (!removed.data.length) break; // RLS-denied removes return nothing; never spin
+      if (!removed.data.length) break;
     }
   }
 }

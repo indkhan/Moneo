@@ -21,8 +21,6 @@ it("lists confirmed schedules by next date with exact monthly totals", async () 
   expect(html).toContain("2026-10-19");
   expect(html).toContain("2026-10-20");
   expect(html).toContain("Ended");
-  // -12.99 + (-10.00 * 52 / 12 = -43.33) per month; ended schedule excluded.
   expect(html).toContain("−EUR 56.32");
-  // Next 30 days: one streaming payment and four weekly gym payments (19, 26 Oct; 2, 9 Nov).
   expect(html).toContain("Next 30 days: −EUR 52.99 out");
 });

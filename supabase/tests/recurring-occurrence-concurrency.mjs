@@ -1,4 +1,3 @@
-// Real concurrent connections against a disposable application schema; public data/history are unchanged.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
@@ -27,7 +26,6 @@ try {
       return { file, sql: isolated(sql) };
     });
     await replayMigrations(tx, migrations, "isolated-concurrency");
-    // Arrange the posting lock under the authenticated role without granting direct ledger edits.
     await tx.unsafe(`create function ${schema}.lock_posting(p_id uuid) returns void language plpgsql security definer set search_path='' as $$
       begin perform 1 from ${schema}.transactions where id=p_id and ${schema}.owns_workspace(workspace_id) for update; end $$;
       revoke all on function ${schema}.lock_posting(uuid) from public; grant execute on function ${schema}.lock_posting(uuid) to authenticated`);
@@ -51,7 +49,6 @@ try {
     await tx.unsafe("set local role authenticated");
     await tx.unsafe(`select ${schema}.lock_posting($1)`, [transaction]);
     ready(); await updateRequested;
-    // Exercise the real correction RPC and its recurring evidence trigger under the authenticated role.
     await tx.unsafe(`select ${schema}.link_transactions('transfer',$1,0,$2,0,null,'[]'::jsonb,$3)`, [transaction, counterpart, randomUUID()]);
     updateFinished(null); await unlock;
   });

@@ -7,8 +7,6 @@ import { BarChart, HeatmapChart, LineChart, PieChart, SankeyChart, ScatterChart,
 import { CalendarComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, VisualMapContinuousComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 
-// Only the chart types the app draws, app-owned and model-written alike.
-// Sankey, heatmap, calendar and the continuous visual map draw chat's flow and daily-spending charts.
 echarts.use([BarChart, LineChart, ScatterChart, PieChart, TreemapChart, SankeyChart, HeatmapChart, CalendarComponent, VisualMapContinuousComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
 
 export default function LeanECharts(props: Omit<EChartsReactProps, "echarts">) {

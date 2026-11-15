@@ -1,4 +1,3 @@
-// Three real connections; all committed fixtures and RPC definitions live in one disposable schema.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -88,8 +87,6 @@ try {
     const denied = await db.begin(async tx => { await authenticated(tx, foreignActor); return reserve(tx); }).then(() => "accepted", error => error.code);
     assert.equal(denied, "P0002", "A second workspace cannot read/write this account through the RPC");
   }
-  // Existing exact-coverage, stale financial correction, idempotent retry and undo
-  // acceptance fixtures also execute against these current isolated RPC definitions.
   const rollback = new Error("Acceptance fixtures rolled back");
   try { await db.begin(async tx => { await tx.unsafe(isolated(readFileSync("supabase/tests/reviewed-balances.sql", "utf8"))); throw rollback; }); }
   catch (error) { if (error !== rollback) throw error; }

@@ -33,14 +33,12 @@ it("saves a passing run and stops before the first synced value, ignoring valuat
   await expect(rebuildScalableHistory(connection, "Europe/Berlin", "2026-11-08")).resolves.toBe("saved");
   const [, timeZone, before, details] = vi.mocked(readHistoryInput).mock.calls[0];
   expect([timeZone, before]).toEqual(["Europe/Berlin", "2026-11-03"]);
-  // A trade's details come from what's saved, and new ones are saved for next time.
   expect(details.known.get("t")).toEqual({ isin: "I", price: "1.5" });
   await details.remember("u", { isin: "J", price: null });
   expect(upsert).toHaveBeenCalledWith({ workspace_id: "w", provider_id: "u", isin: "J", price_text: null });
   expect(rpc).toHaveBeenCalledWith("replace_scalable_value_history", { p_connection_id: "c", p_checked_on: "2026-11-08",
     p_rows: [{ on_date: "2026-11-01", currency_code: "EUR", securities_minor: "1", crypto_minor: "2", cash_minor: "3", total_minor: "6" }] });
   expect(update).not.toHaveBeenCalled();
-  // The run makes many calls, so the login must last through all of them.
   expect(vi.mocked(withScalable).mock.calls[0][4]).toBeGreaterThanOrEqual(600_000);
 });
 

@@ -7,7 +7,6 @@ export type Blocker = { key: string; text: string; action: string; href: string 
 const RATES = { action: "Add rate", href: "/plan/currency" };
 const WEALTH = { action: "Review wealth", href: "/money/wealth" };
 
-/** What an account's gap means in plain words and where it gets fixed. A lower `rank` is the one to fix first. */
 function accountProblem(key: string, id: string) {
   const balance = { href: `/money/accounts#account-${id}` };
   if (/^(available-)?balance:/.test(key)) {
@@ -30,7 +29,6 @@ function generalFix(key: string) {
   return { action: "Review inputs", href: "#financial-model" };
 }
 
-/** Turns the forecast's missing inputs into one line per account, each with the one link that fixes it. */
 export function forecastBlockers(keys: string[], accounts: { id: string }[], names: Map<string, string>): Blocker[] {
   const known = new Set(accounts.map(account => account.id));
   const byAccount = new Map<string, ReturnType<typeof accountProblem>>();
@@ -49,7 +47,6 @@ export function forecastBlockers(keys: string[], accounts: { id: string }[], nam
   return [...[...byAccount].map(([id, { reason, action, href }]) => ({ key: id, text: `${names.get(id) ?? "An account"}: ${reason}`, action, href })), ...general.values()];
 }
 
-/** The repairs behind a missing or partial forecast, shown before anything else in the section. */
 export function ForecastBlockers({ blockers, unavailable }: { blockers: Blocker[]; unavailable: boolean }) {
   return <div role={unavailable ? "alert" : undefined} className="space-y-2 rounded-lg bg-muted/60 p-4 text-sm">
     <p className="font-medium">{unavailable ? "Forecast unavailable" : "Left out of this forecast"}</p>

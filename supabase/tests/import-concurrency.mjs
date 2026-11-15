@@ -1,4 +1,3 @@
-// Actual authenticated/service connections; only disposable fixtures are committed.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";

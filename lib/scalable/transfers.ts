@@ -5,9 +5,6 @@ import type { ScalableMcp } from "./client";
 import { toMinor } from "./live";
 import { withScalable } from "./server";
 
-// Scalable's own record of money moving in or out of the broker. It lists these as cash rows of type DEPOSIT or WITHDRAWAL;
-// a withdrawal that bounced comes back as a deposit with the ID RETURN-<withdrawal id> and the opposite amount.
-
 const PAGE_SIZE = 100, MAX_PAGES = 1000;
 const decimal = z.union([z.number().finite(), z.string().regex(/^-?\d+(\.\d+)?$/)]);
 const listSchema = z.object({
@@ -19,7 +16,6 @@ const listSchema = z.object({
 export type TransferRow = { provider_id: string; type: "DEPOSIT" | "WITHDRAWAL"; amount_minor: string; currency_code: string; occurred_at: string; on_date: string; status: string; is_cancellation: boolean; description: string | null; returns_provider_id: string | null };
 const RETURN = "RETURN-";
 
-/** The transfers in one reply of list_portfolio_transactions. Other cash rows, like interest and tax, are real changes and not transfers. */
 export function transferRows(reply: unknown, timeZone: string): TransferRow[] {
   return listSchema.parse(reply).transactions.flatMap(row => {
     const type = row.cash?.transactionType;
@@ -31,7 +27,6 @@ export function transferRows(reply: unknown, timeZone: string): TransferRow[] {
   });
 }
 
-/** Every transfer, from the list only: no price charts or per-trade detail calls, so it is cheap to run once after connecting. */
 export async function readAllTransfers(mcp: Pick<ScalableMcp, "callTool">, timeZone: string) {
   const rows = new Map<string, TransferRow>();
   let cursor: string | undefined;
@@ -49,7 +44,6 @@ export async function saveTransfers(connectionId: string, rows: TransferRow[], c
   if (error) throw new Error(error.message);
 }
 
-/** The whole list once per connection, so a connection made before transfers were saved gets its past ones without rebuilding the chart. */
 export async function backfillScalableTransfers(connection: { id: string; workspace_id: string }, timeZone: string) {
   const rows = await withScalable(connection.id, connection.workspace_id, mcp => readAllTransfers(mcp, timeZone));
   await saveTransfers(connection.id, rows, true);

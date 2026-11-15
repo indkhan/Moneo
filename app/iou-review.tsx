@@ -6,9 +6,7 @@ import { openIouProposals } from "@/lib/ai/iou-proposals";
 
 export const loadIouReview = cache((db: SupabaseClient, workspaceId: string) => openIouProposals(db, workspaceId));
 
-/** Loans and repayments waiting for a yes/no on the agent team page; Home lists them under Waiting for you. */
 export async function IouReview({ db, workspaceId }: { db: SupabaseClient; workspaceId: string }) {
-  // A failed load says so; treating it as empty would hide loans waiting for a decision.
   const proposals = await loadIouReview(db, workspaceId).catch(() => null);
   if (!proposals) return <p role="alert" className="text-sm text-danger">Could not load the loans to review. <Link href="/ai/agents" className="underline">Try again</Link></p>;
   if (!proposals.length) return null;

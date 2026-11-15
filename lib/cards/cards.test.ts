@@ -9,7 +9,6 @@ import { format as chartValue } from "@/components/cards/card-chart";
 const render = async (source: string, data: unknown = {}, params: Record<string, string> = {}, size = "M") =>
   sanitizeTree(await runCard(compileCard(source), { data, params, size }), { scope: "c1" });
 
-// The first render starts the WASM engine and one test waits out the runaway-loop deadline; give them room on a busy machine.
 describe("card sandbox", { timeout: 20_000 }, () => {
   it("runs user-requested money calculations in the generated card code", async () => {
     const tree = await render(`export default function Card({ data }) {
@@ -108,7 +107,6 @@ describe("presets", () => {
     expect(checkPresetBindings("bar_list", { rows: "cats.groups", label: "dimensions.categoryName", value: "currentFormatted", amount: "currentMinor" }, data)).toEqual([]);
     expect(checkPresetBindings("stat", { label: "x", value: "cats.totalMinor" }, data)).toEqual(["cats.totalMinor is in minor units (cents); show its Formatted / _formatted field instead"]);
     expect(checkPresetBindings("list", { rows: "nope.rows", primary: "a", trailing: "b" }, data)).toEqual(["rows: nope.rows is not in the data"]);
-    // An empty month can't be checked row by row, so it passes.
     expect(checkPresetBindings("bar_list", { rows: "empty.groups", label: "x", value: "y", amount: "z" }, data)).toEqual([]);
   });
 

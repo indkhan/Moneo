@@ -1,5 +1,3 @@
-// Plain-language labels for ledger keys. Raw status/kind/review keys and
-// correction JSON never reach the UI directly.
 
 const STATUS: Record<string, string> = { posted: "Posted", pending: "Pending", voided: "Voided" };
 const KIND: Record<string, string> = { ordinary: "Regular", transfer: "Transfer", refund: "Refund" };
@@ -46,14 +44,12 @@ const FIELDS: [string, string][] = [
   ["kind", "Type"], ["transfer_id", "Transfer"], ["refund_of_id", "Refund of"], ["review_reasons", "Needs review"],
 ];
 
-/** "Category: Groceries → Dining" lines for each field that changed between two correction snapshots. */
 export function describeChanges(before: unknown, after: unknown, names: Names): string[] {
   const a = (before ?? {}) as Json, b = (after ?? {}) as Json;
   return FIELDS.filter(([key]) => (key in a || key in b) && JSON.stringify(a[key] ?? null) !== JSON.stringify(b[key] ?? null))
     .map(([key, label]) => `${label}: ${show(key, a[key], names)} → ${show(key, b[key], names)}`);
 }
 
-/** "Tags set to trip, weekend" for a bulk-edit patch. */
 export function describePatch(patch: unknown, names: Names): string {
   const p = (patch ?? {}) as Json;
   return FIELDS.filter(([key]) => key in p).map(([key, label]) => `${label} set to ${show(key, p[key], names)}`).join(" · ") || "No changes";

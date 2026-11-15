@@ -88,14 +88,12 @@ it("aborts an active provider request promptly and acknowledges only after it se
     signal = options.abortSignal;
     started.resolve();
     await new Promise<void>(resolve => { release = resolve; });
-    // A transport may take time to acknowledge abort: requested remains nonterminal.
     expect(state.status).toBe("running");
     throw signal!.reason ?? new Error("test transport released");
   });
   const work = financialReview("job", "workspace").catch(() => {});
   await started.promise;
   state.cancel_requested = true; state.stage = "cancel_requested";
-  // Wait for the abort itself rather than a fixed time.
   if (!signal!.aborted) await new Promise(resolve => signal!.addEventListener("abort", resolve, { once: true }));
   const aborted = signal!.aborted;
   const pendingStatus = state.status;

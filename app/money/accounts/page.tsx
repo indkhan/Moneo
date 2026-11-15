@@ -44,19 +44,15 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
     supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
     supabase.from("bank_connection_accounts").select("account_name,currency_code,iban,bank_connections(status)").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
-    // The broker shows here once connected; connecting lives on Import. A failed read only hides it.
     supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (historyError || viewsError || bankError || identifierError) throw new Error("Could not load account and saved view history");
-  // A bank sync imports into the account with the bank's name and currency, so those accounts take their balance from the sync.
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
-  // A revoked connection sends nothing more, so money moved there needs both rows.
   const stillFed = new Set((bankAccounts ?? []).filter(connected => (connected.bank_connections as unknown as { status: string } | null)?.status !== "revoked").map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
   const today = calendarDate(evidence.asOf, timeZone);
   const trendFrom = calendarDate(new Date(Date.parse(evidence.asOf) - TREND_DAYS * 86400000), timeZone);
-  // Same balance basis as Overview and Wealth, so the totals match across screens.
   const accounts = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, timeZone)
     .sort((a, b) => a.name.localeCompare(b.name, locale));
   const active = accounts.filter(account => !account.archived_at), archived = accounts.filter(account => account.archived_at);

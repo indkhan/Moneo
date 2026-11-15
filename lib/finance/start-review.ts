@@ -15,7 +15,6 @@ export async function startFinancialReview(db: SupabaseClient, workspaceId: stri
   return dispatchFinancialReview(service, jobId, workspaceId, false);
 }
 
-// All origins share the same receipt election and terminal reconciliation.
 export async function dispatchFinancialReview(service: SupabaseClient, jobId: string, workspaceId: string, scheduled?: boolean) {
   const readJob = async () => {
     const job = await service.from("background_jobs").select("status, workflow_run_id, cancel_requested, created_at, dispatched_at, updated_at").eq("id", jobId).eq("workspace_id", workspaceId).eq("kind", "financial_review").single();
@@ -26,12 +25,8 @@ export async function dispatchFinancialReview(service: SupabaseClient, jobId: st
   if (!["queued", "running"].includes(job.status)) return { jobId, status: job.status };
   if (job.workflow_run_id) {
     const run = getRun(job.workflow_run_id);
-    // Resilient start can acknowledge before the runtime record is materialized.
-    // Never mistake a transport error or an active retry for a missing run.
     const exists = await run.exists;
     let runtime = exists ? await run.status : "missing";
-    // A business deadline for abandoned reviews, separate from step retries/timeouts.
-    // Never fail an active application row until the runtime acknowledges stopping.
     const expired = Date.now() - Date.parse(job.dispatched_at ?? job.created_at) >= 24 * 60 * 60 * 1000;
     const deadlineCancellation = exists && expired && ["pending", "running"].includes(runtime);
     if (deadlineCancellation) {
@@ -41,9 +36,6 @@ export async function dispatchFinancialReview(service: SupabaseClient, jobId: st
     }
     if (["failed", "cancelled", "completed"].includes(runtime) || !exists && expired) {
       let cancellationUnconfirmed = false;
-      // run.cancel() fences future steps but does not abort an in-flight fetch.
-      // Give the worker time to acknowledge. A stale running step converges to
-      // a terminal business receipt with explicit unconfirmed termination.
       if (runtime === "cancelled" && job.cancel_requested) {
         const canceledAt = await run.completedAt;
         const steps = await getWorld().steps.list({ runId: job.workflow_run_id, resolveData: "none", pagination: { limit: 1000 } });
@@ -65,8 +57,6 @@ export async function dispatchFinancialReview(service: SupabaseClient, jobId: st
     if (canceled.error) throw canceled.error;
     job = await readJob();
   } else if (Date.now() - Date.parse(job.created_at) >= 24 * 60 * 60 * 1000) {
-    // An unknown delivery cannot do useful work without registering first. The
-    // null-receipt guard elects terminal expiry against any late registration.
     const expired = await service.from("background_jobs").update({ status: "failed", stage: "dispatch_deadline", error: "Financial review dispatch was not acknowledged within 24 hours", updated_at: new Date().toISOString() })
       .eq("id", jobId).eq("workspace_id", workspaceId).eq("kind", "financial_review").is("workflow_run_id", null).eq("cancel_requested", false).in("status", ["queued", "running"]);
     if (expired.error) throw expired.error;
@@ -77,8 +67,6 @@ export async function dispatchFinancialReview(service: SupabaseClient, jobId: st
       if (receipt.error) throw receipt.error;
       scheduled = Boolean(receipt.data);
     }
-    // An exception may mean the enqueue response was lost. Keep the claim recoverable;
-    // the worker self-registers, and repeat dispatches elect one run before useful work.
     const run = await start(financialReview, [jobId, workspaceId, scheduled]);
     const receipt = await service.rpc("register_financial_review_run", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: run.runId });
     if (receipt.error) throw receipt.error;
@@ -100,8 +88,6 @@ export async function recoverFinancialReviews(service: SupabaseClient) {
       if (!["queued", "running"].includes(result.status) || !job.workflow_run_id) recovered++;
     } catch { unsuccessful = true; }
     try {
-      // Rotate even broken runtime lookups so they cannot pin the oldest page.
-      // Runtime liveness/deadlines use Workflow and immutable receipt/claim dates.
       const observed = await service.from("background_jobs").update({ updated_at: new Date().toISOString() })
         .eq("id", job.id).eq("workspace_id", job.workspace_id).eq("updated_at", job.updated_at).in("status", ["queued", "running"]);
       if (observed.error) throw observed.error;

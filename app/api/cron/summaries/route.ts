@@ -11,7 +11,6 @@ export async function GET(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return Response.json({ error: "Summary service unavailable" }, { status: 503 });
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  // ponytail: page beyond 500 scheduled workspaces before expanding beyond personal use.
   const { data, error, count } = await db.from("workspace_settings").select("*", { count: "exact" }).neq("summary_cadence", "none").order("workspace_id").limit(500);
   if (error) return Response.json({ error: "Summary preferences unavailable" }, { status: 503 });
   let started = 0, failed = 0, invalid = 0;
@@ -25,7 +24,7 @@ export async function GET(request: Request) {
     if (claimed.error) { failed++; continue; }
     if (!claimed.data) continue;
     try { await dispatchFinancialReview(db, claimed.data, row.workspace_id, true); started++; }
-    catch { failed++; } // Ambiguous enqueue remains recoverable by the recovery cron.
+    catch { failed++; }
   }
   return Response.json({ started, failed, invalid, capacityExceeded: (count ?? 0) > 500 });
 }

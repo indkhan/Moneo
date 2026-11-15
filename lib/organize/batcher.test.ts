@@ -4,14 +4,12 @@ import { StopWork, retryLeftoversAt, runAdaptive, tokenBatches } from "./batcher
 
 const throttled = (body: string) => new APICallError({ message: "Too Many Requests", url: "https://synthetic.invalid", requestBodyValues: {}, statusCode: 429, responseBody: body });
 afterEach(() => vi.useRealTimers());
-// Model calls that take a while, on fake timers.
 const later = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 it("fills batches up to a token budget and an item cap", () => {
   expect(tokenBatches([5, 5, 5, 20, 1, 1, 1], size => size, 12, 2)).toEqual([[5, 5], [5], [20], [1, 1], [1]]);
 });
 
-// The old categorizer asked batch after batch, one at a time: 2.5 minutes of a 2.5-minute run.
 it("grows parallelism on success, halves it on a throttle and retries after a pause", async () => {
   vi.useFakeTimers();
   let active = 0;
@@ -44,7 +42,6 @@ it("stops at the plan's usage limit and leaves the rest for the next run without
   }, { start: 2 });
   await vi.runAllTimersAsync();
   const result = await running;
-  // Calls already under way finish; nothing new starts after the limit.
   expect(started).not.toContain(5);
   expect(result.left.sort()).toEqual([2, 5]);
   expect([...result.done.map(item => item.job), ...result.left].sort()).toEqual([1, 2, 3, 4, 5]);
@@ -52,7 +49,6 @@ it("stops at the plan's usage limit and leaves the rest for the next run without
   expect(APICallError.isInstance(result.stopped)).toBe(true);
 });
 
-// Rows a ChatGPT plan limit left blank were never tried again; retrying hourly instead would burn a call on every try.
 it("retries left rows when the plan's limit resets, right away after a spent budget, else after an hour", () => {
   const now = Date.parse("2026-11-14T12:00:00Z");
   expect(retryLeftoversAt(throttled(`{"error":{"type":"usage_limit_reached","resets_at":${now / 1000 + 7200}}}`), now)).toBe(now + 7_200_000);

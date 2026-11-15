@@ -7,7 +7,6 @@ import { loadWorkspaceSettings } from "@/lib/settings";
 
 export const maxDuration = 300;
 
-// Works out past Scalable values for connections without a good history yet, one try per workspace day.
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,7 +19,6 @@ export async function GET(request: Request) {
     try {
       const { timezone } = await loadWorkspaceSettings(db, row.workspace_id);
       const today = calendarDate(new Date(), timezone);
-      // Apart from the chart, so a connection with good history still gets its past transfers. A failure retries next hour.
       if (!row.transfers_backfilled_at) await backfillScalableTransfers(row, timezone).catch(cause => console.error("Scalable transfers were not read", cause));
       if (row.history_status === "ok" || row.history_checked_on === today) continue;
       counts[await rebuildScalableHistory(row, timezone, today)]++;

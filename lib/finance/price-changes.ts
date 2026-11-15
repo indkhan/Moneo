@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Charge = { amountMinor: bigint; currencyCode: string; postedOn: string };
 
-/** The change between a series' two latest posted charges in the same currency (positive = price went up), or null. */
 export function latestPriceChange(charges: Charge[]) {
   const [latest, previous] = [...charges].sort((a, b) => b.postedOn.localeCompare(a.postedOn));
   if (!latest || !previous || latest.currencyCode !== previous.currencyCode) return null;
@@ -11,7 +10,6 @@ export function latestPriceChange(charges: Charge[]) {
   return changeMinor === 0n ? null : { changeMinor, currencyCode: latest.currencyCode, since: latest.postedOn };
 }
 
-/** Price changes for confirmed recurring payments, keyed by "accountId:assumption name" to match forecast events. */
 export async function loadPriceChanges(db: SupabaseClient, workspaceId: string) {
   const series = await db.from("recurring_series").select("id, assumption_id").eq("workspace_id", workspaceId).not("assumption_id", "is", null).limit(500);
   if (series.error) throw series.error;

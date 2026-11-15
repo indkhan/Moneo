@@ -3,7 +3,6 @@ import releaseSync from "@jitl/quickjs-wasmfile-release-sync";
 
 const engine = newQuickJSWASMModuleFromVariant(releaseSync);
 
-/** Fresh WASM runtime with no host functions, network, filesystem or credentials. */
 export async function investigationCode(code: string, data: unknown) {
   const input = JSON.stringify(data);
   if (input.length > 8_000_000 || code.length > 30_000) throw new Error("Calculation input is too large");

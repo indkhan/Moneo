@@ -9,7 +9,6 @@ vi.mock("@/lib/finance/start-review", () => ({ dispatchFinancialReview: vi.fn() 
 vi.mock("@/lib/ai/agent-dispatch", () => ({ startAgentRun: vi.fn(async () => null) }));
 
 const landed = Date.parse("2026-11-14T08:00:00Z");
-// What the review waits for: the first rows, a finished agent pass, and every bank's history (accounts still without one).
 const state = vi.hoisted(() => ({ job: null as { status: string } | null, pass: true, waitingAccounts: 0 }));
 const db = { from: (table: string) => {
   const data = () => table === "background_jobs" ? state.job : table === "imports" ? { created_at: new Date(landed).toISOString() }
@@ -26,7 +25,6 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); });
 
-// The first review ran after the first bank's rows, before the other banks or the organizer had finished.
 it("waits for every bank's history and a finished pass, or 24 hours after the first rows", async () => {
   state.waitingAccounts = 1;
   await maybeStartFirstReview(db, "workspace", landed + 60_000);

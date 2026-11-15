@@ -68,12 +68,10 @@ Reply with only the TSX code.`;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const hasLiteralDate = (value: unknown): boolean => typeof value === "string" ? ISO_DATE.test(value) : Array.isArray(value) ? value.some(hasLiteralDate) : !!value && typeof value === "object" && Object.values(value).some(hasLiteralDate);
-/** Saved work must stay current: a literal date freezes it, so it needs the user to have asked for a fixed period. */
 const frozenDates = (queries: ArtifactQuery[], fixed?: boolean) => !fixed && queries.some(query => hasLiteralDate(query.input))
   ? ["Queries use literal dates, which never move. Write them as tokens (@month_start, @days_ago:N, @param:month.from …); set fixedDates: true only if the user asked for a fixed past period."] : [];
 const fixedDates = z.boolean().optional().describe("true only when the user asked for a fixed past period, so literal dates are intended.");
 
-/** The values one step back for each month or period param (last month, the next period option), if there are any. */
 function otherOption(params: CardParam[], day: string, locale: string) {
   const values = Object.fromEntries(params.flatMap(param => param.kind === "month" ? [[param.name, resolveToken("@month_start:-1", day).slice(0, 7)]]
     : param.kind === "period" ? [[param.name, param.options.find(option => option !== param.default) ?? param.default]] : []));
@@ -81,7 +79,6 @@ function otherOption(params: CardParam[], day: string, locale: string) {
 }
 
 const unfence = (text: string) => text.trim().replace(/^```[a-z]*\n/i, "").replace(/\n```$/, "").trim();
-// Long lists keep their first items, so one big query can't push the others' shapes out of the designer's sample.
 const SAMPLE_ITEMS = 3;
 const shorten = (value: unknown): unknown => Array.isArray(value)
   ? [...value.slice(0, SAMPLE_ITEMS).map(shorten), ...value.length > SAMPLE_ITEMS ? [`… ${value.length - SAMPLE_ITEMS} more`] : []]
@@ -117,8 +114,6 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
   ]);
   if (current.error) throw current.error;
   let prompt = `${current.data ? `Current page (change it as the brief says, keep the rest):\n${current.data.html}\n\n` : ""}Brief:\n${input.brief}\n\nQueries:\n${JSON.stringify(input.queries)}\n\nData now (window.MONEO_DATA):\n${sample(data)}`;
-  // A page whose script doesn't parse draws nothing, so it is never saved; the designer gets two chances to fix it
-  // and otherwise the current version stays.
   let text = "", model = "";
   for (let attempt = 0; ; attempt++) {
     ({ text, model } = await design(run, PAGE_DESIGNER, prompt));
@@ -137,8 +132,6 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
   return { saved: true, pageVersion: version, note: "The Page tab shows it now." };
 }
 
-/** Saves a checked card as a new version: a new card, or the next version of one of this artifact's cards. A new title stays with
- * its version; the card itself takes it on publish, so Home never shows a draft's title. */
 async function saveCard(run: Run, card: { cardId?: string; title: string; kind: "preset" | "code"; preset?: PresetName; source: string; compiled: string; queries: ArtifactQuery[]; params: CardParam[]; prompt: string; model?: string }) {
   const { supabase, workspace } = run.context;
   await run.ensureActive();
@@ -159,7 +152,6 @@ async function saveCard(run: Run, card: { cardId?: string; title: string; kind: 
   return { saved: true, cardId, version, note: "It shows as a draft in the Home card tab; the user adds it to Home (or updates Home) from there." };
 }
 
-/** The tools an artifact's chat gets on top of chat's own read tools. */
 export function artifactTools(run: Run) {
   const queries = offeredQueriesSchema(run.scalable);
   const cardBase = { cardId: z.uuid().optional().describe("Set to change an existing card; leave out for a new card."), title: z.string().trim().min(1).max(80), queries, params: cardParamsSchema.default([]), fixedDates };
@@ -195,12 +187,10 @@ export function artifactTools(run: Run) {
         if (queryErrors.length) return { saved: false, errors: queryErrors };
         const current = cardId ? await context.supabase.from("artifact_card_versions").select("source").eq("workspace_id", context.workspace.id).eq("card_id", cardId).order("version", { ascending: false }).limit(1).maybeSingle() : null;
         if (current?.error) throw current.error;
-        // The default view can be empty (a new month); another option's data shows the designer the real shape.
         const other = otherOption(params, today(context), context.workspace.locale);
         const [data, otherData] = await Promise.all([runArtifactQueries(queries, context, today(context), { params: resolved }),
           other ? runArtifactQueries(queries, context, today(context), { params: other.resolved }) : null]);
         let prompt = `${current?.data ? `Current card (change it as the brief says, keep the rest):\n${current.data.source}\n\n` : ""}Title (shown by the app): ${title}\nBrief:\n${brief}\n\nParams: ${JSON.stringify(params)}\n\nData now:\n${sample(data)}${otherData && other ? `\n\nData for ${JSON.stringify(other.values)} (same shape, for reference):\n${sample(otherData)}` : ""}`;
-        // The designer gets two chances to fix what the check finds.
         for (let attempt = 0; attempt < 3; attempt++) {
           const { text, model } = await design(run, CARD_DESIGNER, prompt);
           const checked = await checkCard(text, queries, params, context);
@@ -225,7 +215,6 @@ export function artifactTools(run: Run) {
   };
 }
 
-/** What the artifact's chat knows about its current state, added to its instructions. */
 export async function artifactBriefing(supabase: SupabaseClient, workspaceId: string, artifactId: string) {
   const [artifact, page, cards] = await Promise.all([
     supabase.from("artifacts").select("title").eq("workspace_id", workspaceId).eq("id", artifactId).maybeSingle(),

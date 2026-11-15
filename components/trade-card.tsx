@@ -10,7 +10,6 @@ import type { TradeReview } from "@/lib/scalable/orders";
 
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { trade: TradeReview };
 
-/** Seconds left on Scalable's preview, ticking once a second; null for cards without one. */
 function useSecondsLeft(expiresAt: string | null) {
   const left = () => expiresAt ? Math.max(0, Math.floor((Date.parse(expiresAt) - Date.now()) / 1000)) : null;
   const [seconds, setSeconds] = useState(left);
@@ -23,10 +22,6 @@ function useSecondsLeft(expiresAt: string | null) {
   return seconds;
 }
 
-/**
- * A Scalable order (or order cancellation) waiting for the owner's tap. The figures are Scalable's own preview;
- * tapping Buy, Sell or Cancel order is the only thing that sends it, and each card is confirmed on its own.
- */
 export function TradeCard({ id, proposal, locale = "en-GB", onChange }: { id: string; proposal: Proposal; locale?: string; onChange: (next: Proposal) => void }) {
   const [error, setError] = useState<string>();
   const [pending, start] = useBusy();

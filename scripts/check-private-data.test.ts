@@ -28,6 +28,5 @@ describe("private financial input gate", () => {
       execFileSync("git", ["-c", "core.autocrlf=false", "add", "source.ts"], { cwd: directory });
       expect(execFileSync(process.execPath, [script], { cwd: directory, encoding: "utf8" })).toBe("");
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  // Each case starts Git and Node subprocesses; Windows startup under parallel suite load can exceed five seconds.
   }, 30_000);
 });

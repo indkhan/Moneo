@@ -26,8 +26,6 @@ export function formatMoney(amountMinor: bigint | string | number, currencyCode:
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Turns internal missing-input keys (e.g. "balance:<id>:missing") into short,
-// deduplicated sentences. Unknown keys pass through unchanged.
 export function describeMissingInputs(keys: string[], names: Map<string, string> = new Map()): string[] {
   const label = (ref: string) => names.get(ref) ?? (uuid.test(ref) ? "An account" : ref);
   const describe = (key: string): string => {
@@ -46,7 +44,6 @@ export function describeMissingInputs(keys: string[], names: Map<string, string>
   return [...new Set(keys.map(describe))];
 }
 
-/** The note beside a total that counts older valuations: how many, which, and from when. */
 export function describeOutdated(items: { name: string; asOf: string }[], date: (value: string) => string = value => value): string {
   const dates = [...new Set(items.map(item => item.asOf))].sort().reverse();
   const groups = dates.map(asOf => `${items.filter(item => item.asOf === asOf).map(item => item.name).join(", ")} (${date(asOf)})`);

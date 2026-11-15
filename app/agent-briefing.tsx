@@ -10,8 +10,6 @@ const DOT: Record<string, string> = { done: "bg-brand", failed: "bg-warning", ru
 const time = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(new Date(iso));
 const duration = (from: string, to: string) => { const seconds = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000)); return `${Math.floor(seconds / 60)}m ${seconds % 60}s`; };
 
-/** Home's agent team: each agent's result from the latest run, and what waits for review. */
-// Memoized per request so Home can start these reads before its own data resolves.
 export const loadAgentBriefing = cache(async (db: SupabaseClient, workspaceId: string) => {
   const latest = await db.from("agent_runs").select("id, status, created_at, finished_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (latest.error) return null;
@@ -23,7 +21,6 @@ export const loadAgentBriefing = cache(async (db: SupabaseClient, workspaceId: s
   return { run, tasks, open };
 });
 
-/** `ai` false: nothing can run until AI is turned on, so the button becomes a link to Settings. */
 export async function AgentBriefing({ db, workspaceId, timeZone = "UTC", ai = true }: { db: SupabaseClient; workspaceId: string; timeZone?: string; ai?: boolean }) {
   const briefing = await loadAgentBriefing(db, workspaceId);
   if (!briefing) return null;

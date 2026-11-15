@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-// A request that fails before reaching any bank has no connection to record it on, so it reports here.
 export async function syncIfVisible(refresh: () => void, failed: () => void = () => {}) {
   if (document.visibilityState !== "visible") return;
   const response = await fetch("/api/sync/open", { method: "POST" }).catch(() => null);
@@ -13,7 +12,6 @@ export async function syncIfVisible(refresh: () => void, failed: () => void = ()
 
 const SHOW_MS = 10_000;
 
-/** Syncs when Moneo is opened or returned to, and updates the page once fresher numbers land. Renders only when the request itself failed. */
 export function SyncOnOpen() {
   const router = useRouter();
   const [failed, setFailed] = useState(false);

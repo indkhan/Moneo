@@ -5,7 +5,6 @@ import type { UnresolvedTransfer } from "@/lib/finance/transit";
 import type { Discrepancy } from "@/lib/finance/net-worth-checks";
 import { keepRepaymentSafely } from "./actions";
 
-/** Problems that change the number stay listed here until the records are fixed. Nothing shows when everything adds up. */
 export function NetWorthProblems({ findings, unresolved = [], locale }: { findings: Discrepancy[]; unresolved?: UnresolvedTransfer[]; locale?: string }) {
   if (!findings.length && !unresolved.length) return null;
   return <section aria-labelledby="net-worth-problems" className="rounded-xl border border-border bg-card p-5 sm:p-6">

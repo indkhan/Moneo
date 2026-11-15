@@ -17,28 +17,19 @@ type BankImport = { importId: string; rowCount: number; uid: string; lastBookedO
 type BankObservation = { accountName: string; currencyCode: string; amountMinor: string; balanceType: string; asOf: string };
 type Staged = { imports: BankImport[]; observations: BankObservation[]; fetched: number; failed: number; problem: string | null; ended: boolean; retryAt: string | null };
 
-// Banks share full history only near consent, so a first sync that failed for a passing reason tries again,
-// at most 3 times about 20 minutes apart (later when the bank asks for that).
 const FIRST_SYNC_RETRIES = 3;
 const FIRST_SYNC_RETRY_MS = 20 * 60_000;
 
-// One sync = one ordinary import per bank account, run through the existing import workflow
-// so dedupe (bank id as external_id), review, undo and source history are unchanged.
-// The trigger took the connection's lease (lib/bank/start-sync.ts); this run gives it back when it finishes.
-// aligned: the daily sync of the workspace's banks together, where accounts tried 12 hours ago join.
 export async function syncBankConnection(connectionId: string, workspaceId: string, leaseToken: string, psu?: PsuContext, aligned = false) {
   "use workflow";
   const retryAt = await syncAttempt(connectionId, workspaceId, leaseToken, psu, false, aligned);
   if (retryAt) await scheduleFirstSyncRetry(connectionId, workspaceId, 1, retryAt);
 }
 
-// A separate run, so the trigger that started the first sync isn't kept waiting while this one sleeps.
-// The owner may be gone, so no PSU headers: 3 retries stay under the ~4 background fetches a day.
 export async function retryFirstBankSync(connectionId: string, workspaceId: string, attempt: number, at: string) {
   "use workflow";
   await sleep(new Date(at));
   const leaseToken = await claimLeaseStep(connectionId, workspaceId);
-  // Another sync holds the connection; it fetches the never-synced accounts too.
   if (!leaseToken) return;
   const retryAt = await syncAttempt(connectionId, workspaceId, leaseToken, undefined, true);
   if (retryAt && attempt < FIRST_SYNC_RETRIES) await scheduleFirstSyncRetry(connectionId, workspaceId, attempt + 1, retryAt);
@@ -47,15 +38,11 @@ export async function retryFirstBankSync(connectionId: string, workspaceId: stri
 async function syncAttempt(connectionId: string, workspaceId: string, leaseToken: string, psu: PsuContext | undefined, firstSyncRetry: boolean, aligned = false) {
   const staged = await stageBankImports(connectionId, workspaceId, leaseToken, psu, firstSyncRetry, aligned);
   for (const item of staged.imports) {
-    // importFile runs flattened into this run, so a throw from it would end the sync here.
-    // The import's stored status is the truth; finishBankSync reads it.
     try { await importFile(item.importId, workspaceId, item.rowCount, 1, false); } catch {}
     await holdLeaseStep(connectionId, leaseToken);
   }
   await finishBankSync(connectionId, workspaceId, leaseToken, staged);
   if (staged.imports.length) {
-    // Once every account is in, one pass request covers the whole sync; it waits for the workspace's other banks too.
-    // It isn't part of the sync; a failure here leaves the rows for the hourly backlog check.
     try { await startAgentTeamStep(workspaceId, staged.imports.map(item => item.importId)); } catch {}
   }
   return staged.retryAt;
@@ -66,7 +53,6 @@ async function claimLeaseStep(connectionId: string, workspaceId: string) {
   return claimBankSync(serviceDb(), connectionId, workspaceId);
 }
 
-// Long imports keep the lease. finishBankSync checks it again, so the answer isn't needed here.
 async function holdLeaseStep(connectionId: string, leaseToken: string) {
   "use step";
   await holdBankSync(serviceDb(), connectionId, leaseToken);
@@ -85,12 +71,8 @@ async function startAgentTeamStep(workspaceId: string, importIds: string[]) {
 function isoDay(date: Date) { return date.toISOString().slice(0, 10); }
 function daysBefore(day: string, days: number) { return isoDay(new Date(Date.parse(`${day}T00:00:00Z`) - days * 86_400_000)); }
 
-// Banks decide how far back they answer; under PSD2 most share full history only shortly after
-// consent (when the first sync runs) and about 90 days after that. So with no cursor ask for
-// everything, falling back to 90 days for banks that reject an old date_from.
 const FULL_HISTORY_FROM = "2000-01-01";
 async function bookedSince(client: EnableBankingClient, uid: string, lastBookedOn: string | null, today: string, psu?: PsuContext) {
-  // Re-fetch a week of overlap: late-booked rows dedupe on the bank id.
   if (lastBookedOn) return client.bookedTransactions(uid, daysBefore(lastBookedOn, 7), psu);
   try { return await client.bookedTransactions(uid, FULL_HISTORY_FROM, psu); } catch (error) {
     if (!(error instanceof EnableBankingError) || error.expired || error.rateLimited || error.status === 401 || error.status === 403 || error.status < 400 || error.status >= 500) throw error;
@@ -102,13 +84,10 @@ const CONSENT_ENDED = "Bank consent expired; reconnect to keep syncing";
 const APP_KEY_PROBLEM = "Enable Banking rejected the App ID or private key. Check them under Import → Connected banks; syncing resumes once they work.";
 const APP_KEY_WAIT_MS = 6 * 3_600_000;
 
-// Network trouble, timeouts, rate limits and bank outages pass; a refused request does not.
 function transient(error: unknown) {
   return !(error instanceof EnableBankingError) || error.rateLimited || error.status === 0 || error.status === 408 || error.status >= 500;
 }
 
-// A 401 without a session code is an ended consent or the app's own credentials (App ID, key, clock).
-// Asking Enable Banking about the app tells them apart: refused too means the key needs the owner, not a reconnect.
 async function unauthorizedCause(client: EnableBankingClient): Promise<"app" | "consent" | "unknown"> {
   try { await client.application(); return "consent"; } catch (error) {
     return error instanceof EnableBankingError && (error.status === 401 || error.status === 403) ? "app" : "unknown";
@@ -119,7 +98,6 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   "use step";
   const db = serviceDb();
   const staged: Staged = { imports: [], observations: [], fetched: 0, failed: 0, problem: null, ended: true, retryAt: null };
-  // The lease ran out before this run started: another sync owns the connection now.
   if (!(await holdBankSync(db, connectionId, leaseToken))) return staged;
   const connection = await db.from("bank_connections").select("status, valid_until").eq("id", connectionId).eq("workspace_id", workspaceId).single();
   if (connection.error) throw new Error(connection.error.message);
@@ -132,7 +110,6 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   const accounts = await db.from("bank_connection_accounts").select("provider_account_uid, currency_code, account_name, last_booked_on, last_attempted_at, next_allowed_at").eq("connection_id", connectionId);
   if (accounts.error) throw new Error(accounts.error.message);
   const now = Date.now();
-  // Each account keeps its own timing. A first-sync retry fetches only accounts whose history never arrived.
   const due = accounts.data.filter(account => firstSyncRetry
     ? !account.last_booked_on && accountDue({ ...account, last_attempted_at: null }, false, now)
     : accountDue(account, !!psu, now, aligned ? ALIGNED_SPACING_MS : undefined));
@@ -163,15 +140,12 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
           await db.from("bank_connections").update({ status: "expired", last_error: CONSENT_ENDED }).eq("id", connectionId);
           return { ...staged, ended: true };
         }
-        // Every account would be refused the same way; the connection says what to fix. The accounts wait 6 hours
-        // (with no account error, so saving new credentials can lift exactly this wait) instead of retrying hourly.
         if (cause === "app") {
           const held = await db.from("bank_connection_accounts").update({ next_allowed_at: new Date(now + APP_KEY_WAIT_MS).toISOString() }).eq("connection_id", connectionId);
           if (held.error) throw new Error(held.error.message);
           return { ...staged, failed: staged.failed + 1, problem: APP_KEY_PROBLEM };
         }
       }
-      // This account waits, as long as the bank asked when it said; the others still sync.
       staged.failed++;
       const limited = error instanceof EnableBankingError && error.rateLimited;
       const nextAllowed = now + ((error instanceof EnableBankingError ? error.retryAfter : undefined) ?? (limited ? 3600 : 900)) * 1000;
@@ -184,7 +158,6 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   return staged;
 }
 
-// The IBANs of every account the workspace connected or told Moneo about, so a row's counterparty can be recognised as the owner's own.
 async function ownAccountIbans(db: ReturnType<typeof serviceDb>, workspaceId: string) {
   const [connected, declared] = await Promise.all([
     db.from("bank_connection_accounts").select("iban").eq("workspace_id", workspaceId),
@@ -209,12 +182,10 @@ async function stageImport(db: ReturnType<typeof serviceDb>, workspaceId: string
   let importId = inserted.data?.id as string | undefined;
   if (inserted.error) {
     if (inserted.error.code !== "23505") throw new Error(inserted.error.message);
-    // Identical window already imported: a no-op, unless an earlier attempt never ran it.
     const existing = await db.from("imports").select("id, status").eq("workspace_id", workspaceId).eq("file_hash", hash).neq("status", "undone").single();
     if (existing.error) throw new Error(existing.error.message);
     importId = existing.data.status === "queued" ? existing.data.id : undefined;
   }
-  // The bank's full data beside the CSV, one row per CSV row. A window already staged finds its rows in place (ignored duplicates).
   if (importId) {
     const rawRows = bankRawRows(workspaceId, importId, statement.sources, ownIbans);
     for (let offset = 0; offset < rawRows.length; offset += 500) {
@@ -228,9 +199,7 @@ async function stageImport(db: ReturnType<typeof serviceDb>, workspaceId: string
 async function finishBankSync(connectionId: string, workspaceId: string, leaseToken: string, staged: Staged) {
   "use step";
   const db = serviceDb();
-  // A run whose lease ran out may overlap a newer one: it must not move the cursors or publish a result.
   if (!(await holdBankSync(db, connectionId, leaseToken))) return;
-  // After the imports, which create a new account; a row going to review can't take the balance with it.
   for (const item of staged.observations) {
     const saved = await db.rpc("record_bank_balance", { p_connection_id: connectionId, p_account_name: item.accountName, p_currency_code: item.currencyCode, p_amount_minor: item.amountMinor, p_as_of: item.asOf, p_balance_type: item.balanceType });
     if (saved.error) throw new Error(saved.error.message);
@@ -239,7 +208,6 @@ async function finishBankSync(connectionId: string, workspaceId: string, leaseTo
   for (const item of staged.imports) {
     const imported = await db.from("imports").select("status").eq("id", item.importId).eq("workspace_id", workspaceId).single();
     if (imported.error) throw new Error(imported.error.message);
-    // Only advance the window once the rows are actually in; a failed import re-fetches next time.
     if (imported.data.status !== "completed") { landed = false; continue; }
     const advanced = await db.from("bank_connection_accounts").update({ last_booked_on: item.lastBookedOn }).eq("connection_id", connectionId).eq("provider_account_uid", item.uid);
     if (advanced.error) throw new Error(advanced.error.message);
@@ -248,15 +216,12 @@ async function finishBankSync(connectionId: string, workspaceId: string, leaseTo
     const done = await db.from("bank_connections").update({ ...releasedLease, ...values }).eq("id", connectionId).eq("workspace_id", workspaceId).eq("sync_lease_token", leaseToken);
     if (done.error) throw new Error(done.error.message);
   };
-  // Consent ended: the reason is already on the connection.
   if (staged.ended) return release({ sync_started_at: null });
-  // The connection's message names each account still waiting, including one whose history never arrived.
   const accounts = await db.from("bank_connection_accounts").select("account_name, last_booked_on, last_error").eq("connection_id", connectionId);
   if (accounts.error) throw new Error(accounts.error.message);
   const problems = [staged.problem, landed ? null : "A bank import did not finish, so its rows aren't in your numbers yet. The next sync retries.",
     ...accounts.data.filter(account => account.last_error).map(account => account.last_booked_on
       ? `${account.account_name}: ${account.last_error}` : `${account.account_name}: its history hasn't been fetched yet. ${account.last_error}`)].filter(Boolean);
-  // A failure never publishes a successful sync; neither does a run that had nothing to fetch.
   const now = new Date().toISOString(), succeeded = staged.fetched > 0 && !staged.failed && !staged.problem && landed;
   await release({ last_attempted_at: now, last_error: problems.join(" ").slice(0, 1000) || null, ...(succeeded ? { last_synced_at: now } : { sync_started_at: null }) });
 }

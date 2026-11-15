@@ -13,7 +13,6 @@ it("leaves a possible second payment waiting: one import stating more than the l
   const rows = [row({ sourceId: "a" }), row({ sourceId: "b" })];
   expect(waitingRepeats(rows, [ledger("t")])).toEqual([]);
   expect(waitingRepeats(rows, [ledger("t"), ledger("u")]).map(item => item.sourceId)).toEqual(["a", "b"]);
-  // Rows already decided in that import still count as what the bank stated.
   expect(waitingRepeats([row({ sourceId: "a" }), row({ sourceId: "b", status: "new" })], [ledger("t")])).toEqual([]);
 });
 

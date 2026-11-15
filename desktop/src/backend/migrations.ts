@@ -1,5 +1,3 @@
-// Database setup: the Supabase-image bootstrap (desktop/bootstrap), Moneo's supabase/migrations
-// applied exactly like scripts/setup.mjs, and the owner account.
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
@@ -12,7 +10,6 @@ export function connect(port: number, user: string, password: string, database =
 
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
-// Passwords and JWT settings, the values docker/db/roles.sql sets in the Docker backend.
 export async function applyRoleSecrets(db: Db, password: string, jwtSecret: string) {
   for (const role of ["supabase_admin", "postgres", "authenticator", "supabase_auth_admin", "supabase_storage_admin"])
     await db.unsafe(`alter role ${role} with password ${literal(password)}`);
@@ -20,7 +17,6 @@ export async function applyRoleSecrets(db: Db, password: string, jwtSecret: stri
   await db.unsafe(`alter database postgres set "app.settings.jwt_exp" to '3600'`);
 }
 
-// files: the bootstrap SQL to run (all of them on a fresh cluster; only roles before a restore).
 export async function bootstrap(db: Db, folder: string, files: string[], password: string, jwtSecret: string) {
   for (const file of files) {
     const sql = readFileSync(path.join(folder, file), "utf8");
@@ -37,7 +33,6 @@ export function bundledMigrations(folder: string): MigrationFile[] {
   return readdirSync(folder).filter(file => file.endsWith(".sql")).sort().map(file => ({ file, version: file.split("_")[0] }));
 }
 
-// Same history table as the Supabase CLI and scripts/setup.mjs.
 export async function migrationState(db: Db, bundled: MigrationFile[]) {
   await db`create schema if not exists supabase_migrations`;
   await db`create table if not exists supabase_migrations.schema_migrations (version text primary key, statements text[], name text)`;
@@ -48,10 +43,6 @@ export async function migrationState(db: Db, bundled: MigrationFile[]) {
   return { applied, newer, pending: bundled.filter(migration => !known.has(migration.version)) };
 }
 
-// supautils, which the Supabase image loads and Moneo does not bundle, lets postgres create and drop
-// policies and triggers on the auth.* and storage.* tables (supautils.policy_grants /
-// drop_trigger_grants). Without it the same statements need ownership, so during Moneo's own
-// migrations postgres inherits the two owner roles, and loses them again right after.
 const OWNERS = ["supabase_auth_admin", "supabase_storage_admin"];
 export async function revokeMigrationOwners(admin: Db) {
   for (const role of OWNERS) await admin.unsafe(`revoke ${role} from postgres`);
@@ -72,7 +63,6 @@ export async function applyMigrations(admin: Db, owner: Db, folder: string, pend
   } finally {
     await revokeMigrationOwners(admin);
   }
-  // PostgREST caches the schema; reload it after migrations.
   await owner`notify pgrst, 'reload schema'`;
   return pending.length;
 }

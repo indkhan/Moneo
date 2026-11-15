@@ -9,7 +9,6 @@ import { createArtifactSafely } from "./actions";
 
 const EXAMPLE_EVENT = "moneo-artifact-example";
 
-/** Fills the prompt on this page; nothing runs until Build. */
 export function ArtifactExamples({ examples }: { examples: readonly { title: string; summary: string; prompt: string }[] }) {
   return <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{examples.map(example => <li key={example.title}>
     <button type="button" onClick={() => window.dispatchEvent(new CustomEvent(EXAMPLE_EVENT, { detail: example.prompt }))} className="block h-full w-full rounded-xl border border-border bg-card p-4 text-left hover:bg-muted">
@@ -18,10 +17,8 @@ export function ArtifactExamples({ examples }: { examples: readonly { title: str
     </button></li>)}</ul>;
 }
 
-/** Starts a new artifact: it opens in its own chat, where the build streams and keeps going if the tab closes. */
 export function ArtifactPrompt({ defaultValue = "", placeholder }: { defaultValue?: string; placeholder: string }) {
   const input = useRef<HTMLTextAreaElement>(null);
-  // What the first example replaced, so choosing one never loses a draft.
   const [replaced, setReplaced] = useState("");
   const lastExample = useRef("");
   useEffect(() => {
@@ -35,7 +32,6 @@ export function ArtifactPrompt({ defaultValue = "", placeholder }: { defaultValu
     window.addEventListener(EXAMPLE_EVENT, use);
     return () => window.removeEventListener(EXAMPLE_EVENT, use);
   }, []);
-  // Spoken words join what is typed; Send then submits the request as typed words would.
   function speak(text: string, submit: boolean) {
     const field = input.current;
     if (!field) return;

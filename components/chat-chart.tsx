@@ -7,15 +7,12 @@ import { minorDigits } from "@/lib/finance/fx";
 import { averageMinor, parseChart, waterfallBars, type BandSpec, type CalendarSpec, type CartesianSpec, type ChartSpec, type ChartUnit, type CircularSpec, type ComboSpec, type SankeySpec, type ScatterSpec, type WaterfallSpec } from "@/lib/ai/chart-spec";
 import { ReactECharts, useThemeColors } from "./chart";
 
-// Categorical slots in a fixed order, each stepped for its own surface; the light pair matches --color-chart-input/output.
 const SERIES = {
   light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
   dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
 };
-// Magnitude in one hue: faint near nothing, strong for the most.
 const SEQUENTIAL = { light: ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"], dark: ["#173a63", "#1c5cab", "#2a78d6", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"] };
 const FONT = "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif";
-// Labels inside a fill are white, except on yellow.
 const inkOn = (index: number) => index === 3 ? "#0b0b0b" : "#ffffff";
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => `&#${character.charCodeAt(0)};`);
@@ -24,7 +21,6 @@ const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFracti
 function formatAmount(value: string | bigint, unit: ChartUnit) {
   return unit.kind === "money" ? formatMoney(value, unit.currency) : BigInt(value).toLocaleString("en-US");
 }
-// Plotting uses major units for scale only; every number a reader sees comes from formatAmount.
 function plotValue(value: string | bigint, unit: ChartUnit) {
   return unit.kind === "money" ? Number(value) / 10 ** minorDigits(unit.currency) : Number(value);
 }
@@ -35,7 +31,6 @@ function compact(unit: ChartUnit) {
 }
 const abs = (value: bigint) => value < 0n ? -value : value;
 
-// ISO days and months read as dates: short on the axis, in full in tooltips and the table.
 type LabelKind = "day" | "month" | null;
 function labelKind(labels: string[]): LabelKind {
   if (labels.every(label => /^\d{4}-\d{2}-\d{2}$/.test(label))) return "day";
@@ -61,7 +56,6 @@ function hexAlpha(hex: string, alpha: number) {
   const [r, g, b] = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
-/** Whether the card behind the chart is dark, read from its resolved colour so the system theme counts too. */
 function isDark(color: string) {
   const hex = /^#([0-9a-f]{6})$/i.exec(color)?.[1];
   let channels = hex ? [0, 2, 4].map(index => parseInt(hex.slice(index, index + 2), 16)) : (color.match(/\d+(?:\.\d+)?/g) ?? []).slice(0, 3).map(Number);
@@ -76,7 +70,6 @@ function useChartTheme() {
     const dark = isDark(colors.card);
     const series = dark ? SERIES.dark : SERIES.light;
     return { ...colors, dark, series, sequential: dark ? SEQUENTIAL.dark : SEQUENTIAL.light, up: series[0], down: series[7], empty: dark ? "#26272b" : "#efeee9",
-      /** A ninth item and beyond are grey: hues never cycle, and the table keeps each one's identity. */
       color: (index: number) => index < series.length ? series[index] : colors.out };
   }, [colors]);
 }
@@ -104,7 +97,6 @@ function base(theme: Theme) {
       textStyle: { color: theme.foreground, fontSize: 12, fontFamily: FONT }, extraCssText: "border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.16);" },
   };
 }
-// Tooltip rows; every name is escaped, colours are the app's own.
 const swatch = (color: string) => `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${color}"></span>`;
 const tipRow = (color: string | null, name: string, value: string) =>
   `<div style="display:flex;justify-content:space-between;gap:16px;line-height:1.7"><span>${color ? swatch(color) : ""}${escapeHtml(name)}</span><span style="font-variant-numeric:tabular-nums;font-weight:600">${escapeHtml(value)}</span></div>`;
@@ -112,7 +104,6 @@ const tipHead = (theme: Theme, text: string) => `<div style="color:${theme.muted
 const legend = (theme: Theme, names: string[]) => ({ top: 0, left: 0, data: names, icon: "roundRect", itemWidth: 10, itemHeight: 10, itemGap: 14, textStyle: { color: theme.muted, fontSize: 12 } });
 
 function Plot({ height, label, option }: { height: number; label: string; option: object }) {
-  // The box keeps its height while echarts loads, so the answer doesn't jump.
   return <div role="img" aria-label={label} style={{ height }}><ReactECharts notMerge style={{ height }} option={option} /></div>;
 }
 
@@ -134,7 +125,6 @@ function SeriesChart({ chart, width }: { chart: CartesianSpec | ComboSpec | Band
     const names = [...(band ? [band.name] : []), ...series.map(item => item.name)];
     const showLegend = names.length > 1;
     const plot = (values: string[]) => values.map(value => plotValue(value, unit));
-    // Long daily series label month starts only, so a year reads as twelve ticks.
     const interval = kind === "day" && count > 120 ? (_: number, value: string) => value.endsWith("-01")
       : kind === "day" && count > 45 ? (_: number, value: string) => value.endsWith("-01") || value.endsWith("-15") : "auto";
     const categoryAxis = { type: "category", data: labels, boundaryGap: hasBars, inverse: horizontal, axisLine: { lineStyle: { color: theme.border } }, axisTick: { show: false },
@@ -144,7 +134,6 @@ function SeriesChart({ chart, width }: { chart: CartesianSpec | ComboSpec | Band
     const valueAxis = (right: boolean) => ({ type: "value", position: horizontal ? undefined : right ? "right" : "left", splitNumber: narrow ? 4 : 5, scale: zoom,
       axisLabel: { color: theme.muted, fontSize: 11, formatter: compact(unit) }, axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: !right, lineStyle: { color: theme.border } } });
-    // Reference lines sit on the series they average (so on its axis); fixed amounts on the first series.
     const lines = series.map(() => [] as object[]);
     for (const reference of chart.references ?? []) {
       const owner = "average" in reference ? series.findIndex(item => item.name === reference.average) : series.findIndex(item => !item.right);
@@ -213,7 +202,6 @@ function WaterfallChart({ chart, width }: { chart: WaterfallSpec; width: number 
         axisLabel: { color: theme.muted, fontSize: 11, interval: 0, rotate: narrow && bars.length > 4 ? 40 : 0, width: narrow ? 72 : 96, overflow: "truncate" } },
       yAxis: { type: "value", splitNumber: narrow ? 4 : 5, axisLabel: { color: theme.muted, fontSize: 11, formatter: short }, splitLine: { lineStyle: { color: theme.border } } },
       series: [
-        // An invisible base lifts each step to where the running total stood.
         { type: "bar", stack: "bridge", stackStrategy: "all", silent: true, itemStyle: { color: "transparent" }, emphasis: { disabled: true }, tooltip: { show: false },
           data: bars.map(bar => plotValue(bar.from < bar.to ? bar.from : bar.to, chart.unit)) },
         { type: "bar", stack: "bridge", stackStrategy: "all", barMaxWidth: 44, barCategoryGap: "30%",
@@ -237,7 +225,6 @@ function SankeyChart({ chart }: { chart: SankeySpec }) {
     }
     const total = (name: string) => (inflow.get(name) ?? 0n) > (outflow.get(name) ?? 0n) ? inflow.get(name)! : outflow.get(name) ?? 0n;
     const short = compact(chart.unit);
-    // Rich-text labels: braces and bars in a name would read as markup.
     const plain = (name: string) => name.replace(/[{}|]/g, "");
     return {
       ...base(theme),
@@ -298,11 +285,9 @@ function CalendarChart({ chart, width }: { chart: CalendarSpec; width: number })
   const layout = useMemo(() => {
     const days = [...chart.days].sort((a, b) => a.date.localeCompare(b.date));
     const months = [...new Set(days.map(day => monthKey(day.date)))];
-    // As many months per row as fit with cells of at least 13px; a year splits into rows on a phone.
     const available = width - 44;
     const fit = Math.max(1, Math.min(months.length, Math.floor(available / 13 / 4.6)));
     const count = Math.ceil(months.length / fit), rows: string[][] = [];
-    // Even rows: 13 months in rows of up to four read 4-3-3-3, not 4-4-4-1.
     for (let index = 0, row = 0; row < count; row++) {
       const size = Math.floor(months.length / count) + (row < months.length % count ? 1 : 0);
       rows.push(months.slice(index, index + size));
@@ -326,7 +311,6 @@ function CalendarChart({ chart, width }: { chart: CalendarSpec; width: number })
       ...base(theme),
       tooltip: { ...base(theme).tooltip, trigger: "item", formatter: ({ data }: { data: [string, number] }) =>
         tipHead(theme, labelText(data[0], "day", true)) + tipRow(null, chart.title, formatAmount(exact.get(data[0]) ?? "0", chart.unit)) },
-      // Days with nothing fall outside the scale and keep the empty cell colour.
       visualMap: { type: "continuous", min, max, calculable: false, orient: "horizontal", left: 30, bottom: 0, itemWidth: 10, itemHeight: 110, text: ["More", "Less"],
         textStyle: { color: theme.muted, fontSize: 11 }, inRange: { color: theme.sequential }, outOfRange: { color: theme.empty }, seriesIndex: rows.map((_, index) => index) },
       calendar: ranges.map((range, index) => ({ range, top: 22 + index * rowHeight, left: 30, cellSize: [cell, cell], orient: "horizontal",
@@ -340,7 +324,6 @@ function CalendarChart({ chart, width }: { chart: CalendarSpec; width: number })
   return <Plot height={22 + layout.rows.length * layout.rowHeight + 34} label={chart.title} option={option} />;
 }
 
-/** Circles that never overlap; each one goes to the nearest free spot on a spiral out from the centre. */
 function packCircles(radii: number[]) {
   const placed: { x: number; y: number; r: number }[] = [];
   for (const r of radii) {
@@ -389,7 +372,6 @@ function CircularChart({ chart, width }: { chart: CircularSpec; width: number })
   </ul>;
   if (type === "treemap") return <><Plot height={width < 480 ? 260 : 300} label={chart.title} option={option} /><div className="mt-3">{legendList}</div></>;
   if (type === "bubble") {
-    // Circle area is proportional to amount, so the biggest item sets the scale.
     const values = items.map(item => Number(item.value));
     const largest = Math.max(...values) || 1;
     const order = items.map((_, index) => index).sort((a, b) => values[b] - values[a]);
@@ -488,7 +470,6 @@ function parse(source: string): Parsed {
   let value: unknown;
   try { value = JSON.parse(source); } catch { return { state: "error" }; }
   if (typeof value === "object" && value !== null) {
-    // The server swaps a dataset reference for its exact values when the answer is done; until then it's still loading.
     if ("datasetId" in value) return { state: "loading" };
     if ("unavailable" in value && typeof value.unavailable === "string") return { state: "error", reason: value.unavailable };
   }
@@ -496,7 +477,6 @@ function parse(source: string): Parsed {
   return parsed.ok ? { state: "chart", chart: parsed.chart } : { state: "error" };
 }
 
-/** Renders a ```moneo-chart block: the chart, a legend where it needs one, and every exact value in a table. */
 export const ChatChart = memo(function ChatChart({ source }: { source: string }) {
   const parsed = useMemo(() => parse(source), [source]);
   if (parsed.state === "loading") return <div className="my-4 flex h-40 items-center justify-center rounded-xl border border-border bg-card text-sm text-muted-foreground" role="status">Loading chart…</div>;

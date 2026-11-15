@@ -30,13 +30,11 @@ afterEach(() => { vi.useRealTimers(); });
 it("runs a wave in parallel, merges before the writer and finishes once", async () => {
   await agentTeam("run", "ws");
   expect(startRun).toHaveBeenCalledWith("run", "ws", "wf");
-  // Both analysts start before the slower one ends: same wave, parallel steps.
   expect(calls.slice(calls.indexOf("auto") + 1, calls.indexOf("auto") + 3).sort()).toEqual(["start:budget", "start:recurring"]);
   expect(calls.indexOf("start:forecaster")).toBeGreaterThan(calls.indexOf("end:recurring"));
   expect(calls.slice(-4)).toEqual(["merge", "start:writer", "end:writer", "finish"]);
 });
 
-// The budget coach and recurring detective read categories; they must see the categorizer's changes applied, not pending.
 it("applies the categorizer's changes before recurring and budget read categories", async () => {
   await agentTeam("run", "ws");
   expect(calls.slice(0, 3)).toEqual(["start:categorizer", "end:categorizer", "auto"]);
@@ -70,13 +68,11 @@ it("a failed agent does not stop the rest of the team", async () => {
   expect(mergeRun).toHaveBeenCalled();
 });
 
-// The daily syncs of three banks each started their own run, and a sync's rows could land after the run had read.
 it("a requested pass waits out its debounce and every bank sync still landing before it plans", async () => {
   vi.mocked(banksSyncing).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValue(false);
   await agentTeam("run", "ws", "2026-11-14T06:03:00Z");
   expect(calls.slice(0, 4)).toEqual(["sleep", "sleep", "sleep", "start:categorizer"]);
   expect(banksSyncing).toHaveBeenCalledTimes(3);
-  // A sync that never lets go doesn't hold the pass past its deadline.
   calls.length = 0;
   vi.mocked(banksSyncing).mockResolvedValue(true);
   await agentTeam("run", "ws", "2026-11-14T07:00:00Z");
@@ -84,7 +80,6 @@ it("a requested pass waits out its debounce and every bank sync still landing be
   expect(calls).toContain("finish");
 });
 
-// Every import and sync ran the anomaly hunter, forecaster and writer again on unchanged data.
 it("ends after organizing when nothing changed since the last analysis", async () => {
   vi.mocked(startAnalysis).mockResolvedValueOnce(false);
   await agentTeam("run", "ws");

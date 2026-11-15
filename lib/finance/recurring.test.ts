@@ -74,7 +74,6 @@ describe("detectRecurring", () => {
     ];
     const result = detectRecurring(base);
     const ids = result.flatMap((series) => series.transactionIds);
-    // Only 2 EUR checking occurrences -> no series; USD/savings/income series stay separate.
     expect(ids).not.toContain("a1");
     expect(result.filter((series) => series.currencyCode === "USD")).toHaveLength(1);
     expect(result.filter((series) => series.accountId === "savings")).toHaveLength(1);

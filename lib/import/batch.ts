@@ -26,9 +26,6 @@ export function batchDecisions(rows: CandidateRow[]) {
       return { rowNumber: row.rowNumber, ...decision, ...(decision.action === "review" ? {} : { occurrenceIndex: row.occurrence.index }),
         ...(decision.action === "matched" ? { expectedTransactionVersion: row.candidates.find(candidate => candidate.id === decision.transactionId)!.version } : {}) };
     }
-    // Only equality evidence is needed by the existing decision helper. Keep
-    // arbitrary original external IDs in staging/source history, not repeated
-    // up to 1,000 times in every candidate response.
     const decision = decideImportMatch(row.hasExternalId ? "stable" : undefined, row.candidates.map(candidate => ({ ...candidate, externalId: candidate.stableExternalMatch ? "stable" : undefined })), row.status);
     return { rowNumber: row.rowNumber, ...decision, ...(decision.action === "matched" ? { expectedTransactionVersion: row.candidates.find(candidate => candidate.id === decision.transactionId)!.version } : {}) };
   });

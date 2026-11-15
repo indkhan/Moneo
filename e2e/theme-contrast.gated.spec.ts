@@ -5,21 +5,10 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
 
-// MNE-044: representative Money/import surfaces keep 4.5:1 normal-text
-// contrast in persisted light, dark and system appearance. Probes read actual
-// computed styles (including the compiled globals.css dark overrides) and let
-// the browser canvas resolve every color, so the same assertions fail on the
-// old hard-coded slate-on-remapped-card pairs and pass on the shared semantic
-// foreground/background/border tokens. Selectors use roles/text, not class
-// names, so they survive the token swap. Plan is covered read-only
-// (that route belongs to MNE005): heading, subtitle and the deterministic
-// "Forecast unavailable" state in light and dark.
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication");
 
 type RGB = [number, number, number];
 
-// The browser itself resolves every computed color (oklch, lab, color-mix)
-// through a 1px canvas: no hand-rolled color math, failures stay loud.
 async function probeColors(page: Page, target: Locator): Promise<{ fg: RGB; bg: RGB }> {
   return target.evaluate((element) => {
     const canvas = document.createElement("canvas");
@@ -69,11 +58,6 @@ async function expectReadable(page: Page, target: Locator, label: string) {
   expect(value, `${label} [theme=${theme}]: rgb(${fg.map(Math.round)}) on rgb(${bg.map(Math.round)}) = ${value.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
 }
 
-// Saving settings settles the server action (auth + RPC + layout
-// revalidation) in ~1-3s locally but varies past 5s under load, while the
-// Save button leaving pending is the exact settled signal. Waiting on it
-// (bounded) instead of racing the default 5s status timeout keeps a stuck
-// action a loud failure instead of a flake.
 async function expectSaved(target: Page, theme: string) {
   await target.getByRole("button", { name: "Save preferences", exact: true }).click();
   await expect(target.getByRole("button", { name: "Save preferences", exact: true })).toBeEnabled({ timeout: 20_000 });
@@ -134,9 +118,6 @@ test("money and import text stays readable in persisted light, dark and system t
       await expectReadable(page, page.locator('section[aria-label="Invalid saved view"]').getByRole("alert"), `${theme} saved-view error`);
     }
 
-    // Read-only Plan probes: this route belongs to MNE005 (no edits there),
-    // readable now that the MNE-003 covered_transactions columns deployed.
-    // A balance-free workspace deterministically shows "Forecast unavailable".
     async function expectPlanReadable(theme: string) {
       await page.goto("/plan");
       await expect(page.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();

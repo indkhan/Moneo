@@ -35,7 +35,6 @@ export async function reviewFreshness(db: SupabaseClient, workspace: { id: strin
       const context = {supabase: db, workspace, settings} as Awaited<ReturnType<typeof requireWorkspace>>;
       const statuses: ReviewFreshness["status"][] = [];
       for (const id of new Set(metadata.verification.receiptIds)) {
-        // The existing evidence viewer replays each receipt's own frozen query and current read scopes.
         const view = await readEvidenceView(context, id);
         statuses.push(view?.freshness.status ?? "unknown");
       }

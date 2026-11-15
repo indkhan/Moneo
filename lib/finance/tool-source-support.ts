@@ -2,7 +2,6 @@ import type { requireWorkspace } from "@/lib/auth";
 import { loadInvestigationDataset } from "./investigation-reader";
 import { evidenceFingerprint } from "./evidence-receipts";
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
-// The same owned reader supplies import/source revisions for capture and later freshness checks.
 export async function retainToolSourceSupport(name: string, input: unknown, result: unknown, context: Awaited<ReturnType<typeof requireWorkspace>>, canReadImports: boolean): Promise<unknown> {
   const value = object(result), support = object(value.calculationEvidence), args = object(input);
   if (name !== "analytics_cashflow" || !Array.isArray(support.rows)) return result;

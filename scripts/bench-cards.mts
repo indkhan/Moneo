@@ -1,5 +1,3 @@
-// Measures the card sandbox: engine start, compile, and a render of a busy card (two charts, a 12-row list).
-// Run: npx tsx scripts/bench-cards.mts
 import { compileCard, runCard } from "../lib/cards/sandbox.ts";
 
 const source = `

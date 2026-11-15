@@ -1,6 +1,3 @@
-// Candidate-only acceptance: new objects live in an exactly removed private
-// schema, while the installed workflow uses real owned Supabase auth/storage
-// and the deployed financial row/control RPCs. Never applies public DDL.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
@@ -70,9 +67,6 @@ try {
         assert.equal(owned.qaTest, "import-control"); assert.equal(args.p_workspace_id, owned.workspace);
         const owners = await db`select w.id from public.workspaces w join auth.users u on u.id=w.owner_id where w.id=${owned.workspace} and w.owner_id=${owned.user} and u.raw_user_meta_data->>'qa_test'='import-control'`;
         assert.equal(owners.length, 1, "Only the journaled synthetic owner may use the candidate schema");
-        // Inject one controlled interruption window between committed batches;
-        // no financial responses/data are mocked, and later cancellation is
-        // enforced by the real database run lock before any next batch effects.
         if (name === "import_batch_candidates" && args.p_offset === 250 && !paused) {
           paused = true; counts.candidateBoundaryPauses++;
           await new Promise(resolve => setTimeout(resolve, 6000));
@@ -80,8 +74,6 @@ try {
         counts.rpc[name] = (counts.rpc[name] ?? 0) + 1;
         const ordered = definitions[name]; assert.deepEqual(Object.keys(args).sort(), [...ordered].sort());
         const types = ordered.map(key => key.endsWith("_id") ? "uuid" : ["p_run_version", "p_offset"].includes(key) ? "integer" : ["p_rows", "p_decisions", "p_mapping", "p_routes"].includes(key) ? "jsonb" : "text");
-        // postgres.js encodes native values for inferred JSONB parameters.
-        // Passing a serialized string would turn the array into a JSON string.
         const values = ordered.map(key => args[key]);
         const data = await db.begin(async tx => {
           await tx.unsafe("set local role service_role");

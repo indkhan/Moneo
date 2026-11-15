@@ -5,16 +5,13 @@ import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures
 const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state || !process.env.SUPABASE_DB_URL || !process.env.E2E_USER_EMAIL, gatedSkipReason());
-// Each step waits for its save, and Home's sections stream in after load.
 test.setTimeout(120_000);
 
 const order = (page: Page) => page.locator("[data-widget]").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
-// The grid only moves once hydrated.
 const open = async (page: Page) => {
   await page.goto("/", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Customize", exact: true }).click();
 };
-// Every run starts from the default layout, whatever an earlier run left behind (#185).
 test.beforeEach(async () => {
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   try {
@@ -27,7 +24,6 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await open(page);
   await expect(page.getByRole("link", { name: "Edit layout" })).toHaveCount(0);
   await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
-  // Start from Goals at the end, so the moves below are predictable.
   if (!(await order(page)).includes("goals")) {
     await page.getByRole("button", { name: "Add widget" }).click();
     const added = saved(page);
@@ -37,8 +33,6 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   const goals = page.locator('[data-widget="goals"]');
   await expect(goals.getByRole("heading", { name: "Goals" })).toBeVisible({ timeout: 30_000 });
 
-  // Move Goals one place back from the keyboard.
-  // If Goals is already first, step it forward so there is a place to move back to.
   if ((await order(page)).indexOf("goals") === 0) {
     await goals.getByRole("button", { name: "Move Goals" }).focus();
     const forward = saved(page);
@@ -55,7 +49,6 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   const after = await order(page);
   expect(after.indexOf("goals")).toBe(at - 1);
 
-  // Resize it one step from the keyboard: wider, or narrower if it is already full width.
   const resize = goals.getByRole("button", { name: /^Resize Goals/ });
   const width = (await goals.boundingBox())!.width;
   const wider = !(await resize.getAttribute("aria-label"))!.endsWith("XL");
@@ -72,13 +65,11 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   expect(await order(page)).toEqual(after);
   expect((await goals.boundingBox())!.width).toBeCloseTo(changed, 2);
 
-  // Hide it, undo, then hide it for good and add it back.
   await goals.hover();
   const hiding = saved(page);
   await goals.getByRole("button", { name: "Hide Goals" }).click();
   await expect(goals).toHaveCount(0);
   await hiding;
-  // Undo must preserve a later resize of a different widget.
   const overviewResize = page.getByRole("button", { name: /^Resize Net worth/ });
   const overviewBefore = await overviewResize.getAttribute("aria-label");
   const laterSave = saved(page);
@@ -91,7 +82,6 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await expect(goals).toBeVisible();
   await undone;
   await expect(overviewResize).toHaveAttribute("aria-label", overviewAfter!);
-  // A server refresh for another addition must not prevent Undo restoring content.
   await goals.hover();
   const hideAgain = saved(page);
   await goals.getByRole("button", { name: "Hide Goals" }).click();
@@ -131,16 +121,13 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   const page = await context.newPage();
   await open(page);
   await expect(page.locator("[data-widget]:visible").nth(1)).toBeVisible({ timeout: 30_000 });
-  // Streamed sections shift the widgets; a touch aimed before they settle lands on another one.
   let height = -1;
   await expect.poll(async () => { const now = await page.evaluate(() => document.scrollingElement!.scrollHeight), steady = now === height; height = now; return steady; }, { intervals: [500] }).toBe(true);
   const cdp = await context.newCDPSession(page);
-  // One touch point per frame, as a finger moves.
   const touch = async (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) => {
     await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
   };
-  // An empty workspace leaves some widgets without content, and so without height.
   const [first, second] = await page.locator("[data-widget]:visible").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
   await page.locator(`[data-widget="${first}"]`).evaluate(node => node.scrollIntoView({ block: "start" }));
   await page.evaluate(() => scrollBy(0, -120));
@@ -155,9 +142,7 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   await moved;
   expect((await order(page)).indexOf(first)).toBeGreaterThan(0);
 
-  // A quick swipe over a widget scrolls the page and moves nothing.
   const after = await order(page);
-  // Items waiting above the first widget can push it below the fold, where a touch lands on nothing.
   await page.locator("[data-widget]:visible").first().evaluate(node => node.scrollIntoView({ block: "start" }));
   await page.evaluate(() => scrollBy(0, -120));
   const from = (await page.locator("[data-widget]:visible").first().boundingBox())!;

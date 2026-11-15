@@ -8,13 +8,11 @@ type Row={id:string;version:number;description:string;posted_on:string;amount_mi
 type Target={id:string;name:string};
 type Item={row:Row;proposal:OrganizationProposal};
 const field='min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground';
-// Typed name -> [existing id | 'new' | 'keep', new name].
 function choice(targets:Target[],name:string):[string,string]{
  const trimmed=name.trim();if(!trimmed)return ['keep',''];
  const found=targets.find(target=>target.name.toLowerCase()===trimmed.toLowerCase());
  return found?[found.id,'']:['new',trimmed];
 }
-/** Same-description entries together, newest first in each group, so one press can select a run of them. */
 export function groupedByDescription<T extends { row: { description: string; posted_on: string } }>(items: T[]) {
   const groups = new Map<string, T[]>();
   for (const item of items) { const key = item.row.description.trim().toLocaleLowerCase("en"); groups.set(key, [...(groups.get(key) ?? []), item]); }
@@ -39,7 +37,6 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
  function applySuggestion(proposal:OrganizationProposal){
   const key=JSON.stringify(suggestion(proposal));draftRevision.current++;
   setSelected([...new Set([...selected,...items.filter(item=>JSON.stringify(suggestion(item.proposal))===key).map(item=>item.row.id)])]);
-  // Apply changes every selected row, so one chip must not retarget hand-picked rows it doesn't describe.
   if(items.some(item=>selected.includes(item.row.id)&&JSON.stringify(suggestion(item.proposal))!==key))setAssistance('Added to your selection. These entries have different suggestions, so choose the category and merchant yourself.');
   else{setAssistance('');fill(proposal);}
  }

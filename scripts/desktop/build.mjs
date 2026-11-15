@@ -1,7 +1,3 @@
-// Builds the desktop app's pieces into desktop/.build (bundled resources) and desktop/dist (main process).
-//   node scripts/desktop/build.mjs          Next.js standalone server + migrations + main process
-//   node scripts/desktop/build.mjs --main   only the main process (npm run desktop:dev)
-// The native backend (desktop/.build/backend, storage-api) comes from scripts/desktop/fetch-backend.mjs.
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
@@ -20,7 +16,6 @@ function fail(message) {
 }
 
 function buildNext() {
-  // NEXT_PUBLIC_* would be baked into the bundle; each desktop install has its own addresses and keys.
   const envFiles = [".env", ".env.local", ".env.production", ".env.production.local"].filter(name => existsSync(path.join(root, name)));
   const leaking = envFiles.filter(name => /^\s*NEXT_PUBLIC_/m.test(readFileSync(path.join(root, name), "utf8")));
   if (leaking.length) fail(`${leaking.join(", ")} set NEXT_PUBLIC_* variables, which Next.js would build into the app. Build the desktop app from a checkout without them (CI, or a fresh worktree).`);
@@ -30,9 +25,6 @@ function buildNext() {
   if (result.status !== 0) fail("next build failed");
 }
 
-// Fails when a local Supabase address was inlined anyway.
-// A whole string literal holding the address is a baked-in value; an example inside a message is fine.
-// Returns how many files still read the Supabase URL at runtime.
 function checkNoInlinedAddresses(dir) {
   const hits = [];
   let runtimeReads = 0;
@@ -61,12 +53,10 @@ function assemble() {
   const app = path.join(out, "app");
   rmSync(app, { recursive: true, force: true });
   cpSync(standalone, app, { recursive: true, dereference: true });
-  // A dynamic fs or spawn path makes tracing copy the whole checkout; Next warns about it and so do we.
   const extra = readdirSync(app).filter(entry => ![distDir, "node_modules", "server.js", "package.json"].includes(entry));
   if (extra.length) fail(`the standalone server traced source files (${extra.join(", ")}); add /*turbopackIgnore: true*/ to the dynamic path Next.js warned about`);
   cpSync(path.join(built, "static"), path.join(app, distDir, "static"), { recursive: true });
   cpSync(path.join(root, "public"), path.join(app, "public"), { recursive: true });
-  // Read from disk at runtime (outputFileTracingIncludes in next.config.ts); fail early if tracing missed them.
   for (const file of ["node_modules/echarts/dist/echarts.min.js", "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm", "node_modules/@workflow/world-local/package.json",
     `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude${process.platform === "win32" ? ".exe" : ""}`]) {
     if (!existsSync(path.join(app, file))) fail(`${file} is missing from the standalone server`);
@@ -81,9 +71,6 @@ function assemble() {
   }
 }
 
-// codesign refuses a Mac app whose bundle holds a symlink that leaves it ("invalid destination for
-// symbolic link in bundle"). The few links in desktop/.build (library aliases in the native backend)
-// become copies of what they point at; a broken one is dropped. Each change is logged.
 function replaceSymlinks(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -91,7 +78,7 @@ function replaceSymlinks(dir) {
     if (!entry.isSymbolicLink()) continue;
     const link = readlinkSync(full);
     let target = null;
-    try { target = realpathSync(full); } catch { /* broken */ }
+    try { target = realpathSync(full); } catch {}
     rmSync(full, { force: true });
     if (target) cpSync(target, full, { recursive: true, dereference: true });
     console.log(`desktop build: ${target ? "copied" : "removed broken link"} ${path.relative(out, full)} -> ${link}`);

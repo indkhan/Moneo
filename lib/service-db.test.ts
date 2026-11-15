@@ -7,7 +7,6 @@ const gateway = () => new Response(JSON.stringify({ message: "rest is not reacha
 const refused = () => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:54321"), { code: "ECONNREFUSED" }) });
 const hangUp = () => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }) });
 
-// The desktop gateway answered 502 "rest is not reachable" to parallel agents and the run gave up.
 it("reads that hit a dropped gateway are tried again until the database answers", async () => {
   vi.useFakeTimers();
   const base = vi.fn<typeof fetch>().mockResolvedValueOnce(gateway()).mockRejectedValueOnce(hangUp()).mockResolvedValueOnce(new Response("[]", { status: 200 }));

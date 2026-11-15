@@ -11,12 +11,6 @@ type Named = { id: string; name: string };
 const MODES = { category: "Category", merchant: "Merchant", tags: "Tags", event: "Trip / event group" } as const;
 type Mode = keyof typeof MODES;
 
-/**
- * Bulk recategorize / re-merchant / tag the rows selected in the ledger.
- * Category is a searchable text field over existing categories; a name with no
- * match is created on apply. Always shows the exact affected rows before
- * applying; the batch is audited and can be undone together from batch history.
- */
 export function BulkBar({ targets, categories, merchants, query, requestId, locale, onClear }: {
   targets: Target[]; categories: Named[]; merchants: Named[]; query: string; requestId: string; locale: string; onClear: () => void;
 }) {

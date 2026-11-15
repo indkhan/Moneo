@@ -5,7 +5,6 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 
-/** The same temporary explanation for calls, dictation and voice samples. */
 export function VoiceKeyToast({ onDismiss }: { onDismiss: () => void }) {
   useEffect(() => {
     const timer = setTimeout(onDismiss, 8000);

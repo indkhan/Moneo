@@ -12,7 +12,6 @@ export type TrayActions = {
 
 let tray: Tray | undefined;
 
-// Login start is per user. Windows and Linux pass --hidden; macOS reports wasOpenedAtLogin instead.
 export const startsAtLogin = () => app.getLoginItemSettings({ args: ["--hidden"] }).openAtLogin;
 export const openedAtLogin = () => process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAtLogin === true;
 
@@ -39,7 +38,6 @@ export function createTray(actions: TrayActions) {
     { label: "Quit Moneo", click: actions.quit },
   ]);
   tray.setContextMenu(build());
-  // Windows and Linux: a click on the icon opens the window; the menu is on right-click.
   if (process.platform !== "darwin") tray.on("click", actions.open);
   return tray;
 }

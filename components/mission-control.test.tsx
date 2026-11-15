@@ -35,7 +35,6 @@ it("streams each agent's status, step and tool calls while the run is live", () 
 it("ends with the briefing and a review screen with evidence, lead notes and undo paths", () => {
   const html = renderToStaticMarkup(<MissionControl initial={run("completed")} locale="en-GB" />);
   expect(html).toContain("You paid EUR 5.00 in fees.");
-  // Findings are decided on Home; only category limits keep their buttons here.
   expect(html).toContain("Decide on Home");
   expect(html).toContain(">on Home<");
   expect(html).not.toContain("Mark reviewed");

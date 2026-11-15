@@ -3,9 +3,6 @@ import { z } from "zod";
 import type { AiDataScope } from "@/lib/settings";
 import { type ChartDataset, chartColumnSchema } from "./chart-spec";
 
-// The tables chat's read-only SQL can see: the views in schema moneo_query (migration 202611130021_data_query).
-// Each is limited to the owner's workspace and needs its AI data scope. Keep this list and the views in
-// step; lib/ai/data-query.live.test.ts compares them.
 type Table = { scope: AiDataScope; about: string; columns: Record<string, string> };
 export const DATA_QUERY_TABLES = {
   accounts: { scope: "accounts", about: "Bank, cash, card and broker accounts.", columns: {
@@ -54,7 +51,6 @@ export const dataQueryInput = z.object({
     .describe('To chart the result: the result columns a chart uses and their kind, e.g. {"columns": {"month": {"kind": "text"}, "spent": {"kind": "money", "currencyColumn": "currency_code"}, "currency_code": {"kind": "text"}}}. Kinds: text, date, count, or money with a fixed "currency" or a "currencyColumn". The result then has a datasetId for the moneo-chart block.'),
 }).strict();
 
-/** The compact schema the model writes queries against, for the scopes it may read. */
 export function dataQuerySchema(scopes: readonly AiDataScope[]) {
   return Object.entries(DATA_QUERY_TABLES as Record<string, Table>).filter(([, table]) => scopes.includes(table.scope))
     .map(([name, table]) => `${name}: ${table.about}\n  ${Object.entries(table.columns).map(([column, note]) => note ? `${column} (${note})` : column).join(", ")}`)
@@ -74,7 +70,6 @@ const rawResult = z.union([
 export type DataQueryResult = { columns: string[]; rows: Record<string, unknown>[]; truncated: "rows" | "size" | null };
 export class DataQueryError extends Error {}
 
-/** Rows as objects keyed by column; a repeated column name gets a numbered suffix so no value is lost. */
 export function shapeDataQuery(raw: unknown): DataQueryResult {
   const parsed = rawResult.parse(raw);
   if ("error" in parsed) throw new DataQueryError(parsed.error);
@@ -87,11 +82,6 @@ export function shapeDataQuery(raw: unknown): DataQueryResult {
   return { columns, rows: parsed.rows.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]]))), truncated: parsed.truncated };
 }
 
-/**
- * Runs one validated read-only query as the signed-in owner (a Supabase client with their session) and
- * returns its rows. Only the given scopes' tables can be read. Throws DataQueryError for a query the
- * database rejected, with its message. Also the data source for charts built from SQL.
- */
 export async function runDataQuery(supabase: SupabaseClient, sql: string, scopes: readonly AiDataScope[], maxRows = MAX_ROWS): Promise<DataQueryResult> {
   const input = dataQueryInput.parse({ sql, maxRows });
   const { data, error } = await supabase.rpc("data_query", { p_sql: input.sql, p_scopes: scopes, p_max_rows: input.maxRows ?? MAX_ROWS });
@@ -99,7 +89,6 @@ export async function runDataQuery(supabase: SupabaseClient, sql: string, scopes
   return shapeDataQuery(data);
 }
 
-/** What the chat model reads back. */
 export function dataQueryOutput(result: DataQueryResult) {
   return {
     columns: result.columns, rowCount: result.rows.length, rows: result.rows,
@@ -108,7 +97,6 @@ export function dataQueryOutput(result: DataQueryResult) {
   };
 }
 
-/** A query result as a chart dataset: only the named columns, every value as exact text. */
 export function dataQueryChartDataset(result: DataQueryResult, columns: ChartDataset["columns"]): ChartDataset {
   const missing = Object.keys(columns).filter(column => !result.columns.includes(column));
   if (missing.length) throw new DataQueryError(`The result has no column ${missing.join(", ")} to chart`);

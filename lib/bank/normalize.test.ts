@@ -8,14 +8,11 @@ const tx = (over: Record<string, unknown> = {}) => ({
 
 describe("payment type", () => {
   it.each([
-    // ISO 20022: the most specific level wins.
     ["PMNT", "ICDT/STDO", "transfer"], ["PMNT/ICDT/STDO", null, "transfer"], ["PMNT-CCRD-POSD", null, "card"], ["PMNT", "CCRD/CWDL", "cash"],
     ["PMNT/IDDT/PMDD", null, "direct_debit"], ["PMNT/RDDT", null, "direct_debit"], ["PMNT/CNTR/CDPT", null, "cash"], ["PMNT/MCOP/CHRG", null, "fee_interest"], ["FORX", null, "exchange"],
-    // Proprietary codes, case-insensitive whole words.
     ["CARD_PAYMENT", null, "card"], ["card_payment", null, "card"], ["TRANSFER", null, "transfer"], ["SEPA_TRF", null, "transfer"], ["DIRECT_DEBIT", null, "direct_debit"],
     ["Lastschrift", null, "direct_debit"], ["ATM", null, "cash"], ["CARD_ATM", null, "cash"], ["TOPUP", null, "top_up"], ["TOP_UP", null, "top_up"],
     ["CARD_FEE", null, "fee_interest"], ["INTEREST", null, "fee_interest"], ["FX", null, "exchange"],
-    // Unknown never blocks anything; a word inside another word is not a match.
     ["REV_PAYMENT", null, "unknown"], ["CARDINAL", null, "unknown"], ["XYZ1", "Q", "unknown"], [null, null, "unknown"],
   ])("%s %s -> %s", (code, sub, expected) => expect(paymentType(code, sub)).toBe(expected));
 
@@ -28,8 +25,8 @@ describe("SEPA references in the remittance text", () => {
     ["CRED+DE98ZZZ09999999999 MREF+MANDATE123 EREF+NOTPROVIDED", "DE98ZZZ09999999999", "MANDATE123"],
     ["Creditor ID FR12ZZZ123456 Mandate reference ABC-9", "FR12ZZZ123456", "ABC-9"],
     ["CI DE98ZZZ09999999999 Mandatsreferenz 4711.", "DE98ZZZ09999999999", "4711"],
-    ["Stromabschlag DE98ZZZ09999999999", "DE98ZZZ09999999999", null], // the ZZZ business code identifies a creditor id by itself
-    ["Mandate expired, thanks", null, null], // a mandate reference carries a digit
+    ["Stromabschlag DE98ZZZ09999999999", "DE98ZZZ09999999999", null],
+    ["Mandate expired, thanks", null, null],
     ["Rent October for the flat", null, null],
   ])("%s", (text, creditor, mandate) => expect(sepaReferences(text)).toEqual({ creditor_id: creditor, mandate_ref: mandate }));
 });

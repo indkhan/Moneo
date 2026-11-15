@@ -6,7 +6,6 @@ import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 
 const querySchema = z.object({ voice: z.enum(VOICES) }).strict();
 const SAMPLE_LINE = "Hey, it's Moneo. Want me to check your spending?";
-// One short clip per voice is the same for everyone, so it is made once per server instance.
 const clips = new Map<string, Promise<ArrayBuffer>>();
 
 function makeClip(voice: string, apiKey: string) {
@@ -16,7 +15,6 @@ function makeClip(voice: string, apiKey: string) {
   }).then(response => { if (!response.ok) throw new Error(`speech ${response.status}`); return response.arrayBuffer(); });
 }
 
-/** A short text-to-speech clip of one GPT-Live voice, for the Settings voice picker. */
 export async function GET(request: Request) {
   try { await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));

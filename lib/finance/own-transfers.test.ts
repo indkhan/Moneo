@@ -86,7 +86,6 @@ describe("ownNameSuggestions", () => {
   const old = row("old", "current", 150000n, "2025-08-18", { counterparty: "USMAN  KHAN", text: "main Usman Khan main End-to-End-Ref.: NOTPROVIDED" });
 
   it("ignores rows where the bank put the owner's own name on someone else's payment", () => {
-    // Revolut names the account holder as counterparty on card refunds; the description names the shop.
     const refund = row("refund", "current", 3653n, "2025-11-14", { counterparty: "USMAN KHAN", text: "Refund from temu.com" });
     expect(ownNameSuggestions([refund], [proven], own)).toEqual([]);
   });
@@ -134,7 +133,6 @@ describe("bank context", () => {
     const rows = [row("rent", "current", -50000n, "2026-10-01"), row("salary", "savings", 50000n, "2026-10-02")];
     expect(findOwnTransfers(rows, own).pairs).toEqual([]);
     expect(uncertainPairs(rows)).toEqual([{ outId: "rent", inId: "salary" }]);
-    // A third matching leg makes it ambiguous, and a row with someone else's IBAN is never a candidate.
     expect(uncertainPairs([...rows, row("gift", "other", 50000n, "2026-10-02")])).toEqual([]);
     expect(uncertainPairs([rows[0], { ...rows[1], raw: ctx({ counterparty_iban: "DE44500105175407324931", counterparty_name: "Example Employer" }) }])).toEqual([]);
   });
@@ -167,7 +165,6 @@ describe("bank context", () => {
     const eur = row("eur", "eur-wallet", -10000n, "2026-10-01", { raw: ctx({ payment_type: "exchange", instructed_amount: "108.70", instructed_currency: "USD" }) });
     const usd = row("usd", "usd-wallet", 10870n, "2026-10-01", { currencyCode: "USD", raw: ctx({ payment_type: "unknown" }) });
     expect(findExchanges([eur, usd])).toEqual({ pairs: [{ outId: "eur", inId: "usd" }], single: [] });
-    // The bank's stated foreign amount must match the other side, and a lone leg is marked on its own.
     expect(findExchanges([eur, { ...usd, amountMinor: 9999n }])).toEqual({ pairs: [], single: ["eur"] });
     expect(findExchanges([eur])).toEqual({ pairs: [], single: ["eur"] });
   });
@@ -177,7 +174,6 @@ describe("bank context", () => {
       row("b", "current", 2000n, "2026-10-05", { text: "To EUR MB:5678", raw: ctx({ payment_type: "unknown" }), identityId: "id-1" }),
       row("c", "current", -500n, "2026-10-06", { text: "To EUR", raw: ctx({ payment_type: "unknown" }) }),
       row("d", "current", -900n, "2026-10-06", { text: "Rent October", raw: ctx({ counterparty_name: "Example Landlord", counterparty_iban: "DE44500105175407324931" }) })];
-    // "To EUR" only went one way and has no transfer code, so it isn't asked about.
     expect(internalMoves(moves)).toEqual([{ key: "to eur mb", transactionIds: ["a", "b"], identityId: "id-1" }]);
     expect(internalMoves([{ ...moves[2], raw: ctx({ payment_type: "top_up" }) }])).toEqual([{ key: "to eur", transactionIds: ["c"], identityId: null }]);
   });

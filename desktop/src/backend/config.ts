@@ -1,5 +1,3 @@
-// config.json in the desktop home: the generated secrets (same generation as scripts/setup.mjs),
-// the chosen ports and what has been set up. Written atomically with mode 0600.
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -19,11 +17,8 @@ export type Secrets = {
 export type Config = {
   version: 1;
   secrets: Secrets;
-  // Preferred ports; a busy one is replaced by a free one at start and saved here.
   ports: { api: number; db: number };
-  // True once 00-roles.sql/10-schema.sql ran on this cluster.
   bootstrapped: boolean;
-  // Latest applied supabase/migrations version and the bundled service versions it ran with.
   schemaVersion?: string;
   services?: Record<string, string>;
   appVersion?: string;
@@ -33,7 +28,6 @@ export const DEFAULT_PORTS = { api: 54331, db: 54332 };
 
 const secret = (bytes = 32) => randomBytes(bytes).toString("base64url");
 
-// HS256 API keys for anon and service_role, valid ten years, exactly like scripts/setup.mjs.
 export function apiKey(role: string, jwtSecret: string) {
   const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const now = Math.floor(Date.now() / 1000);

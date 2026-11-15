@@ -1,14 +1,3 @@
-// End-to-end check of desktop/src/backend under plain Node (no Electron), against the binaries in
-// desktop/.build (node scripts/desktop/fetch-backend.mjs first). Everything runs in a temporary
-// home on its own ports; nothing touches .env, Docker or the owner's backend.
-//   node scripts/desktop/backend-smoke.mjs [--keep]      (--keep leaves the temp homes for inspection)
-// Checks: first start with all but the newest migration, then an upgrade start (pre-upgrade backup,
-// the last migration applied), owner sign-in, RLS through PostgREST, Storage upload/download through
-// the gateway, pgcrypto and pg_trgm, refusing a database from a newer Moneo, backup and restore into
-// a fresh home, and that stop leaves no process or port behind. Also a force-quit: the backend runs
-// in a child Node process that is killed hard; the next start ends what it left running (and only
-// that) and runs without duplicates. On Windows, Postgres and PostgREST must load the app-local
-// MSVC runtime DLLs.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -24,7 +13,6 @@ const work = mkdtempSync(path.join(os.tmpdir(), "moneo-desktop-smoke-"));
 console.log(`Working in ${work}`);
 const backend = await loadBackend(work);
 
-// Resources whose migrations folder can lag behind, to exercise the upgrade path.
 async function resources(name, migrations) {
   const dir = path.join(work, name);
   await fs.mkdir(path.join(dir, "migrations"), { recursive: true });
@@ -86,8 +74,6 @@ const output = (file, args) => new Promise((resolve, reject) => {
   child.once("exit", () => resolve(text));
 });
 
-// Processes whose executable is in desktop/.build/backend (also when started through the smoke's
-// junctions): pid, parent pid, executable, command line.
 const real = file => { try { return realpathSync.native(file); } catch { return file; } };
 const inBundle = exe => /^(postgres|postgrest|auth)(\.exe)?$/i.test(path.basename(exe))
   && real(exe).toLowerCase().startsWith(bundleDir.toLowerCase() + path.sep);
@@ -103,7 +89,6 @@ async function bundleProcesses() {
     .map(([, pid, ppid, exe, args]) => ({ pid: Number(pid), ppid: Number(ppid), exe, args })).filter(p => inBundle(p.exe));
 }
 
-// Windows: which copies of the MSVC runtime a process has loaded.
 async function msvcModules(pid) {
   const filter = "$_.ModuleName -match '^(vcruntime140|vcruntime140_1|msvcp140)\\.dll$'";
   const text = await output("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
@@ -127,7 +112,6 @@ async function stopAndCheck(running, home) {
 
 let running;
 try {
-  // 1. First run with all but the newest migration.
   console.log("\n== First start (older bundle)");
   let started = Date.now();
   running = await backend.startBackend({ resources: older, home }, progress);
@@ -138,7 +122,6 @@ try {
   await stopAndCheck(running, home);
   running = undefined;
 
-  // 2. Force-quit: the backend runs in a child Node process, which is killed hard.
   console.log("\n== Force-quit (child runner killed hard)");
   const runner = spawn(process.execPath, [path.join(root, "scripts", "desktop", "backend-run.mjs"), "--home", home, "--resources", older],
     { stdio: ["ignore", "ignore", "inherit"], windowsHide: true });
@@ -148,15 +131,11 @@ try {
   const oldPostmaster = await postmasterPid(home);
   runner.kill("SIGKILL");
   await runnerExit;
-  // pg_ctl's server always outlives its parent. On Windows, libuv puts spawned children in a
-  // kill-on-close job, so GoTrue and PostgREST end with the parent; elsewhere they are left running.
   assert.ok(alive(oldPostmaster), "postgres should outlive a force-quit");
   if (process.platform !== "win32") assert.ok(alive(left.auth) && alive(left.rest), "GoTrue and PostgREST should outlive a force-quit here");
   await until("Storage to exit after its parent died", () => !alive(left.storage), 10_000);
   pass(`force-quit left postgres ${oldPostmaster} running (GoTrue ${alive(left.auth) ? "running" : "ended"}, PostgREST ${alive(left.rest) ? "running" : "ended"}); Storage exited by itself`);
 
-  // Two planted records prove the recovery checks before it kills: a detached PostgREST from the
-  // bundle (must be ended) and an unrelated process recorded under GoTrue's path (must be left alone).
   const decoyRest = spawn(path.join(older, "backend", platformKey, "postgrest", `postgrest${exeSuffix}`), [], {
     detached: true, stdio: "ignore", windowsHide: true,
     env: { ...process.env, PATH: `${path.join(older, "backend", platformKey, "postgres", "bin")}${path.delimiter}${process.env.PATH}`,
@@ -169,8 +148,6 @@ try {
     { service: "rest", pid: decoyRest.pid, exe: path.join(older, "backend", platformKey, "postgrest", `postgrest${exeSuffix}`) },
     { service: "auth", pid: sleeper.pid, exe: path.join(older, "backend", platformKey, "gotrue", `auth${exeSuffix}`) }]));
 
-  // 3. Upgrade start in the same home: ends the leftovers, then one pending migration → automatic
-  // pre-upgrade backup, then applied.
   console.log("\n== Upgrade start after the force-quit (current bundle)");
   started = Date.now();
   running = await backend.startBackend({ resources: current, home }, progress);
@@ -224,7 +201,6 @@ try {
     pass(`pgcrypto (sha256 ${crypto.digest.slice(0, 12)}…, bcrypt) and pg_trgm (similarity ${trgm.similarity.toFixed(3)}, trigrams of 'Straße' ${JSON.stringify(trgm.trigrams)}, % ${trgm.fuzzy})`);
   } finally { await db.end(); }
 
-  // Owner, RLS and Storage through the gateway.
   const session = await signIn(env);
   const owned = await rest(env, "workspaces?select=id,owner_id", session.access_token);
   assert.ok(Array.isArray(owned) && owned.length === 1 && owned[0].owner_id === session.user.id, `owner workspaces: ${JSON.stringify(owned)}`);
@@ -249,7 +225,6 @@ try {
   await response.body?.cancel();
   pass(`Storage: ${content.length} bytes uploaded and downloaded as the owner with content-type text/csv; anon refused (${response.status})`);
 
-  // 4. Manual backup while running, stop, restore into a fresh home, check the data came along.
   const folder = await backend.backup({ resources: current, home }, "smoke");
   const manifest = JSON.parse(await fs.readFile(path.join(folder, "manifest.json"), "utf8"));
   assert.equal(manifest.automatic, false);
@@ -272,7 +247,6 @@ try {
   assert.equal(readdirSync(path.join(restored, "backups")).length, 0, "an upgrade-free restore needs no automatic backup");
   pass("restored home: same owner, same workspace, same file and content type");
 
-  // 5. A database from a newer Moneo is refused before any service starts.
   const db2 = postgres(running.env.SUPABASE_DB_URL, { max: 1, onnotice: () => {} });
   await db2`insert into supabase_migrations.schema_migrations (version, name) values ('299901010001', 'from_the_future')`;
   await db2.end();
@@ -285,7 +259,6 @@ try {
   console.log("\nAll backend smoke checks passed.");
 } finally {
   if (running) await running.stop().catch(error => console.error(`stop: ${error.message}`));
-  // After a failed check: end what this run started and may have left (decoys, a force-quit's server).
   for (const pid of decoys) if (alive(pid)) process.kill(pid);
   for (const dir of [home, path.join(work, "home-restored")]) {
     if (await postmasterPid(dir) && alive(await postmasterPid(dir)))

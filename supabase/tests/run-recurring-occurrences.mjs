@@ -1,4 +1,3 @@
-// Candidate occurrence migration + exact SQL fixtures, always rolled back.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import postgres from "postgres";

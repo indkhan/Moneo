@@ -8,13 +8,8 @@ import { bankCategory } from "./bank-codes";
 import { estimateTokens, modelFailure, runAdaptive, tokenBatches } from "./batcher";
 import type { IdentityKind } from "./identity";
 
-// The organizer: every row it is given ends with a label or a question. The owner's rules and confirmed memory and the
-// bank's own codes decide first, without the AI. The AI gets the rest, one decision per identity, with read tools for
-// the owner's own history. Labels are evidence-based guesses with a confidence; the caller decides what is applied.
-
 export type OrganizeRow = { id: string; version: number; description: string; amountMinor: bigint; currency: string; date: string; accountId: string;
   identityId: string | null; categoryId: string | null; merchantId: string | null; raw: RawContext | null };
-/** A row the owner (or their rules, memory or the bank's codes) labelled; AI labels never count. */
 export type HistoryRow = { id: string; version: number; description: string; amountMinor: bigint; currency: string; date: string; identityId: string | null;
   categoryId: string | null; merchantId: string | null; kind: string; reviewReasons: string[] };
 export type Identity = { id: string; kind: IdentityKind; displayName: string; merchantId: string | null };
@@ -22,7 +17,6 @@ export type Memory = { identityId: string; categoryId: string | null; merchantId
 export type OrganizeInput = {
   rows: OrganizeRow[]; history: HistoryRow[]; rules: OrganizationRule[]; identities: Map<string, Identity>; memory: Map<string, Memory>;
   categories: Map<string, string>; merchants: Map<string, string>; accounts: Map<string, string>;
-  /** Category ids the owner took back (or rejected in memory), by identity key: never suggested again for it. */
   suppressed: Map<string, Set<string>>;
 };
 export type Source = "ai" | "rule" | "memory" | "system";
@@ -38,7 +32,6 @@ const BATCH_TOKENS = 6000, BATCH_ITEMS = 40, EXAMPLES = 3, TOOL_ROWS = 15;
 const lower = (value: string) => value.toLocaleLowerCase("en").replace(/\s+/g, " ").trim();
 const clip = (value: string, length: number) => Array.from(value).slice(0, length).join("");
 
-/** One decision covers an identity's rows; rows without one share their description key, else stand alone. */
 export function identityKey(row: Pick<OrganizeRow, "id" | "identityId" | "description">, byIdentity = true) {
   if (!byIdentity) return `row:${row.id}`;
   const key = organizationDescriptionKey(row.description);
@@ -48,7 +41,6 @@ export function identityKey(row: Pick<OrganizeRow, "id" | "identityId" | "descri
 const label = (source: Source, fields: Partial<Label> & { confidence: number; reason: string }): Label =>
   ({ kind: "label", source, categoryId: null, newCategory: null, merchantId: null, merchantName: null, ...fields });
 
-/** Rules, memory, the bank's codes and consistent history, in that order; null when only the AI (or the owner) can tell. */
 function deterministic(input: OrganizeInput, history: Map<string, { basis: string; categoryId: string | null; merchantId: string | null; key: string; count: number }>) {
   const byName = new Map([...input.categories].map(([id, name]) => [lower(name), id]));
   return (row: OrganizeRow): Label | null => {
@@ -71,7 +63,6 @@ function deterministic(input: OrganizeInput, history: Map<string, { basis: strin
   };
 }
 
-/** Rule and consistent-history matches per row, from the existing organization matcher. */
 function historyMatches(input: OrganizeInput) {
   const usable = (row: { description: string; kind: string }) => row.description.trim().length > 0 && ["ordinary", "refund", "transfer"].includes(row.kind);
   const toRow = (row: OrganizeRow | HistoryRow, kind: string, reviewReasons: string[]): OrganizationRow => ({ id: row.id, version: row.version, description: clip(row.description, 1000),
@@ -86,8 +77,6 @@ function historyMatches(input: OrganizeInput) {
   return found;
 }
 
-// ── What the model sees ──────────────────────────────────────────────────────
-// Only what deciding needs: no IBANs (an own-account flag instead), account numbers masked, private persons unnamed.
 const masked = (text: string, length: number) => clip(maskAccountNumbers(text).replace(/\s+/g, " ").trim(), length);
 function modelRow(input: OrganizeInput, row: OrganizeRow | HistoryRow, raw: RawContext | null) {
   return { date: row.date, amount: formatMoney(row.amountMinor, row.currency, "en-US"), description: masked(row.description, 160),
@@ -116,10 +105,8 @@ Use the tools to read the owner's own labelled history when an item is ambiguous
 
 const answerSchema = z.object({ ref: z.string().max(20), decision: z.enum(["label", "question"]), category: z.string().max(20).nullable(), newCategory: z.string().trim().min(2).max(40).nullable(),
   merchant: z.string().trim().min(1).max(100).nullable(), confidence: z.number().int().min(0).max(100), reason: z.string().trim().min(1).max(300), question: z.string().trim().min(1).max(300).nullable() });
-/** The model's output format. Answers are checked one by one, so one bad answer never sinks the rest. */
 export const answersSchema = z.object({ answers: z.array(answerSchema) });
 
-/** The read tools: the owner's labelled history only, never AI labels, with the same privacy as the items. */
 export function organizerTools(input: OrganizeInput, groups: Map<string, Group>, categoryRefs: Map<string, string>) {
   const named = (row: HistoryRow) => ({ ...modelRow(input, row, null), category: row.categoryId ? input.categories.get(row.categoryId) ?? null : null,
     merchant: row.merchantId ? input.merchants.get(row.merchantId) ?? null : null });
@@ -150,7 +137,6 @@ export function organizerTools(input: OrganizeInput, groups: Map<string, Group>,
   };
 }
 
-/** The decisions in one model answer, for the refs that were asked; anything invalid counts as not answered. */
 export function readAnswers(output: unknown, groups: Map<string, Group>, input: OrganizeInput, categoryRefs: Map<string, string>) {
   const answers = new Map<string, Decision>();
   const list = output && typeof output === "object" && Array.isArray((output as { answers?: unknown }).answers) ? (output as { answers: unknown[] }).answers : [];

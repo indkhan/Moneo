@@ -5,10 +5,6 @@ import { identityCandidate } from "./identity";
 
 const PAGE = 500, MAX_ROWS = 10_000;
 
-/**
- * Gives every row that landed without an identity one, from its bank context and description. Rows that already have
- * one keep it, so reruns are no-ops; rows with no usable evidence stay without one. The service role acts for the owner.
- */
 export async function resolveNewIdentities(db: SupabaseClient, workspaceId: string) {
   const own = await loadOwnAccounts(db, workspaceId);
   const ownIbans = new Set([...own.tracked.keys(), ...own.untracked.keys()]);

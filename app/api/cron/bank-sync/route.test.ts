@@ -16,8 +16,6 @@ it("denies missing or incorrect cron credentials before reading connections", as
   expect(serviceDb).not.toHaveBeenCalled();
 });
 
-// One account's rate limit used to hold every account of its bank for 20 hours, and the others never synced.
-// Banks connected at different hours synced at different hours, and each sync started its own agent run.
 it("starts a background sync for each connection with an account due, and the workspace's other banks with it", async () => {
   vi.stubEnv("CRON_SECRET", "synthetic-secret");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.supabase.co");

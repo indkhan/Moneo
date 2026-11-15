@@ -1,5 +1,3 @@
-// The bundled PostgreSQL cluster: initdb on first run, start and stop through pg_ctl (which on
-// Windows also drops administrator rights, as postgres.exe requires), stale postmaster.pid recovery.
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,22 +16,17 @@ export async function bundledMajor(bin: string) {
   return major;
 }
 
-// The cluster's major version must match the bundled server; a major upgrade needs pg_upgrade.
 export async function checkMajor(cluster: Cluster) {
   const data = (await fs.readFile(path.join(cluster.data, "PG_VERSION"), "utf8")).trim();
   const bundled = await bundledMajor(cluster.bin);
   if (data !== bundled) throw new Error(`The database was created by PostgreSQL ${data}, but this Moneo bundles PostgreSQL ${bundled}. Install the matching Moneo version or restore a backup.`);
 }
 
-// Like the Supabase image: UTF8, ICU collation en-US, scram-sha-256, superuser supabase_admin with
-// POSTGRES_PASSWORD. Only TCP connections from 127.0.0.1 are accepted.
 export async function initCluster(cluster: Cluster, home: string) {
   await fs.mkdir(path.dirname(cluster.data), { recursive: true });
   const pwfile = path.join(home, `.initdb-${process.pid}`);
   await fs.writeFile(pwfile, cluster.password, { mode: 0o600 });
   try {
-    // libc locale for messages and number formats; ICU decides collation. Windows names it en-US,
-    // macOS/Linux en_US.UTF-8, with C.UTF-8 and C as fallbacks on minimal Linux systems.
     const locales = process.platform === "win32" ? ["en-US"] : ["en_US.UTF-8", "C.UTF-8", "C"];
     let failure = "";
     for (const locale of locales) {
@@ -54,8 +47,6 @@ export async function initCluster(cluster: Cluster, home: string) {
   await fs.appendFile(conf, "\n# Moneo Desktop settings, rewritten at every start.\ninclude 'moneo.conf'\n");
 }
 
-// Settings that differ from initdb's defaults. The Supabase image's values are kept where they
-// change query results (UTC, extra_float_digits = 0, row_security, english text search).
 async function writeSettings(cluster: Cluster) {
   const logs = cluster.logs.replaceAll("\\", "/").replaceAll("'", "''");
   await fs.writeFile(path.join(cluster.data, "moneo.conf"), [
@@ -87,9 +78,6 @@ async function postmasterPid(data: string) {
   return Number.isInteger(pid) && pid > 0 ? pid : undefined;
 }
 
-// A postmaster.pid left by a crash or a force-quit. If its PID is alive and is a postgres from
-// this bundle or serving this data folder, stop it with pg_ctl stop -m fast; if the PID is gone or
-// now belongs to another program (ours would be inspectable: same user), delete the file (postgres would refuse to start otherwise).
 export async function recoverStalePid(cluster: Cluster, log: (line: string) => void) {
   const pid = await postmasterPid(cluster.data);
   if (!pid) return;
@@ -123,7 +111,6 @@ export async function startCluster(cluster: Cluster, log: (line: string) => void
 export async function stopCluster(cluster: Pick<Cluster, "bin" | "data">) {
   if (!(await postmasterPid(cluster.data))) return;
   const { code, output } = await runProgram(program(cluster, "pg_ctl"), ["stop", "-D", cluster.data, "-m", "fast", "-w", "-t", "60"], { timeoutMs: 90_000 });
-  // pg_ctl exits 1 with "PID file ... does not exist" / "Is server running?" when it already stopped.
   if (code !== 0 && !/does not exist|not running/i.test(output)) throw new Error(`pg_ctl stop failed (exit ${code}): ${output.trim()}`);
 }
 

@@ -3,7 +3,6 @@
 import { ReactECharts, useThemeColors } from "@/components/chart";
 import type { ModelUsage } from "@/lib/ai/usage";
 
-// One horizontal bar per model, split into input and output tokens. Models are ordered largest first.
 export function UsageChart({ models, locale }: { models: ModelUsage[]; locale: string }) {
   const colors = useThemeColors();
   const format = (value: number) => new Intl.NumberFormat(locale).format(value);

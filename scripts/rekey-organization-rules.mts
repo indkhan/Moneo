@@ -1,13 +1,6 @@
-/**
- * One-off: rules saved before keys dropped dates and reference numbers match nothing any more. Each such rule is
- * turned off (kept, not deleted) and its choice carried to the clean key its transactions now share, unless another
- * rule already decides that key differently. Dry run by default:
- *   npx tsx --env-file=.env scripts/rekey-organization-rules.mts [--apply]
- */
 import postgres from 'postgres';
 import {organizationDescriptionKey} from '../lib/import/organization.ts';
 
-// The key as it was before 64fb8b30, to find each old rule's transactions.
 const oldKey = (description: string) => description.normalize('NFKC').toLocaleLowerCase('en').trim()
   .replace(/\b(?:ref(?:erence)?|invoice|order|receipt|terminal)\b\s*[:#-]?\s*[a-z0-9-]*\d[a-z0-9-]*\b/gu, ' ')
   .replace(/^(?:(?:card payment|pos purchase|card purchase)\s+)+/u, '')
@@ -27,7 +20,6 @@ await sql.begin(async tx => {
     const owned = rules.filter(rule => rule.workspace_id === workspace);
     const byKey = new Map(owned.map(rule => [rule.description_key, rule]));
     const dead = owned.filter(rule => rule.enabled && !live.has(rule.description_key));
-    // Where each dead rule's transactions now land; several old rules can land on one clean key.
     const targets = new Map<string, Rule[]>();
     for (const rule of dead) {
       const keys = new Set(descriptions.filter(row => oldKey(row.description) === rule.description_key).map(row => organizationDescriptionKey(row.description)));

@@ -6,7 +6,6 @@ import { archiveWithAnswer } from "./actions";
 type Target = { id: string; name: string; type?: string; bankSynced?: boolean };
 const field = "min-h-11 w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm sm:min-h-9 sm:w-auto";
 
-/** Asked before archiving an account that still holds money, so net worth can't drop without an answer. */
 export function ArchiveQuestion({ account, amount, targets, requestId, onCancel }: { account: { id: string; name: string; version: number }; amount: string; targets: Target[]; requestId: string; onCancel: () => void }) {
   const [state, action, pending] = useActionState(archiveWithAnswer, {});
   const [outcome, setOutcome] = useState<"moved" | "cash" | "gone">();

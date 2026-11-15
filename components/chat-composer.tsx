@@ -5,13 +5,8 @@ import { VoiceInput } from "./voice-input";
 
 const ATTACH_HINT = `Attach ${ATTACHMENT_HINT}: up to ${MAX_ATTACHMENTS} files of ${MAX_ATTACHMENT_LABEL} each`;
 
-/** Spoken words added after whatever is already typed. */
 export const withSpoken = (typed: string, spoken: string) => [typed.trim(), spoken].filter(Boolean).join(" ");
 
-/**
- * Composer shared by the AI page and the Ask Moneo panel. Enter sends (or queues while busy), Shift+Enter adds a line.
- * With `voice`, a mic sends spoken words through `voice.onSend` or drops them into the box to edit.
- */
 export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, busy, disabled = false, placeholder, compact = false, busyText, attachments, voice }: {
   id: string; label: string; value: string; onChange: (value: string) => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onStop: () => void; busy: boolean; disabled?: boolean; placeholder: string; compact?: boolean; busyText: string; attachments?: ChatAttachments;
@@ -19,7 +14,6 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
 }) {
   const button = `flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 ${compact ? "size-9" : "size-11"}`;
   const files = attachments?.items ?? [];
-  // A message can be just a photo or document; files still uploading or failed hold the send.
   const sendable = (value.trim() || attachments?.ready.length) && !attachments?.uploading && !files.some(item => item.error);
   return <form onSubmit={onSubmit} onPaste={event => { if (attachments && event.clipboardData.files.length) { event.preventDefault(); attachments.add(event.clipboardData.files); } }}
     className="relative rounded-2xl border border-input bg-card p-2.5 transition-colors focus-within:border-muted-foreground/60">
@@ -35,7 +29,6 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
       maxLength={4000} rows={1} placeholder={placeholder} className={`block w-full resize-none bg-transparent [field-sizing:content] outline-none! ${compact ? "max-h-48 min-h-10 px-2.5 py-2 text-sm" : "max-h-60 min-h-12 px-3 py-2.5 text-[15px]"}`} />
     <div className={`flex items-center justify-between gap-3 ${compact ? "pl-2.5" : "pl-3"}`}>
       <div className="flex min-w-0 items-center gap-2">
-        {/* On phones the picker offers the camera as well as files. */}
         {attachments && <label className={`flex shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground has-disabled:cursor-default has-disabled:opacity-40 ${compact ? "size-8" : "size-9"}`} title={ATTACH_HINT}>
           <span className="sr-only">{ATTACH_HINT}</span><Paperclip className="size-4" aria-hidden="true" />
           <input type="file" accept={ATTACHMENT_ACCEPT} multiple disabled={disabled || attachments.full} className="sr-only" onChange={event => { if (event.target.files) attachments.add(event.target.files); event.target.value = ""; }} />
@@ -45,7 +38,6 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
       <div className="flex items-center gap-1.5">{voice && <VoiceInput compact={compact} disabled={disabled} onSend={voice.onSend}
           onDone={text => { onChange(withSpoken(value, text)); document.getElementById(id)?.focus(); }} />}
         {busy && <button type="button" onClick={onStop} aria-label="Stop" className={button}><Square className={`${compact ? "size-3" : "size-3.5"} fill-current`} aria-hidden="true" /></button>}
-        {/* While a reply runs, sending queues the message. */}
         {(!busy || value.trim()) && <button disabled={disabled || !sendable || (busy && files.length > 0)} aria-label={busy ? "Queue message" : "Send"} className={`${button} disabled:opacity-30`}><ArrowUp className={compact ? "size-4" : "size-5"} aria-hidden="true" /></button>}</div></div>
   </form>;
 }

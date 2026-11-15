@@ -1,11 +1,7 @@
 import { APICallError } from "ai";
 
-// Work for the AI organizer: batches sized by tokens, run with parallelism that adapts to the provider.
-
-/** A rough token count for what is sent: about four characters a token. */
 export const estimateTokens = (value: unknown) => Math.ceil(JSON.stringify(value).length / 4);
 
-/** Greedy batches that stay under a token budget and an item cap; an item bigger than the budget goes alone. */
 export function tokenBatches<T>(items: T[], tokens: (item: T) => number, budget: number, maxItems: number): T[][] {
   const batches: T[][] = [];
   let current: T[] = [], used = 0;
@@ -18,13 +14,8 @@ export function tokenBatches<T>(items: T[], tokens: (item: T) => number, budget:
   return batches;
 }
 
-/** Ends the whole run's AI work (plan limit, spent budget, a stopped run); what is left waits for the next run. */
 export class StopWork extends Error {}
 
-/**
- * "stop" for limits that won't lift within this run (the ChatGPT plan's usage limit, an API key out of quota),
- * "retry" for a temporary throttle, "fail" for anything else.
- */
 export function modelFailure(error: unknown): "stop" | "retry" | "fail" {
   if (error instanceof StopWork) return "stop";
   if (APICallError.isInstance(error) && error.statusCode === 429)
@@ -34,10 +25,6 @@ export function modelFailure(error: unknown): "stop" | "retry" | "fail" {
 
 const LEFTOVER_COOLDOWN_MS = 3_600_000, LONGEST_PAUSE_MS = 7 * 86_400_000;
 
-/**
- * When rows a run left blank are worth another try: right away after a spent run budget, when the plan's limit resets
- * if the provider says (ChatGPT sends resets_at or resets_in_seconds, others Retry-After), otherwise in an hour.
- */
 export function retryLeftoversAt(stopped: unknown, now: number) {
   if (stopped instanceof StopWork) return now;
   if (APICallError.isInstance(stopped)) {
@@ -54,11 +41,6 @@ export function retryLeftoversAt(stopped: unknown, now: number) {
 export type AdaptiveResult<T, R> = { done: { job: T; result: R }[]; left: T[]; failed: { job: T; error: unknown }[]; stopped: unknown; peak: number };
 export type AdaptiveOptions = { start?: number; max?: number; retries?: number; backoffMs?: number; classify?: (error: unknown) => "stop" | "retry" | "fail" };
 
-/**
- * Runs jobs with `start` at once, one more after each success up to `max`, half as many after a throttle (which is
- * retried after a growing pause, `retries` times, then left for the next run). A "stop" lets running jobs finish
- * and leaves the rest.
- */
 export function runAdaptive<T, R>(jobs: T[], work: (job: T) => Promise<R>, options: AdaptiveOptions = {}): Promise<AdaptiveResult<T, R>> {
   const { start = 2, max = 6, retries = 3, backoffMs = 2000, classify = modelFailure } = options;
   const queue = jobs.map(job => ({ job, attempts: 0 }));

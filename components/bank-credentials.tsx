@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 
-// From README → Connect your bank: what the Enable Banking application form asks for.
 const PRIVACY_URL = "https://indkhan.github.io/Moneo/privacy.html";
 const TERMS_URL = "https://indkhan.github.io/Moneo/terms.html";
 export type BankCredentials = { source: "app" | "env" | null; hint: string | null };
@@ -20,7 +19,6 @@ function Copyable({ label, value }: { label: string; value: string }) {
   </div>;
 }
 
-/** Enable Banking App ID and private key: entered here once, checked with Enable Banking and saved encrypted. */
 export function BankCredentialsForm({ redirectUrl, onSaved, onCancel }: { redirectUrl: string; onSaved: () => void; onCancel?: () => void }) {
   const [appId, setAppId] = useState("");
   const [privateKey, setPrivateKey] = useState("");

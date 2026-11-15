@@ -16,7 +16,6 @@ const ORB_TONES: Record<OrbState, string> = {
   idle: "[--orb-a:var(--color-input)] [--orb-b:var(--color-muted)]",
 };
 
-/** The orb follows whoever is talking: its glow and ring swell with the voice, it turns while Moneo works, and it holds still for reduced motion. */
 function Orb({ levels, state }: { levels: () => { mic: number; moneo: number }; state: OrbState }) {
   const orb = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -44,12 +43,10 @@ function Orb({ levels, state }: { levels: () => { mic: number; moneo: number }; 
   </div>;
 }
 
-/** A live voice call with Moneo: speak or type, see the requests it is working on, and tap the cards it makes. The full transcript is saved with the call. */
 export function VoiceCall({ conversationId, onAnswer, onEnded, onClose }: { conversationId: string; onAnswer: (question: string, answer: ChatAnswer) => void; onEnded: () => void; onClose: () => void }) {
   return <VoiceCallView call={useVoiceCall(conversationId, onAnswer, onEnded)} onClose={onClose} />;
 }
 
-/** How long the call has been live, as a phone shows it (0:42, 1:05:09); empty until it is. */
 function useElapsed(live: boolean) {
   const [seconds, setSeconds] = useState<number | null>(null);
   useEffect(() => {
@@ -65,10 +62,8 @@ function useElapsed(live: boolean) {
   return `${hours ? `${hours}:${String(minutes).padStart(2, "0")}` : minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-/** The call screen for a call's state, kept apart from the connection so each state can be rendered alone. */
 export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVoiceCall>; onClose: () => void }) {
   const [text, setText] = useState("");
-  // Phones keep the call screen clean: the text field opens from the Keypad button, as on a phone call.
   const [typing, setTyping] = useState(false);
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => { body.current?.scrollTo({ top: body.current.scrollHeight }); }, [call.tasks]);
@@ -89,7 +84,6 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
     </header>
     <div ref={body} className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-y-auto px-4 sm:px-8">
       <div className={`flex flex-col items-center pt-4 sm:pt-8 ${busy ? "" : "max-lg:my-auto max-lg:pb-10"}`}>
-        {/* Once requests and cards fill the screen, the orb shrinks on phones so they stay in view. */}
         <div className={busy ? "max-lg:-mt-4 max-lg:-mb-8 max-lg:scale-[0.62]" : ""}><Orb levels={call.levels} state={state} /></div>
         <p role="status" className="flex h-7 items-center gap-2 font-display text-lg font-medium">{state === "connecting" && <Loader2 className="size-4 text-ai motion-safe:animate-spin" aria-hidden="true" />}{label}</p>
         {!call.tasks.length && live && <p className="mt-6 max-w-xs text-center text-[15px] text-muted-foreground sm:max-w-none sm:text-base">Say hi, ask about your money, or tell Moneo what you spent.</p>}
@@ -112,7 +106,6 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
       <div className="h-4 shrink-0" />
     </div>
     <footer className="border-t border-border px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] max-lg:border-0 max-lg:pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-8">
-      {/* Typed before the call is live, the answer would have no voice to say it. */}
       {live && <form onSubmit={event => { event.preventDefault(); call.typed(text); setText(""); }} className={`mx-auto mb-4 flex max-w-[720px] items-center gap-2 ${typing ? "" : "max-lg:hidden"}`}>
         <label className="sr-only" htmlFor="call-text">Type to Moneo</label>
         <input id="call-text" autoFocus={typing} value={text} onChange={event => setText(event.target.value)} maxLength={4000} placeholder="Or type a message…" autoComplete="off"
@@ -139,7 +132,6 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
   </section>;
 }
 
-/** Where one task stands: a spinner while running, then a tick, a warning or a stop mark. */
 function TaskIcon({ status }: { status: string }) {
   const icon = "size-4 shrink-0";
   if (status === "running") return <Loader2 className={`${icon} text-ai motion-safe:animate-spin`} aria-label="Running" />;

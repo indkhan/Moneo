@@ -17,8 +17,6 @@ function add(totals: Totals, amount: bigint, kind: string) {
   else totals.spendingMinor -= amount;
 }
 
-// Direct exact-date evidence only. No previous-day carry, inverse or triangulated
-// rate is implied. Round each signed posting before aggregating, using convertFx.
 export function reportExpenditure(rows: ExpenditurePosting[], rates: ExpenditureRate[], input: ExpenditureOptions) {
   const options = expenditureInput.parse(input);
   const perCurrency: Record<string, Totals> = {};
@@ -57,8 +55,6 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
     scopedTransactionCount += row.sourcePostings.length;
     const exclude = (reason: string) => exclusions.push({ id: row.id, reason, currencyCode: row.currencyCode, postedOn: row.postedOn, originalAmountMinor: row.amountMinor.toString() });
     if (row.status !== "posted") { exclude("pending"); continue; }
-    // Classification uncertainty precedes transfer exclusion: an unresolved
-    // transfer might prove ordinary spending after review.
     if (row.reviewReasons?.length || !["ordinary", "refund", "transfer"].includes(row.kind)) { exclude("classification-review"); incomplete = true; continue; }
     if (row.kind === "transfer") { exclude("transfer"); continue; }
     add(perCurrency[row.currencyCode] ??= empty(), row.amountMinor, row.kind);

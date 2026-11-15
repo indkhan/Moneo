@@ -95,7 +95,6 @@ it("renders account-specific protections and keeps horizon/scenario/account/fund
 it("chosen-account spending respects a separately owned workspace buffer", async () => {
   input.workspaceBufferMinor = 10000n;
   try {
-    // Re-evaluate mocked loader after changing the input.
     vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
     const html = await render({ account: "savings", horizon: "3" });
     expect(html).toContain("Workspace buffer: EUR 100.00");

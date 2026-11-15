@@ -11,7 +11,6 @@ export const iconPath = () => path.join(__dirname, "..", "icons", "icon.png");
 let appPort = 0;
 let reloadOnFocus = false;
 
-/** Opens an address in the system browser. Tests log it to a file instead. */
 export async function openExternal(url: string) {
   if (!isExternalAllowed(url, appPort)) { log("Blocked opening an address that is neither https nor Moneo"); return; }
   if (isBankConsent(url) && !readSettings().bankCertificateTrusted) await offerBankTrust();
@@ -20,7 +19,6 @@ export async function openExternal(url: string) {
   else await shell.openExternal(url);
 }
 
-// The bank sends the owner back to https://localhost:3443; without this the browser warns there.
 async function offerBankTrust() {
   if (process.env.MONEO_DESKTOP_OPEN_EXTERNAL_LOG) return;
   const { response } = await dialog.showMessageBox({
@@ -32,7 +30,6 @@ async function offerBankTrust() {
   if (response === 0 && await trustBankCertificate()) updateSettings({ bankCertificateTrusted: true });
 }
 
-/** Allows only the microphone (voice calls) and copying, and only for Moneo's own pages. */
 export function lockDownSession() {
   const ours = (url: string | undefined) => Boolean(url && isAppUrl(url, appPort));
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
@@ -51,7 +48,6 @@ function guardNavigation(contents: WebContents) {
   const leave = (event: Electron.Event, url: string) => {
     if (isAppUrl(url, appPort)) return;
     event.preventDefault();
-    // Sign-ins (ChatGPT, banks, Scalable) run in the system browser and come back to Moneo's loopback callbacks.
     reloadOnFocus = true;
     void openExternal(url);
   };
@@ -69,7 +65,6 @@ export function createAppWindow(port: number, hooks: { onClose(event: Electron.E
   guardNavigation(window.webContents);
   window.on("close", hooks.onClose);
   window.on("session-end", hooks.onSessionEnd);
-  // Back from a sign-in in the browser: show what it changed.
   window.on("focus", () => {
     if (!reloadOnFocus) return;
     reloadOnFocus = false;
@@ -80,15 +75,12 @@ export function createAppWindow(port: number, hooks: { onClose(event: Electron.E
 
 export const setAppPort = (port: number) => { appPort = port; };
 
-/** Shows a sign-in's result (from the system browser) in the app window and brings it to the front. */
 export async function showReturn(window: BrowserWindow, returnPath: string) {
   reloadOnFocus = false;
   if (window.isMinimized()) window.restore();
   window.show();
-  // Windows only flashes the taskbar for focus() from a background app; topmost for a moment raises it.
   window.setAlwaysOnTop(true);
   window.focus();
   window.setAlwaysOnTop(false);
-  // A redirect during the load is not a failure; the window shows whatever the page became.
   await window.loadURL(`http://localhost:${appPort}${returnPath}`).catch(error => log(`Returning to ${returnPath}: ${error instanceof Error ? error.message : error}`));
 }

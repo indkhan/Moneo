@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cashSchema, decimalText, holdingsSchema, overviewSchema, scalableItemId, scalableWealth } from "./portfolio";
 
-// Shapes as the Scalable MCP returns them (values made up).
 const snapshot = {
   holdings: holdingsSchema.parse({ holdings: [
     { isin: "DE000A2QP398", name: "Tech ETF", fifoPrice: 7.88, valuation: 22.34, valuationCurrency: "EUR", currentQuote: { currency: "EUR", midPrice: 7.446 }, position: { filled: 3, blocked: 0 } },

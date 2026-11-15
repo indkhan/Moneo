@@ -60,7 +60,6 @@ it("saves the call under the workspace and summarizes it after responding", asyn
   expect(response.status).toBe(201);
   expect(await response.json()).toEqual({ id: callId });
   expect(inserts).toEqual([["voice_calls", { id: callId, workspace_id: "workspace", conversation_id: conversationId, duration_seconds: 75, transcript: record.transcript, tasks: record.tasks, request_ids: [requestId] }]]);
-  // Nothing was summarized yet: the work is queued for after the response.
   expect(summarizeCall).not.toHaveBeenCalled();
   expect(after).toHaveBeenCalledTimes(1);
   await after.mock.calls[0][0]();

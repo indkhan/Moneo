@@ -1,12 +1,10 @@
 import Link from "next/link";
 
-/** Up to five page numbers around the current one, shifted at the ends so five still show. */
 export function pageWindow(page: number, pageCount: number, size = 5): number[] {
   const start = Math.max(1, Math.min(page - Math.floor(size / 2), pageCount - size + 1));
   return Array.from({ length: Math.min(size, pageCount) }, (_, index) => start + index);
 }
 
-/** First, Previous, a few page numbers, Next and Last. Steps that would go nowhere show disabled. */
 export function LedgerPagination({ page, pageCount, href }: { page: number; pageCount: number; href: (page: number) => string }) {
   if (pageCount <= 1) return null;
   const base = "inline-flex h-9 min-w-9 items-center justify-center rounded-lg px-2.5 text-[13px]";

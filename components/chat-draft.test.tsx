@@ -32,7 +32,6 @@ type Props = { children?: ReactNode; value?: string; onChange?: (event: { target
 function find(node: ReactNode, type: string): Props | undefined {
   if (Array.isArray(node)) return node.map(child => find(child, type)).find(Boolean);
   if (!isValidElement<Props>(node)) return;
-  // Expand the shared composer so its textarea and form are reachable.
   if (node.type === ChatComposer) return find(ChatComposer(node.props as unknown as Parameters<typeof ChatComposer>[0]), type);
   return node.type === type ? node.props : find(node.props.children, type);
 }
@@ -57,7 +56,6 @@ it.each(entryPoints)("%s preserves a next question typed while the submitted que
 it.each(entryPoints)("%s clears unchanged submitted text only after a successful response", async (_name, component) => {
   function render() { host.index = 0; return component(); }
   find(render(), "textarea")!.onChange!({ target: { value: "Submitted question" } });
-  // The request hook returns null on failure or cancellation.
   host.send.mockResolvedValue(null);
   await find(render(), "form")!.onSubmit!({ preventDefault: vi.fn() });
   expect(find(render(), "textarea")!.value).toBe("Submitted question");

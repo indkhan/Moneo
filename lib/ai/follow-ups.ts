@@ -7,10 +7,6 @@ export const planInput = z.object({
 }).strict();
 
 const ANALYSIS = ["finance_investigate", "analytics_cashflow", "reviews_investigate", "finance_scenario"];
-/**
- * Up to four next steps after an answer: the model's own follow-up questions
- * (text only, never actions) first, then deterministic app actions.
- */
 export function chatFollowUps(message: string, toolsUsed: string[], modelPrompts: string[] = []): FollowUp[] {
   const items: FollowUp[] = modelPrompts.map(prompt => ({ label: prompt, prompt }));
   const analysed = toolsUsed.some(name => ANALYSIS.includes(name));

@@ -13,8 +13,6 @@ const min = (a: string, b: string) => a < b ? a : b;
 const MONTHS = 6;
 const ROW_LIMIT = 50_000;
 
-// Totals come from reportExpenditure (exact-date FX, refunds subtracted, pending,
-// transfers and review rows excluded). `partial` marks a total missing some rows.
 function total(rows: SpendingRow[], rates: ExpenditureRate[], currencyCode: string, from: string, to: string): Total {
   const report = reportExpenditure(rows.map(expenditurePosting), rates, { view: "base", currencyCode, from, to });
   return { incomeMinor: BigInt(report.availableTotals.incomeMinor), spendingMinor: BigInt(report.availableTotals.spendingMinor), partial: report.status === "incomplete" };
@@ -28,7 +26,6 @@ export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[],
     return { month: from.slice(0, 7), from, to, ...total(rows, rates, currencyCode, from, to) };
   });
   const thisMonth = trend[MONTHS - 1];
-  // Same number of days into last month, clamped to its end (31 Mar compares with 28/29 Feb).
   const lastFrom = day(year, month - 2, 1), lastTo = min(day(year, month - 2, date), day(year, month - 1, 0));
   const lastMonthToDate = { from: lastFrom, to: lastTo, ...total(rows, rates, currencyCode, lastFrom, lastTo) };
   const top = (key: "category_id" | "merchant_id", from: string, to: string, metric: "spendingMinor" | "incomeMinor" = "spendingMinor") => {
@@ -43,14 +40,12 @@ export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[],
       .sort((a, b) => a[metric] === b[metric] ? 0 : a[metric] < b[metric] ? 1 : -1)
       .slice(0, 5);
   };
-  // Top lists for every trend month, so Home can switch months without another read.
   const months = trend.map(({ month, from, to }) => ({ month, from, to, categories: top("category_id", from, to), merchants: top("merchant_id", from, to),
     incomeCategories: top("category_id", from, to, "incomeMinor"), incomeMerchants: top("merchant_id", from, to, "incomeMinor") }));
   const { categories, merchants } = months[MONTHS - 1];
   return { currencyCode, trend, thisMonth, lastMonthToDate, months, categories, merchants };
 }
 
-// One read of the last six months feeds the KPI tile, trend chart and top lists; memoized per request.
 export const loadHomeSpending = cache(async (db: SupabaseClient, workspaceId: string, currencyCode: string, today: string) => {
   const [year, month] = today.split("-").map(Number);
   const from = day(year, month - MONTHS, 1);
@@ -62,7 +57,6 @@ export const loadHomeSpending = cache(async (db: SupabaseClient, workspaceId: st
     return rows;
   }
   const [rows, rates, loans] = await Promise.all([loadRows(), loadExpenditureRates(db, workspaceId, { currencyCode, from, to: today }), loadLoanPayoutIds(db, workspaceId).catch(() => new Set<string>())]);
-  // Lending someone money (or being repaid) moves it between you and them like a transfer; it is not spending or income.
   const summary = summarizeSpending(rows.map(row => loans.has(row.parent_transaction_id ?? row.id) ? { ...row, kind: "transfer" } : row), rates, currencyCode, today);
   async function names(table: "categories" | "merchants", groups: { id: string | null }[]) {
     const ids = groups.flatMap(group => group.id ? [group.id] : []);

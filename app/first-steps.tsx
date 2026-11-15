@@ -4,7 +4,6 @@ import { Check } from "lucide-react";
 const step = "flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted";
 const number = (n: number) => <span className="grid size-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-xs">{n}</span>;
 
-/** Home before any money is recorded: turn on AI, connect a bank (or import), then run the agent team. */
 export function FirstSteps({ ai }: { ai: boolean }) {
   return <div className="space-y-3"><p className="text-sm text-muted-foreground">Three steps to get started:</p>
     <ol className="grid gap-2 text-sm sm:grid-cols-3">

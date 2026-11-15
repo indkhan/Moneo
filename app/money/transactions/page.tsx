@@ -21,7 +21,6 @@ import { LedgerPagination } from "./pagination";
 export const metadata = { title: "Transactions" };
 
 const PAGE_SIZE = 50;
-// ponytail: subtotals scan at most this many matching rows (PostgREST max rows); an RPC aggregate lifts the cap if ledgers grow.
 const GROUP_SCAN_LIMIT = 1000;
 const GROUPS: { value: TransactionGroup | ""; label: string }[] = [{ value: "", label: "None" }, { value: "category", label: "Category" }, { value: "merchant", label: "Merchant" }, { value: "month", label: "Month" }];
 
@@ -30,8 +29,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
   const params = await searchParams;
-  // Opaque saved-view id (?view=<uuid>): filter JSON is loaded from
-  // workspace-scoped storage, so search terms and ids never appear in the link.
   const viewId = parseViewId(params.view);
   const urlFilters = parseTransactionParams(params);
   const loadLedger = (filters: ParsedTransactionParams) => {
@@ -46,7 +43,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         .order("posted_on", { ascending: false }).order("id").limit(GROUP_SCAN_LIMIT) : Promise.resolve(null),
     ]);
   };
-  // Without a saved view the ledger depends only on the URL, so it loads alongside the lookups below.
   const urlLedger = viewId ? null : loadLedger(urlFilters);
   const [{ data: accounts },{ data: categories }, { data: merchants }, { data: savedViews }, { data: viewRow }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
@@ -66,9 +62,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     </div>
   </header>;
 
-  // An invalid persisted scope never reaches the ledger query: no rows or
-  // results render under the saved-view title. Rename/delete stay available;
-  // saving is disabled so the broadened scope cannot be re-saved.
   const scopeError = viewRow ? invalidStoredViewScope(viewRow.filters as unknown) : null;
   if (scopeError && activeView) {
     return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
@@ -85,7 +78,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   let filters: ParsedTransactionParams = urlFilters;
   if (activeView) {
     const saved = savedViewToParams(parseStoredFilters(viewRow!.filters as unknown));
-    // Only ephemeral navigation (page, open transaction, grouping) comes from the URL in view mode.
     filters = { ...saved, ...(urlFilters.page ? { page: urlFilters.page } : {}), ...(urlFilters.transactionId ? { transactionId: urlFilters.transactionId } : {}), ...(urlFilters.group ? { group: urlFilters.group } : {}) };
   }
   const [{ data, error, count }, grouped] = await (urlLedger ?? loadLedger(filters));
@@ -105,9 +97,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   } : null;
   const rows = groups ? orderByGroup(pageRows, groups.by) : pageRows;
 
-  // Shareable filter params (no page/open transaction). In view mode,
-  // navigation keeps the opaque view link; sort headers and chip removal
-  // open an ad-hoc filtered URL (same exposure as normal filtering).
   const shareable = toQueryParams({ ...filters, page: undefined, transactionId: undefined });
   const withParams = (base: URLSearchParams, changes: Record<string, string | null>) => {
     const out = new URLSearchParams(base);

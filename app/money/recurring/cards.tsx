@@ -16,10 +16,6 @@ const primary = "min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-pri
 const secondary = "min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50";
 const detected = (card: Card) => /^recurring_(new|price):/.test(card.conflict_key ?? "");
 
-/**
- * Recurring patterns detection raised. Each card shows the payments behind it, and saying yes always opens the dialog
- * to check the amount, next date and category first, so a payment whose price or day moved is saved as it really is.
- */
 export function RecurringCards({ cards, onDecided }: { cards: Card[]; onDecided?: (id: string, undone?: boolean) => void }) {
   const [loaded, setLoaded] = useState<Loaded>();
   const [failed, setFailed] = useState(false);
@@ -41,7 +37,6 @@ function RecurringCard({ card, loaded, onDecided }: { card: Card; loaded?: Loade
   const price = card.conflict_key?.startsWith("recurring_price:");
   const details = loaded?.details[card.id];
   const money = (minor: string, currency: string) => formatMoney(minor, currency, loaded?.locale);
-  // Dismissed at once; the card comes back if saving fails.
   const dismiss = () => start(async () => {
     setError(undefined);
     setOutcome("dismissed");
@@ -54,7 +49,6 @@ function RecurringCard({ card, loaded, onDecided }: { card: Card; loaded?: Loade
   });
   return <section aria-label="Recurring proposal" className="my-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <p className="font-medium">{card.title}</p>
-    {/* A new pattern's stored detail predates the dialog; its payments below say more. */}
     {price && card.detail && !outcome && <p className="mt-1 text-sm text-muted-foreground">{card.detail}</p>}
     {outcome ? <p role="status" className="mt-2 text-sm">{outcome === "saved" ? <>Saved. <Link href="/money/recurring" className="underline">See it on Recurring</Link></>
       : price ? "Kept the current amount." : "Dismissed. It won’t be suggested again."}</p> : <>

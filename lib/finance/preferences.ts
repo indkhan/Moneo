@@ -13,7 +13,6 @@ export type ForecastPreferences = z.infer<typeof forecastPreferencesSchema>;
 export function defaultForecastPreferences(currency: string): ForecastPreferences {
   return { currency_code: currency, safety_buffer_minor: "0", daily_spending_minor: "0", uncertainty_bps: 1000, spending_account_id: null, spending_starts_on: null };
 }
-// Conservative rounds downward and optimistic upward, including negative money.
 export function forecastCases(amount: bigint, uncertaintyBps = 1000) {
   if (!Number.isInteger(uncertaintyBps) || uncertaintyBps < 0 || uncertaintyBps > 10000) throw new Error("Invalid uncertainty assumption");
   const magnitude = amount < 0n ? -amount : amount;

@@ -32,7 +32,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.error) throw result.error;
     return Response.json(result.data);
   } catch (error) {
-    // Supabase errors are plain objects, so read their message rather than testing for Error.
     return Response.json({ error: reviewErrorMessage((error as { message?: string })?.message ?? "") }, { status: 400 });
   }
 }

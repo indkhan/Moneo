@@ -17,7 +17,6 @@ import { button, card, field, linkButton, percentOf } from "../ui";
 
 export const metadata = { title: "Spending limits" };
 
-/** Why a limit's remaining amount is unknown, and where to fix it. */
 function partialReason(limitation: string | null) {
   if (limitation === "Historical target unavailable") return { text: "No limit was recorded for this month, so the amount left is unknown." };
   if (limitation?.includes("classification")) return { text: "Only classified spending is shown, so the amount left is unknown.", href: "/import", action: "Review classifications" };
@@ -44,7 +43,6 @@ async function loadSpending(supabase: Db, workspaceId: string, from: string, bef
     .eq("workspace_id", workspaceId).gte("posted_on", from).lt("posted_on", before).order("id").range(start, end), 1000);
   const rows: (SpendingPlanTransaction & { refundOfId: string | null })[] = coverageRows.map(item => ({ amountMinor: BigInt(item.amount_minor), currencyCode: item.currency_code, status: item.status, kind: item.kind, reviewReasons: item.review_reasons,
     categoryId: item.category_id, postedOn: String(item.posted_on).slice(0, 10), refundOfId: item.refund_of_id ?? null }));
-  // Linked refunds count against the original purchase's category; batch the lookups in parallel.
   const refundIds = [...new Set(rows.flatMap(row => row.kind === "refund" && row.refundOfId ? [row.refundOfId] : []))];
   const batches = await Promise.all(Array.from({ length: Math.ceil(refundIds.length / 100) }, (_, index) =>
     supabase.from("transactions").select("id, category_id, currency_code").eq("workspace_id", workspaceId).in("id", refundIds.slice(index * 100, index * 100 + 100))));
@@ -93,7 +91,6 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
     return { ...plan, name: names.get(plan.category_id) ?? "Unknown category", sourceCoverage, periodEnabled: month === currentMonth ? plan.enabled : known?.enabled ?? null, spent: result.spentMinor, limit,
       allowance: result.allowanceMinor, rolloverResult: result.rolloverResult, remaining: result.remainingMinor, partial: result.partial, limitation: result.limitation };
   });
-  // Rollover loads earlier months too; this count is about the month on screen.
   const needsReview = rows.filter(row => row.status === "posted" && row.reviewReasons?.length && row.postedOn >= from && row.postedOn < next).length;
   const monthName = (value: string) => new Intl.DateTimeFormat(workspace.locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}-01T00:00:00Z`));
 

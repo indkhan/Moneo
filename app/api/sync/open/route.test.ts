@@ -7,7 +7,6 @@ const tables: Record<string, Record<string, unknown>[]> = {};
 vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({ returnValue: Promise.resolve() })) }));
 vi.mock("@/workflows/bank-sync", () => ({ syncBankConnection: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", () => ({ enableBankingConfigured: async () => true }));
-// The lease another trigger already holds; claim_bank_sync refuses those.
 const leased = new Set<string>();
 vi.mock("@/lib/bank/server", () => ({ psuFrom: () => ({ ip: "127.0.0.1", userAgent: "test" }),
   serviceDb: () => ({ rpc: async (_name: string, args: { p_connection_id: string }) => ({ data: !leased.has(args.p_connection_id), error: null }) }) }));
@@ -21,7 +20,6 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
 const now = Date.parse("2026-11-08T12:00:00Z");
 const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
 const open = async () => (await POST(new Request("http://localhost/api/sync/open", { method: "POST" }))).json();
-// Each test uses its own ids because the route remembers what it just tried.
 const connections = (scalable: { id: string; last_synced_at: string | null }[], banks: { id: string; last_synced_at: string | null }[]) => {
   tables.scalable_connections = scalable;
   tables.bank_connections = banks.map(bank => ({ last_attempted_at: null, ...bank }));
@@ -54,7 +52,6 @@ it("does not sync copied connections when opening an explicit desktop preview", 
   expect(start).not.toHaveBeenCalled();
 });
 
-// Opening Moneo while Sync now, the hourly job or a new consent was starting the same bank used to start a second sync.
 it("leaves a bank another trigger is already syncing alone", async () => {
   leased.add("b-running");
   connections([], [{ id: "b-running", last_synced_at: ago(180) }]);

@@ -1,8 +1,3 @@
-// Page-load measurements against a running production build (`npm run build && npx next start -p 3101`).
-// Per page and viewport it runs a few cold loads (fresh context, no HTTP cache) and reports the median TTFB, FCP, LCP,
-// time until the page heading is visible, CLS, long tasks over 50 ms, transfer size and JS bytes.
-//   node scripts/perf-pages.mjs <runs> <label=baseUrl>...      (needs e2e/.auth.json from scripts/e2e-auth.mjs)
-// Several builds are measured interleaved, run by run, so machine noise hits them alike. Writes .qa/perf-<label>.json each.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium, devices } from "@playwright/test";
 
@@ -13,7 +8,6 @@ const runs = Number(runsArg);
 const PAGES = ["/", "/ai", "/ai/artifacts", "/ai/activity", "/money/accounts", "/money/transactions", "/money/recurring", "/money/wealth", "/plan", "/plan/spending", "/settings"];
 const VIEWPORTS = { desktop: { viewport: { width: 1440, height: 900 } }, mobile: { ...devices["Pixel 7"] } };
 
-// Runs in the page before anything else: LCP, CLS, long tasks and when a heading first shows.
 const probe = () => {
   const m = (window.__perf = { lcp: 0, cls: 0, longTasks: 0, longTaskMs: 0, heading: 0 });
   new PerformanceObserver(list => { for (const e of list.getEntries()) m.lcp = e.startTime; }).observe({ type: "largest-contentful-paint", buffered: true });
@@ -32,7 +26,7 @@ const results = Object.fromEntries(targets.map(target => [target.label, {}]));
 for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
   for (const path of PAGES) {
     const samples = Object.fromEntries(targets.map(target => [target.label, []]));
-    for (let run = -1; run < runs; run++) { // run -1 warms server caches and is not recorded
+    for (let run = -1; run < runs; run++) {
       for (const { label, base } of targets) {
         const context = await browser.newContext({ ...vp, baseURL: base, storageState: "e2e/.auth.json" });
         await context.addInitScript(probe);
@@ -43,7 +37,7 @@ for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
             const sizes = await request.sizes(); const bytes = sizes.responseBodySize + sizes.responseHeadersSize;
             transfer += bytes; requests++;
             if (request.resourceType() === "script") js += sizes.responseBodySize;
-          } catch { /* request gone with the context */ }
+          } catch {}
         });
         const response = await page.goto(path, { waitUntil: "load" }).catch(() => null);
         await page.waitForTimeout(2000);

@@ -12,15 +12,11 @@ import { localValues, type LocalRun } from "./local";
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 export type CardVersion = { id: string; card_id: string; version: number; title: string; kind: "preset" | "code"; preset: string | null; compiled: string; queries: unknown; params: unknown };
 export type CardRow = { id: string; artifact_id: string; title: string; size: string; published_version: number | null };
-/** local is set for a card with sliders or switches, so the browser can rerun it as they move. */
 export type RenderedCard = { tree: CardNode | null; error: string | null; params: ParamState[]; local?: LocalRun | null };
 export const CARD_VERSION_COLUMNS = "id, card_id, version, title, kind, preset, compiled, queries, params";
 
-/** Each card's CSS and ids are namespaced by this, so two cards never clash. */
 export const cardScope = (cardId: string) => `c${cardId.replace(/-/g, "").slice(0, 12)}`;
 
-// Same card version, size, params and data give the same tree, so a repeat view skips the sandbox. The data is
-// part of the key, so a cached tree is never older than the data it was made from; scopes are checked before.
 const cache = new Map<string, CardNode>();
 const CACHE_ENTRIES = 500;
 const RENDERER_VERSION = 1;
@@ -34,7 +30,6 @@ function definition(version: Pick<CardVersion, "queries" | "params">) {
   return { queries: artifactQueriesSchema.parse(version.queries), params: cardParamsSchema.parse(version.params) };
 }
 
-/** Runs the card's queries for today, then its code in the sandbox, then checks the tree. Errors become a message, never a broken Home. */
 export async function renderCard(version: CardVersion, context: Context, { size, requested = {}, shared }: { size: CardSize; requested?: Record<string, string | undefined>; shared?: QueryShared }): Promise<RenderedCard> {
   const today = calendarDate(new Date(), context.settings.timezone);
   let params: ParamState[] = [];
@@ -56,7 +51,6 @@ export async function renderCard(version: CardVersion, context: Context, { size,
   }
 }
 
-/** The param names a checked tree has a Kit.Param control for, tab panels included. */
 function controls(node: CardNode, found = new Set<string>()): Set<string> {
   if (typeof node === "string") return found;
   if (node.type === "kit:Param") found.add(String(node.props.name));
@@ -65,10 +59,6 @@ function controls(node: CardNode, found = new Set<string>()): Set<string> {
   return found;
 }
 
-/**
- * Checks a new card before it is saved: it compiles, its queries are valid, and it renders a clean tree at
- * every size with today's data. The errors go back to the designer to fix.
- */
 export async function checkCard(source: string, queries: ArtifactQuery[], params: CardParam[], context: Context) {
   let compiled: string;
   try { compiled = compileCard(source); } catch (cause) { return { errors: [`Syntax: ${cause instanceof Error ? cause.message : String(cause)}`] }; }
@@ -79,7 +69,6 @@ export async function checkCard(source: string, queries: ArtifactQuery[], params
   const data = await runArtifactQueries(queries, context, today, { params: resolved });
   const errors: string[] = [];
   const values = { ...resolved.values, ...localValues(state) };
-  // Sliders and switches can be moved to any value: the card must also work at both ends, with the switches flipped.
   for (const end of ["min", "max"] as const) {
     const moved = Object.fromEntries(params.flatMap((param): [string, number | boolean][] => param.kind === "number" ? [[param.name, param[end]]] : param.kind === "toggle" ? [[param.name, !param.default]] : []));
     if (!Object.keys(moved).length) break;
@@ -89,7 +78,6 @@ export async function checkCard(source: string, queries: ArtifactQuery[], params
   for (const size of CARD_SIZE_KEYS) {
     try {
       const tree = sanitizeTree(await runCard(compiled, { data, params: values, size }), { scope: "check" });
-      // A control the card declares must be on it, at every size; otherwise the user asked for it and never sees it.
       const shown = controls(tree);
       const missing = params.filter(param => !shown.has(param.name)).map(param => param.name);
       if (missing.length) errors.push(`${size}: declared params without a <Kit.Param name="…" /> control: ${missing.join(", ")}`);
@@ -99,7 +87,6 @@ export async function checkCard(source: string, queries: ArtifactQuery[], params
   return errors.length ? { errors } : { compiled, errors, data };
 }
 
-/** The version a card shows: the one asked for (a draft preview), or the published one. */
 export async function loadCardVersion(supabase: SupabaseClient, workspaceId: string, cardId: string, version?: number | null) {
   const query = supabase.from("artifact_card_versions").select(CARD_VERSION_COLUMNS).eq("workspace_id", workspaceId).eq("card_id", cardId);
   const { data, error } = await (version ? query.eq("version", version) : query.order("version", { ascending: false }).limit(1)).maybeSingle();

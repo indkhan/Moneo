@@ -15,7 +15,6 @@ type Connection = {
 };
 type Bank = { name: string; country: string };
 
-// Countries Enable Banking serves (its changelog lists banks in each). A country without banks just shows an empty list.
 const COUNTRIES = ["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IS", "IT", "LT", "LU", "LV", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK"];
 const countryName = (code: string) => { try { return new Intl.DisplayNames(undefined, { type: "region" }).of(code) ?? code; } catch { return code; } };
 const RESULTS: Record<string, string> = {
@@ -24,10 +23,8 @@ const RESULTS: Record<string, string> = {
   invalid: "That bank link expired or was already used. Start the connection again.",
 };
 const day = 86_400_000;
-// A clicked sync counts as running until the workflow picks it up and stamps sync_started_at.
 const REQUEST_GRACE_MS = 60_000;
 
-// Reconnect banner from 7 days before consent ends (issue #82).
 export function consentState(connection: Pick<Connection, "status" | "valid_until">, now = Date.now()): "expired" | "expiring" | null {
   if (connection.status === "expired" || (connection.valid_until && Date.parse(connection.valid_until) <= now)) return "expired";
   if (connection.valid_until && Date.parse(connection.valid_until) - now < 7 * day) return "expiring";
@@ -37,7 +34,6 @@ export function consentState(connection: Pick<Connection, "status" | "valid_unti
 type StepState = "done" | "active" | "pending";
 const processedRows = (item: SyncImport) => item.new_rows + item.matched_rows + item.review_rows + item.rejected_rows;
 
-// The three phases a sync goes through, derived from server state so it survives navigation.
 export function syncSteps(connection: Pick<Connection, "aspsp_name" | "sync">) {
   const imports = connection.sync.imports;
   const total = imports.reduce((sum, item) => sum + item.total_rows, 0);
@@ -111,7 +107,6 @@ export function ConnectedBanks() {
     fetchConnections().then(loaded => {
       if (!live) return;
       setData(loaded);
-      // Start the bank picker on this computer's country (en-GB → GB isn't served, so it stays on DE).
       const region = navigator.language.split("-")[1]?.toUpperCase();
       if (region && COUNTRIES.includes(region)) setCountry(region);
       const result = new URLSearchParams(window.location.search).get("bank");
@@ -124,7 +119,6 @@ export function ConnectedBanks() {
   const running = (connection: Connection) => connection.sync.running || (now - (requested[connection.id] ?? 0) < REQUEST_GRACE_MS
     && (!connection.last_synced_at || Date.parse(connection.last_synced_at) < requested[connection.id]));
   const anyRunning = !!data?.connections.some(running);
-  // ponytail: one connections read every 2 s while a sync runs, paused in hidden tabs.
   useEffect(() => {
     if (!anyRunning) return;
     const timer = setInterval(() => {

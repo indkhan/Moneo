@@ -1,9 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NormalizedBankTransaction } from "./normalize";
 
-// Normalized bank context for ledger transactions: transaction -> source row (import_id, row_number) -> bank_transaction_raw.
-// Transactions that did not come from a bank sync, or whose import was undone, simply have no entry. The raw JSON stays
-// in the table; the organizer reads the normalized columns.
 export type RawContext = NormalizedBankTransaction & { bank_id: string | null };
 
 const COLUMNS = ["bank_id", "payment_type", "bank_code", "bank_sub_code", "mcc", "counterparty_name", "counterparty_iban", "counterparty_bic",

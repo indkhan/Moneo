@@ -1,6 +1,3 @@
-// The values Moneo needs before it can reach its database, so they can't live in it. `npm run
-// setup` writes them to .env (the desktop app keeps them in its data folder); this only shows
-// whether each is present, never the value.
 const ITEMS = [
   ["Database and services", ["SUPABASE_DB_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL"]],
   ["Automatic owner sign-in", ["MONEO_OWNER_EMAIL", "MONEO_OWNER_PASSWORD"]],
@@ -9,7 +6,6 @@ const ITEMS = [
 ] as const;
 
 export function SetupSecrets() {
-  // Read at request time: the desktop app and a source checkout share one build of this page.
   const desktop = process.env.MONEO_DESKTOP === "1";
   return <section aria-labelledby="setup-secrets" className="rounded-xl border border-border bg-card p-6">
     <h2 id="setup-secrets" className="text-sm font-medium">Set up automatically</h2>

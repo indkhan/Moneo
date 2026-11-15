@@ -1,8 +1,3 @@
-// Signs the persistent QA user in on the moneo-qa test backend (.env.qa) and saves e2e/.auth.json
-// for the authenticated Playwright specs. The first run creates the user and stores its login as
-// E2E_USER_EMAIL / E2E_USER_PASSWORD in the git-ignored .env.qa.
-// Sign in:                                  npm run qa:auth
-// Empty its workspace (specs expect one):  npm run qa:reset
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -23,8 +18,6 @@ if (process.argv.includes("--reset")) {
   await db.begin(async tx => {
     const [user] = await tx`select id, raw_user_meta_data->>'qa_test' as qa from auth.users where email=${email}`;
     if (user?.qa !== "e2e-auth") throw new Error("Refusing to reset a user not created by this script");
-    // Same as Settings "Reset all data": empties every table in dependency order with constraints on,
-    // then makes a fresh workspace with the default categories.
     await tx`select set_config('request.jwt.claim.sub', ${user.id}, true)`;
     await tx`select public.reset_workspace()`;
   });
@@ -39,17 +32,13 @@ if (!email) {
   const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const { error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { qa_test: "e2e-auth" } });
   if (error) throw error;
-  // Fill the empty lines .env.qa took from .env.example rather than adding a second pair.
   let text = readFileSync(ENV, "utf8");
   for (const [key, value] of [["E2E_USER_EMAIL", email], ["E2E_USER_PASSWORD", password]])
     text = new RegExp(`^${key}=.*$`, "m").test(text) ? text.replace(new RegExp(`^${key}=.*$`, "m"), `${key}=${value}`) : `${text.trimEnd()}\n${key}=${value}\n`;
   writeFileSync(ENV, text);
-  // Shared with other checkouts, like the rest of .env.qa (see scripts/setup.mjs).
   writeFileSync(join(homedir(), ".moneo", "qa.env"), text);
 }
 
-// There is no sign-in page (the app signs its owner in automatically), so sign the QA user in
-// here and save its session cookie: with it, the app serves the QA user's workspace instead.
 const cookies = [];
 const auth = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
   cookies: { getAll: () => [], setAll: list => cookies.push(...list) },

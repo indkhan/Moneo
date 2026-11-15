@@ -11,7 +11,6 @@ test("uses each agent's typed model and falls back to its default", () => {
   expect(modelIdFor(settings, "chat")).toBe("gpt-custom");
   expect(modelIdFor(settings, "imports")).toBe(AI_AGENTS.imports.model);
   expect(modelIdFor(undefined, "chat")).toBe(AI_AGENTS.chat.model);
-  // On a Claude plan the defaults are Claude models; a typed model still wins.
   expect(modelIdFor(settings, "imports", "claude")).toBe(AI_AGENTS.imports.claude);
   expect(modelIdFor(settings, "chat", "claude")).toBe("gpt-custom");
 });

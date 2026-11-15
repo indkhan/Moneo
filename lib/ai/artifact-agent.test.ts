@@ -45,7 +45,6 @@ it("keeps the current version when the designer can't produce a page that parses
 });
 
 it("shows the designer every query's shape even when an earlier one is large", async () => {
-  // A 100-row transaction list used to fill the whole sample, so the designer never saw balances and guessed its fields.
   const rows = Array.from({ length: 100 }, (_, index) => ({ merchant: `Merchant ${index}`, amount_minor: "-1250", note: "x".repeat(200) }));
   queries.run = async () => ({ history: { groups: rows }, balances: { accounts: [{ name: "Giro", currency: "EUR", balance_minor: "100346" }] } });
   vi.mocked(generateText).mockResolvedValue({ text: FIXED } as never);

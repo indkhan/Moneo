@@ -8,7 +8,6 @@ const addedOn = (windows: ReturnType<typeof run>["windows"], date: string) => tr
 
 describe("a transfer between tracked accounts", () => {
   it("is counted once on every day, whichever side lands first and however far apart", () => {
-    // Bank and broker balances replayed from the two sides, with any two dates inside the window.
     const days = ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05"];
     for (const brokerDay of days) for (const bankDay of days) {
       if (Math.abs(Date.parse(brokerDay) - Date.parse(bankDay)) > 3 * 86400000) continue;
@@ -72,7 +71,6 @@ describe("proof", () => {
   it("accepts the bank row carrying the same note as the deposit", () => {
     const row = leg("note", -60000, "2026-11-02", { provesBroker: false, text: "To invest Sam Example DE00" });
     expect(run([transfer("D", 60000, "2026-11-01", { description: "To invest" })], [row]).windows).toHaveLength(1);
-    // A word this short could be on anything.
     expect(run([transfer("D", 60000, "2026-11-01", { description: "stocks" })], [{ ...row, text: "stocks and more" }]).windows).toEqual([]);
   });
 
@@ -130,7 +128,6 @@ describe("the first real sync", () => {
     expect(brokerShownOn({ on_date: "2026-11-09", occurred_at: "2026-11-09T12:00:00Z" }, firstReal, reads)).toBeNull();
   });
 
-  // Bank, calculated history and real value replayed around the seam: the money must count once on every day.
   const days = ["2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"];
   const brokerValue = (day: string, onDate: string, amount: bigint) => day < firstReal ? (day >= onDate ? amount : 0n) : (onDate < firstReal || day >= (brokerShownOn({ on_date: onDate, occurred_at: `${onDate}T12:00:00Z` }, firstReal, reads) ?? "9999") ? amount : 0n);
 

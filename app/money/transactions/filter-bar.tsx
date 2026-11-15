@@ -13,11 +13,6 @@ export type FilterValues = Partial<Record<"q" | "from" | "to" | "account" | "cat
 
 const control = "min-h-10 w-full rounded-[10px] border border-input bg-card px-3 py-2 text-[13px]";
 
-/**
- * Compact filter bar. Everything lives in the URL; amounts are typed as
- * decimals in the account (or display) currency and converted exactly to
- * minor units before they reach the URL.
- */
 export function FilterBar({ values, accounts, categories, merchants, displayCurrency, timezone = "UTC" }: {
   values: FilterValues; accounts: (Named & { currency_code: string })[]; categories: Named[]; merchants: Named[]; displayCurrency: string; timezone?: string;
 }) {
@@ -29,7 +24,6 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
   const [direction, setDirection] = useState(values.direction ?? "");
   const shown = shownBounds(values.direction, values.minAmount, values.maxAmount);
   const [open, setOpen] = useState(false);
-  // "Uncategorized" filters by none; empty text means all categories.
   const categoryOptions = [{ id: "none", name: "Uncategorized" }, ...categories];
   const [categoryText, setCategoryText] = useState(categoryOptions.find(row => row.id === values.category)?.name ?? "");
   const categoryId = (choice => choice && "id" in choice ? choice.id : "")(resolveCategory(categoryOptions, categoryText));
@@ -64,7 +58,6 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
   }
 
   const active = Object.entries(values).filter(([key, value]) => value && key !== "sort" && key !== "group").length;
-  // One plain box by default; the detailed filters open only when asked for.
   return <div className="space-y-2">
   <div className="flex gap-2">
     <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex min-w-0 flex-1 gap-2">
@@ -82,7 +75,6 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       <input type="hidden" name="category" value={categoryId} />
       <CategoryCombobox label="Category" options={categoryOptions} value={categoryText} placeholder="All categories" onChange={setCategoryText} />
       <select name="merchant" defaultValue={values.merchant ?? ""} aria-label="Merchant" className={control}><option value="">All merchants</option><option value="none">Unknown</option>{merchants.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
-      {/* The links beside the results do this from md up. */}
       <select name="group" defaultValue={values.group ?? ""} aria-label="Group by" className={`${control} md:hidden`}><option value="">No grouping</option><option value="category">Group by category</option><option value="merchant">Group by merchant</option><option value="month">Group by month</option></select>
       <div className="flex gap-2 lg:col-span-2 lg:justify-end">
         <button type="button" aria-expanded={more} onClick={() => setMore(!more)} className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">{more ? "Fewer" : "More"}</button>

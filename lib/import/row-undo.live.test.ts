@@ -16,7 +16,6 @@ it.skipIf(process.env.RUN_IMPORT_ROW_UNDO_DB_TESTS !== "1")("reopens exact decis
       else {
         const [applied] = await tx`select statements from supabase_migrations.schema_migrations where version='202611040004'`;
         expect(applied, "Existing row decision schema must be tracked by its migration").toBeDefined();
-        // The CLI ledger splits statements, dropping their semicolons and blank lines.
         const comparable = (sql: string) => sql.replace(/[;\s]/g, "");
         expect(comparable(applied.statements.join("\n"))).toBe(comparable(migration));
       }
@@ -66,7 +65,6 @@ it.skipIf(process.env.RUN_IMPORT_ROW_UNDO_DB_TESTS !== "1")("reopens exact decis
       await tx`insert into public.source_transactions(id,workspace_id,import_id,row_number,original_row,status,review_reasons) values(${exclusion},${workspace},${imported},4,'{}','new',array['excluded_by_review'])`;
       await tx`update public.source_transactions set status='rejected' where id=${exclusion}`;
       expect(await tx`select id from public.import_row_decisions where source_id=${exclusion}`).toHaveLength(0);
-      // An active match is a dependency even if the transaction's own fields never changed.
       const extra = randomUUID();
       await tx`insert into public.source_transactions(id,workspace_id,import_id,row_number,original_row,status) values(${extra},${workspace},${imported},3,'{}','matched')`;
       await tx`insert into public.transaction_sources(transaction_id,source_transaction_id) values(${target},${extra})`;
@@ -76,7 +74,6 @@ it.skipIf(process.env.RUN_IMPORT_ROW_UNDO_DB_TESTS !== "1")("reopens exact decis
       await expect(tx.savepoint(sp => sp`select public.undo_import_row_decision(${accepted.id})`)).rejects.toThrow(/later transaction changes/);
       expect((await tx`select status from public.source_transactions where id=${source}`)[0].status).toBe("accepted");
       expect((await tx`select undone_at from public.import_row_decisions where id=${accepted.id}`)[0].undone_at).toBeNull();
-      // Correction history is retained after Undo, so both states refuse with the same honest reason.
       const version = async () => (await tx`select version from public.transactions where id=${target}`)[0].version;
       await tx`select public.correct_transaction(${target},${await version()},'Groceries','Corrected')`;
       await expect(tx.savepoint(sp => sp`select public.undo_import_row_decision(${accepted.id})`)).rejects.toThrow(/correction history is kept/);

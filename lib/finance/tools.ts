@@ -32,7 +32,6 @@ export async function listAccounts(context?: FinanceContext) {
 export async function getBalances(context?: FinanceContext, canReadImports = true, retainSupport = false) {
   const { supabase, workspace } = context ?? await requireWorkspace();
   const [evidence, sourceMetadata] = await Promise.all([loadBalanceEvidence(supabase, workspace.id), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports)]);
-  // Same basis as Overview, Accounts and Wealth, so chat quotes the balances the screens show. Archived accounts aren't current money.
   return resolveBalances(evidence.accounts.filter(account => !account.archived_at), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, sourceMetadata).map(account => retainSupport ? { ...account,
     calculationEvidence: { snapshots: evidence.snapshots.filter(snapshot => snapshot.account_id === account.id), ledger: evidence.ledger.filter(row => row.account_id === account.id) } } : account);
 }
@@ -49,7 +48,6 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
       return (accountIds ? query.in("account_id", accountIds) : query).order("id").range(start, end);
     });
   }
-  // Rows, source metadata and rates are independent reads, so they load together.
   const [rows, sourceMetadata, rates] = await Promise.all([loadRows(), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports),
     view === "base" ? loadExpenditureRates(supabase, workspace.id, { from, to, currencyCode }) : []]);
   const sourceCoverage = buildSourceCoverage({ from, to, ...(view ? {} : { currencyCode }), ...(accountIds ? { accountIds } : {}) }, rows, sourceMetadata?.imports, sourceMetadata?.sources);
@@ -84,14 +82,12 @@ export async function searchTransactions(input: unknown, context?: FinanceContex
       .eq("workspace_id", workspace.id);
     if (from) request = request.gte("posted_on", from);
     if (to) request = request.lte("posted_on", to);
-    // Amount bounds apply to the absolute amount, so spending (negative) and income match alike.
     if (minAmountMinor || maxAmountMinor) {
       const low = minAmountMinor ?? "0", high = maxAmountMinor ?? "999999999999999999";
       request = request.or(`and(amount_minor.gte.${low},amount_minor.lte.${high}),and(amount_minor.gte.-${high},amount_minor.lte.-${low})`);
     }
     return request.order("posted_on", { ascending: false });
   };
-  // Text matches come first; descriptions merely similar to the query ("Venji" for "Venjalin Ravindran") fill the rest.
   const [exact, similar] = await Promise.all([
     (query ? filtered().ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`) : filtered()).limit(limit),
     query ? supabase.rpc("similar_transaction_ids", { p_workspace_id: workspace.id, p_query: query, ...(from && { p_from: from }), ...(to && { p_to: to }),

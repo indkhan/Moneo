@@ -59,11 +59,6 @@ function scheduledPayments(input: { principalMinor: bigint; annualRate: string; 
   return result;
 }
 
-/**
- * The payments due from `start`, for a principal evidenced on `asOf`. Payment dates that passed since then are assumed
- * made as scheduled, with the stated interest. Asks for an update only when the schedule can't speak to it: it starts
- * before the principal it applies to, or the evidence is more than a year behind the schedule.
- */
 export function carriedDebtPayments(input: { principalMinor: bigint; annualRate: string; monthlyPaymentMinor: bigint; nextPaymentOn: string; asOf: string }, start: string, days: number) {
   if (input.nextPaymentOn >= start) return debtPayments(input, start, days);
   if (input.nextPaymentOn < input.asOf || dateValue(start).getTime() - dateValue(input.nextPaymentOn).getTime() > 365 * 86400000)
@@ -72,11 +67,7 @@ export function carriedDebtPayments(input: { principalMinor: bigint; annualRate:
 }
 
 export type WealthValue = { id: string; name: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
-/** A valuation is current when dated today, or for money lent to or owed to a person: that is a fixed
- * amount, not a market value, so it stays current from the day it changed hands until repaid. */
 export const currentOn = (row: Pick<WealthValue, "name" | "as_of">, today: string) => row.as_of === today || (row.as_of < today && parseIouName(row.name) !== null);
-/** Net worth counts the last known value of everything: an older value is flagged in `outdated`, never dropped,
- * so a late or failed sync can't change the total. Only a value dated in the future is left out. */
 export function wealthEvidence(rows: WealthValue[], today: string) {
   dateValue(today);
   const included: { id: string; name: string; amountMinor: bigint; currencyCode: string; asOf: string; provenance: string }[] = [];
@@ -99,10 +90,6 @@ export type WealthItem = WealthValue & { kind: "holding" | "asset" | "debt"; qua
   payment_account_id: string | null; annual_rate_text: string | null; monthly_payment_minor: string | null; next_payment_on: string | null;
   payment_assumption_id: string | null; payment_transaction_id: string | null; version: number; removed_at: string | null; sourceCoverage?: SourceCoverage };
 
-/**
- * What the Wealth page holds, for the chat: each item with its money formatted, money lent to or owed to a person
- * named as such, and totals per group and currency. Currencies are never added together.
- */
 export function wealthOverview(items: Pick<WealthItem, "id" | "name" | "kind" | "amount_minor" | "currency_code" | "as_of" | "removed_at">[]) {
   const totals = new Map<string, bigint>();
   const listed = items.filter(item => !item.removed_at).map(item => {
@@ -143,7 +130,6 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
     const missing = (reason: string) => missingInputs.push(`debt:${item.id}:${reason}`);
     if (BigInt(item.amount_minor) === 0n) continue;
     if (item.as_of > today) { missing("principal is dated in the future"); continue; }
-    // Money owed with no repayment plan at all, like a loan from a friend or broker debt: nothing to schedule.
     if (!item.payment_account_id && !item.payment_assumption_id && !item.payment_transaction_id && item.monthly_payment_minor !== null && BigInt(item.monthly_payment_minor) === 0n) continue;
     const account = accounts.find(account => account.id === item.payment_account_id);
     if (!account || account.archived_at || !["checking", "savings", "cash", "wallet"].includes(account.type ?? "") || account.currency_code !== item.currency_code) { missing("liquid repayment account"); continue; }
@@ -168,7 +154,6 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
     const itemEvents: typeof events = [];
     const missingBeforePayments = missingInputs.length;
     for (const payment of payments) {
-      // Current booked balances already deduct these dated pending holds in evaluatePlan.
       const matchingHolds = payment.date <= today ? ledger.filter(row => row.account_id === account.id && row.currency_code === item.currency_code && row.status === "pending" && BigInt(row.pending_released_minor ?? "0") < -minor(row.amount_minor) && row.posted_on === payment.date && minor(row.amount_minor) === -payment.paymentMinor) : [];
       if (matchingHolds.length) {
         if (matchingHolds.length !== 1 || matchingHolds[0].id !== item.payment_transaction_id || BigInt(matchingHolds[0].pending_released_minor ?? "0") > 0n) missing("pending repayment needs association");
@@ -176,7 +161,6 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
       }
       itemEvents.push({ date: payment.date, accountId: account.id, currencyCode: item.currency_code, amountMinor: -payment.paymentMinor });
     }
-    // Retain an existing confirmed obligation when its proposed replacement is invalid.
     if (missingInputs.length === missingBeforePayments) {
       if (item.payment_assumption_id) excludedAssumptionIds.push(item.payment_assumption_id);
       events.push(...itemEvents);

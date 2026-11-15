@@ -4,7 +4,6 @@ import type { WorkbookScope } from "@/lib/import/csv";
 export type WorkbookSheet = {sheetId: number; name: string; state: string; rowCount: number; columnCount: number; preview: {rowNumber: number; values: string[]}[]};
 type Table = WorkbookScope["tables"][number];
 
-/** What is wrong with one selected table's row range, or null when it can be previewed. */
 export function workbookRangeError(table: Table, tables: Table[], rowCount: number) {
   if (!Number.isInteger(table.headerRow) || !Number.isInteger(table.endRow) || table.headerRow < 1) return "Enter whole row numbers, starting at 1.";
   if (table.endRow <= table.headerRow) return "The last row must come after the header row.";

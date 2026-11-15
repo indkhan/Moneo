@@ -10,7 +10,6 @@ it("does only what Moneo's server asks, on fixed routes and Moneo's own connecti
   const bridge = await startBridge({ onReturn, update });
   const post = (path: string, headers: Record<string, string> = {}) => fetch(`${bridge.url}/return`, { method: "POST", headers: { "x-moneo-return": path, ...headers } });
   try {
-    // Without the launch's secret, or from a web page, nothing happens.
     const base = bridge.url.slice(0, bridge.url.lastIndexOf("/"));
     expect((await fetch(`${base}/guess/update/install`, { method: "POST" })).status).toBe(403);
     expect((await fetch(`${bridge.url}/update/install`, { method: "POST", headers: { origin: "https://example.com" } })).status).toBe(403);

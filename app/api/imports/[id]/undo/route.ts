@@ -69,8 +69,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json(result.data);
 }
 
-// A bank sync only re-fetches a week before its cursor. Once its rows are undone, the cursor would
-// skip them forever, so the next sync starts from the full window again; bank ids dedupe what remains.
 async function resetBankSyncWindow(context: Awaited<ReturnType<typeof requireWorkspace>>, importId: string) {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return;
   const imported = await context.supabase.from("imports").select("mapping").eq("id", importId).eq("workspace_id", context.workspace.id).maybeSingle();

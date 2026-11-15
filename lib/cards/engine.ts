@@ -1,12 +1,8 @@
-// Runs card code; loads on the server and, for a card with sliders or toggles, in the browser too.
 import { newQuickJSWASMModuleFromVariant, shouldInterruptAfterDeadline, type QuickJSWASMModule } from "quickjs-emscripten-core";
 import releaseSync from "@jitl/quickjs-wasmfile-release-sync";
 
-/** The element tree a card returns: plain data, never code. Our renderer turns it into React elements. */
 export type CardNode = string | { type: string; props: Record<string, unknown>; children: CardNode[] };
 
-// The card's code never sees the host: no imports, network, timers or storage. Elements are plain objects;
-// Kit.X is just the name "kit:X", which our renderer maps to our own components.
 const PRELUDE = `
 const Fragment = "#fragment";
 function flat(list, out) {
@@ -31,14 +27,9 @@ function require(name) { throw new Error("Cards cannot import modules (" + name 
 let quickjs: Promise<QuickJSWASMModule> | undefined;
 const engine = () => quickjs ??= newQuickJSWASMModuleFromVariant(releaseSync);
 
-// Not a design limit: they only stop a runaway loop or allocation from stalling Home.
 const DEADLINE_MS = 1000;
 const MEMORY_BYTES = 64 * 1024 * 1024;
 
-/**
- * Runs a compiled card in a fresh QuickJS context and returns its element tree as JSON-safe data.
- * Every render gets its own runtime, so nothing leaks between cards or workspaces.
- */
 export async function runCard(compiled: string, input: { data: unknown; params: Record<string, string | number | boolean>; size: string }): Promise<CardNode> {
   const runtime = (await engine()).newRuntime();
   runtime.setMemoryLimit(MEMORY_BYTES);

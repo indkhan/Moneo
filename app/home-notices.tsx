@@ -6,10 +6,8 @@ import { useEffect, useState } from "react";
 
 export type HomeNotice = { text: string; href: string; action: string };
 
-// Long enough for the sync on open to land, so a problem it fixes never flashes up.
 const WAIT_MS = 15_000, SHOW_MS = 10_000, SEEN_KEY = "moneo-seen-notices";
 
-/** Which notices to show, and what to remember: a problem shows once, and again only if it went away and came back or changed. */
 export function nextNotices(notices: HomeNotice[], seen: string[]) {
   const fresh = notices.filter(notice => !seen.includes(notice.text));
   return { fresh, seen: notices.map(notice => notice.text) };
@@ -22,17 +20,15 @@ function readSeen(): string[] {
   } catch { return []; }
 }
 function writeSeen(seen: string[]) {
-  try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch { /* blocked storage only means it may show again */ }
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch {}
 }
 
-/** Passing notices in the bottom-right corner, so the page itself stays clean. Details stay on Wealth and in Settings. */
 export function HomeNotices({ notices }: { notices: HomeNotice[] }) {
   const [shown, setShown] = useState<HomeNotice[]>([]);
   const signature = JSON.stringify(notices);
   useEffect(() => {
     const current: HomeNotice[] = JSON.parse(signature);
     const texts = current.map(notice => notice.text);
-    // Forget what has been fixed right away, so it can show again if it ever returns.
     writeSeen(readSeen().filter(text => texts.includes(text)));
     const wait = setTimeout(() => {
       const { fresh, seen } = nextNotices(current, readSeen());

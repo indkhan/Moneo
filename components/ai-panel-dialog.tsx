@@ -18,7 +18,6 @@ import { selectConversation } from "@/lib/ai/selected-conversation";
 import type { AskSeed } from "./ask-about";
 
 export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose: () => void; seed?: (AskSeed & { nonce: number }) | null }) {
-  // Beside the page on desktop, where it stays usable. Below lg the panel covers the page, so it is modal and keeps focus.
   const dialog = useRef<HTMLDialogElement>(null);
   const close = useRef(onClose);
   useEffect(() => { close.current = onClose; }, [onClose]);
@@ -33,7 +32,6 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       if (covering.matches) panel.showModal();
       else panel.show();
     };
-    // Escape works wherever focus is on desktop, unless a modal elsewhere (the command palette) owns it.
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || document.querySelector("dialog:modal:not(#moneo-ai-panel)")) return;
       event.preventDefault();
@@ -45,14 +43,12 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     return () => {
       covering.removeEventListener("change", present);
       document.removeEventListener("keydown", escape);
-      // present() reopens on a resize, so the browser's own focus return no longer knows the opener.
       panel.close();
       opener?.focus();
     };
   }, [open]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  // "Ask about this" drafts the question and attaches what it is about; the user still sends it.
   const [about, setAbout] = useState<AskSeed["about"] | null>(null);
   const [seenSeed, setSeenSeed] = useState<number | null>(null);
   if (seed && seed.nonce !== seenSeed) { setSeenSeed(seed.nonce); setQuestion(seed.question); setAbout(seed.about ?? null); }
@@ -61,7 +57,6 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   const [older, setOlder] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [loading, setLoading] = useState(false);
-  // A request in this chat still working in the background, e.g. after the app was closed mid-answer.
   const [running, setRunning] = useState(false);
   const [selectionKey, setSelectionKey] = useState("");
   const generation = useRef(0);
@@ -93,13 +88,11 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     const counter = generation;
     return () => { window.clearTimeout(timer); ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
   }, [open, load]);
-  // Keep the newest answer, and any card under it, in view, as the AI page does.
   const end = useRef<HTMLDivElement>(null);
   const followOutput = useFollowOutput(end, [history.length, pending]);
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
-  // Until that run's answer is saved, check on it and reload the chat once it is done.
   usePolling(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => response.json())
     .then(result => { if (!result.running) void load(); }).catch(() => {}), 3000, open && running && !busy && !!conversationId);
   useEffect(() => {
@@ -111,12 +104,10 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   function ask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if ((!question.trim() && !files.ready.length) || loading || historyError) return;
-    // Files go with the next message the user sends themselves, never with a queued one.
     if (busy) { if (files.items.length) return; enqueue(question); setQuestion(""); return; }
     void sendMessage(question, false, files.ready);
   }
 
-  // As in the AI page composer: spoken words join the typed ones and queue while a reply runs.
   function sendSpoken(text: string) {
     const typed = withSpoken(question, text);
     if (files.uploading || files.items.some(item => item.error) || (busy && files.items.length) || loading || historyError) { setQuestion(typed); document.getElementById("panel-question")?.focus(); return; }
@@ -143,12 +134,10 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken },
         ...(live.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })), { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: live.tools.length ? live.tools : result.toolsUsed, plan: live.plan, followUps: result.followUps }]);
       setAbout(null);
-      // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
       if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }
     } else if (!result && !queued) { setQuestion(current => current || typed); files.restore(attachments); }
   }
 
-  // A queued message that fails goes back to the queue, so the composer keeps what the user is typing.
   function startQueued(message: string) {
     if (busy || loading || historyError) return false;
     void sendMessage(message, true);

@@ -21,6 +21,5 @@ it("stops auto-applying medium labels when fewer than 90% of the last 200 judged
   const tripped = calibration(verdicts(179, 21));
   expect(tripped).toMatchObject({ mediumAllowed: false, judged: 200 });
   expect(tripped.reason).toBeTruthy();
-  // Only the newest 200 count: old mistakes age out.
   expect(calibration([...verdicts(200, 0), ...verdicts(0, 100)]).mediumAllowed).toBe(true);
 });

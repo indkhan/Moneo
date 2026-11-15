@@ -12,7 +12,6 @@ it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusio
   const actor = randomUUID();
   try {
     try { await db.begin(async tx => {
-      // Test the deployed schema, never replay an applied migration in the fixture.
       const [applied] = await tx`select name,statements from supabase_migrations.schema_migrations where version='202610060002'`;
       expect(applied, "Deploy migration 202610060002 before running this live test").toBeDefined();
       expect(applied.name).toBe("import_row_exclusions");

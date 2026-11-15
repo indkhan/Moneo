@@ -1,12 +1,3 @@
-// Stand-in for the `fs-xattr` package inside the bundled Storage API (supabase/storage). Its file
-// backend keeps each object's content type, cache control and etag in extended attributes.
-// - Windows has no xattrs and fs-xattr refuses to install there, so the values live in NTFS
-//   alternate data streams (`<file>:<attribute>`), which move, copy and delete with the file.
-// - macOS and Linux load fs-xattr's own N-API addon (built per platform by
-//   scripts/desktop/fetch-backend.mjs) from MONEO_FS_XATTR_ADDON, so the on-disk format there is
-//   exactly upstream's.
-// Only the functions fs-xattr 0.4.0 exports are provided; listing attributes is not possible with
-// Node's fs on Windows and Storage does not use it.
 "use strict";
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS on purpose: Storage's CommonJS build require()s it */
 const fs = require("node:fs");
@@ -30,7 +21,7 @@ function missingAttribute(path, attr) {
 
 function streamPath(path, attr) {
   if (/[:\\/]/.test(attr)) throw new TypeError("`attr` cannot contain ':', '/' or '\\' on Windows");
-  fs.statSync(path); // ENOENT for a missing file instead of creating one through its stream
+  fs.statSync(path);
   return `${path}:${attr}`;
 }
 

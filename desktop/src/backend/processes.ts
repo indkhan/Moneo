@@ -1,11 +1,9 @@
-// Child processes, logs, ports and health checks for the native services.
 import { spawn, fork as nodeFork, type ChildProcess } from "node:child_process";
 import { createWriteStream, existsSync, realpathSync, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
-// A forked Node process: Electron's utilityProcess.fork in the app, child_process.fork elsewhere.
 export interface ForkedProcess {
   readonly pid?: number;
   readonly stdout: NodeJS.ReadableStream | null;
@@ -15,10 +13,8 @@ export interface ForkedProcess {
 }
 export type ForkFn = (modulePath: string, args: string[], options: { env: Record<string, string>; cwd: string; serviceName: string }) => ForkedProcess;
 
-// Electron has no ELECTRON_RUN_AS_NODE in Moneo (fuses disable it), so a Node child is a utilityProcess.
 export const defaultFork: ForkFn = (modulePath, args, options) => {
   if (process.versions.electron) {
-    // Loaded lazily so the module also runs under plain Node.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { utilityProcess } = require("electron") as typeof import("electron");
     return utilityProcess.fork(modulePath, args, { env: options.env, cwd: options.cwd, stdio: "pipe", serviceName: options.serviceName }) as unknown as ForkedProcess;
@@ -35,7 +31,6 @@ export function platformKey() {
   return key;
 }
 
-// Appends to <logs>/<name>.log, rotating to .1 once it passes 10 MB at open.
 export async function openLog(logs: string, name: string): Promise<WriteStream> {
   await fs.mkdir(logs, { recursive: true });
   const file = path.join(logs, `${name}.log`);
@@ -49,8 +44,6 @@ export function pipeTo(log: WriteStream, child: { stdout: NodeJS.ReadableStream 
   child.stderr?.pipe(log, { end: false });
 }
 
-// Runs a program to its exit. Resolves on "exit", not "close": pg_ctl start leaves a server
-// running that may hold inherited handles open.
 export function runProgram(file: string, args: string[], options: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; log?: WriteStream; waitForClose?: boolean } = {}) {
   return new Promise<{ code: number | null; output: string }>((resolve, reject) => {
     const child = spawn(file, args, { env: options.env ?? process.env, cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
@@ -97,7 +90,6 @@ export async function preferredPort(port: number) {
   return (await portIsFree(port)) ? port : freePort();
 }
 
-// Polls until check() resolves true; rejects with the last error after timeoutMs.
 export async function waitFor(what: string, check: () => Promise<boolean>, timeoutMs: number, exited?: () => string | undefined) {
   const deadline = Date.now() + timeoutMs;
   let last: unknown;
@@ -122,8 +114,6 @@ export function isAlive(pid: number) {
 
 export type ProcessInfo = { exe?: string; commandLine?: string };
 
-// Executable path and command line of running processes, read before touching a PID left by an
-// earlier run. A PID that is gone, or whose details cannot be read, is missing from the result.
 export async function processInfo(pids: number[]): Promise<Map<number, ProcessInfo>> {
   const result = new Map<number, ProcessInfo>();
   const alive = [...new Set(pids)].filter(pid => Number.isInteger(pid) && pid > 0 && isAlive(pid));
@@ -143,7 +133,6 @@ export async function processInfo(pids: number[]): Promise<Map<number, ProcessIn
       const commandLine = await fs.readFile(`/proc/${pid}/cmdline`, "utf8").then(text => text.split(String.fromCharCode(0)).join(" ")).catch(() => undefined);
       result.set(pid, { exe, commandLine });
     } else {
-      // macOS: comm is the full path of the executable.
       const exe = (await runProgram("ps", ["-p", String(pid), "-o", "comm="])).output.trim() || undefined;
       const commandLine = (await runProgram("ps", ["-p", String(pid), "-o", "args="])).output.trim() || undefined;
       result.set(pid, { exe, commandLine });
@@ -154,18 +143,16 @@ export async function processInfo(pids: number[]): Promise<Map<number, ProcessIn
 
 const comparable = (file: string) => {
   let resolved = path.resolve(file);
-  try { resolved = realpathSync.native(resolved); } catch { /* compare as given */ }
+  try { resolved = realpathSync.native(resolved); } catch {}
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 };
 
-// True when file is dir itself or inside it, after resolving links (junctions included).
 export function isInside(file: string | undefined, dir: string) {
   if (!file) return false;
   const relative = path.relative(comparable(dir), comparable(file));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-// Whether a command line names file (separators and, on Windows, case ignored).
 export const mentions = (commandLine: string | undefined, file: string) => {
   const normalize = (text: string) => (process.platform === "win32" ? text.toLowerCase() : text).replaceAll("\\", "/");
   return commandLine !== undefined && normalize(commandLine).includes(normalize(path.resolve(file)));
@@ -177,13 +164,11 @@ async function terminate(pid: number) {
   try { process.kill(pid); } catch { return; }
   const deadline = Date.now() + 5000;
   while (isAlive(pid) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
-  if (isAlive(pid)) try { process.kill(pid, "SIGKILL"); } catch { /* gone */ }
+  if (isAlive(pid)) try { process.kill(pid, "SIGKILL"); } catch {}
 }
 
 export type PidEntry = { service: string; pid: number; exe: string; script?: string };
 
-// PIDs and executables of the services this backend started (<home>/run/services.json), so a start
-// after a crash or a force-quit can end the ones left behind.
 export class PidFile {
   constructor(private file: string) {}
   async read(): Promise<PidEntry[]> {
@@ -194,10 +179,6 @@ export class PidFile {
     await fs.mkdir(path.dirname(this.file), { recursive: true });
     await fs.writeFile(this.file, JSON.stringify(entries));
   }
-  // Ends a recorded process only while it is alive and still the program that was started:
-  // its executable is the recorded one and lies inside the bundled backend (GoTrue, PostgREST), or,
-  // for a Node service, it is the recorded Node/Electron binary running the recorded script from the
-  // bundle. Anything else with a reused PID is left alone; nothing is ever matched by name.
   async killStale(bundle: string[], log: (line: string) => void) {
     const bundled = (file: string | undefined) => bundle.some(dir => isInside(file, dir));
     const entries = await this.read();

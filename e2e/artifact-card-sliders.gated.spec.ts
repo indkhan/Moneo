@@ -8,7 +8,6 @@ const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state || !process.env.SUPABASE_DB_URL || !process.env.E2E_USER_EMAIL, gatedSkipReason());
 
-// Saved directly, as the artifact's chat would save it, so no AI provider is called.
 const CARD = `export default function Card({ params }) {
   const total = BigInt(params.monthly) * BigInt(params.yearly ? 12 : 1);
   return <div style={{ display: "grid", gap: 10 }}>
@@ -36,13 +35,11 @@ test("a card's slider and switch recalculate it in the browser, without asking t
 
     await page.goto(`/ai/artifacts/${id}?tab=cards`);
     const card = page.getByRole("region", { name: `${title} card`, exact: true });
-    // The workspace locale decides how money looks (€200.00 or EUR 200.00), so only the figures are checked.
     const total = card.getByRole("paragraph").first();
     await expect(total).toHaveText(/200\.00/, { timeout: 30_000 });
     const slider = card.getByRole("slider", { name: /^Each month/ });
     await expect(slider).toHaveAttribute("aria-valuetext", /200\.00/);
 
-    // A move before the page has hydrated is undone by React, so the first move is repeated until the card answers.
     await expect(async () => { await slider.fill("50000"); await expect(total).toHaveText(/500\.00/, { timeout: 2000 }); }).toPass({ timeout: 20_000 });
     await expect(slider).toHaveAttribute("aria-valuetext", /500\.00/);
     await card.getByRole("switch", { name: "Show per year" }).click();

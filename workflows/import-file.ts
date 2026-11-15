@@ -14,7 +14,6 @@ function checked<T>(result: { data: T | null; error: { message: string } | null 
   return result.data;
 }
 
-// followUps is false for a bank sync, which requests one agent pass for all its accounts.
 export async function importFile(importId: string, workspaceId: string, rowCount: number, runVersion = 1, followUps = true) {
   "use workflow";
   try {
@@ -32,20 +31,14 @@ export async function importFile(importId: string, workspaceId: string, rowCount
   await startAgentTeam(importId, workspaceId);
 }
 
-// As soon as new rows land: each gets its identity, then transfers between the owner's own accounts are linked
-// (so a later import from the other bank completes the pair), exchanges marked, and unproven pairs and moves with
-// nobody on the other side go to the owner. Failures never affect the completed import; the next import retries.
-// One step under its old name, so imports already running when Moneo updates resume cleanly.
 async function linkOwnTransfersStep(workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
   const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   try { await resolveNewIdentities(db, workspaceId); } catch (error) { console.error("Identities were not resolved", error); }
-  try { await linkOwnTransfers(db, workspaceId); } catch (error) { console.error("Own-account transfers were not linked", error); } // The next import retries.
+  try { await linkOwnTransfers(db, workspaceId); } catch (error) { console.error("Own-account transfers were not linked", error); }
 }
 
-// An import's rows request an agent pass (lib/ai/agent-dispatch.ts); it only proposes,
-// and a failure here never affects the completed import.
 async function startAgentTeam(importId: string, workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
@@ -53,7 +46,7 @@ async function startAgentTeam(importId: string, workspaceId: string) {
   try {
     const imported = checked(await db.from("imports").select("new_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number | null };
     if (imported.new_rows) await startAgentRun(db, workspaceId, { importId });
-  } catch (error) { console.error("Agent team did not start", error); } // Owners can start it from /ai/agents.
+  } catch (error) { console.error("Agent team did not start", error); }
 }
 
 async function prepareImport(importId: string, workspaceId: string, rowCount: number, runVersion: number) {
@@ -134,8 +127,6 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
 async function processImportBatch(importId: string, workspaceId: string, offset: number, runVersion: number) {
   "use step";
   const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  // Retry stale candidate evidence inside the same durable step. Every attempt
-  // rereads candidates and every batch transaction fences canceled/old workers.
   for (let attempt = 0; attempt < 3; attempt++) {
     const candidates = checked(await db.rpc("import_batch_candidates", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_offset: offset }));
     const decisions = batchDecisions(candidateRowsSchema.parse(candidates));

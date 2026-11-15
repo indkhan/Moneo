@@ -36,7 +36,6 @@ export async function PATCH(request: Request, route: Context) {
   return Response.json(result.data);
 }
 
-/** Soft delete: the chat leaves every list, while requests, audited edits and evidence stay intact. */
 export async function DELETE(_request: Request, route: Context) {
   const found = await owned(route);
   if (found instanceof Response) return found;

@@ -14,7 +14,6 @@ const assumptionId = z.uuid();
 const assumptionCadence = z.enum(scheduleCadences);
 const currencyCode = z.string().regex(/^[A-Z]{3}$/, "Choose a currency from the list");
 
-/** Forms ask Income or Expense, so people type a plain amount; storage stays signed. Without a choice the typed sign stands. */
 function signedAmount(form: FormData, typed: bigint) {
   const size = typed < 0n ? -typed : typed;
   return form.get("direction") === "in" ? size : form.get("direction") === "out" ? -size : typed;

@@ -32,7 +32,6 @@ async function chooseSource(form: FormData) {
 
 const claudeBack = (message: string) => redirect(`/settings?claude=${encodeURIComponent(message)}#ai-access`);
 
-// Claude Code's own sign-in opens the browser on the computer running Moneo, so it starts only there.
 async function signInWithClaude() {
   "use server";
   await requireWorkspace();
@@ -47,12 +46,10 @@ async function finishClaudeSignIn(form: FormData) {
   await requireWorkspace();
   try { submitClaudeCode(String(form.get("code") ?? "")); }
   catch (error) { claudeBack(error instanceof ClaudeError ? error.message : "Claude sign-in failed. Try again."); }
-  // Claude Code checks the code with Anthropic, then exits.
   for (let waited = 0; waited < 20_000 && claudeSignInState().running; waited += 250) await new Promise(resolve => setTimeout(resolve, 250));
   claudeBack(await claudeSignedInMessage());
 }
 
-/** Reads the sign-in again after it finished in the browser on its own. */
 async function checkClaude() {
   "use server";
   await requireWorkspace();
@@ -76,7 +73,6 @@ async function cancelClaude() {
   revalidatePath("/settings");
 }
 
-// Stops Moneo using Claude without signing Claude Code out, so other Claude tools keep working.
 async function stopUsingClaude() {
   "use server";
   await requireWorkspace();
@@ -86,14 +82,10 @@ async function stopUsingClaude() {
 
 const button = "min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted";
 
-// Three equal ways to pay for AI: the owner's ChatGPT plan, their Claude plan or an OpenAI API key, plus
-// an optional OpenRouter key. Model IDs with a "/" always go to OpenRouter; voice needs the OpenAI key
-// because plan usage, Claude and OpenRouter have no realtime audio. Keys are saved encrypted in the database.
 export async function AiAccess({ message, claudeMessage }: { message?: string; claudeMessage?: string }) {
   const [status, keys, claude] = await Promise.all([chatgptStatus(), serviceKeyStatus(), claudeAccount()]);
   const signingIn = claudeSignInState();
   const hasKey = Boolean(keys.openai_api_key.source), hasOpenRouter = Boolean(keys.openrouter_api_key.source);
-  // Choosing Claude never falls back to a paid route: while Claude Code is signed out, no AI runs.
   const active: AiSource | null = status.source === "claude" ? (claude.signedIn ? "claude" : null)
     : status.signedIn && (status.source === "chatgpt" || !hasKey) ? "chatgpt" : hasKey ? "api_key" : null;
   const option = (source: AiSource) => `rounded-lg border p-4 ${active === source ? "border-foreground" : "border-border"}`;

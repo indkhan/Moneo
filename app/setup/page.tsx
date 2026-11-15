@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 
-// Pages land here when the owner could not be signed in automatically (see proxy.ts).
 export default async function Login() {
-  // Read at request time: the desktop app and a source checkout share one build of this page.
   await connection();
   const desktop = process.env.MONEO_DESKTOP === "1";
   return <main className="mx-auto grid min-h-screen w-full max-w-md place-items-center px-4">

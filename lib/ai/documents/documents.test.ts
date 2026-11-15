@@ -7,12 +7,10 @@ import { attachmentParts } from "./message";
 import { citedSection, documentForModel, readDocument } from "./read";
 import { sniffType } from "./sniff";
 
-// Tiny documents built here, so the tests carry no real files.
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/** A PDF with one page per entry; an empty entry is a page without text, drawn as a grey box like a scan. */
 function pdf(...pages: string[]) {
   const objects = ["<</Type/Catalog/Pages 2 0 R>>", `<</Type/Pages/Kids[${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}]/Count ${pages.length}>>`];
   for (const [index, text] of pages.entries()) {
@@ -21,7 +19,6 @@ function pdf(...pages: string[]) {
       `<</Length ${stream.length}>>stream\n${stream}\nendstream`);
   }
   objects.push("<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>");
-  // pdf.js rebuilds the cross-reference table, so the offsets can be left out.
   return new TextEncoder().encode(`%PDF-1.4\n${objects.map((body, index) => `${index + 1} 0 obj${body}endobj`).join("\n")}\ntrailer<</Root 1 0 R/Size ${objects.length + 1}>>\n%%EOF`);
 }
 
@@ -47,7 +44,6 @@ const docx = () => zip({
 const slide = (text: string) => `<p:sld><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
 const pptx = () => zip({
   "[Content_Types].xml": contentTypes("presentationml.presentation.main+xml"),
-  // Slide order comes from the presentation, not from file names.
   "ppt/presentation.xml": `<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId3"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst></p:presentation>`,
   "ppt/_rels/presentation.xml.rels": `<Relationships><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/></Relationships>`,
   "ppt/slides/slide1.xml": slide("Budget plan"),

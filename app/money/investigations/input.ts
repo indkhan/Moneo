@@ -1,6 +1,5 @@
 import { investigationSchema } from "@/lib/finance/investigation";
 
-/** The first thing wrong with typed period fields, in words, so the page never shows raw validation output. */
 export function periodProblem(params: Record<string, string | string[] | undefined>) {
   const value = (key: string) => { const raw = params[key]; return (Array.isArray(raw) ? raw[0] : raw) || ""; };
   const real = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`)) && new Date(`${date}T00:00:00Z`).toISOString().startsWith(date);
@@ -12,7 +11,6 @@ export function periodProblem(params: Record<string, string | string[] | undefin
   return "Check the period: use real dates, with From on or before To.";
 }
 
-/** Whether a submitted form left every box of a group unticked, so the default was used instead. */
 export function defaultedChoices(params: Record<string, string | string[] | undefined>) {
   if (!params.metric) return [];
   return [...(params.statuses ? [] : ["Posted is used because no status was ticked"]), ...(params.kinds ? [] : ["Regular and Refund are used because no type was ticked"])];

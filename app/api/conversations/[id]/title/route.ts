@@ -3,7 +3,6 @@ import { requireWorkspace } from "@/lib/auth";
 import { conversationWords, writeTitle } from "@/lib/ai/chat-title";
 import { modelForSettings } from "@/lib/ai/provider";
 
-/** Writes a new title when the owner asks for one, even over a rename: asking is their choice. */
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) return Response.json({ error: "Conversation unavailable" }, { status: 404 });

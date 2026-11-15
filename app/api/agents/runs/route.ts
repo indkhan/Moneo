@@ -4,7 +4,6 @@ import { requireAiScope } from "@/lib/settings";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
 import { service } from "@/lib/ai/agent-runtime";
 
-/** Starts a manual agent-team run (or returns the one already running). */
 export async function POST() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }

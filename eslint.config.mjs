@@ -2,7 +2,6 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
-// Test rules from AGENTS.md "Tests".
 const realWait = [
   {
     selector: "NewExpression[callee.name='Promise'] CallExpression[callee.name='setTimeout'][arguments.1.type='Literal']",
@@ -26,13 +25,11 @@ const migrationText = {
   message: "Test behaviour, not migration text. Don't read supabase/migrations in unit tests (AGENTS.md Tests).",
 };
 
-// Port 3000 is the owner's app; tests reach only the QA server through the configured base URL.
 const ownerApp = {
   selector: ":matches(Literal[value=/(localhost|127\.0\.0\.1):3000/], TemplateElement[value.raw=/(localhost|127\.0\.0\.1):3000/])",
   message: "Port 3000 is the owner's app. Use the base URL from playwright.config.ts (the QA server on 3100) (AGENTS.md Test backend).",
 };
 
-// Unit tests that apply or replay migrations on purpose.
 const migrationReaders = [
   "lib/schema.test.ts",
   "lib/finance/currency-precision-contract.test.ts",

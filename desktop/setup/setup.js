@@ -1,4 +1,3 @@
-// Setup/status window. State comes from the main process (desktop/src/setup-window.ts).
 const api = window.moneoSetup;
 const $ = id => document.getElementById(id);
 

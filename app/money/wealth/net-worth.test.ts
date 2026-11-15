@@ -133,7 +133,6 @@ describe("things that change over time", () => {
     expect(total([event("a", "2026-11-01T10:00:00Z", {}, { undone_at: "2026-11-03T10:00:00Z" })], [item({ removed_at: "2026-11-03T10:00:00Z" })], dates)).toEqual([0n, 0n, 0n, 0n, 0n]);
     const created = event("a", "2026-11-01T10:00:00Z", {}), removal = event("b", "2026-11-03T10:00:00Z", { removed_at: "2026-11-03T10:00:00Z" });
     expect(total([created, removal], [item({ removed_at: "2026-11-03T10:00:00Z" })], dates)).toEqual([1000n, 1000n, 0n, 0n, 0n]);
-    // Undoing the removal brings every day back.
     expect(total([created, { ...removal, undone_at: "2026-11-04T10:00:00Z" }], [item()], dates)).toEqual([1000n, 1000n, 1000n, 1000n, 1000n]);
   });
 
@@ -146,7 +145,6 @@ describe("things that change over time", () => {
     const loan = (over: Over) => event("x", "2026-11-01T10:00:00Z", { name: "Lent to Sam", kind: "asset", quantity_text: null, ...over });
     const snapshots = [{ account_id: "bank", amount_minor: "90000", currency_code: "EUR", as_of: "2026-11-01T00:00:00Z" }];
     const ledger = [{ account_id: "bank", amount_minor: "4000", currency_code: "EUR", posted_on: "2026-11-03", status: "posted" }, { account_id: "bank", amount_minor: "6000", currency_code: "EUR", posted_on: "2026-11-05", status: "posted" }];
-    // Lent 100.00 before the balance date; 40.00 comes back on the 3rd and the last 60.00 on the 5th.
     const events = [loan({ amount_minor: "10000" }), { ...loan({ amount_minor: "6000", as_of: "2026-11-03" }), id: "y" }, { ...loan({ amount_minor: "6000", as_of: "2026-11-03", removed_at: "2026-11-05T00:00:00Z" }), id: "z" }];
     const series = netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["bank"]), snapshots, ledger, valuations: valuationHistory(events as never, [item({ removed_at: "2026-11-05T00:00:00Z" })] as never, "UTC") });
     expect(new Set(series.map(point => netWorth(point).get("EUR")))).toEqual(new Set([100000n]));
@@ -158,7 +156,6 @@ describe("things that change over time", () => {
     const archivedOn = archiveDates([{ id: "old", archived_at: "2026-11-03T12:00:00Z" }, { id: "new", archived_at: null }], "UTC");
     const series = netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["old", "new"]), archivedOn, snapshots, ledger, valuations: [] });
     expect(series.map(point => netWorth(point).get("EUR"))).toEqual([5100n, 5100n, 5100n, 5100n, 5100n]);
-    // Old archives, closed without being asked, still drop on their date rather than rewriting the past.
     expect(netWorthSeries({ dates, timeZone: "UTC", accountIds: new Set(["old", "new"]), archivedOn, snapshots, ledger: [], valuations: [] }).map(point => netWorth(point).get("EUR"))).toEqual([5100n, 5100n, 100n, 100n, 100n]);
   });
 });
@@ -191,7 +188,6 @@ describe("the graph's safeguards", () => {
     const reviewed = snapshot({ boundary_kind: "reviewed_activity", as_of: "2026-10-01T12:00:00Z", covered_transactions: covered });
     const good = netWorthSeries({ ...base, dates: ["2026-09-30", "2026-10-01", "2026-10-02"], snapshots: [reviewed], ledger: [row] });
     expect(good.map(point => [netWorth(point).get("EUR"), point.uncertain])).toEqual([[1100n, []], [1000n, []], [1000n, []]]);
-    // The reviewed row was corrected afterwards: the balance can't be proven any more.
     const changed = netWorthSeries({ ...base, dates: ["2026-10-02"], snapshots: [reviewed], ledger: [{ ...row, amount_minor: "-150" }] });
     expect(changed[0].uncertain).toEqual(expect.arrayContaining([expect.stringContaining("review the booked balance")]));
     expect(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], [reviewed], [{ ...row, amount_minor: "-150" }], "2026-10-02T12:00:00Z", "UTC")[0].balance.status).toBe("ambiguous");

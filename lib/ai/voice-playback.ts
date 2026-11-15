@@ -1,4 +1,3 @@
-/** Local playback gate; the remote stream continues so its quiet boundary can release the mute. */
 export class VoicePlayback {
   private duckUntil = 0;
   private stopped = false;

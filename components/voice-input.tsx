@@ -9,11 +9,6 @@ import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 
 const clock = (ms: number) => { const seconds = Math.floor(ms / 1000); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
 
-/**
- * The mic for a text input. A tap or a hold both start recording (on release, which Safari needs for the mic);
- * live words show over the input with a level meter, then the arrow sends them, the check puts them in the input to edit,
- * and the cross or Escape discards them. Put it inside a `relative` form: the recording view covers that form.
- */
 export function VoiceInput({ onSend, onDone, disabled = false, compact = false }: {
   onSend: (text: string) => void; onDone: (text: string) => void; disabled?: boolean; compact?: boolean;
 }) {
@@ -24,12 +19,10 @@ export function VoiceInput({ onSend, onDone, disabled = false, compact = false }
   const words = useRef<HTMLParagraphElement>(null);
   const wasActive = useRef(false);
   const [now, setNow] = useState(0);
-  // Without an OpenAI API key the mic explains what is missing instead of asking for the microphone.
   const access = useAiAccess();
   const [needsKey, setNeedsKey] = useState(false);
   useEffect(() => {
     if (status === "recording") done.current?.focus();
-    // Send and Cancel leave nothing focused; Done hands focus to the input itself.
     if (status === "idle" && wasActive.current && (!document.activeElement || document.activeElement === document.body)) mic.current?.focus();
     wasActive.current = status !== "idle";
     if (status !== "recording") return;

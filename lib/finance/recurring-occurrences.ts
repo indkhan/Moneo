@@ -5,7 +5,6 @@ export type SettlementReceipt = { account_id: string; amount_minor: string; curr
 export type OccurrenceSettlement = { id: string; assumption_id: string; scheduled_on: string; transaction_id: string; completes_occurrence: boolean; receipt: SettlementReceipt; undone_at: string | null; version?: number };
 
 type Obligation = { id: string; account_id: string | null; amount_minor: string; currency_code: string };
-// Status and booking date may change when a pending transaction settles; financial identity may not.
 function settlementReceipt(row: OccurrencePosting): SettlementReceipt {
   return { account_id: row.account_id, amount_minor: BigInt(row.canonical_amount_minor ?? row.amount_minor).toString(), currency_code: row.currency_code,
     kind: row.kind ?? "ordinary", review_reasons: [...(row.review_reasons ?? [])].sort() };
@@ -30,8 +29,6 @@ export function reconcileOccurrence(item: Obligation, scheduledOn: string, settl
     seen.add(row.id);
     fulfilled += amount;
     complete ||= link.completes_occurrence;
-    // A current resolved opening includes posted evidence through asOf. Negative pending holds are
-    // deducted separately; positive pending income remains a projected movement, never opening cash.
     const postingDate = row.status === "posted" && row.posted_at ? calendarDate(row.posted_at, timeZone) : row.posted_on;
     const alreadyReflected = row.status === "pending" ? amount < 0n && row.posted_on <= startDate :
       postingDate <= startDate && (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(asOf));

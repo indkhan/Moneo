@@ -23,14 +23,8 @@ function signed(minor: string, currency: string, locale: string) {
 }
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
-// A phone shows what a row is, when, and how much; the rest is one tap away in the drawer.
 const phoneHidden = (column: string) => ["date", "category", "merchant", "account"].includes(column) ? "max-md:hidden" : "";
 
-/**
- * Dense ledger table. Sorting and pagination are server-side (keyset, in the
- * URL); this component adds selection, grouping headers and keyboard
- * navigation: j/k move, Enter/o open, x select, / search, Esc close.
- */
 export function LedgerTable({ rows, accountNames, categories, merchants, query, sort, sortHrefs, groups, openId, closeHref, locale, requestId }: {
   rows: LedgerRow[]; accountNames: Record<string, string>; categories: Named[]; merchants: Named[]; query: string; sort: TransactionSort;
   sortHrefs: { date: string; amount: string }; groups: LedgerGroups | null; openId: string | null; closeHref: string; locale: string; requestId: string;
@@ -74,7 +68,6 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "Escape" && openId) { router.push(closeHref, { scroll: false }); return; }
       if (typing(event.target) || !rows.length) return;
-      // Enter belongs to the link, button or box that has focus.
       if (event.key === "Enter" && event.target instanceof Element && event.target.closest("a, button, summary, input")) return;
       const move = (index: number) => { event.preventDefault(); const next = Math.min(rows.length - 1, Math.max(0, index)); setActive(next); if (openId) router.push(href(rows[next].id), { scroll: false }); };
       if (event.key === "j" || event.key === "ArrowDown") move(active + 1);
@@ -87,7 +80,6 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
     return () => window.removeEventListener("keydown", onKey);
   });
   useEffect(() => { body.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
-  // Closing the drawer puts focus back on the row it came from.
   const wasOpen = useRef(openId);
   useEffect(() => {
     const closed = wasOpen.current && !openId ? wasOpen.current : null;

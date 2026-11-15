@@ -26,7 +26,6 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   const html = renderToStaticMarkup(await WealthPage());
   vi.useRealTimers();
   expect(html).toContain("Net worth (EUR)");
-  // The account rolls forward like on Accounts (50.00 - 10.00); the loan valued in May is older but still counts, as on Overview.
   expect(html).toContain("EUR 45.00");
   expect(html).toMatch(/Accounts<\/dt><dd[^>]*>EUR 40.00/);
   expect(html).toContain("<polyline");
@@ -35,7 +34,6 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   expect(html).toContain("Debts");
   expect(html).not.toContain("How this was calculated");
   expect(html).toContain("Undo Index fund change"); expect(html).toContain("Remove Car loan (keep history)");
-  // Debts are owed in plain amounts, and the older loan is named as not from today.
   expect(html).toContain("Amount you still owe (EUR)"); expect(html).toContain('value="15.00"');
   expect(html).toContain("1 valuation is not from today and uses its last known value: Car loan (2026-05-"); expect(html).toContain("-EUR 15.00");
   expect(html).toContain("Net worth by month"); expect(html).toContain(">Today<");
@@ -55,10 +53,8 @@ it("shows the Scalable portfolio in its own panel, with today's move and each po
   expect(html).toContain("Scalable Capital");
   expect(html).toContain("+EUR 1.36"); expect(html).toContain("today");
   expect(html).toContain("1 year"); expect(html).toContain("-EUR 35.11");
-  // 35.49 now against 70.89 paid.
   expect(html).toContain("-EUR 35.40"); expect(html).toContain("-49.9%");
   expect(html).toContain("Recent activity"); expect(html).toContain("Cash to invest");
-  // Synced positions are not listed again as editable items, and the explanation panel is gone.
   expect(html).not.toContain("Remove Tech ETF (keep history)");
   expect(html).not.toContain("How this is worked out");
 });

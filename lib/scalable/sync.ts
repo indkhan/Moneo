@@ -9,21 +9,13 @@ import { saveTransfers, transferRows } from "./transfers";
 
 const RECENT_TRANSACTIONS = 100, ACTIVITY_SHOWN = 8;
 
-/**
- * One sync: read holdings, totals and cash from Scalable, then write them as dated wealth records in
- * one database call. Market moves are valuations, not income; deposits and withdrawals are transfers
- * on the bank side. Errors are kept on the connection for the UI and rethrown.
- */
 export async function syncScalable(connectionId: string, workspaceId: string) {
   const db = serviceDb();
   try {
     const { timezone } = await loadWorkspaceSettings(db, workspaceId);
     const previous = await db.from("scalable_connections").select("portfolio").eq("workspace_id", workspaceId).not("portfolio", "is", null);
-    // Taken before reading: two syncs can finish in the opposite order, and the older read must not win.
     const fetchedAt = new Date().toISOString();
     const { snapshot, extras, access, recent } = await withScalable(connectionId, workspaceId, async mcp => {
-      // Activity and watchlist are extras: a failure there never stops the valuation sync.
-      // So are the access level the chat uses to offer trading, and only a known level is saved.
       const [holdings, overview, cash, activity, watchlist, access] = await Promise.all([mcp.callTool("get_portfolio_holdings"), mcp.callTool("get_portfolio_overview", { includeYearToDate: true }),
         mcp.callTool("get_portfolio_cash_breakdown"), mcp.callTool("list_portfolio_transactions", { pageSize: RECENT_TRANSACTIONS }).catch(() => undefined),
         investmentsWatchlist(mcp).catch(() => undefined), tradingAccess(mcp).catch(() => undefined)]);
@@ -36,7 +28,6 @@ export async function syncScalable(connectionId: string, workspaceId: string) {
     const known = new Set([...(previous.data ?? []).flatMap(row => { const ids = (row.portfolio as ScalableExtras | null); return [...(ids?.knownItemIds ?? []), ...(ids?.itemIds ?? [])]; }), ...items.map(item => item.id)]);
     const { data, error } = await db.rpc("sync_scalable_wealth", { p_connection_id: connectionId, p_items: items, p_portfolio: { ...portfolio, ...extras, knownItemIds: [...known] }, p_fetched_at: fetchedAt });
     if (error) throw new Error(error.message);
-    // Saved after the values, so a transfer on record has been read into them. Like activity, it never stops the valuation sync.
     if (recent !== undefined) try { await saveTransfers(connectionId, transferRows(recent, timezone), false); } catch (cause) { console.error("Scalable transfers were not saved", cause); }
     if (access) {
       const saved = await db.from("scalable_connections").update({ trading_access: access }).eq("id", connectionId);
@@ -44,7 +35,6 @@ export async function syncScalable(connectionId: string, workspaceId: string) {
     }
     return { changed: data as number, portfolio };
   } catch (error) {
-    // An ended login is already recorded as expired by withScalable.
     if (!(error instanceof ScalableError && error.expired))
       await db.from("scalable_connections").update({ last_error: "The Scalable sync failed. It retries on the next sync." }).eq("id", connectionId);
     throw error;

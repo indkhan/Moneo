@@ -14,12 +14,10 @@ import { CardChart, type CardChartProps } from "./card-chart";
 
 type Live = { params: ParamState[]; setParam: (name: string, value: string) => void; busy: boolean; locale?: string };
 const LiveCard = createContext<Live>({ params: [], setParam: () => {}, busy: false });
-/** The size Home's grid gives a card; when the user resizes it there, the card fetches its body for the new size. */
 export const HomeCardSize = createContext<CardSize | null>(null);
 
 const PAGES: Record<z.infer<typeof linkTarget>["page"], string> = { transactions: "/money/transactions", budgets: "/plan/spending", recurring: "/money/recurring",
   goals: "/plan", accounts: "/money/accounts", wealth: "/money/wealth", plan: "/plan", forecast: "/plan", artifacts: "/ai/artifacts" };
-/** Links are built by the app from a typed target; a card never supplies a URL. */
 export function linkHref({ page, ...filters }: z.infer<typeof linkTarget>) {
   const query = new URLSearchParams(Object.entries(filters).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
   return `${PAGES[page]}${page === "transactions" && query.size ? `?${query}` : ""}`;
@@ -41,12 +39,10 @@ function Tabs({ tabs, className, style, scope }: { tabs: { label: string; conten
   return <div className={className} style={style}>
     <div role="tablist" className="mb-2 inline-flex rounded-lg border border-border p-0.5">{tabs.map((tab, index) => <button key={tab.label} type="button" role="tab" aria-selected={open === index}
       onClick={() => setOpen(index)} className="rounded-md px-2.5 py-1 text-xs text-muted-foreground aria-selected:bg-muted aria-selected:text-foreground">{tab.label}</button>)}</div>
-    {/* Every panel is already rendered, so switching is instant. */}
     {tabs.map((tab, index) => <div key={tab.label} role="tabpanel" hidden={open !== index}>{render(tab.content, scope)}</div>)}
   </div>;
 }
 
-/** A slider's value as the card's figures show it: money in the card's currency, a percentage, or a plain number. */
 function controlValue(control: Extract<LocalControl, { kind: "number" }>, value: number, locale?: string) {
   try {
     if (control.format === "money" && control.currency) return formatMoney(BigInt(Math.round(value)), control.currency, locale);
@@ -54,7 +50,6 @@ function controlValue(control: Extract<LocalControl, { kind: "number" }>, value:
   } catch { return String(value); }
 }
 
-/** A slider or switch drawn by the app, so it looks like the rest of Moneo; moving it reruns the card in the browser. */
 function LocalParam({ param, control, className, style }: { param: ParamState; control: LocalControl; className?: string; style?: React.CSSProperties }) {
   const { setParam, busy, locale } = useContext(LiveCard);
   if (control.kind === "toggle") {
@@ -86,12 +81,10 @@ function Param({ name, variant, className, style }: { name: string; variant?: "p
     disabled={busy} onClick={() => setParam(name, option.value)} className="rounded-md px-2 py-0.5 font-mono text-[11px] text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground">{option.label}</button>)}</div>;
 }
 
-/** Turns a checked tree into React elements; Kit names map to the components above. */
 function render(node: CardNode, scope: string, key?: number): ReactNode {
   if (typeof node === "string") return node;
   const children = node.children.map((child, index) => render(child, scope, index));
   if (node.type === "#fragment") return <Fragment key={key}>{children}</Fragment>;
-  // The tree was checked against each Kit schema before it got here.
   const props = node.props;
   switch (node.type) {
     case "kit:Money": return <Money key={key} {...(props as ComponentProps<typeof Money>)} />;
@@ -106,17 +99,11 @@ function render(node: CardNode, scope: string, key?: number): ReactNode {
 
 export type CardViewProps = { cardId: string; title: string; size: CardSize; tree: CardNode | null; error?: string | null; params: ParamState[]; local?: LocalRun | null; scope: string; version?: number; open?: string; locale?: string };
 
-/**
- * A Home card: the app's own title row, then the card's checked tree in a fixed-height, clipped, isolated box.
- * Nothing in the tree can paint outside the box or cover the rest of Home. Changing a month, period or choice re-renders
- * it on the server; moving a slider or switch reruns it in the browser with the data it already has.
- */
 export function CardView({ cardId, title, size: renderedSize, tree: initialTree, error: initialError, params: initialParams, local: initialLocal = null, scope, version, open, locale }: CardViewProps) {
   const size = useContext(HomeCardSize) ?? renderedSize;
   const [view, setView] = useState({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize, local: initialLocal });
   const [busy, start] = useTransition();
   const [seen, setSeen] = useState(initialTree);
-  // A server re-render (a new version, another size) replaces what this card showed.
   if (seen !== initialTree) { setSeen(initialTree); setView({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize, local: initialLocal }); }
   const request = useRef(0);
   useEffect(() => () => { request.current++; }, []);
@@ -131,7 +118,6 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
       setView(current => response.ok ? { tree: body.tree, error: body.error ?? null, params: body.params, size, local: body.local ?? null } : { ...current, error: body.error ?? "Could not load the card" });
     });
   }
-  // A slider fires on every step; only the newest position runs once the one before it finishes.
   const next = useRef<{ local: LocalRun; params: ParamState[] } | null>(null);
   const rerunning = useRef(false);
   async function rerun(local: LocalRun, params: ParamState[]) {
@@ -154,7 +140,6 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
     setView(current => ({ ...current, params }));
     void rerun(view.local, params);
   }
-  // Resized on Home: the body was laid out for the old width.
   useEffect(() => { request.current++; if (size !== view.size) load(view.params); }, [size]); // eslint-disable-line react-hooks/exhaustive-deps
   return <section aria-label={title} className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card" style={{ height: CARD_HEIGHT }}>
     <div className="flex items-baseline justify-between gap-2 px-5 pt-4 pb-2"><h2 className="truncate text-sm font-medium">{title}</h2>{open && <Link href={open} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link>}</div>

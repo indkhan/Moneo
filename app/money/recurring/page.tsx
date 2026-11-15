@@ -35,7 +35,6 @@ export default async function RecurringPage() {
   const liveAccounts = (accounts ?? []).filter(account => !account.archived_at).map(account => ({ id: account.id as string, name: account.name as string, currencyCode: account.currency_code as string }));
   const names: Record<string, string> = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
 
-  // Same expansion as the forecast, so "next" here matches Plan. Account-less schedules still get a date.
   const schedules = ((scheduleData ?? []) as unknown as Schedule[]).map(item => {
     const dated = { ...item, account_id: item.account_id ?? "unassigned" };
     const upcoming = expandSchedule(dated, today, UPCOMING_DAYS);

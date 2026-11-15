@@ -3,15 +3,12 @@ import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { log, logsDir } from "./paths";
 
-// Host variables the server needs to run on each OS. Nothing else from the shell's environment is
-// passed on, so a developer's NEXT_PUBLIC_*, NODE_OPTIONS or .env-style variables never leak in.
 const HOST_VARS = ["PATH", "Path", "PATHEXT", "SystemRoot", "SYSTEMROOT", "windir", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData", "LANG", "LC_ALL", "TZ"];
 
 export type NextServerOptions = { appDir: string; port: number; env: Record<string, string> };
 
 const READY_TIMEOUT = 90_000;
 
-/** The Next.js standalone server in a utility process, restarted with backoff when it crashes. */
 export class NextServer {
   private child?: UtilityProcess;
   private stopping = false;
@@ -33,7 +30,6 @@ export class NextServer {
     child.once("exit", code => {
       if (this.stopping || this.child !== child) return;
       log(`Next server exited with ${code}`);
-      // A server that ran for a while earns a fresh backoff.
       if (Date.now() - startedAt > 60_000) this.restarts = 0;
       this.scheduleRestart();
     });
@@ -75,10 +71,9 @@ export class NextServer {
     while (Date.now() < deadline) {
       if (exited !== undefined) throw new Error(`The Moneo server stopped while starting (exit ${exited}).\n${this.recent.slice(-8).join("\n")}`);
       try {
-        // The bearer header keeps the proxy from signing the owner in for every probe.
         const response = await fetch(`http://127.0.0.1:${this.options.port}/api/health`, { headers: { authorization: "Bearer readiness" }, signal: AbortSignal.timeout(5_000) });
         if (response.status < 500) { log("Next server is ready"); return; }
-      } catch { /* not listening yet */ }
+      } catch {}
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     child.kill();

@@ -6,7 +6,6 @@ const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
 
-// The model is stubbed; upload, type sniffing, storage and the cited-section viewer are real.
 test("a spreadsheet answer cites a cell that opens on its place in the file", async ({ page }) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Budget");
@@ -30,7 +29,6 @@ test("a spreadsheet answer cites a cell that opens on its place in the file", as
   await main.getByLabel("Ask about your finances").fill("What does power cost?");
   await main.getByRole("button", { name: "Send", exact: true }).click();
 
-  // Only the file in this conversation becomes a chip.
   const chip = main.getByRole("button", { name: "budget.xlsx · Budget!B3" });
   await expect(chip).toBeVisible({ timeout: 15_000 });
   await expect(main.getByText("ffffffff")).toHaveCount(0);

@@ -11,10 +11,6 @@ import { readNetWorth } from "@/lib/finance/net-worth-source";
 import type { AiDataScope } from "@/lib/settings";
 import type { ChartDataset } from "./chart-spec";
 
-// Exact series for chat charts, from the same calculations as the app's screens. Nothing here does its own money maths
-// beyond adding up minor units: spending and income come from the investigation engine, balances and net worth from the
-// balance series behind Home and Wealth.
-
 const currency = z.string().regex(/^[A-Z]{3}$/).refine(code => { try { minorDigits(code); return true; } catch { return false; } }, "Unknown currency");
 export const CHART_DATASETS = ["spending_by_category", "spending_by_merchant", "spending_by_month", "cashflow_by_month", "spending_by_day", "account_balance", "net_worth"] as const;
 export const chartDataInput = z.object({
@@ -27,7 +23,6 @@ export const chartDataInput = z.object({
   .refine(input => input.dataset !== "account_balance" || input.accountId, "account_balance needs an accountId");
 export type ChartDataInput = z.infer<typeof chartDataInput>;
 
-/** What each dataset reads, so the chat checks the owner's AI data scopes first. */
 export function chartDataScopes(dataset: ChartDataInput["dataset"]): AiDataScope[] {
   if (dataset === "account_balance") return ["accounts"];
   if (dataset === "net_worth") return ["accounts", "planning"];
@@ -38,7 +33,6 @@ type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: st
 const DAY = 86_400_000;
 const daysBetween = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) / DAY + 1;
 
-/** Every month from the month of `from` to the month of `to`, as YYYY-MM. */
 export function monthRange(from: string, to: string) {
   const months: string[] = [];
   let [year, month] = from.slice(0, 7).split("-").map(Number);
@@ -49,14 +43,12 @@ export function monthRange(from: string, to: string) {
   return months;
 }
 
-/** The last day of a YYYY-MM month, or `cap` when the month isn't over yet. */
 export function monthEnd(month: string, cap: string) {
   const [year, number] = month.split("-").map(Number);
   const last = new Date(Date.UTC(year, number, 0)).toISOString().slice(0, 10);
   return last < cap ? last : cap;
 }
 
-/** The largest `limit - 1` groups by amount, then everything else summed as one "Other" row, so the total is unchanged. */
 export function topWithOther<T extends { label: string; amount: bigint }>(groups: T[], limit: number, other: (amount: bigint) => T) {
   const sorted = [...groups].sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : a.label.localeCompare(b.label)));
   if (sorted.length <= limit) return sorted;
@@ -64,7 +56,6 @@ export function topWithOther<T extends { label: string; amount: bigint }>(groups
   return [...sorted.slice(0, limit - 1), other(rest)];
 }
 
-/** One row per key in order, with zero where nothing happened. */
 export function filled(keys: string[], amounts: Map<string, bigint>) {
   return keys.map(key => ({ key, amount: amounts.get(key) ?? 0n }));
 }
@@ -78,7 +69,6 @@ async function investigation(context: Context, input: ChartDataInput, groupBy: (
   return { entities: data.context.entities, run };
 }
 const limitation = (result: ReturnType<typeof investigate>) => result.coverage.limitation;
-// Groups with a missing FX rate keep what could be converted; the note says some rows are left out.
 const groupAmount = (group: ReturnType<typeof investigate>["groups"][number]) => BigInt(group.availableCurrentMinor);
 
 async function spendingBy(context: Context, input: ChartDataInput, code: string, dimension: "category" | "merchant", canReadImports: boolean): Promise<Loaded> {
@@ -105,7 +95,6 @@ async function byMonth(context: Context, input: ChartDataInput, code: string, wi
     rows: filled(months, totals(spending)).map(row => ({ month: row.key, spending: row.amount.toString() })) }, note: limitation(spending) };
   const income = run("income");
   const incomeBy = totals(income), spendingBy = totals(spending);
-  // Cash in accounts at each month's end, in this currency: the balance series behind Home and Wealth.
   const balances = await balanceSeries(context, months.map(month => monthEnd(month, today)), today);
   return { dataset: { columns: { month: { kind: "date" }, income: { kind: "money", currency: code }, spending: { kind: "money", currency: code }, net: { kind: "money", currency: code }, balance: { kind: "money", currency: code } },
     rows: months.map((month, index) => {
@@ -125,7 +114,6 @@ async function spendingByDay(context: Context, input: ChartDataInput, code: stri
     rows: filled(dayRange(input.from, input.to), amounts).map(row => ({ date: row.key, spending: row.amount.toString() })) }, note: limitation(result) };
 }
 
-/** Balances on past dates from the balance series; today's from the resolved balances every screen shows. */
 async function balanceSeries(context: Context, dates: string[], today: string) {
   const evidence = await loadBalanceEvidence(context.supabase, context.workspace.id);
   const timeZone = context.workspace.timezone;
@@ -186,10 +174,6 @@ export async function loadChartData(context: Context, raw: unknown, options: { c
   }
 }
 
-/**
- * What the model sees of a dataset: every row while it is short, else a summary. Amounts come formatted for quoting;
- * the chart takes the exact rows by datasetId.
- */
 const FLOWS = new Set(["spending", "income", "net"]);
 export function describeDataset(datasetId: string, { dataset, note }: Loaded, locale?: string) {
   const money = Object.entries(dataset.columns).flatMap(([name, column]) => "currency" in column ? [[name, column.currency] as const] : []);
@@ -199,7 +183,6 @@ export function describeDataset(datasetId: string, { dataset, note }: Loaded, lo
     if (!values.length) return [name, null];
     const min = values.reduce((a, b) => (b.amount < a.amount ? b : a)), max = values.reduce((a, b) => (b.amount > a.amount ? b : a));
     const total = values.reduce((sum, value) => sum + value.amount, 0n);
-    // Balances aren't added up over time; flows are.
     return [name, { ...(FLOWS.has(name) ? { totalFormatted: formatMoney(total, code, locale) } : {}), lowest: { at: min.label, formatted: formatMoney(min.amount, code, locale) }, highest: { at: max.label, formatted: formatMoney(max.amount, code, locale) },
       first: formatMoney(values[0].amount, code, locale), last: formatMoney(values.at(-1)!.amount, code, locale) }];
   }));

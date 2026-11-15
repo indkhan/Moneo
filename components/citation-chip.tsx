@@ -9,7 +9,6 @@ import type { CitedSection } from "@/lib/ai/documents/read";
 
 const fileUrl = (file: ChatAttachment) => `/api/chat/attachments?${new URLSearchParams({ path: file.path })}`;
 
-/** The quoted text marked inside `text`, wherever it appears (ignoring case and spacing differences). */
 function Highlighted({ text, quote }: { text: string; quote?: string }) {
   const words = quote?.trim().split(/\s+/).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (!words?.length) return <>{text}</>;
@@ -35,7 +34,6 @@ function SectionView({ section, quote }: { section: CitedSection; quote?: string
   </div>;
 }
 
-/** The cited part of a Word, PowerPoint or spreadsheet file, as read on the owner's computer, over the chat. */
 function DocumentViewer({ file, citation, label, onClose }: { file: ChatAttachment; citation: Citation; label: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [section, setSection] = useState<CitedSection | null>(null);
@@ -60,20 +58,16 @@ function DocumentViewer({ file, citation, label, onClose }: { file: ChatAttachme
   </dialog>;
 }
 
-/** A small chip after a sentence that names the file and place it came from; tapping opens that place. */
 export function CitationChip({ file, citation }: { file: ChatAttachment; citation: Citation }) {
   const [open, setOpen] = useState(false);
   const where = citation.parsed ? locationLabel(citation.parsed) : "";
   const label = where ? `${file.name} · ${where}` : file.name;
   const chip = "mx-0.5 inline-flex max-w-56 items-center gap-1 rounded-full border border-border bg-muted px-2 py-px align-[1px] text-xs font-normal text-muted-foreground no-underline hover:border-muted-foreground/60 hover:text-foreground";
-  // A long file name is cut, never the place in it.
   const content = <><FileText className="size-3 shrink-0" aria-hidden="true" /><span className="min-w-0 truncate">{file.name}</span>{where && <span className="shrink-0">· {where}</span>}</>;
-  // PDFs and photos open in the browser's own viewer, a PDF at the cited page.
   if (file.type === "application/pdf" || file.type.startsWith("image/") || !citation.parsed) {
     const page = citation.parsed?.kind === "page" ? `#page=${citation.parsed.from}` : "";
     return <a href={`${fileUrl(file)}${page}`} target="_blank" rel="noreferrer" className={chip} aria-label={label} title={citation.quote ? `“${citation.quote}”` : label}>{content}</a>;
   }
   return <><button type="button" onClick={() => setOpen(true)} className={chip} aria-label={label} title={citation.quote ? `“${citation.quote}”` : label}>{content}</button>
-    {/* A dialog cannot sit inside the paragraph the chip is in. */}
     {open && createPortal(<DocumentViewer file={file} citation={citation} label={label} onClose={() => setOpen(false)} />, document.body)}</>;
 }

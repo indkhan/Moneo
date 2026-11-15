@@ -5,18 +5,11 @@ import type { SaveInput } from "./validate";
 
 type SavedViewRow = { id: string; name: string; created_at: string; version: number };
 
-/**
- * Saved-views side rail. Open links carry only the opaque view UUID
- * (?view=<uuid>); the filter JSON stays workspace-scoped on the server and is
- * applied in app/money/transactions/page.tsx.
- */
 export function SavedViewsPanel({ views, activeViewId, activeViewName, saveDefaults, disableSave }: {
   views: SavedViewRow[];
   activeViewId: string | null;
   activeViewName: string | null;
   saveDefaults: SaveInput;
-  /** Hides save/update when the open view's scope is invalid, so a broken
-   * scope can never be re-saved broader. Rename/delete stay available. */
   disableSave?: boolean;
 }) {
   const filterInputs = Object.entries(saveDefaults).map(([name, value]) => value !== undefined ? <input key={name} type="hidden" name={name} value={value} /> : null);

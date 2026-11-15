@@ -7,10 +7,9 @@ import { IouCard } from "./iou-card";
 
 const idsSchema = z.array(z.uuid()).min(2).max(50);
 
-/** Several cards from one answer: each can be decided alone, or all added at once with the account chosen on each card. */
 export function ProposalGroup({ source }: { source: string }) {
   let ids: string[] | null = null;
-  try { ids = idsSchema.parse(JSON.parse(source)); } catch { /* not a group block */ }
+  try { ids = idsSchema.parse(JSON.parse(source)); } catch {}
   const [accounts, setAccounts] = useState<Record<string, string | undefined>>({});
   const [round, setRound] = useState(0);
   const [error, setError] = useState<string>();
@@ -19,7 +18,6 @@ export function ProposalGroup({ source }: { source: string }) {
   const addAll = () => start(async () => {
     setError(undefined);
     const failed: string[] = [];
-    // One at a time, so each keeps its own account; decided cards are left unchanged.
     for (const id of ids) {
       try { const [outcome] = await decideAgentProposals([id], "accept", accounts[id]); if (outcome.error) failed.push(outcome.error); }
       catch (cause) { failed.push(cause instanceof Error ? cause.message : "Could not save"); }

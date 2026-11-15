@@ -92,7 +92,6 @@ describe("evidenced account balances", () => {
     const spent = { ...transaction, posted_on: "2026-10-01", posted_at: "2026-10-01T09:00:00Z" };
     expect(resolveBalances(accounts, [observed], [spent], now)[0].balance?.amount_minor).toBe("8750");
     expect(resolveBalances(accounts, [observed], [{ ...spent, posted_at: "2026-10-01T07:00:00Z" }], now)[0].balance?.amount_minor).toBe("10000");
-    // A balance dated to a past day starts at local midnight and stays that day's closing balance.
     const dated = { ...snapshot, as_of: calendarDayBoundary("2026-09-29", "Europe/Berlin") };
     expect(resolveBalances(accounts, [dated], [{ ...spent, posted_on: "2026-09-29", posted_at: "2026-09-29T09:00:00Z" }], now)[0].balance?.amount_minor).toBe("10000");
   });

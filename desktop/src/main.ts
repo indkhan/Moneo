@@ -12,9 +12,7 @@ import { closeSetup, focusSetup, progress, registerSetupIpc, setSetupState, show
 import { createTray, openedAtLogin, type TrayActions } from "./tray";
 import { createUpdater } from "./updates";
 
-// MONEO_DESKTOP_DEBUG=1 allows debugging switches and the test hooks below (package smoke tests).
 const debug = process.env.MONEO_DESKTOP_DEBUG === "1";
-// A debugging port or inspector would let any program on this computer drive the owner's signed-in window.
 const DEBUG_SWITCHES = ["remote-debugging-port", "remote-debugging-pipe", "inspect", "inspect-brk", "inspect-port", "inspect-brk-node", "inspect-publish-uid"];
 
 setupHome();
@@ -23,7 +21,6 @@ if (refused.length) {
   log(`Refusing to start with --${refused.join(", --")} (debugging switches need MONEO_DESKTOP_DEBUG=1)`);
   app.exit(1);
 } else if (!app.requestSingleInstanceLock() || process.argv.includes("--quit")) {
-  // A second launch hands its arguments to the running Moneo; `--quit` with none running does nothing.
   app.quit();
 } else main();
 
@@ -34,7 +31,7 @@ function main() {
   let server: NextServer | undefined;
   let window: BrowserWindow | undefined;
   let booting: Promise<void> | undefined;
-  let busy = false; // stopping for a restore or a retry: service exits are expected
+  let busy = false;
   let quitting = false;
   let failed = false;
   let port = 0;
@@ -85,7 +82,6 @@ function main() {
           fail(`A Moneo service stopped (${service})`, new Error(`It exited with code ${code}. Try again, or open the logs folder.`));
         });
         progress({ id: "app", label: "Starting Moneo", state: "running" });
-        // What the server asks of the app: sign-in results in the window, and updates (see bridge.ts).
         bridge ??= await startBridge({
           onReturn: async returnPath => {
             if (!window || booting || failed) throw new Error("The app window is not open");
@@ -113,7 +109,6 @@ function main() {
     window ??= createAppWindow(port, {
       onClose: event => {
         if (quitting) return;
-        // Closing keeps Moneo running in the tray: background jobs and phone access keep working.
         event.preventDefault();
         window?.hide();
         if (!readSettings().trayNoticeShown && Notification.isSupported()) {
@@ -121,10 +116,8 @@ function main() {
           updateSettings({ trayNoticeShown: true });
         }
       },
-      // Windows ends the session through the window; finish cleanly within the time it gives.
       onSessionEnd: () => void quit(),
     });
-    // The server is up; a page that navigates on during this first load (a redirect, a click) is not a failed start.
     await window.loadURL(`http://localhost:${port}/`).catch(error => log(`First page load: ${message(error)}`));
     if (visible) window.show();
   }
@@ -137,7 +130,6 @@ function main() {
     } else focusSetup();
   }
 
-  // Backups: one a day while Moneo runs, checked hourly so a sleeping computer catches up.
   function scheduleBackups() {
     const check = async () => {
       const last = Date.parse(readSettings().lastBackupAt ?? "");
@@ -203,15 +195,12 @@ function main() {
     await boot("retry");
   }
 
-  // Explicit quit: stop the server, then the database, then exit. Forced after 20 seconds.
   let quitPromise: Promise<void> | undefined;
   function quit() {
     quitPromise ??= (async () => {
       quitting = true;
       log("Quitting");
       const notice = setTimeout(() => { setSetupState({ phase: "stopping", steps: [], error: undefined }); focusSetup(); }, 1_500);
-      // A start in progress (the first one creates the database) is let finish, so nothing is left
-      // half-started; the 20 seconds count from then.
       if (booting) await Promise.race([booting, new Promise(resolve => setTimeout(resolve, 180_000))]);
       const force = setTimeout(() => { log("Shutdown took too long; exiting"); app.exit(0); }, 20_000);
       await stopServices();
@@ -240,7 +229,6 @@ function main() {
     else openWindow();
   });
 
-  // Test hooks (MONEO_DESKTOP_DEBUG=1 only): the tray menu's actions, and a restore without its dialogs.
   async function runHook(hook: string) {
     log(`Debug action ${hook}`);
     const [name, value] = hook.split(/=(.*)/s);
@@ -250,7 +238,7 @@ function main() {
   }
 
   app.on("before-quit", event => { event.preventDefault(); void quit(); });
-  app.on("window-all-closed", () => { /* keep running in the tray */ });
+  app.on("window-all-closed", () => {});
   app.on("activate", openWindow);
 
   app.whenReady().then(() => {
@@ -258,8 +246,6 @@ function main() {
     lockDownSession();
     registerSetupIpc({ retry: () => void retry(), restore: restoreBackup, quit: () => void quit() });
     createTray(trayActions);
-    // macOS and Linux announce shutdown here; delaying lets the database close cleanly.
-    // (The event object is passed at runtime though Electron's types omit it.)
     powerMonitor.on("shutdown", (...args: unknown[]) => { (args[0] as Electron.Event | undefined)?.preventDefault(); void quit(); });
     void boot("launch");
   });

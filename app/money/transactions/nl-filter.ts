@@ -2,10 +2,6 @@ import { formatMoney } from "@/lib/finance/format";
 import { parseManualAmount } from "./input";
 import type { FilterValues } from "./filter-bar";
 
-// Compiles a plain-language query ("coffee over €5 last month") into the
-// existing URL filter model. Deterministic: every value it sets is shown back
-// as a chip, and anything it does not understand becomes a description search.
-
 type Named = { id: string; name: string };
 type CompiledFilter = { params: FilterValues; understood: string[] };
 
@@ -25,13 +21,12 @@ export function compileFilterQuery(input: string, options: { today: string; curr
     const match = text.match(pattern);
     if (!match) return;
     const label = apply(match);
-    if (!label) return; // Unparsed text stays in the description search.
+    if (!label) return;
     understood.push(label);
     text = text.replace(match[0], " ");
   };
   const [year, month] = [Number(options.today.slice(0, 4)), Number(options.today.slice(5, 7)) - 1];
 
-  // Direction words decide the amount sign: spending is negative in the ledger.
   const income = /\b(income|received|earned|salary|deposits?|money in)\b/.test(text);
   if (income) { params.direction = "income"; understood.push("Money in"); }
   else if (/\b(spent|spending|spend|purchases?|paid|expenses?|charges?|money out)\b/.test(text)) { params.direction = "outflow"; understood.push("Money out"); }
@@ -40,7 +35,7 @@ export function compileFilterQuery(input: string, options: { today: string; curr
   const amount = (match: RegExpMatchArray, offset: number) => {
     const symbol = match[offset] ?? match[offset + 2];
     const currency = symbol ? SYMBOLS[symbol] ?? symbol.toUpperCase() : options.currency;
-    if (currency !== options.currency) return null; // ponytail: no FX in filters; a foreign amount stays unparsed text.
+    if (currency !== options.currency) return null;
     try { return { minor: parseManualAmount(match[offset + 1].replace(",", "."), options.currency), currency }; } catch { return null; }
   };
   const signed = (minor: bigint) => (income ? minor : -minor).toString();
@@ -58,13 +53,11 @@ export function compileFilterQuery(input: string, options: { today: string; curr
       const value = amount(match, 1);
       if (!value) return;
       if (!params.direction) { params.direction = "outflow"; understood.push("Money out"); }
-      // "Over 5" spending means amount <= -5; for income it means amount >= 5.
       if (above === !income) params.maxAmount = signed(value.minor); else params.minAmount = signed(value.minor);
       return `${above ? "Over" : "Under"} ${display(value.minor)}`;
     });
   }
 
-  // Dates.
   const set = (from: string, to: string, label: string) => { params.from = from; params.to = to; return label; };
   take(/\b(\d{4}-\d{2}-\d{2})\s*(?:to|until|-|–)\s*(\d{4}-\d{2}-\d{2})\b/, match => set(match[1], match[2], `${match[1]} to ${match[2]}`));
   take(/\bsince\s+(\d{4}-\d{2}-\d{2})\b/, match => { params.from = match[1]; return `Since ${match[1]}`; });
@@ -88,7 +81,6 @@ export function compileFilterQuery(input: string, options: { today: string; curr
     return set(from, to, new Date(Date.UTC(targetYear, index, 1)).toLocaleString("en", { month: "long", year: "numeric", timeZone: "UTC" }));
   });
 
-  // Ledger semantics.
   take(/\bpending\b/, () => { params.status = "pending"; return "Pending"; });
   take(/\btransfers?\b/, () => { params.kind = "transfer"; return "Transfers"; });
   take(/\brefunds?\b/, () => { params.kind = "refund"; return "Refunds"; });
@@ -100,7 +92,6 @@ export function compileFilterQuery(input: string, options: { today: string; curr
   take(/\boldest\b/, () => { params.sort = "date-asc"; return "Oldest first"; });
   take(/\b(?:grouped |group )?by (category|merchant|month)\b/, match => { params.group = match[1]; return `Grouped by ${match[1]}`; });
 
-  // Owned names, longest first, so "Coffee Shop" wins over "Coffee".
   const named = (items: Named[], key: "category" | "merchant" | "account", label: string) => {
     if (params[key]) return;
     for (const item of [...items].sort((a, b) => b.name.length - a.name.length)) {

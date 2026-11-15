@@ -30,7 +30,6 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
     await context.addCookies([...cookies].map(([name,value])=>({name,value,domain:"localhost",path:"/",sameSite:"Lax" as const})));
     const page=await context.newPage();page.setDefaultTimeout(30_000);
-    // Compile the control route before timing Stop against a running worker.
     const controlReady = await context.request.post(`/api/imports/${randomUUID()}/control`, { data: {} });
     expect(controlReady.status()).toBe(400);
     const filename="controlled-5000.csv", accountName="Controlled cash";
@@ -38,10 +37,6 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const file={name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)};
     await page.goto("/import");
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
-    // The scoped-out (scopes {}) inspect completes auth/workspace/settings then
-    // scope-denial; its duration varies past the default 5s on cold servers while
-    // "Working…" stays visible. Await the exact POST (as for confirm below and the
-    // theme Save sync) instead of racing it, then assert boundedly.
     const fallbackInspect=page.waitForResponse(response=>response.url().endsWith("/api/imports/inspect")&&response.request().method()==="POST");
     await page.getByLabel("Financial statement files").setInputFiles(file);
     expect((await fallbackInspect).ok()).toBe(true);
@@ -78,7 +73,6 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const [{account_id:account}]=await db`select account_id from public.data_sources where id=${source} and workspace_id=${workspace}`;
     const stale=await admin.rpc("ingest_import_row",{p_import_id:importId,p_workspace_id:workspace,p_run_version:stoppedVersion-1,p_account_id:account,p_row:{transactionId:randomUUID()}});
     expect(stale.error?.code).toBe("57014");expect(stale.error?.message).toContain("canceled or superseded");
-    // Observe a real retry window. Old workers also remain rejected after Resume.
     // eslint-disable-next-line no-restricted-syntax -- a real retry window can only be observed over time
     for(let i=0;i<8;i++){await page.waitForTimeout(1000);expect(await counts()).toEqual(stopped);}
     const retained=await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number`;
@@ -133,8 +127,6 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     expect((await db`select count(*)::int as count from public.imports where workspace_id=${workspace}`)[0].count).toBe(2);
   } finally {
     await context.close().catch(()=>{});
-    // Cancel under the same ownership/version lock as ingestion before removing any sources.
-    // Once committed, every old worker's next write is rejected at the database boundary.
     await db.begin(async tx=>{
       await tx`select set_config('request.jwt.claim.sub',${user},true)`;
       const active=await tx`select id from public.imports where workspace_id=${workspace} and status in('pending','queued','running')`;

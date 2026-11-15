@@ -11,7 +11,6 @@ import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 import { VoiceCallCard } from "./voice-call-card";
 
 export const DRAFT_EVENT = "moneo-chat-draft";
-/** One-click next steps: prompts fill the composer (the user still sends), links navigate. */
 function FollowUps({ items, compact }: { items: FollowUp[]; compact: boolean }) {
   if (!items.length) return null;
   const chip = `rounded-full border border-input text-muted-foreground hover:bg-muted hover:text-foreground ${compact ? "px-3 py-1 text-xs" : "px-3.5 py-2 text-[13px]"}`;
@@ -19,7 +18,6 @@ function FollowUps({ items, compact }: { items: FollowUp[]; compact: boolean }) 
     ? <Link key={item.label} href={item.href} className={chip}>{item.label} →</Link>
     : <button key={item.label} type="button" className={chip} onClick={() => window.dispatchEvent(new CustomEvent(DRAFT_EVENT, { detail: { prompt: item.prompt, compact } }))}>{item.label}</button>)}</div>;
 }
-/** The plan stays open while answering; finished answers keep it collapsed. */
 function Plan({ steps, done, collapsed = false }: { steps: string[]; done: boolean; collapsed?: boolean }) {
   return <details open={!collapsed || undefined} className="group my-2 rounded-xl border border-border p-3 text-sm">
     <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">{done ? <ListChecks className="size-3.5" aria-hidden="true" /> : <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}Investigation plan<ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden="true" /></summary>
@@ -27,7 +25,6 @@ function Plan({ steps, done, collapsed = false }: { steps: string[]; done: boole
   </details>;
 }
 
-/** Photos show as thumbnails and PDFs as chips; both open the private file. */
 function MessageFiles({ files }: { files?: ChatAttachment[] }) {
   if (!files?.length) return null;
   return <ul className="mb-2 ml-auto flex w-fit max-w-[85%] flex-wrap justify-end gap-2" aria-label="Attachments">{files.map(file => {
@@ -40,26 +37,20 @@ function MessageFiles({ files }: { files?: ChatAttachment[] }) {
   })}</ul>;
 }
 
-// The markdown renderer is the heaviest client code here; split it out of the page bundle.
 const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiMessage), {
   loading: () => <div className="h-5 w-2/3 animate-pulse rounded bg-muted" aria-hidden="true" />,
 });
 
 export type ChatItem = Omit<HistoryMessage, "tools"> & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
-/** A run that kept going while the user was away: its question is already in the history, so only the working state shows. */
 export const RESUMED_RUN: PendingExchange = { question: "", tools: [] };
 export type PendingExchange = { question: string; spoken?: boolean; attachments?: ChatAttachment[]; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[] };
 
-/** A small mic before a message that was spoken rather than typed. */
 function Spoken({ show }: { show?: boolean }) {
   return show ? <><Mic className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" aria-hidden="true" /><span className="sr-only">Spoken: </span></> : null;
 }
 
-/** Message list shared by the AI page and the Ask Moneo panel. */
 export function ChatMessages({ messages, pending, compact = false }: { messages: ChatItem[]; pending?: PendingExchange | null; compact?: boolean }) {
   const bubble = `ml-auto w-fit max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[18px_18px_4px_18px] bg-input ${compact ? "px-3.5 py-2 text-sm" : "px-[18px] py-3.5 text-[15px]"}`;
-  // The assistant speaks without a bubble, under a violet byline, as in the design.
-  // Citation chips in any reply may point to a file attached anywhere in the conversation.
   const files = useMemo(() => [...messages.flatMap(item => item.attachments ?? []), ...(pending?.attachments ?? [])], [messages, pending?.attachments]);
   const assistant = (body: React.ReactNode) => <div className="min-w-0"><p className="mb-2 flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Moneo</p>{body}</div>;
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
@@ -76,7 +67,6 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
   </div>;
 }
 
-/** Applies one stream event to the pending exchange. */
 export function applyChatEvent(pending: PendingExchange, event: { type: string; id?: string; name?: string; state?: ToolStep["state"]; input?: unknown; output?: string; answer?: string; text?: string; steps?: string[]; steers?: { id: string; content: string }[] }): PendingExchange {
   if (event.type === "delta" && event.text) return { ...pending, answer: (pending.answer ?? "") + event.text, streaming: true };
   if (event.type === "tool" && event.name && event.state) {

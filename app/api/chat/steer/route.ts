@@ -3,7 +3,6 @@ import { requireWorkspace } from "@/lib/auth";
 
 const inputSchema = z.object({ steerId: z.uuid(), requestId: z.uuid(), message: z.string().trim().min(1).max(4000) }).strict();
 
-/** Queues a message for the running chat request's next model step; `accepted: false` means the run already ended. */
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }

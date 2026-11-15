@@ -30,11 +30,6 @@ const quickEdit = z.object({
   merchant: z.union([z.uuid(), z.literal("")]), originalMerchant: z.union([z.uuid(), z.literal("")]),
 });
 
-/**
- * Drawer quick edit. Category/note go through correct_transaction and the
- * merchant through the bounded metadata batch, so each change keeps its own
- * audited correction event and Undo. Unchanged fields write nothing.
- */
 export async function quickEditTransaction(form: FormData) {
   const { supabase } = await requireWorkspace();
   const input = quickEdit.parse(Object.fromEntries(["id", "version", "requestId", "category", "originalCategory", "note", "originalNote", "merchant", "originalMerchant"]
@@ -134,7 +129,6 @@ export async function undoManualTransaction(form: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
-  // The ledger offers Restore for this entry until the user moves on.
   redirect(`/money/transactions?undone=${z.uuid().parse(form.get("entryId"))}`);
 }
 
@@ -148,11 +142,6 @@ export async function restoreManualTransaction(form: FormData) {
   redirect(`/money/transactions?transaction=${z.uuid().parse(data)}`);
 }
 
-/**
- * Puts every transaction with the same description into this one's category
- * and saves a rule, through the audited organization review (Undo lives on
- * Money → Organization). Reviews hold 50 rows, so larger sets go in chunks.
- */
 export async function applyCategoryToSimilar(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const id = z.uuid().parse(form.get("id"));
@@ -174,7 +163,6 @@ export async function applyCategoryToSimilar(form: FormData) {
 export async function bulkEditTransactions(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   let value = form.get("value");
-  // A typed name with no matching category creates it first (same upsert-by-name as correct_transaction).
   const newCategory = z.string().trim().max(100).parse(form.get("newCategory") ?? "");
   if (form.get("mode") === "category" && newCategory && form.get("confirmed") === "true") {
     const { data, error } = await supabase.from("categories").upsert({ workspace_id: workspace.id, name: newCategory }, { onConflict: "workspace_id,name" }).select("id").single();
@@ -214,7 +202,6 @@ export async function markRefund(form: FormData) {
   redirect(`${returnPath(form)}&transaction=${id}`);
 }
 
-// One leg moved to or from an own account Moneo doesn't track: a transfer without a pair.
 export async function markOwnAccountTransfer(form: FormData) {
   const { supabase } = await requireWorkspace();
   const { id, version } = linkInput(form);

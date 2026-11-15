@@ -4,10 +4,8 @@ import { renderPdfPages } from "./extract";
 import { documentForModel } from "./read";
 import { documentText, downloadAttachment } from "./store";
 
-/** Text sent for all of a message's documents together; each gets an equal share, and document_read reads the rest. */
 const TEXT_BUDGET = 150_000;
 const MIN_DOCUMENT_BUDGET = 20_000;
-/** Scanned PDF pages drawn as images per message. */
 export const MAX_PAGE_IMAGES = 10;
 
 type Part = { type: "text"; text: string } | { type: "file"; data: Uint8Array; mediaType: string; filename?: string };
@@ -18,10 +16,6 @@ const ranges = (pages: number[]) => pages.reduce<[number, number][]>((list, page
   return list;
 }, []).map(([from, to]) => from === to ? `${from}` : `${from}-${to}`).join(", ");
 
-/**
- * A message's files as model input, the same for every AI source: photos stay images; documents become text
- * read on this computer, with scanned PDF pages drawn as images.
- */
 export async function attachmentParts(supabase: SupabaseClient, files: ChatAttachment[], render = renderPdfPages): Promise<Part[]> {
   const documents = files.filter(file => !isImage(file.type)).length;
   const budget = Math.max(MIN_DOCUMENT_BUDGET, Math.floor(TEXT_BUDGET / Math.max(1, documents)));

@@ -6,13 +6,8 @@ import { loadWorkspaceSettings } from "@/lib/settings";
 
 export const maxDuration = 300;
 const BATCH = 50;
-/** Younger chats may still be titled by their own request or call. */
 const SETTLE_AFTER_MS = 3_600_000;
 
-/**
- * Names chats left with a stand-in title: older chats, a call whose summary failed, a chat that never said what it
- * was about. Each is asked once, so a chat is not paid for again; the run stops when the AI is down and resumes next hour.
- */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -26,7 +21,6 @@ export async function GET(request: Request) {
   let titled = 0;
   for (const row of data ?? []) {
     const words = await conversationWords(db, row.workspace_id, row.id);
-    // Nothing was said, so there is nothing to name and nothing to ask again.
     if (!words) { await db.from("conversations").update({ title_settled: true }).eq("id", row.id); continue; }
     const written = await writeTitle(async () => modelForSettings(await loadWorkspaceSettings(db, row.workspace_id), "titles"), words);
     if (!written) break;

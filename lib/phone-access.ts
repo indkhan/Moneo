@@ -3,16 +3,12 @@ import { existsSync } from "node:fs";
 import { renderSVG } from "uqr";
 import { z } from "zod";
 
-// Optional access from the owner's phone and tablet: `tailscale serve` forwards their private
-// Tailscale address to this Moneo, which keeps listening on 127.0.0.1 only. Tailscale remembers the
-// setting, so Moneo stores nothing and nothing here runs unless Settings asks.
 export type PhoneAccess =
   | { state: "off" | "not_installed" | "busy" }
   | { state: "disconnected"; forwarding: boolean }
   | { state: "signed_out" | "needs_approval"; link: string | null }
   | { state: "on"; url: string; qr: string };
 
-/** Tailscale's own explanation of why it refused, worth showing to the owner. */
 export class TailscaleError extends Error {}
 
 const INSTALLED = ["C:\\Program Files\\Tailscale\\tailscale.exe", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
@@ -29,11 +25,9 @@ const target = () => `http://127.0.0.1:${Number(process.env.PORT ?? 3000)}`;
 const linkIn = (output: string) => output.match(LOGIN_LINK)?.[0].trim() ?? null;
 const reason = (output: string) => new TailscaleError(output.trim().split("\n")[0] || "Tailscale did not respond");
 
-/** Runs the CLI. Commands waiting on the owner print a login link and never exit, so `untilLink` stops there. */
 function run(args: string[], untilLink = false) {
   return new Promise<Result>(resolve => {
     let stdout = "", output = "";
-    // The CLI path is chosen at runtime; the build's file tracing must not follow it.
     const child = spawn(/*turbopackIgnore: true*/ cli(), args, { windowsHide: true });
     const done = (result: Pick<Result, "ok" | "missing">) => { clearTimeout(timer); resolve({ ...result, stdout, output }); };
     const timer = setTimeout(() => { child.kill(); done({ ok: false }); }, 15_000);
@@ -53,7 +47,6 @@ const serveConfig = async () => serveSchema.parse(JSON.parse((await run(["serve"
 export async function phoneAccess(): Promise<PhoneAccess> {
   const status = await run(["status", "--json"]);
   if (status.missing) return { state: "not_installed" };
-  // No JSON means the Tailscale service is stopped; opening the app starts it.
   if (!status.stdout.trim().startsWith("{")) return { state: "disconnected", forwarding: false };
   const tailscale = statusSchema.parse(JSON.parse(status.stdout));
   const host = tailscale.Self?.DNSName.replace(/\.$/, "");
@@ -64,12 +57,10 @@ export async function phoneAccess(): Promise<PhoneAccess> {
   if (tailscale.BackendState !== "Running" || !host) return { state: "signed_out", link: tailscale.AuthURL || null };
   const serve = await serveConfig();
   const handlers = serve.Web?.[`${host}:443`]?.Handlers ?? {};
-  // Turning off clears the whole port, so a port shared with another path counts as someone else's.
   if (handlers["/"]?.Proxy === target() && Object.keys(handlers).length === 1) return { state: "on", url: `https://${host}`, qr: renderSVG(`https://${host}`) };
   return { state: Object.keys(handlers).length || serve.TCP?.["443"] ? "busy" : "off" };
 }
 
-/** Takes the next step toward on and says what, if anything, the owner has to do. */
 export async function turnOnPhoneAccess(): Promise<PhoneAccess> {
   const current = await phoneAccess();
   if (current.state === "signed_out") return { state: "signed_out", link: current.link ?? linkIn((await run(["login"], true)).output) };
@@ -81,7 +72,6 @@ export async function turnOnPhoneAccess(): Promise<PhoneAccess> {
   throw reason(serve.output);
 }
 
-/** Removes Moneo's forward, never another app's. */
 export async function turnOffPhoneAccess(): Promise<PhoneAccess> {
   if ((await phoneAccess()).state === "on") {
     const off = await run(["serve", "--https=443", "off"]);

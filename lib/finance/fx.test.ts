@@ -34,8 +34,6 @@ describe("minorDigits", () => {
 
 describe("exact FX conversion", () => {
   it("converts minor units exactly, beyond float precision, preserving source and rate", () => {
-    // 9007199254740993 is not representable as a JS number, so any
-    // floating-point math would silently corrupt this conversion.
     const result = convertFx({ amountMinor: 9007199254740993n, from: "EUR", to: "USD", rate: "1", source: "ecb", date: "2026-09-25" });
     expect(result.status).toBe("available");
     if (result.status !== "available") throw new Error("expected available");
@@ -61,12 +59,12 @@ describe("exact FX conversion", () => {
 
   it("rounds derived minor units half-up, away from zero", () => {
     const cases: Array<[bigint, bigint]> = [
-      [1n, 1n], // 0.5 JPY -> 1
-      [3n, 2n], // 1.5 JPY -> 2
-      [2n, 1n], // exact, no rounding
+      [1n, 1n],
+      [3n, 2n],
+      [2n, 1n],
       [0n, 0n],
-      [-1n, -1n], // -0.5 JPY -> -1
-      [-3n, -2n], // -1.5 JPY -> -2
+      [-1n, -1n],
+      [-3n, -2n],
     ];
     for (const [amountMinor, expectedMinor] of cases) {
       const result = convertFx({ amountMinor, from: "EUR", to: "JPY", rate: "50", source: "ecb", date: "2026-09-25" });
@@ -98,20 +96,16 @@ describe("exact FX conversion", () => {
   });
 
   it("converts KRW (0 digits) and KWD (3 digits) correctly", () => {
-    // KRW has 0 minor digits, KWD has 3
     const krwToUsd = convertFx({ amountMinor: 1000n, from: "KRW", to: "USD", rate: "0.00075", source: "ecb", date: "2026-09-25" });
     if (krwToUsd.status !== "available") throw new Error("expected available");
-    // 1000 KRW * 0.00075 = 0.75 USD = 75 cents
     expect(krwToUsd.converted.amountMinor).toBe(75n);
 
     const kwdToUsd = convertFx({ amountMinor: 1000n, from: "KWD", to: "USD", rate: "3.25", source: "ecb", date: "2026-09-25" });
     if (kwdToUsd.status !== "available") throw new Error("expected available");
-    // 1.000 KWD * 3.25 = 3.25 USD = 325 cents.
     expect(kwdToUsd.converted.amountMinor).toBe(325n);
 
     const usdToKrw = convertFx({ amountMinor: 100n, from: "USD", to: "KRW", rate: "1333", source: "ecb", date: "2026-09-25" });
     if (usdToKrw.status !== "available") throw new Error("expected available");
-    // 1.00 USD * 1333 = 1333 KRW (0 digits)
     expect(usdToKrw.converted.amountMinor).toBe(1333n);
   });
 

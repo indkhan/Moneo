@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isAppUrl, isExternalAllowed } from "./navigation";
 
-// The app window has the owner's session and microphone access; a lookalike host or another local
-// server must never load inside it.
 describe("desktop navigation rules", () => {
   it("keeps only Moneo's own loopback port in the window", () => {
     expect(isAppUrl("http://localhost:47300/settings", 47300)).toBe(true);

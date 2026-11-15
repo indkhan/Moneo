@@ -7,11 +7,6 @@ type Period = keyof typeof PERIODS;
 
 const label = z.string().trim().min(1).max(40);
 
-/**
- * Controls a card offers on Home. Month, period and choice values are only ever picked from their options, so a
- * request can't widen what a card reads. Number (a slider) and toggle values never reach a query: they only feed
- * the card's own calculation, so the browser reruns the card as they move.
- */
 export const cardParamSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("month"), name, months: z.number().int().min(2).max(24).default(12), default: z.enum(["current", "previous"]).default("current") }).strict(),
   z.object({ kind: z.literal("period"), name, options: z.array(z.enum(Object.keys(PERIODS) as [Period, ...Period[]])).min(2).max(7), default: z.enum(Object.keys(PERIODS) as [Period, ...Period[]]) }).strict(),
@@ -26,12 +21,9 @@ export const cardParamSchema = z.discriminatedUnion("kind", [
 export const cardParamsSchema = z.array(cardParamSchema).max(6).refine(params => new Set(params.map(param => param.name)).size === params.length, "Param names must be unique")
   .refine(params => params.every(param => param.kind === "month" || param.kind === "number" || param.kind === "toggle" || (param.kind === "period" ? param.options.includes(param.default) : param.options.some(option => option.value === param.default))), "Each default must be one of its options");
 export type CardParam = z.infer<typeof cardParamSchema>;
-/** A slider or a switch: its value lives in the browser and only the card's code reads it. */
 export type LocalControl = { kind: "number"; label: string; min: number; max: number; step: number; format: "number" | "money" | "percent"; currency?: string } | { kind: "toggle"; label: string };
-/** What the card (and its controls) are told: each param's value and the options to pick from, or its local control. */
 export type ParamState = { name: string; value: string; options: { value: string; label: string }[]; control?: LocalControl };
 
-/** A number on the slider's grid: clamped to its range and rounded to its step. */
 const snap = (value: number, { min, max, step }: { min: number; max: number; step: number }) =>
   Number(Math.min(max, Math.max(min, min + Math.round((value - min) / step) * step)).toPrecision(12));
 
@@ -43,7 +35,6 @@ function periodRange(period: Period, today: string) {
   return { from, to: today };
 }
 
-/** Requested values checked against each param's options; anything else falls back to the default. */
 export function resolveParams(declared: CardParam[], requested: Record<string, string | undefined>, today: string, locale = "en"): { resolved: ResolvedParams; state: ParamState[] } {
   const resolved: ResolvedParams = { values: {}, ranges: {} };
   const state = declared.map((param): ParamState => {

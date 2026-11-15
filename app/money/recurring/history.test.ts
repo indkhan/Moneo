@@ -71,7 +71,6 @@ const formInputs = (node: unknown): {name: string; value: string}[] => {
   if (Array.isArray(node)) return node.flatMap(formInputs);
   if (node && typeof node === "object" && "props" in node) {
     const props = (node as {props: {name?: string; value?: string; hidden?: Record<string, string>; children?: unknown}}).props;
-    // Client forms receive their hidden fields as a prop.
     const hidden = Object.entries(props.hidden ?? {}).map(([name, value]) => ({name, value}));
     return [...(props.name && typeof props.value === "string" ? [{name: props.name, value: props.value}] : []), ...hidden, ...formInputs(props.children)];
   }

@@ -3,7 +3,6 @@ import {z} from 'zod';
 const rowSchema = z.object({id: z.uuid(), version: z.number().int().min(0).max(2147483647), description: z.string().min(1).max(1000),
   merchantId: z.uuid().nullable(), categoryId: z.uuid().nullable(), kind: z.enum(['ordinary', 'refund', 'transfer']),
   reviewReasons: z.array(z.string().max(200)).max(20), userCorrected: z.boolean()}).strict();
-/** Every saved Apply teaches a rule, so a workspace collects many; suggestions read all of them up to this bound. */
 export const MAX_ORGANIZATION_RULES = 2000;
 export const organizationRuleSchema = z.object({id: z.uuid(), version: z.number().int().min(1), descriptionKey: z.string().min(3).max(1000),
   merchantId: z.uuid().nullable(), categoryId: z.uuid().nullable(), approvedBy: z.uuid(), enabled: z.boolean()}).strict();
@@ -36,10 +35,6 @@ export function mergeOrganizationSuggestions(rows: OrganizationRow[], proposals:
   });
 }
 
-/**
- * What a payment is "from" for matching: bank text without dates, amounts, IBANs, reference numbers or the trailing SEPA
- * fields, each word once. Monthly payments whose bank text differs only in those details share one key, so one rule covers them.
- */
 export function organizationDescriptionKey(description: string) {
   const words = description.normalize('NFKC')
     .replace(/\b[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\s+[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b/gu, ' ')
@@ -48,12 +43,10 @@ export function organizationDescriptionKey(description: string) {
     .replace(/\b(?:ref(?:erence)?|invoice|order|receipt|terminal)\b\s*[:#-]?\s*[a-z0-9-]*\d[a-z0-9-]*\b/gu, ' ')
     .replace(/^\s*(?:(?:card payment|pos purchase|card purchase)\s+)+/u, '')
     .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  // Words with digits are dates and references, and single letters are leftovers like "D" or "K"; a name made only of them ("O2", "H&M") keeps them.
   const named = words.filter(word => word.length > 1 && !/\d/u.test(word));
   return [...new Set(named.length ? named : words.filter(word => /\p{L}/u.test(word)))].join(' ');
 }
 
-/** A person-facing name for a matching key: the first few words, capitalized, instead of the bank's raw text. */
 export function organizationDisplayName(key: string) {
   const words = key.split(' ').filter(Boolean);
   const name = words.slice(0, 5).map(word => word[0].toLocaleUpperCase('de') + word.slice(1)).join(' ');

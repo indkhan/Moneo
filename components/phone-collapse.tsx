@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 
-/** Folded behind a button on phones, where it would push the content off the first screen; always shown from md up. */
 export function PhoneCollapse({ label, open: initial = false, children }: { label: string; open?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(initial);
   return <div className="space-y-2">

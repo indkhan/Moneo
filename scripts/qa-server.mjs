@@ -1,20 +1,11 @@
-// Runs this checkout's app for tests on http://localhost:3100, against the moneo-qa backend in
-// .env.qa (npm run setup -- --qa). Bank access is off and the AI key is a placeholder that every
-// provider rejects, so nothing costs money; scheduled jobs only see the test backend. It builds into
-// .next-qa, so it can run beside the owner's app. Playwright starts it on its own.
-//   npm run qa:server                  (dev server)
-//   npm run qa:server -- --production  (build, then start)
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 
 if (!existsSync(".env.qa")) throw new Error("No .env.qa: run `npm run setup -- --qa` first.");
 const qa = parseEnv(readFileSync(".env.qa", "utf8"));
-// Next also reads .env; an empty value here keeps every owner setting from leaking in.
 const names = file => existsSync(file) ? [...readFileSync(file, "utf8").matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm)].map(match => match[1]) : [];
 const blank = Object.fromEntries([...names(".env.example"), ...names(".env")].map(name => [name, ""]));
-// The app treats AI as set up, but a real call fails. Specs that call the real model (E2E_REAL_AI=1)
-// take the key from .env.qa instead.
 const paid = process.env.E2E_REAL_AI === "1" ? {} : { OPENAI_API_KEY: "sk-qa-placeholder-not-a-real-key", OPENROUTER_API_KEY: "" };
 const env = {
   ...process.env, ...blank, ...qa, ...paid,

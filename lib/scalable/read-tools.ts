@@ -1,6 +1,5 @@
 import type { ScalableMcp } from "./client";
 
-// Reviewed reads: upstream annotations and model-provided names cannot grant write access.
 const READS = new Set(["get_portfolio_holdings", "get_portfolio_overview", "get_portfolio_cash_breakdown", "list_portfolio_transactions",
   "get_transaction_details", "list_watchlist_items", "get_security_quote", "search_securities", "get_security_chart", "get_security_news"]);
 

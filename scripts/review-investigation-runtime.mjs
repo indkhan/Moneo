@@ -1,5 +1,3 @@
-// Opt-in synthetic HTTP boundaries. All request/controller/read/receipt/workflow/UI code is copied unchanged.
-// This verifies installed local runtime behavior, not Supabase authentication, SQL locks or deployment.
 import {cpSync, readFileSync} from "node:fs";
 import {resolve} from "node:path";
 
@@ -46,7 +44,6 @@ export async function handleInvestigationRuntime({request, response, body, url, 
       if (rpcItem.workflow_run_id !== body.p_run_id || rpcItem.cancel_requested || !["queued", "running"].includes(rpcItem.status)) {send(false); return true;}
       if (table === "reserve_financial_investigation_synthesis" && rpcItem.review_progress?.synthesisAttempted) {send(false); return true;}
       rpcItem.review_progress = structuredClone(body.p_progress);
-      // Fail after retaining a spent read, so the real durable step retry must count it.
       if (rpcItem.mode === "checkpoint-lost-once" && !rpcItem.lostCheckpoint && body.p_progress.queries.some(query => query.status === "completed")) {
         rpcItem.lostCheckpoint = true; send({code: "XX000", message: "Synthetic checkpoint response lost"}, 503); return true;
       }
@@ -87,7 +84,6 @@ export async function handleInvestigationRuntime({request, response, body, url, 
     const owned = id ? fixtures.get(id) : item;
     if (id && (!owned || owned.workspace_id !== workspace)) {send(null); return true;}
     if (!id && workspace) {send(item ? [item] : []); return true;}
-    // Actual state/run filters and conditional stage updates remain in the shared harness.
   }
   if (url.pathname === "/rest/v1/saved_analyses") {send(item?.analysis ?? null); return true;}
   if (url.pathname.startsWith("/provider/")) {

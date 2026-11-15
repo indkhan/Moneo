@@ -26,7 +26,6 @@ export async function EditingHistory({ query, names }: { query: string; names: P
   </details>;
 }
 
-/** Shown after a manual entry is undone, so it can be brought back with its original ID. */
 export async function RestoreManualEntry({ entryId }: { entryId: string }) {
   const { supabase, workspace } = await requireWorkspace();
   const { data: entry } = await supabase.from("manual_transaction_entries").select("id, version, undone_at, original_record").eq("workspace_id", workspace.id).eq("id", entryId).maybeSingle();

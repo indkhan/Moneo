@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-// A Claude Code run that stays open until the test ends it, and records what it was handed.
 const run = vi.hoisted(() => ({ settings: undefined as Record<string, unknown> | undefined, finish: undefined as unknown as () => void, fail: undefined as unknown as (error: Error) => void }));
 vi.mock("ai-sdk-provider-claude-code", () => ({
   createAiSdkMcpServer: () => ({}),
@@ -13,7 +12,6 @@ vi.mock("ai-sdk-provider-claude-code", () => ({
 
 const { claudeModel } = await import("./claude");
 
-// What the adapter hands to onStreamStart: messages reach the query until the session ends.
 function fakeInjector() {
   const injected: string[] = [];
   let closed = false;
@@ -56,7 +54,6 @@ it("stops polling when the answer ends, fails or is canceled, and drops a steer 
     const reader = stream.getReader();
     await vi.advanceTimersByTimeAsync(1500);
     expect(take).toHaveBeenCalledTimes(1);
-    // The claim is still in flight when the answer ends.
     if (ending === "finish") { run.finish(); await reader.read(); }
     if (ending === "fail") { run.fail(new Error("boom")); await expect(reader.read()).rejects.toThrow("boom"); }
     if (ending === "abort") abort.abort();

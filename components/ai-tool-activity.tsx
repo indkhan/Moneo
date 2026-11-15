@@ -17,7 +17,6 @@ const labels: Record<string, string> = {
 
 export type ToolStep = { id?: string; name: string; state: "running" | "done" | "failed"; input?: unknown; output?: string };
 
-/** One-line gist of a tool input: its first few short scalar values, e.g. "spending · Netto · 2026-10-01". */
 export function toolSummary(input: unknown): string {
   const values: string[] = [];
   const walk = (value: unknown) => {
@@ -46,7 +45,6 @@ function Step({ step }: { step: ToolStep }) {
   </details></li>;
 }
 
-/** Collapsible tool activity; live steps stay open while any is still running. Each call expands to its input and output. */
 export function AiToolActivity({ tools }: { tools: (string | ToolStep)[] }) {
   if (!tools.length) return null;
   const steps = tools.map(tool => typeof tool === "string" ? { name: tool, state: "done" as const } : tool);

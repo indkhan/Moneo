@@ -72,7 +72,6 @@ describe("exact financial calculations", () => {
     expect(forecast.status === "available" && [forecast.opening.conservativeMinor, forecast.days[0].conservativeMinor]).toEqual([10000n, 110000n]);
     expect(availableToSpend(input)).toEqual({ status: "available", amountMinor: 10000n, limitingDate: "2026-10-01" });
     expect(accountLiquidity(input)).toMatchObject({ aggregate: { amountMinor: 10000n }, accounts: [{ amountMinor: 10000n, limitingDate: "2026-10-01", supportingEvents: [] }] });
-    // A payment due today still lowers what can be spent.
     expect(availableToSpend({ ...input, events: [{ date: "2026-10-01", accountId: "cash", expectedMinor: -4000n }] })).toMatchObject({ amountMinor: 6000n });
   });
 

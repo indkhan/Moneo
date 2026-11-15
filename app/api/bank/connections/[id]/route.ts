@@ -5,7 +5,6 @@ import { enableBankingClient, enableBankingConfigured, EnableBankingError } from
 import { psuFrom, serviceDb } from "@/lib/bank/server";
 import { decryptToken } from "@/lib/bank/token-crypto";
 
-// Disconnect: revoke consent at Enable Banking and forget the session. Imported data stays; undo imports separately.
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
@@ -14,12 +13,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const db = serviceDb();
   const connection = await db.from("bank_connections").select("session_id_encrypted").eq("id", id.data).eq("workspace_id", context.workspace.id).maybeSingle();
   if (connection.error || !connection.data) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  // Without saved credentials the session can't be ended here; it still expires at its valid_until.
   if (connection.data.session_id_encrypted && await enableBankingConfigured()) {
     try {
       await (await enableBankingClient()).deleteSession(decryptToken(connection.data.session_id_encrypted, id.data), psuFrom(request));
     } catch (error) {
-      // An already-ended session is fine to forget; anything else keeps the handle so the user can retry.
       if (!(error instanceof EnableBankingError && (error.expired || error.status === 404)))
         return NextResponse.json({ error: "The bank could not be disconnected. Try again." }, { status: 502 });
     }

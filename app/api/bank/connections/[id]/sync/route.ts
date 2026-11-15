@@ -5,7 +5,6 @@ import { enableBankingConfigured } from "@/lib/bank/enable-banking";
 import { psuFrom } from "@/lib/bank/server";
 import { startBankSync } from "@/lib/bank/start-sync";
 
-// "Sync now" is user-present (PSU headers), so it doesn't use the background fetch allowance.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }

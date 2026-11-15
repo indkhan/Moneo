@@ -7,8 +7,6 @@ import { authorizeUrl, pkcePair, registerClient } from "@/lib/scalable/client";
 import { scalableConfigured, scalableRedirectUri } from "@/lib/scalable/server";
 import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 
-// Starts the Scalable login: register a client for this redirect, keep the PKCE verifier sealed
-// on a pending connection, and send the browser to Scalable (login + 2FA in the Scalable app).
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }

@@ -2,12 +2,10 @@ import type {EvidenceReceipt} from "./evidence-receipts";
 import type {ReviewRequest} from "./review-request";
 import {formatMoney} from "./format";
 
-/** A measure with its money value formatted for prose. */
 export function withFormattedValue<T extends {valueMinor: string | null; currency: string; unit?: "money" | "count"}>(metric: T): T & {valueFormatted?: string} {
   return metric.valueMinor !== null && (metric.unit ?? "money") === "money" ? {...metric, valueFormatted: formatMoney(metric.valueMinor, metric.currency)} : metric;
 }
 
-// A fixed byte bound also bounds application-supplied token input without estimating provider billing.
 const MAX_INPUT_BYTES = 32000;
 export function prioritizeReviewReceipts(receipts: EvidenceReceipt[], priorityMetricIds: string[]) {
   const priorities = new Map(priorityMetricIds.map((id, index) => [id, index]));
@@ -23,7 +21,6 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
     evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: (Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation" | "aggregation"> & {valueFormatted?: string})[]; limitations?: EvidenceReceipt["limitations"]}[]};
   const fits = () => Buffer.byteLength(system, "utf8") + Buffer.byteLength(JSON.stringify(context), "utf8") <= MAX_INPUT_BYTES;
   if (!fits()) return null;
-  // A wholly unavailable query still needs its actual blocker and a usable reference.
   boundedLimitations: for (const receipt of queries) {
     for (const limitation of receipt.limitations ?? []) {
       let target = context.evidenceReceipts.find(item => item.id === receipt.id);
@@ -38,7 +35,6 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
   }
   const total = queries.reduce((count, receipt) => count + receipt.metrics.length, 0);
   let included = 0;
-  // Round-robin gives each dated query a chance before adding more measures from any one query.
   boundedInput: for (let index = 0; queries.some(receipt => index < receipt.metrics.length); index++) {
     for (const receipt of queries) {
       const metric = receipt.metrics[index];

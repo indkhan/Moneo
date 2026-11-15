@@ -1,11 +1,3 @@
-// Monthly category spending progress. All money is signed bigint minor
-// units; no floats. Spending = posted ordinary expenses (negative amounts)
-// as a positive total, minus refunds posted in the same month. Linked
-// refunds attribute to the ORIGINAL transaction's category (a
-// refund reduces spending in its posting period, even when the original is
-// older), retaining the refund's posting currency; standalone refunds use
-// their own category. Transfers, pending,
-// income, other currencies and other months are excluded.
 import { sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";
 
 export type SpendingPlanTransaction = {
@@ -16,7 +8,6 @@ export type SpendingPlanTransaction = {
   reviewReasons?: string[];
   categoryId: string | null;
   postedOn: string;
-  // Resolved from refund_of_id -> original transaction, when present.
   refundOfCategoryId?: string | null;
   refundOfCurrencyCode?: string | null;
 };
@@ -60,8 +51,6 @@ export function spendingForCategory(
   return spent;
 }
 
-// A posted unresolved classification can change spending only in its posting
-// currency and attributable category. Unknown categories can affect any plan.
 function classificationNeedsReview(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, month: string): boolean {
   return transactions.some(item => {
     if (item.status !== "posted" || !item.reviewReasons?.length || item.currencyCode !== currency || !item.postedOn.startsWith(month)) return false;
@@ -91,7 +80,6 @@ export function rolloverBudget(transactions: SpendingPlanTransaction[], category
   if (![startsMonth, month].every(value => /^\d{4}-(0[1-9]|1[0-2])$/.test(value))) throw new Error("Invalid budget month");
   const monthIndex = (value: string) => Number(value.slice(0, 4)) * 12 + Number(value.slice(5, 7)) - 1;
   const elapsed = monthIndex(month) - monthIndex(startsMonth);
-  // ponytail: ten years of rollover history; longer histories need paged aggregation.
   if (elapsed > 120) return { status: "unavailable", reason: "history", missingInput: "Rollover exceeds the supported ten-year history; choose a later start month" };
   let carriedMinor = 0n;
   const ordered = [...history].sort((a, b) => a.effective_month.localeCompare(b.effective_month) || a.version - b.version);

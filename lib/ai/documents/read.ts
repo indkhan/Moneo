@@ -1,10 +1,6 @@
 import { columnLetters, locationLabel, parseLocation, sheetPrefix, type DocumentLocation } from "@/lib/ai/citations";
 import type { DocumentUnit, ExtractedDocument } from "./extract";
 
-// Documents as the model reads them: a header naming the file, its id and how to cite it, then the text with
-// a location on every page, slide, paragraph or row. Long documents are cut at a unit boundary with a note
-// naming the next range for document_read.
-
 const KIND_NAMES = { pdf: "PDF", docx: "Word document", pptx: "PowerPoint deck", xlsx: "Excel workbook", csv: "CSV table" } as const;
 type RowUnit = Extract<DocumentUnit, { kind: "row" }>;
 
@@ -27,7 +23,6 @@ function overview(document: ExtractedDocument, name: string, id: string) {
   return `[Document "${name}" (id ${id}), ${KIND_NAMES[document.kind]}, ${count}. Read as text on the owner's computer. Cite it as {{cite ${id} ${cite}}}.]`;
 }
 
-/** A row's cells from `from` to `to` (1-based). */
 const rowLine = (unit: RowUnit, from = 1, to = unit.cells.length) => `${unit.n} | ${unit.cells.slice(from - 1, to).map(escapeCell).join(" | ")}`;
 function sheetHeader(document: ExtractedDocument, sheet: number, from = 1, to = document.sheets?.[sheet]?.columns ?? 1) {
   const name = document.sheets?.[sheet]?.name;
@@ -51,7 +46,6 @@ function unitLabel(document: ExtractedDocument, unit: DocumentUnit) {
   return locationLabel({ kind: unit.kind, from: unit.n, to: unit.n });
 }
 
-/** The next stretch after `unit`, written so document_read accepts it. */
 function nextRange(document: ExtractedDocument, unit: DocumentUnit) {
   if (unit.kind === "row") {
     const columns = columnLetters(document.sheets?.[unit.sheet]?.columns || 1);
@@ -61,7 +55,6 @@ function nextRange(document: ExtractedDocument, unit: DocumentUnit) {
   return `${unit.kind === "page" ? "p" : unit.kind}.${unit.n}-${unit.n + step}`;
 }
 
-/** Units as text within `budget` characters, with sheet headers where a sheet starts and a note where it is cut. */
 function renderUnits(document: ExtractedDocument, units: DocumentUnit[], id: string, budget: number, imagePages = new Set<number>(), columns?: [number, number]) {
   const lines: string[] = [];
   let used = 0, sheet = -1;
@@ -78,7 +71,6 @@ function renderUnits(document: ExtractedDocument, units: DocumentUnit[], id: str
   return lines.join(document.kind === "pdf" || document.kind === "pptx" ? "\n\n" : "\n");
 }
 
-/** A newly attached document as the model first reads it. */
 export function documentForModel(document: ExtractedDocument, name: string, id: string, budget: number, imagePages = new Set<number>()) {
   const body = document.units.length ? renderUnits(document, document.units, id, budget, imagePages) : "[No text could be read from this file.]";
   return `${overview(document, name, id)}\n${body}`;
@@ -97,7 +89,6 @@ function selectUnits(document: ExtractedDocument, location: DocumentLocation): {
   return { units: document.units.filter(unit => unit.kind === location.kind && unit.n >= location.from && unit.n <= location.to) };
 }
 
-/** Places where `query` appears, each with its location and a little text around it. */
 function search(document: ExtractedDocument, query: string, limit = 40) {
   const needle = query.toLowerCase();
   const found: string[] = [];
@@ -114,7 +105,6 @@ function search(document: ExtractedDocument, query: string, limit = 40) {
   return found;
 }
 
-/** What document_read returns: a location range, the places a text appears, or the start of the document. */
 export function readDocument(document: ExtractedDocument, input: { name: string; id: string; location?: string; search?: string }, budget = 30_000) {
   const head = overview(document, input.name, input.id);
   if (input.search) {
@@ -130,7 +120,6 @@ export function readDocument(document: ExtractedDocument, input: { name: string;
   return `${head}\n${renderUnits(document, selected.units, input.id, budget, new Set(), selected.columns)}`;
 }
 
-/** What the in-app viewer shows for a citation: the cited slide, paragraphs or cells with a little around them. */
 export type CitedSection =
   | { kind: "text"; blocks: { label: string; text: string; heading?: number; target: boolean }[] }
   | { kind: "table"; sheet: string; columns: string[]; rows: { n: number; cells: string[]; target: boolean[] }[] }

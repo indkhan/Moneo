@@ -3,8 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { payloadSchemas } from "@/lib/ai/agent-team";
 
-// Every way to add, change, confirm or remove a recurring schedule, shared by the Recurring page and chat cards.
-// Writes go through the same audited paths as Plan: an insert for new schedules, edit_assumption (undoable) for changes.
 type Context = { supabase: SupabaseClient; workspace: { id: string } };
 
 export const scheduleFields = z.object({
@@ -18,7 +16,6 @@ export type ScheduleFields = z.infer<typeof scheduleFields>;
 export const seriesSchema = payloadSchemas.recurring;
 export type SeriesDecision = z.infer<typeof seriesSchema>;
 
-/** The category with this name, created when missing; blank means no category. */
 async function categoryId({ supabase, workspace }: Context, name: string | null | undefined) {
   if (!name) return null;
   const { data, error } = await supabase.from("categories").upsert({ workspace_id: workspace.id, name }, { onConflict: "workspace_id,name" }).select("id").single();
@@ -39,7 +36,6 @@ export async function createSchedule(context: Context, accountId: string, fields
   return data.id as string;
 }
 
-/** Applies only the fields that differ, so an unchanged schedule keeps its detected calendar and evidence. */
 export async function editSchedule(context: Context, id: string, changes: Partial<ScheduleFields>, requestId: string) {
   const { supabase, workspace } = context;
   const { data: current, error: lookupError } = await supabase.from("financial_assumptions")
@@ -66,7 +62,6 @@ export async function removeSchedule({ supabase, workspace }: Context, id: strin
   if (error) throw new Error(error.message);
 }
 
-/** Confirms a detected pattern with its evidence, then applies any changes the person made before confirming. */
 export async function decideSeries(context: Context, series: SeriesDecision, decision: "confirmed" | "dismissed", changes: Partial<ScheduleFields> = {}, requestId = crypto.randomUUID()) {
   const { data, error } = await context.supabase.rpc("review_recurring_series_versions", {
     p_decision: decision, p_account_id: series.accountId, p_label: series.label, p_cadence: series.cadence, p_currency_code: series.currencyCode,

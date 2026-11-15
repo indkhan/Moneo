@@ -1,10 +1,5 @@
 import { z } from "zod";
 
-/**
- * Six card shapes we wrote ourselves. The model picks one and fills its settings; values are paths into the
- * card's data (e.g. "month.spending_formatted" or "byCategory.rows"), so amounts always come from the app.
- * They render through the same pipeline as designed cards, from trusted source.
- */
 const path = z.string().regex(/^[a-zA-Z_][\w]*(\.[\w]+)*$/).max(200);
 const field = z.string().regex(/^[\w]+(\.[\w]+)*$/).max(100);
 const tone = z.enum(["positive", "negative", "neutral"]).optional();
@@ -99,7 +94,6 @@ const TEMPLATES: Record<PresetName, string> = {
 }`,
 };
 
-/** The card source for a preset: the settings, our helpers and the template. */
 export function presetSource(preset: PresetName, config: unknown) {
   const parsed = PRESETS[preset].config.parse(config);
   const body = TEMPLATES[preset].replace("export default function Card(", "function Body(");
@@ -108,7 +102,6 @@ export function presetSource(preset: PresetName, config: unknown) {
 }\n`;
 }
 
-// Which settings a preset shows as text (display), uses as numbers (bar lengths, chart points), or reads rows from.
 const BINDINGS: Record<PresetName, { display: string[]; numeric: string[]; top: string[] }> = {
   stat: { display: [], numeric: [], top: ["value", "note"] },
   stat_row: { display: [], numeric: [], top: ["items.value"] },
@@ -120,10 +113,6 @@ const BINDINGS: Record<PresetName, { display: string[]; numeric: string[]; top: 
 const MINOR = /(_minor|Minor)$/;
 const at = (from: unknown, path: string) => path.split(".").reduce<unknown>((value, key) => value == null ? undefined : (value as Record<string, unknown>)[key], from);
 
-/**
- * Checks a preset's settings against the card's live data: every path must lead somewhere, numbers must be numbers,
- * and text must not be raw minor units (cents shown as 135000). Lists that are empty today can't be checked.
- */
 export function checkPresetBindings(preset: PresetName, config: Record<string, unknown>, data: Record<string, unknown>) {
   const errors: string[] = [];
   const { display, numeric, top } = BINDINGS[preset];

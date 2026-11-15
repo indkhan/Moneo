@@ -24,7 +24,6 @@ export async function dismissInsights(form: FormData) {
   revalidatePath("/", "layout");
 }
 
-/** Adds one insight type to the muted list in Settings; the rest of the preferences are saved unchanged. */
 export async function muteInsightType(form: FormData) {
   const { supabase, workspace, settings } = await requireWorkspace();
   const type = z.enum(INSIGHT_TYPES).parse(form.get("type"));

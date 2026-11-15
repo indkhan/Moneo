@@ -35,7 +35,6 @@ export async function gatherReviewInvestigation(request: ReviewRequest, dependen
         if (workspace.error) throw workspace.error;
         const context = {supabase: db, workspace: {...workspace.data, timezone: settings.timezone}, settings: {...settings, ai_data_scopes: allowedScopes}} as Awaited<ReturnType<typeof requireWorkspace>>;
         result = await evaluateForecast(input, context);
-        // One retained calculation record supports the bounded forecast summary; underlying inputs remain inspectable.
         supportRecords = 1;
       }
       signal.throwIfAborted();
@@ -54,7 +53,6 @@ export async function gatherReviewInvestigation(request: ReviewRequest, dependen
       requireAiScope(settings, ...scopes);
       const dataset = await loadInvestigationDataset(query, {supabase: db, workspace: {id: dependencies.workspaceId}}, {canReadImports: scopes.includes("imports")});
       signal.throwIfAborted();
-      // The scopes actually read remain required even if access changed during transport.
       requireAiScope(await loadWorkspaceSettings(db, dependencies.workspaceId), ...scopes);
       const receipt = await persistEvidenceReceipt(db, investigationReceipt(dataset, scopes));
       signal.throwIfAborted();

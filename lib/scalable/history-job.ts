@@ -5,18 +5,12 @@ import { calculateHistory, readHistoryInput, type TradeDetails } from "./history
 import type { ScalableExtras } from "./portfolio";
 import { withScalable } from "./server";
 
-// The run makes many calls in a row; the cron route allows it five minutes.
 const LOGIN_NEEDED_MS = 600_000;
 
-/**
- * One try at a connection's calculated history. Separate from syncScalable, so it can't slow down or fail a sync.
- * A failed try saves nothing and leaves any earlier days in place; the reason stays on the connection, out of the owner's way.
- */
 export async function rebuildScalableHistory(connection: { id: string; workspace_id: string; portfolio: unknown }, timeZone: string, today: string): Promise<"saved" | "failed" | "skipped"> {
   const db = serviceDb();
   const [events, items] = await Promise.all([loadWealthEvents(db, connection.workspace_id), loadWealthItems(db, connection.workspace_id, true)]);
   const before = firstSyncedOn(valuationHistory(events, items, timeZone), scalableKnownIds([connection.portfolio as ScalableExtras | null]));
-  // Nothing has synced yet, so there is no date to stop before. The next run tries again.
   if (!before) return "skipped";
   const failed = async (reason: string) => {
     const saved = await db.from("scalable_connections").update({ history_status: "failed", history_checked_on: today, history_error: reason.slice(0, 1000) }).eq("id", connection.id);

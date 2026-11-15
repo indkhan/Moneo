@@ -1,9 +1,3 @@
-// End-to-end checks of the PACKAGED desktop app (after npm run desktop:dist), in temporary homes.
-//   node scripts/desktop/package-smoke.mjs [path to the executable]
-// Playwright drives the app over the Chrome DevTools protocol (--remote-debugging-port, which the
-// packaged app accepts only with MONEO_DESKTOP_DEBUG=1): its --inspect fuse is off, which
-// Playwright's _electron.launch needs. MONEO_DESKTOP_DEBUG=1 also enables the --debug-action hooks
-// that stand in for tray clicks. Window-message steps run on Windows only.
 import { spawn } from "node:child_process";
 import postgres from "postgres";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -21,7 +15,6 @@ check("fuses: RunAsNode, NODE_OPTIONS and --inspect off; cookie encryption, asar
   off(FuseV1Options.RunAsNode) && off(FuseV1Options.EnableNodeOptionsEnvironmentVariable) && off(FuseV1Options.EnableNodeCliInspectArguments)
   && on(FuseV1Options.EnableCookieEncryption) && on(FuseV1Options.OnlyLoadAppFromAsar) && (process.platform === "linux" || on(FuseV1Options.EnableEmbeddedAsarIntegrityValidation)));
 
-// Without MONEO_DESKTOP_DEBUG the packaged app refuses debugging switches before doing anything.
 for (const flag of ["--remote-debugging-port=0", "--remote-debugging-pipe", "--inspect"]) {
   const home = tempHome("refuse");
   const env = { ...process.env, MONEO_DESKTOP_HOME: home };
@@ -29,11 +22,10 @@ for (const flag of ["--remote-debugging-port=0", "--remote-debugging-pipe", "--i
   const child = spawn(exe, [flag], { env, stdio: "ignore" });
   const code = await Promise.race([new Promise(resolve => child.on("exit", resolve)), new Promise(resolve => setTimeout(() => resolve("running"), 15_000))]);
   if (code === "running") {
-    // Not refused: stop it the normal way, then anything it left in that home.
     const started = processesOf(child.pid, home);
     await new Promise(resolve => spawn(exe, ["--quit"], { env, stdio: "ignore" }).on("exit", resolve));
     await until("the unrefused app to exit", async () => !alive(child.pid), 60_000).catch(() => {});
-    for (const row of [...started, ...processesOf(child.pid, home)]) if (alive(row.pid)) try { process.kill(row.pid); } catch { /* gone */ }
+    for (const row of [...started, ...processesOf(child.pid, home)]) if (alive(row.pid)) try { process.kill(row.pid); } catch {}
   }
   const log = existsSync(path.join(home, "logs", "main.log")) ? readFileSync(path.join(home, "logs", "main.log"), "utf8") : "";
   check(`refuses ${flag.split("=")[0]} without MONEO_DESKTOP_DEBUG`, code === 1 && /Refusing to start/.test(log) && !existsSync(path.join(home, "config.json")), `exit ${code}`);
@@ -67,7 +59,6 @@ async function checkWriteGuard(label) {
 }
 
 try {
-  // First run, Home, navigation rules.
   await app.launch();
   const setup = await app.setupPage();
   check("setup window appears", true, await setup.locator("#title").innerText());
@@ -87,11 +78,9 @@ try {
   await until("the popup in the log", async () => app.external().includes(popup), 10_000);
   check("window.open goes to the system browser", !(await app.urls()).some(url => url.includes("example.org")));
 
-  // Voice calls: the microphone is granted for Moneo's page (a fake device stands in for a real one).
   const mic = await page.evaluate(() => navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => { stream.getTracks().forEach(track => track.stop()); return "granted"; }, error => error.name));
   check("microphone is granted for Moneo's own page", mic === "granted", mic);
 
-  // Tray: Back up now, Open in browser (the hooks call the tray menu's own actions).
   const before = backups();
   await app.second(["--debug-action=backUp"]);
   check("tray Back up now writes a backup", await newBackup(before, "manual").catch(() => false));
@@ -99,7 +88,6 @@ try {
   await until("Open in browser in the log", async () => app.external().includes(`http://localhost:${port}/`), 10_000).catch(() => {});
   check("tray Open in browser goes to the system browser", app.external().includes(`http://localhost:${port}/`));
 
-  // Close hides to the tray; a second launch brings the window back.
   if (windows) {
     const handle = app.mainWindow();
     app.closeWindow(handle);
@@ -109,8 +97,6 @@ try {
     check("launching Moneo again shows the hidden window", await until("the window to show", async () => app.windowVisible(handle), 10_000).catch(() => false));
   }
 
-  // Crash: the server is restarted.
-  // Use the app-owned PID: Linux can hide utility-process sockets from lsof.
   const serverPidFromLog = () => Number([...app.log().matchAll(/Next server process (\d+)/g)].at(-1)?.[1]) || null;
   const serverPid = serverPidFromLog();
   if (!serverPid || !alive(serverPid)) throw new Error("No live Next server PID recorded");
@@ -120,7 +106,6 @@ try {
   await page.reload();
   check("a crashed server is restarted", restartedPid && restartedPid !== serverPid && /Restarting the Next server/.test(app.log()), `pid ${serverPid} → ${restartedPid}`);
 
-  // Restore: data from before the backup comes back, data written after it is gone.
   await importCsv(page, { filename: "before-backup.csv", accountName: "Smoke checking", csv: statement([["2026-09-01", "Before backup coffee", "-3.20"]]) });
   const manualBackups = () => app.log().split(/\r?\n/).filter(line => line.includes("Backup (manual) written to")).map(line => line.split("written to ")[1].trim());
   const written = manualBackups().length;
@@ -136,12 +121,10 @@ try {
   check("restore brings back data from before the backup and drops later data", restored.includes("Before backup coffee") && !restored.includes("After backup tea"));
   check("restore keeps a backup of the replaced data", backups().some(name => !beforeRestore.includes(name) && name.includes("before-restore")));
 
-  // Simulate a home created before safeupdate was bundled.
   const admin = guardrailDb("supabase_admin");
   try { await admin.unsafe("ALTER ROLE authenticator RESET session_preload_libraries"); }
   finally { await admin.end(); }
 
-  // Quit, then start again in the same home: the data is kept.
   app.snapshot();
   await app.quit();
   const left = [...app.seen.values()].filter(row => alive(row.pid));
@@ -153,7 +136,6 @@ try {
   check("the app keeps its port", Number(new URL(page.url()).port) === port);
   await checkWriteGuard("existing backend restores the unfiltered-write guard on startup");
 
-  // A database that cannot start: the error screen, then Retry.
   app.snapshot();
   await app.quit();
   const versionFile = path.join(app.home, "postgres", "PG_VERSION");

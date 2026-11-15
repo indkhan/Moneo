@@ -15,7 +15,6 @@ export async function loadOrganizationSuggestions(db:SupabaseClient,workspaceId:
  if(current.error||history.error||corrections.error||rules.error)throw current.error??history.error??corrections.error??rules.error;
  const byId=new Map(current.data.map(row=>[row.id,row]));
  if(byId.size!==selected.length||current.data.length!==byId.size||selected.some(row=>byId.get(row.id)?.version!==row.version))throw new Error('The selected history changed; reload suggestions');
- // AI labels and events the old auto-apply left behind are not the owner's word: never history evidence or a correction.
  const corrected=new Set(corrections.data.filter(event=>event.origin!=='ai').map(event=>event.transaction_id));
  const toRow=(row:typeof current.data[number]):OrganizationRow=>({id:row.id,version:row.version,description:row.description,
   merchantId:row.merchant_id,categoryId:row.category_id,kind:row.kind,reviewReasons:row.review_reasons,userCorrected:corrected.has(row.id)});

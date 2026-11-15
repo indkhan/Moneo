@@ -92,7 +92,6 @@ it("shows citations as chips only for files in this conversation, opening a PDF 
   expect(html).toContain(`href="/api/chat/attachments?path=00000000-0000-4000-8000-000000000001%2Fa1b2c3d4-0000-4000-8000-000000000002.pdf#page=3"`);
   expect(html).toContain("budget.xlsx · Budget!C3");
   expect(html).not.toContain("ffffffff");
-  // Code is shown as written.
   expect(html).toContain("{{cite a1b2c3d4 p.9}}");
   expect(renderToStaticMarkup(<AiMessage content="Rent is 950. {{cite a1b2c3d4 p.3}}" />)).not.toContain("cite");
   expect(renderToStaticMarkup(<AiMessage files={files} content="Rent is 950. {{cite a1b2c3" streaming />)).not.toContain("{{");

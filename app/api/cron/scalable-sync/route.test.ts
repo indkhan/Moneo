@@ -14,8 +14,8 @@ it("syncs whatever is not from today in the workspace's timezone, however few ho
   vi.stubEnv("CRON_SECRET", "synthetic-secret");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.supabase.co");
   const rows = [
-    { id: "yesterday", workspace_id: "w", last_synced_at: "2026-11-07T22:59:00Z" }, // 23:59 in Berlin, under 13 hours ago
-    { id: "today", workspace_id: "w", last_synced_at: "2026-11-07T23:01:00Z" }, // 00:01 in Berlin
+    { id: "yesterday", workspace_id: "w", last_synced_at: "2026-11-07T22:59:00Z" },
+    { id: "today", workspace_id: "w", last_synced_at: "2026-11-07T23:01:00Z" },
     { id: "never", workspace_id: "w", last_synced_at: null },
   ];
   const builder = { select: vi.fn(() => builder), eq: vi.fn(() => builder), order: vi.fn(() => builder), limit: vi.fn(async () => ({ data: rows, error: null })) };

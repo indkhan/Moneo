@@ -4,12 +4,8 @@ import { minorDigits } from "@/lib/finance/fx";
 import type { ScalableMcp } from "./client";
 import { scalableConfigured } from "./server";
 
-// Live, read-only Scalable answers for chat and calls, trimmed to what a question needs. Amounts are exact
-// minor units with their currency (chat adds the formatted text); Scalable's own figures are never recomputed.
-
 export const READ_ONLY_TRADING = "Your Scalable connection only allows read access, so Moneo can't buy or sell for you. To trade from Moneo, turn on full access for AI agents in the Scalable app under Profile → Security.";
 
-/** The workspace's active Scalable connection, or null when there is none (or this install cannot hold one). */
 export async function activeScalableConnection(workspaceId: string): Promise<{ id: string; tradingAccess: "full" | "read" | null } | null> {
   if (!scalableConfigured()) return null;
   const { data, error } = await serviceDb().from("scalable_connections").select("id, trading_access").eq("workspace_id", workspaceId).eq("status", "active")
@@ -18,7 +14,6 @@ export async function activeScalableConnection(workspaceId: string): Promise<{ i
   return data ? { id: data.id, tradingAccess: data.trading_access ?? null } : null;
 }
 
-/** Full access lists the order tools; read-only access does not. */
 export async function tradingAccess(mcp: Pick<ScalableMcp, "listTools">): Promise<"full" | "read"> {
   const names = new Set((await mcp.listTools()).map(tool => tool.name));
   return ["preview_buy_order", "preview_sell_order", "submit_buy_order", "submit_sell_order"].every(name => names.has(name)) ? "full" : "read";
@@ -26,7 +21,6 @@ export async function tradingAccess(mcp: Pick<ScalableMcp, "listTools">): Promis
 
 const decimal = z.union([z.number().finite(), z.string().regex(/^-?\d+(\.\d+)?$/)]);
 const code = z.string().regex(/^[A-Z]{3}$/);
-/** A Scalable decimal (number or string) in exact minor units, rounded half away from zero. */
 export function toMinor(value: number | string, currency: string): string {
   const text = typeof value === "number" ? value.toFixed(12) : value;
   const negative = text.startsWith("-"), [whole, fraction = ""] = (negative ? text.slice(1) : text).split(".");
@@ -35,7 +29,6 @@ export function toMinor(value: number | string, currency: string): string {
   if (Number(padded[digits]) >= 5) minor += 1n;
   return (negative && minor !== 0n ? -minor : minor).toString();
 }
-/** Gain over cost in percent with two decimals, or null without a cost. */
 const percent = (gain: bigint, cost: bigint) => cost > 0n ? Number(gain * 10000n / cost) / 100 : null;
 
 const holdingsSchema = z.object({
@@ -50,11 +43,9 @@ const overviewSchema = z.object({
 });
 const cashSchema = z.object({ cash: z.object({ cashBalance: decimal, buyingPower: decimal.optional(), pendingBuyOrdersAmount: decimal.optional() }) });
 
-/** Labels for Scalable's return periods, shortest first. */
 export const PERIODS: Record<string, string> = { INTRADAY: "Latest market day", ONE_WEEK: "1 week", ONE_MONTH: "1 month", THREE_MONTHS: "3 months", SIX_MONTHS: "6 months",
   YEAR_TO_DATE: "This year", ONE_YEAR: "1 year", MAX: "All time" };
 
-/** Holdings, gains, cash and Scalable's returns per period, read live. */
 export async function investmentsPortfolio(mcp: ScalableMcp, currency = "EUR") {
   const [holdings, overview, cash, access] = await Promise.all([mcp.callTool("get_portfolio_holdings").then(value => holdingsSchema.parse(value)),
     mcp.callTool("get_portfolio_overview", { includeYearToDate: true }).then(value => overviewSchema.parse(value)),
@@ -109,7 +100,6 @@ export function readTransactions(value: unknown) {
   });
 }
 
-/** Buys, sells, deposits, withdrawals and dividends, newest first; `id` is what an order cancellation needs. */
 export async function investmentsTransactions(mcp: ScalableMcp, input: z.infer<typeof transactionsInput>): Promise<{ transactions: InvestmentTransaction[]; more: boolean; nextCursor: string | null; totalCount: number | null }> {
   if (input.allPages) {
     if (input.cursor) throw new Error("Complete history must start without a cursor");
@@ -149,7 +139,6 @@ const quoteResultSchema = z.object({ security: z.object({ isin: z.string(), name
   quote: quoteSchema.and(z.object({ performances: z.array(z.object({ timeframe: z.string(), performance: decimal.nullable().optional() })).optional() })) }) });
 const quoted = (quote: z.infer<typeof quoteSchema> | null | undefined) => quote ? { priceMinor: toMinor(quote.midPrice, quote.currency), currencyCode: quote.currency, at: quote.timestampUtc ?? null, outdated: quote.isOutdated ?? false } : null;
 
-/** Any security on Scalable: search by name, its live quote, its price chart (summarised) or its news. */
 export async function investmentsSecurity(mcp: ScalableMcp, input: z.infer<typeof securityInput>) {
   if (input.action === "search") {
     if (!input.query) throw new Error("Search needs a query");
@@ -160,7 +149,6 @@ export async function investmentsSecurity(mcp: ScalableMcp, input: z.infer<typeo
   if (input.action === "quote") {
     const { security } = quoteResultSchema.parse(await mcp.callTool("get_security_quote", { isin: input.isin }));
     return { isin: security.isin, name: security.name ?? null, type: security.securityType ?? null, quote: quoted(security.quote),
-      // Scalable's own moves for the security, as percentages.
       moves: (security.quote.performances ?? []).flatMap(entry => PERIODS[entry.timeframe] && entry.performance != null ? [{ period: PERIODS[entry.timeframe], percent: Math.round(Number(entry.performance) * 10000) / 100 }] : []) };
   }
   if (input.action === "chart") {
@@ -169,14 +157,12 @@ export async function investmentsSecurity(mcp: ScalableMcp, input: z.infer<typeo
     const prices = chart.dataPoints.map(point => Number(point.midPrice));
     if (!prices.length) return { isin: input.isin, timeframe, points: [] };
     const first = prices[0], last = prices.at(-1)!;
-    // About 24 evenly spaced points are enough to describe or draw the trend.
     const step = Math.max(1, Math.ceil(chart.dataPoints.length / 24));
     return { isin: input.isin, timeframe, currencyCode: chart.currency, firstMinor: toMinor(first, chart.currency), lastMinor: toMinor(last, chart.currency),
       lowMinor: toMinor(Math.min(...prices), chart.currency), highMinor: toMinor(Math.max(...prices), chart.currency), changePercent: Math.round((last - first) / first * 10000) / 100,
       points: chart.dataPoints.filter((_, index) => index % step === 0 || index === chart.dataPoints.length - 1).map(point => ({ at: point.timestampUtc, priceMinor: toMinor(point.midPrice, chart.currency) })) };
   }
   const news = newsSchema.parse(await mcp.callTool("get_security_news", { isin: input.isin, locale: "en_US" }));
-  // Third-party text: the system prompt tells the model never to follow instructions in tool results.
   return { isin: input.isin, summary: news.summary?.short ?? null, detail: news.summary?.long?.slice(0, 2500) ?? null };
 }
 

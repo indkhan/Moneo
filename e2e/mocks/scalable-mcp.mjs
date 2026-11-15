@@ -1,7 +1,3 @@
-// A local stand-in for Scalable's MCP server, for browser tests and demos. Start the app with
-// SCALABLE_MCP_ORIGIN=http://127.0.0.1:3043 and run `node e2e/mocks/scalable-mcp.mjs`.
-// All data is made up. POST /mode {"access":"read"|"full"} switches access; GET /calls lists
-// every tool call, so a test can prove what was (and was not) submitted.
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.SCALABLE_MOCK_PORT ?? 3043);

@@ -21,7 +21,6 @@ export async function ScenarioHistory() {
   const { supabase, workspace } = await requireWorkspace();
   const history = await supabase.from("scenario_events").select("id, entity_type, entity_id, before, after, undone, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50);
   if (history.error) throw history.error;
-  // Only the records these 50 events touch, not every override in the workspace.
   const ids = (type: string) => [...new Set((history.data ?? []).filter(event => event.entity_type === type).map(event => event.entity_id))];
   const [scenarios, overrides] = await Promise.all([
     supabase.from("scenarios").select("id, version").eq("workspace_id", workspace.id).in("id", ids("scenario")),

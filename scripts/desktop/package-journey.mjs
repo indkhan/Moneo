@@ -1,8 +1,3 @@
-// The owner's first hour, on the PACKAGED app, with synthetic data and no real providers:
-// first-run setup → Home → import a CSV → transactions → undo → re-import → Settings connections
-// (sign-ins go to the system browser) → loopback callbacks → close to tray and reopen.
-// Records the run as a WebM video (Playwright's bundled ffmpeg encodes VP8 only).
-//   node scripts/desktop/package-journey.mjs [--video <file.webm>] [path to the executable]
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { request as httpsRequest, createServer as createHttpsServer } from "node:https";
@@ -17,10 +12,8 @@ const video = videoAt >= 0 ? path.resolve(args.splice(videoAt, 2)[1]) : null;
 const exe = path.resolve(args[0] ?? defaultExe());
 if (!existsSync(exe)) { console.error(`No packaged app at ${exe}.`); process.exit(1); }
 
-// Synthetic statement (the e2e fixture AUGUST_CSV plus a few rows); no real data.
 const CSV = ["date,description,amount", "2026-08-01,Salary Acme,2500.00", "2026-08-02,AMZN MKTP DE,-42.99", "2026-08-03,Bakery Corner,-6.40", "2026-08-05,City Transit Pass,-49.00", ""].join("\n");
 
-// --- Video: every window's screencast on one timeline, title cards while no window is visible.
 class Recorder {
   frames = [];
   sessions = new Set();
@@ -54,7 +47,6 @@ class Recorder {
     const encoder = spawn(ffmpeg, ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(fps), "-c:v", "mjpeg", "-i", "pipe:0",
       "-vf", "scale=1280:800:force_original_aspect_ratio=decrease,pad=1280:800:(ow-iw)/2:(oh-ih)/2:color=0x0f1011",
       "-c:v", "libvpx", "-b:v", "1500k", "-deadline", "realtime", "-cpu-used", "8", video], { stdio: ["pipe", "inherit", "inherit"] });
-    // A constant frame rate: each tick shows the newest frame so far (a title card holds for its duration).
     let index = 0, current = frames[0];
     for (let at = frames[0].at; at <= frames.at(-1).at + 1_000; at += 1000 / fps) {
       while (index < frames.length && frames[index].at <= at) {
@@ -84,8 +76,6 @@ try {
   check("Home opens signed in", new URL(page.url()).pathname === "/" && await page.getByRole("navigation").first().isVisible());
   await page.waitForTimeout(1_500);
 
-  // Every section opens signed in, without bouncing to another page or failing to load the workspace
-  // (both happened on Windows while GoTrue opened a new database connection per request).
   const pages = ["/money/transactions", "/money/organization", "/money/investigations", "/import", "/money/accounts", "/money/recurring",
     "/plan", "/plan/spending", "/plan/currency", "/money/wealth", "/ai", "/ai/agents", "/ai/artifacts", "/ai/activity", "/settings", "/"];
   const opened = [];
@@ -99,7 +89,6 @@ try {
   check("every section opens signed in, twice over, each within 5 s", opened.every(entry => entry.ok && entry.ms < 5_000),
     `${opened.filter(entry => !entry.ok).map(entry => entry.section).join(", ") || "all opened"}; slowest ${slowest.section} ${slowest.ms} ms, median ${opened.map(entry => entry.ms).toSorted((a, b) => a - b)[opened.length >> 1]} ms`);
 
-  // Import through the page, choosing the columns by hand (no AI is set up).
   const importOnce = async () => {
     await page.goto(`${origin}/import`);
     await page.getByLabel("Financial statement files").waitFor();
@@ -139,7 +128,6 @@ try {
   transactions = await transactionsText(page);
   check("re-importing the same file brings them back", transactions.includes("Salary Acme") && transactions.includes("City Transit Pass"));
 
-  // Settings: connections. Sign-ins open in the system browser (logged here), never in the window.
   await page.goto(`${origin}/settings#connections`);
   await page.waitForLoadState("networkidle").catch(() => {});
   const sections = { ai: "#ai-access", banks: "#banks", scalable: "#scalable", phone: "#phone" };
@@ -154,7 +142,6 @@ try {
   check("ChatGPT sign-in returns to this app's loopback port", chatgpt && new URL(chatgpt).searchParams.get("redirect_uri") === `http://127.0.0.1:${port}/api/ai/chatgpt/callback`);
   await page.goto(`${origin}/settings#scalable`);
   await page.locator("#scalable").scrollIntoViewIfNeeded();
-  // Exercise the UI handoff without registering a real client with Scalable.
   const mockScalableUrl = "https://example.com/moneo-qa-scalable-authorize";
   await page.route("**/api/scalable/connect", route => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ url: mockScalableUrl }),
@@ -162,19 +149,16 @@ try {
   const scalable = page.locator("#scalable").getByRole("button", { name: "Connect Scalable Capital" });
   if (await scalable.count() && await scalable.isEnabled()) {
     const mark = app.external().length;
-    // The page then navigates to the sign-in, which the window cancels; a click would wait for it.
     await scalable.evaluate(button => button.click());
     const url = await until("Scalable in the system browser", async () => app.external().slice(mark).split("\n").find(line => line.startsWith("https://")), 20_000).catch(() => null);
     check("Scalable UI handoff opens the mocked URL in the system browser (provider and callback not exercised)", url === mockScalableUrl, url ? new URL(url).origin : "nothing logged");
   } else console.log("SKIP Scalable connect — the button is disabled without Scalable configured");
-  // A full navigation clears the canceled external sign-in navigation before scrolling.
   await page.goto(`${origin}/settings`, { waitUntil: "domcontentloaded" });
   await page.locator("#banks").scrollIntoViewIfNeeded();
   await page.waitForTimeout(1_000);
   const bankButton = page.locator("#banks").getByRole("button", { name: "Connect bank" });
   console.log(`SKIP bank connect — ${await bankButton.count() ? (await bankButton.isEnabled() ? "enabled (not clicked: it calls Enable Banking)" : "the button is disabled without Enable Banking keys") : "no Connect bank button without Enable Banking keys"}`);
 
-  // The sign-in callbacks reach this Moneo, and their result opens in the app window, not the browser.
   await page.goto(`${origin}/`);
   const callback = await fetch(`http://127.0.0.1:${port}/api/ai/chatgpt/callback`, { redirect: "manual" });
   const told = callback.status === 200 && /Continue in Moneo/.test(await callback.text());
@@ -190,7 +174,6 @@ try {
     check("the bank return address (https://localhost:3443) reaches Moneo", response.statusCode === 303 && response.headers.location === `${origin}/api/bank/callback?x=1`, `${response.statusCode} → ${response.headers.location}`);
   } else {
     console.log(`SKIP https://localhost:3443 — port held by another program (pid ${holder}), so this Moneo's listener is off: ${/Bank return listener on port 3443 is off/.test(app.log("next.log"))}`);
-    // The certificate itself: valid for localhost under Moneo's own authority (not installed as trusted).
     const server = createHttpsServer({ key, cert }, (_request, response) => response.writeHead(204).end());
     const testPort = await freePort();
     await new Promise(resolve => server.listen(testPort, "127.0.0.1", resolve));
@@ -198,7 +181,6 @@ try {
     check("the bank return certificate is valid for localhost under Moneo's own authority", response.statusCode === 204);
   }
 
-  // Close to the tray, reopen with a second launch.
   if (process.platform === "win32") {
     await page.goto(`${origin}/`);
     await page.waitForTimeout(1_500);

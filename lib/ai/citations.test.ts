@@ -19,7 +19,6 @@ it("parses citation markers and drops the parts that are not valid", () => {
     { id: "a1b2c3d4", location: "p.3", quote: "Rent 950.00", parsed: { kind: "page", from: 3, to: 3 } },
     { id: "a1b2c3d4", location: "Budget!C3", parsed: { kind: "cells", sheet: "Budget", fromRow: 3, toRow: 3, fromColumn: 3, toColumn: 3 } },
     { id: "a1b2c3d4" },
-    // A location that cannot be read still cites the file, without a place.
     { id: "a1b2c3d4" },
   ]);
 });

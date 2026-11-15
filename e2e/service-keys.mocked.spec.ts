@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { e2eStorageStatePath } from "./fixtures";
 
-// Pages need a session; the key APIs are stubbed, so nothing reaches the install-wide key table.
 const signedIn = e2eStorageStatePath();
 if (signedIn) test.use({ storageState: signedIn });
 test.skip(!signedIn, "Needs the QA session (scripts/e2e-auth.mjs)");
@@ -71,7 +70,6 @@ test("ChatGPT or OpenRouter chat stays available while voice shows a missing-key
   await expect(toast).toHaveCount(0);
   await page.getByRole("button", { name: "Talk: record a voice message" }).click();
   await expect(toast).toBeVisible();
-  // The sample button only knows voice is off once the status has loaded.
   const status = page.waitForResponse("**/api/ai/status");
   await page.goto("/settings");
   await status;

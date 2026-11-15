@@ -3,12 +3,6 @@ import { organizationDescriptionKey } from "@/lib/import/organization";
 
 export type SimilarRow = { id: string; version: number; description: string; category_id: string | null };
 
-/**
- * Posted ordinary rows whose description matches this one (same key the
- * organization rules use) but sit in a different category. The SQL prefilter
- * uses the key's longest word (keys are letters/digits only, so no LIKE
- * escaping); the exact key match happens here.
- */
 export async function similarRows(supabase: SupabaseClient, workspaceId: string, row: { id: string; description: string; category_id: string | null }) {
   const key = organizationDescriptionKey(row.description);
   if (key.length < 3 || !row.category_id) return { key, rows: [] as SimilarRow[] };

@@ -9,12 +9,9 @@ export type HistoryMessage = { id: string; role: string; content: string; create
 export type SavedToolStep = { name: string; state: "done"; input?: unknown; output?: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
 const THREAD_PAGE = 30;
-// Small first page: older messages load on demand, so opening a long chat stays fast.
 const MESSAGE_PAGE = 30;
-// Saved tool outputs can be tens of KB each; history shows a preview, the full record stays in chat_requests.
 const OUTPUT_PREVIEW = 2000;
 const preview = (output?: string) => output && output.length > OUTPUT_PREVIEW ? `${output.slice(0, OUTPUT_PREVIEW)}\n… (truncated)` : output;
-// A chat run outlives its tab for up to the chat route's maxDuration (300 s); an older "running" row was cut off, not working.
 const RUN_WINDOW_MS = 6 * 60_000;
 export const conversationTitleSchema = z.string().trim().min(1).max(120);
 
@@ -23,12 +20,9 @@ function before(value?: string) {
   try { return cursorSchema.parse(JSON.parse(value)); } catch { throw new Error("Invalid history cursor"); }
 }
 function cursor(row: { id: string; created_at: string }) { return JSON.stringify({ id: row.id, created_at: row.created_at }); }
-// ponytail: LIKE wildcards are escaped; PostgREST also treats * as %, so it becomes a one-character wildcard.
 function likePattern(query: string) { return `%${query.replace(/[\\%_]/g, "\\$&").replaceAll("*", "_")}%`; }
 
-/** Newest-first saved chats, keyset-paged; `query` searches titles and message text instead. */
 export async function loadThreads(supabase: SupabaseClient, workspace: string, threadsBefore?: string, query?: string) {
-  // An artifact's chat lives on the artifact's page, not in the chat list.
   const live = () => supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).is("deleted_at", null).is("artifact_id", null);
   const q = query?.trim().slice(0, 100);
   if (q) {
@@ -55,7 +49,6 @@ export async function loadThreads(supabase: SupabaseClient, workspace: string, t
   return { threads, threadsCursor: (data?.length ?? 0) > THREAD_PAGE ? cursor(threads[threads.length - 1]) : null };
 }
 
-/** One owned conversation and a newest page of its messages (oldest first), loaded in parallel. */
 export async function loadConversation(supabase: SupabaseClient, workspace: string, id: string, messagesBefore?: string) {
   const mc = before(messagesBefore);
   if (!z.uuid().safeParse(id).success) throw new Error("Conversation unavailable");
@@ -64,7 +57,6 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
   const [conversation, page, run, stubs] = await Promise.all([
     supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),
     mq.limit(MESSAGE_PAGE + 1),
-    // A request still working in the background, so a returning user sees it as in progress.
     mc ? null : supabase.from("chat_requests").select("id,created_at").eq("workspace_id", workspace).eq("conversation_id", id).eq("status", "running")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     callStubs(supabase, workspace, id),
@@ -74,7 +66,6 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
   if (page.error) throw new Error("Could not load messages. Try again.");
   const rows = (page.data ?? []).slice(0, MESSAGE_PAGE) as (HistoryMessage & { request_id?: string | null; reply_to?: string | null; context?: unknown })[];
   const messagesCursor = (page.data?.length ?? 0) > MESSAGE_PAGE ? cursor(rows[rows.length - 1]) : null;
-  // A finished call shows as one card at the time it ended; the messages its requests made move inside it.
   const calls = await loadCalls(supabase, workspace, id, stubs, { requestIds: rows.flatMap(row => row.request_id ?? row.reply_to ?? []),
     from: messagesCursor ? rows[rows.length - 1].created_at : undefined, to: mc?.created_at });
   const visible = rows.filter(row => !calls.hidden.has((row.request_id ?? row.reply_to) as string));
@@ -89,7 +80,6 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
 const savedCall = z.object({ name: z.string(), input: z.unknown().optional(), output: z.string().optional() });
 const planSteps = z.object({ steps: z.array(z.string()) });
 
-/** Each answer's saved plan and tool calls from its owned chat request; missing or malformed activity is just omitted. */
 async function savedActivity(supabase: SupabaseClient, workspace: string, requestIds: string[]) {
   const activity = new Map<string, { plan?: string[]; tools?: SavedToolStep[] }>();
   if (!requestIds.length) return activity;
@@ -110,7 +100,6 @@ export async function loadConversationHistory(supabase: SupabaseClient, workspac
   if (requested && requested !== "new" && !z.uuid().safeParse(requested).success) throw new Error("Conversation unavailable");
   const explicit = requested && requested !== "new" ? loadConversation(supabase, workspace, requested, messagesBefore) : null;
   explicit?.catch(() => {});
-  // Nothing selected this session means a fresh chat; old threads stay one click away in the list.
   const { threads, threadsCursor } = await loadThreads(supabase, workspace, threadsBefore);
   const conversation = await explicit;
   return { threads, threadsCursor, selected: conversation?.selected ?? null, messages: conversation?.messages ?? [], messagesCursor: conversation?.messagesCursor ?? null, running: conversation?.running ?? null };

@@ -10,7 +10,6 @@ import { TradeCard } from "@/components/trade-card";
 
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { conflict_key?: string };
 
-/** A loan, repayment or expense waiting for a yes/no. Nothing is saved until Add is pressed. */
 export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }: { id: string; initial?: Proposal; locale?: string; onAccount?: (id: string, accountId: string | undefined) => void; onDecided?: (id: string, undone?: boolean) => void }) {
   const [proposal, setProposal] = useState<Proposal | null | undefined>(initial);
   const [account, setAccount] = useState<string>();
@@ -18,7 +17,6 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
   const [pending, start] = useBusy();
   const [unavailable, setUnavailable] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  // A failed load used to hide the card until the page was reloaded; it now says so and can be retried.
   useEffect(() => { if (!initial) loadIouProposal(id).then(setProposal, () => setUnavailable(true)); }, [id, initial, attempt]);
   if (unavailable) return <p role="alert" className="my-3 text-sm text-danger">Could not load this card. <button type="button" onClick={() => { setUnavailable(false); setAttempt(count => count + 1); }} className="underline">Try again</button></p>;
   if (proposal === undefined) return <p className="my-3 text-sm text-muted-foreground" role="status">Loading…</p>;
@@ -32,10 +30,8 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
   const organize = proposal.kind === "organize_answer";
   const cashWithdrawal = proposal.kind === "cash_withdrawal";
   const chosen = account ?? proposal.selected ?? "";
-  // Stated cash with no cash account yet: accepting creates one, and the button says so.
   const createsCash = (transaction || cashWithdrawal) && !chosen && !!proposal.createsCash;
   const needsChoice = (transaction || cashWithdrawal) && !chosen && !createsCash;
-  // Shows the decision at once (the action also re-renders the slow Home page) and puts the card back if saving fails.
   const decide = (decision: "accept" | "reject") => start(async () => {
     const before = proposal;
     setError(undefined);
@@ -44,11 +40,9 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
     try {
       const [outcome] = await decideAgentProposals([id], decision, (transaction || cashWithdrawal) && chosen ? chosen : undefined);
       if (outcome.error) { setProposal(before); setError(outcome.error); onDecided?.(id, true); }
-      // Reload so an accepted card links to what it created.
       else if (decision === "accept") loadIouProposal(id).then(loaded => loaded && setProposal(loaded), () => {});
     } catch (cause) { setProposal(before); setError(cause instanceof Error ? cause.message : "Could not save"); onDecided?.(id, true); }
   });
-  // Many cards can be open at once, so a screen reader's button list needs more than "Add". Recurring cards keep their own short names.
   const named = (verb: string) => recurring ? undefined : `${verb}: ${proposal.title}`;
   const open = proposal.status === "proposed" || proposal.status === "failed";
   const done = transaction ? <>Added. {proposal.result?.href && <Link href={proposal.result.href} className="underline">Open transaction</Link>}

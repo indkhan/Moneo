@@ -10,7 +10,6 @@ const portfolio = { currency: "EUR", asOf: "2026-11-06", valuedAt: "2026-11-06T1
   watchlist: [{ isin: "US0378331005", name: "Apple", priceMinor: "20000", currencyCode: "EUR", dayPercent: 1.2 }] };
 const holding = { name: "MSCI World", currency_code: "EUR", amount_minor: "1200000", quantity_text: "100", unit_price_text: "120", cost_basis_minor: "1000000" };
 
-/** A stand-in Supabase client: every query resolves to the given row. */
 function db(connection: unknown, items: unknown[]) {
   const query = (result: unknown) => { const chain: Record<string, unknown> = {}; for (const name of ["select", "eq", "in", "not", "is", "order", "limit"]) chain[name] = () => chain;
     chain.maybeSingle = async () => ({ data: result, error: null }); chain.then = (resolve: (value: unknown) => void) => resolve({ data: items, error: null }); return chain; };

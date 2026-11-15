@@ -59,34 +59,28 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const itemById = new Map(items.map(item => [item.id, item]));
 
   const evidence = netWorthEvidence.balances, calculatedHistory = netWorthEvidence.scalable;
-  // The same calculation as Home and chat: the month-end table, the chart and today's total all read it.
   const worth = netWorthModel(netWorthEvidence);
   const { calculated, valuations: allValuations, accounts: resolved, dated: valuations, now } = worth;
   const series = worth.points(monthEnds(today, MONTHS));
-  // Past days aren't converted, so the split is only in the display currency.
   const monthWords = describeMonthSplit(worth.monthSplit(workspace.display_currency), minor => formatMoney(minor, workspace.display_currency));
   const unbalanced = resolved.filter(account => account.balance.amount_minor === null).length;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
   const chartPoints = (currency: string) => series.flatMap(point => { const value = netWorth(point).get(currency); return value === undefined || !point.known ? [] : [{ date: point.date, value, uncertain: point.uncertain.join(". ") || undefined }]; });
-  // A returned withdrawal looks as if the money stayed, here as on the net worth graph. The records stay on Scalable's list.
   const returned = worth.windows.filter(window => window.kind === "returned");
   const withReturns = (date: string, value: bigint, currency: string) => value + (transitOn(returned, date).get(currency) ?? 0n);
   const history = params.history === "all" ? events : events.slice(0, HISTORY);
-  // Scalable's synced positions, cash and crypto get their own panel; they still count in net worth like any valuation.
   const portfolio = (scalable.data?.portfolio ?? null) as ScalablePortfolio | null;
   const scalableIds = new Set(portfolio?.itemIds ?? []), knownIds = new Set([...(portfolio?.knownItemIds ?? []), ...scalableIds]);
   const scalableHistory = (() => {
     if (!portfolio) return [];
     const valuations = allValuations.filter(row => knownIds.has(row.item_id));
-    // Daily from the first synced value.
     const from = valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today);
     return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations })
       .flatMap(point => { const value = netWorth(point).get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value: withReturns(point.date, value, portfolio.currency) }]; });
   })();
   const findings = netWorthFindings({ accounts: resolved, snapshots: evidence.snapshots, ledger: evidence.ledger, timeZone: workspace.timezone, locale: workspace.locale, portfolio, imports, repayments,
     lastCalculated: calculated.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, calculated.before, portfolio?.currency ?? "EUR"), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
-  // The days before that, worked out from Scalable's transactions and prices back to the first trade.
   const scalableCalculated = portfolio && calculated.before ? calculated.rows.filter(row => row.on_date < calculated.before! && row.currency_code === portfolio.currency) : [];
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">

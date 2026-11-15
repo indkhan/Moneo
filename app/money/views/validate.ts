@@ -1,12 +1,3 @@
-// Validation for minimal saved transaction views (prompt.md §7).
-//
-// Only the allowlisted keys below are ever stored in
-// public.transaction_views.filters (q/from/to/account/status/kind/
-// direction/category/merchant/tag/event/amount range/sort). Cursor and
-// open-transaction ids are never stored. Opening a view uses the opaque
-// row UUID (?view=<uuid>)
-// loaded server-side, so search terms and account/category/merchant UUIDs
-// stay in workspace-scoped storage and never appear in the saved-view link.
 
 import { DEFAULT_SORT, TRANSACTION_SORTS, normalizeEventName, normalizeTag, parseMinorUnits, type ParsedTransactionParams, type TransactionSort } from "../transactions/filters";
 
@@ -22,9 +13,7 @@ type SavedViewFilters = {
   uncategorized?: boolean;
   merchantId?: string;
   merchantUnknown?: boolean;
-  /** Single tag, normalized like the live query and bulk tagging (trimmed, lowercase, ≤40 chars). */
   tag?: string;
-  /** Spending-group identity, matched exactly (trimmed, case preserved, ≤120 chars). */
   eventName?: string;
   minAmountMinor?: string;
   maxAmountMinor?: string;
@@ -44,14 +33,12 @@ function cleanText(value: string | undefined | null, max: number): string | unde
   return trimmed ? trimmed : undefined;
 }
 
-/** Opaque view id from the URL (?view=<uuid>). Null when missing/invalid. */
 export function parseViewId(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return UUID_PATTERN.test(trimmed) ? trimmed : null;
 }
 
-/** View name for the save form. Null when empty or over 80 chars. */
 export function parseViewName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
@@ -76,8 +63,6 @@ export type SaveInput = {
   sort?: string;
 };
 
-
-/** Saved JSON → the same filter shape the live URL produces. */
 export function savedViewToParams(saved: SavedViewFilters): ParsedTransactionParams {
   const { accountId, categoryId, uncategorized, merchantId, merchantUnknown, sort, ...rest } = saved;
   return {
@@ -95,10 +80,6 @@ function emptyToUndefined(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-/**
- * Strict builder for the save path. Throws on any provided but invalid
- * value so a mistyped filter is never silently dropped. Empty means omit.
- */
 export function buildSavedFilters(input: SaveInput): SavedViewFilters {
   const filters: SavedViewFilters = {};
 
@@ -188,13 +169,6 @@ export function buildSavedFilters(input: SaveInput): SavedViewFilters {
   return filters;
 }
 
-/**
- * Actionable scope check for a persisted view. Returns an error message
- * when tag/event scope is present but invalid (e.g. oversized), so a saved
- * view is never silently broadened. Returns null when the stored scope is
- * usable; legacy rows without tag/event keys stay compatible (null).
- * Other fields keep the tolerant loader behavior below.
- */
 export function invalidStoredViewScope(raw: unknown): string | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return "Saved view filters are invalid, so its results are hidden. Repair or delete this view.";
@@ -209,12 +183,6 @@ export function invalidStoredViewScope(raw: unknown): string | null {
   return null;
 }
 
-/**
- * Tolerant loader for the JSONB column. Never throws: unknown keys and
- * invalid values are dropped so one bad row can never break the browser.
- * Use invalidStoredViewScope first when a present-but-invalid tag/event
- * scope must surface instead of broadening.
- */
 export function parseStoredFilters(raw: unknown): SavedViewFilters {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
   const input = raw as Record<string, unknown>;

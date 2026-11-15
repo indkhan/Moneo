@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 export type AiAccessState = { ai: boolean; voice: boolean };
 
-/** What AI the owner has set up, or null while loading (or when it can't be read, so nothing is blocked). */
 export function useAiAccess() {
   const [access, setAccess] = useState<AiAccessState | null>(null);
   useEffect(() => {

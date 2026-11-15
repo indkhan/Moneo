@@ -4,7 +4,6 @@ import { displayFormat } from "@/lib/display-format";
 import { countNeedsYou } from "@/lib/organize/surfaces";
 import { organizeRunState } from "@/lib/organize/status";
 
-/** One line on Home about the organizer: rows waiting for you, and a held-back or running pass. Nothing when there is nothing to say. */
 export async function HomeOrganize({ db, workspace }: { db: SupabaseClient; workspace: { id: string; locale: string; timezone: string } }) {
   const [needs, run] = await Promise.all([
     countNeedsYou(db, workspace.id).catch(() => ({ questions: 0, rows: 0 })),

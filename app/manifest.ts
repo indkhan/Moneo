@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 
-// Lets Android and iOS (Add to Home Screen) install Moneo as a standalone app.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",

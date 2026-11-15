@@ -1,7 +1,3 @@
-// Runs the native desktop backend under plain Node until stopped, for development and checks:
-//   node scripts/desktop/backend-run.mjs --home <dir> [--resources <dir>]   (resources: desktop/.build)
-// Writes the app environment to <home>/run/env.json (it holds secrets; the home is yours alone).
-// Stops cleanly on Ctrl+C, or when <home>/run/stop exists (for runs started in the background).
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";

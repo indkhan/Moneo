@@ -18,7 +18,6 @@ const STATUS = { running: "still running", completed: "finished afterwards", fai
 const fold = "group rounded-xl border border-border px-3 text-sm";
 const foldTitle = "-mx-3 flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ai [&::-webkit-details-marker]:hidden";
 
-/** A finished voice call in the chat: summary, cards, anything left running, the requests it made and the full transcript. */
 export function VoiceCallCard({ call, createdAt }: { call: CallCard; createdAt: string }) {
   const bullets = call.summary?.split("\n").map(line => line.replace(/^-\s*/, "")).filter(Boolean) ?? [];
   return <section aria-label="Voice call" className="space-y-3 rounded-2xl border border-border bg-card p-4">

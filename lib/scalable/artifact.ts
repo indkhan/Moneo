@@ -7,11 +7,6 @@ import type { z } from "zod";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 
-/**
- * Scalable data for artifacts (Pages and Home cards). By default it is what the last sync saved, the same
- * figures Wealth shows; Settings can switch artifacts to Scalable live. Both give the same shape, so a card
- * keeps working when the owner flips the setting. `dataFrom` and `syncedAt` say which one it is.
- */
 const live = async <T>(context: Context, read: (mcp: ScalableMcp) => Promise<T>) => {
   const connection = await activeScalableConnection(context.workspace.id);
   if (!connection) throw new Error("Scalable is not connected");
@@ -65,7 +60,6 @@ export async function scalableWatchlist(context: Context) {
   return { dataFrom: "last_sync" as const, syncedAt, items: portfolio.watchlist ?? [] };
 }
 
-/** Quotes, charts and news exist only live, so this source is offered only when Settings allows live Scalable data. */
 export async function scalableSecurity(input: z.infer<typeof securityInput>, context: Context) {
   if (!isLive(context)) throw new Error("Live Scalable data is off in Settings");
   return { dataFrom: "live" as const, ...await live(context, mcp => investmentsSecurity(mcp, input)) as object };

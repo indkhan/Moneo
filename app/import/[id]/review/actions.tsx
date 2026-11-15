@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-// fetch rejects only when the request never completed, so nothing was saved.
 const failureMessage = (cause: unknown) => cause instanceof TypeError ? "Could not reach Moneo. Check your connection and try again; your choices are still here." : cause instanceof Error ? cause.message : "Review failed";
-// A decided card disappears on refresh, so keyboard focus moves to the updated progress summary.
 const focusProgress = () => document.getElementById("review-progress")?.focus();
 
 export function ReviewActions({ importId, sourceId, rowNumber, frozenId = null, frozenName, unavailable = false, destinations = [] }: {
@@ -89,7 +87,6 @@ export function ClassificationActions({ importId, transactionId, version, reason
   </div>;
 }
 
-/** Undo names the exact receipt, so an old tab cannot reopen a newer decision. */
 export function UndoRowDecision({ importId, sourceId, decisionId, rowNumber }: { importId: string; sourceId: string; decisionId: string; rowNumber: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

@@ -7,14 +7,11 @@ export type HomeReview = { uncategorized: number; findings: HomeFinding[] };
 
 type FindingRow = { id: string; conflict_key: string; title: string; detail: string; evidence: { links?: { href: string }[]; transactions?: { id: string }[] } | null };
 
-/** What the after-sync checks left for a person: uncategorized spending and open findings, one entry per finding however many runs raised it. */
 export async function loadHomeReview(supabase: SupabaseClient, workspaceId: string): Promise<HomeReview> {
-  // Money lent or borrowed is recorded in Wealth; its payout is not spending to sort or flag.
   const loans = await loadLoanPayoutIds(supabase, workspaceId).catch(() => new Set<string>());
   let count = supabase.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "posted").is("category_id", null).neq("kind", "transfer");
   if (loans.size) count = count.not("id", "in", `(${[...loans].join(",")})`);
   const [uncategorized, findings] = await Promise.all([
-    // Transfers between accounts need no category.
     count,
     supabase.from("agent_proposals").select("id, conflict_key, title, detail, evidence").eq("workspace_id", workspaceId).eq("kind", "finding").eq("status", "proposed")
       .not("run_id", "is", null).order("created_at", { ascending: false }).limit(300),

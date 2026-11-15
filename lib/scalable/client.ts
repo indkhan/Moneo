@@ -1,17 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 
-// Scalable Capital's official MCP server. OAuth 2.1 with dynamic client registration and PKCE
-// (public client, no secret); the bearer token then calls MCP tools over Streamable HTTP.
-// Hosted redirect URIs must be on Scalable's SaaS allowlist; localhost registers freely.
-// SCALABLE_MCP_ORIGIN points browser tests at a local stand-in (e2e/mocks/scalable-mcp.mjs); unset in real use.
 const ISSUER = process.env.SCALABLE_MCP_ORIGIN || "https://mcp.scalable.capital";
 export const SCALABLE_MCP_URL = `${ISSUER}/mcp`;
 const SCOPE = "openid profile offline_access";
 const PROTOCOL_VERSION = "2025-06-18";
 
 export class ScalableError extends Error {
-  /** `refused` marks an answer from the tool itself: Scalable decided, so nothing was left half-done. */
   constructor(message: string, readonly status: number, readonly expired = false, readonly refused = false) { super(message); }
 }
 
@@ -56,7 +51,6 @@ async function token(params: Record<string, string>, fetcher: typeof fetch, prev
     body: new URLSearchParams({ ...params, resource: SCALABLE_MCP_URL }).toString(),
   });
   const body = await json(response, tokenSchema);
-  // Without expires_in, assume a short life so the next call refreshes instead of failing.
   return { accessToken: body.access_token, refreshToken: body.refresh_token ?? previousRefresh, expiresAt: Date.now() + (body.expires_in ?? 300) * 1000 };
 }
 
@@ -68,7 +62,6 @@ export const refreshTokens = (input: { clientId: string; refreshToken: string },
 
 const rpcSchema = z.object({ id: z.union([z.number(), z.string()]).optional(), result: z.unknown().optional(), error: z.object({ message: z.string() }).optional() });
 
-/** The JSON-RPC answer to `id`, from a plain JSON body or a Server-Sent Events stream. */
 export function rpcMessage(text: string, contentType: string, id: number) {
   const messages = contentType.includes("text/event-stream")
     ? text.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).filter(Boolean).map(data => JSON.parse(data) as unknown)
@@ -84,7 +77,6 @@ const toolResultSchema = z.object({
   structuredContent: z.unknown().optional(), isError: z.boolean().optional(),
 });
 
-/** Read-only MCP session. Tool results are structured content, or the text content parsed as JSON when possible. */
 export function scalableMcp(accessToken: string, fetcher: typeof fetch = fetch) {
   let sessionId: string | null = null, protocol = PROTOCOL_VERSION, nextId = 0;
   async function rpc(method: string, params?: unknown, notification = false) {

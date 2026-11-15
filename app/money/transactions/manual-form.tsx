@@ -6,7 +6,6 @@ import { createManualTransactionSafely } from "./actions";
 
 const skin = "[&_input]:min-h-10 [&_input]:rounded-lg [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:px-3 [&_input]:text-sm [&_select]:min-h-10 [&_select]:rounded-lg [&_select]:border [&_select]:border-border [&_select]:bg-card [&_select]:px-3 [&_select]:text-sm";
 
-/** Money out or in plus a positive amount; the action turns that into the signed minor units the ledger stores. */
 export function ManualTransactionForm({ accounts, categories, today, requestId }: {
   accounts: { id: string; name: string; currency_code: string }[]; categories: { id: string; name: string }[]; today: string; requestId: string;
 }) {

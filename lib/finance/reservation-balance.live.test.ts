@@ -43,7 +43,6 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches balance evidenc
         const [sql] = await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`;
         const application = resolveBalances([account], snapshots, ledger, asOf)[0].balance;
         if (fixture === "conflicting_ties") {
-          // Display can choose a recorded balance with a warning; reservations require certainty.
           expect(application.conflicts).toHaveLength(1);
           expect(application.status).toBe("current");
           expect(sql.evidence).toMatchObject({ status: "ambiguous", amount_minor: null, estimated_amount_minor: null });

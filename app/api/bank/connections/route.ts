@@ -7,8 +7,6 @@ import { serviceKeyStatus } from "@/lib/service-keys";
 
 type SyncImport = { id: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; created_at: string; mapping: { accountName?: string } | null };
 
-// Connected banks for the UI. RLS plus the column grant keep the encrypted session out of reach.
-// Each connection carries its latest sync's imports, so progress survives leaving the page.
 export async function GET() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
@@ -30,7 +28,6 @@ export async function GET() {
     const own = imports.filter(item => Date.parse(item.created_at) >= started && names.has(item.mapping?.accountName ?? ""));
     return { ...connection, sync: { running: syncRunning(connection), imports: own.map(item => ({ id: item.id, status: item.status, total_rows: item.total_rows, new_rows: item.new_rows, matched_rows: item.matched_rows, review_rows: item.review_rows, rejected_rows: item.rejected_rows })) } };
   });
-  // Where the saved App ID comes from and its last characters; never the private key.
   const [configured, keys] = await Promise.all([enableBankingConfigured(), serviceKeyStatus()]);
   return NextResponse.json({ configured, credentials: keys.enable_banking_app_id, redirectUrl: BANK_REDIRECT_URL, connections });
 }

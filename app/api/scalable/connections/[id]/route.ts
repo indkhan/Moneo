@@ -3,8 +3,6 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { serviceDb } from "@/lib/bank/server";
 
-// Disconnect: forget the tokens. Synced data stays. Scalable access itself is ended under
-// Profile → Security → Agentic Investing in Scalable.
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }

@@ -13,11 +13,8 @@ import { TeamFlow } from "./team-flow";
 import { PhoneCollapse } from "./phone-collapse";
 
 const ACTIVE = new Set(["queued", "running"]);
-// Category limits score 75 when all three months have spending and 55 when one is empty.
 const HIGH_CONFIDENCE = 75;
-// decideAgentProposals accepts at most this many ids per call.
 const BULK_LIMIT = 100;
-// Long runs stay readable: the rest of a group is one press away.
 const GROUP_PREVIEW = 5;
 const WAVE_LABELS = ["Analysts · in parallel", "Builders · read the analysts' results", "Writer · after the lead merges"];
 const KIND_LABELS: Record<ProposalKind, string> = { finding: "Findings", categorize: "Merchants and categories", recurring: "Recurring schedules", budget: "Category limits" };
@@ -75,7 +72,6 @@ function EvidenceView({ proposal, locale }: { proposal: AgentProposalView; local
   </details>;
 }
 
-/** Live mission control for one agent-team run, with the review screen at the end. */
 export function MissionControl({ initial, locale }: { initial: AgentRunView; locale: string }) {
   const [run, setRun] = useState(initial);
   const [notice, setNotice] = useState("");
@@ -84,7 +80,6 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const [lost, setLost] = useState(false);
   const [controlling, setControlling] = useState<"cancel" | "resume" | null>(null);
   const [agentFilter, setAgentFilter] = useState<string>("all");
-  // Accepting several at once always shows the list first.
   const [bulk, setBulk] = useState<{ ids: string[]; label: string } | null>(null);
   const [expanded, setExpanded] = useState<ProposalKind[]>([]);
   const router = useRouter();
@@ -98,7 +93,6 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
     if (!active) return;
     let stopped = false;
     let failures = 0;
-    // Polling keeps trying, but after a few misses the page says its progress may be out of date.
     const tick = async () => {
       try {
         const response = await fetch(`/api/agents/runs/${initial.id}`, { cache: "no-store" });
@@ -161,7 +155,6 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const openOnHome = open.length - openHere.length;
   const sureThings = reviewable ? openHere.filter(item => item.status === "proposed" && item.confidence >= HIGH_CONFIDENCE).slice(0, BULK_LIMIT) : [];
   const finishedTasks = run.tasks.filter(task => ["done", "failed", "skipped", "canceled"].includes(task.status)).length;
-  // Only category limits are decided here; everything else waits on Home, so a decision has one place.
   const openIds = (kind: ProposalKind) => open.filter(item => item.kind === kind && kind === "budget").map(item => item.id);
   const model = run.model_status === "available" || run.model_status === "budget_exhausted" ? `Free model · ${run.model_calls}/${run.model_budget} calls`
     : run.model_status === "unknown" ? "Checking model…" : "Deterministic only (no free model)";
@@ -194,7 +187,6 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       {active && <button type="button" disabled={!!controlling} onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"><Square className="size-3.5" aria-hidden="true" />{controlling === "cancel" ? "Stopping…" : "Stop"}</button>}
       {(run.status === "canceled" || run.status === "failed") && <button type="button" disabled={!!controlling} onClick={() => void control("resume")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"><Play className="size-3.5" aria-hidden="true" />{controlling === "resume" ? "Resuming…" : "Resume"}</button>}
     </header>
-    {/* One calm announcement for the whole run, rather than one per agent. */}
     <p role="status" className="sr-only">Run {run.status}. {finishedTasks} of {run.tasks.length} agents finished. {open.length} open {open.length === 1 ? "decision" : "decisions"}.</p>
     {lost && active && <p role="alert" className="rounded-lg bg-warning-soft p-3 text-sm text-warning">Lost contact with this run, so its progress may be out of date. Moneo keeps trying.</p>}
     <p className="text-xs text-muted-foreground">{active ? "Stopping keeps changes already made; they stay in history with Undo. " : ""}Category changes the team is sure of are made automatically and can be undone. Flagged items and recurring payments wait on Home. Category limits wait here.</p>

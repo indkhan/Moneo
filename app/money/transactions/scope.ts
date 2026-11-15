@@ -1,6 +1,5 @@
 import type { ParsedTransactionParams } from "./filters";
 
-// ponytail: structural view of the PostgREST builder; the real generic types recurse too deep to constrain.
 interface Filterable {
   eq(column: string, value: string): Filterable;
   neq(column: string, value: string): Filterable;
@@ -13,10 +12,8 @@ interface Filterable {
   contains(column: string, value: string[]): Filterable;
 }
 
-/** Split-aware source table: a category filter must match split allocations too. */
 export const ledgerTable = (filters: ParsedTransactionParams) => filters.categoryId || filters.uncategorized ? "transaction_category_ledger" : "transactions";
 
-/** Apply the validated ledger filters (not sort/cursor) to any ledger query. */
 export function scopeLedger<Q>(query: Q, filters: ParsedTransactionParams): Q {
   let q = query as unknown as Filterable;
   if (filters.q) q = q.ilike("description", `%${filters.q.replace(/[%_]/g, "\\$&")}%`);
@@ -27,7 +24,6 @@ export function scopeLedger<Q>(query: Q, filters: ParsedTransactionParams): Q {
   if (filters.accountId) q = q.eq("account_id", filters.accountId);
   if (filters.status) q = q.eq("status", filters.status);
   if (filters.kind) q = q.eq("kind", filters.kind);
-  // Money moved between your own accounts is neither money in nor money out.
   if (filters.direction && !filters.kind) q = q.neq("kind", "transfer");
   if (filters.direction === "income") q = q.gt("amount_minor", 0);
   else if (filters.direction === "outflow") q = q.lt("amount_minor", 0);

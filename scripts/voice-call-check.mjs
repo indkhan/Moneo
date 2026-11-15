@@ -1,10 +1,3 @@
-// Real end-to-end check of the chat voice call. Costs real GPT-Live, TTS and chat-model usage.
-// Call 1 speaks test sentences (OpenAI TTS) into a fake mic and checks that delegations ran /api/chat, a card reached
-// the tray, Moneo spoke answers, the voice chosen in Settings is the session's voice, and that
-// after hang-up the chat shows one call summary card (summary, cards, transcript) that survives a reload.
-// Call 2 has a silent mic, types a message and checks that GPT-Live speaks the answer to it.
-// Run with the app up and e2e/.auth.json present (see scripts/e2e-auth.mjs); APP_URL defaults to http://localhost:3000:
-//   node --env-file=.env scripts/voice-call-check.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
@@ -20,8 +13,6 @@ const sentences = [
 const pauses = [4, 2];
 const RATE = 24000;
 
-// The QA user's chat model may be an OpenRouter id without credits; the check needs a working OpenAI model.
-// It also picks a non-default voice, restored at the end.
 const db = process.env.SUPABASE_DB_URL ? postgres(process.env.SUPABASE_DB_URL, { max: 1, onnotice: () => {} }) : null;
 let workspaceId, originalVoice = "marin";
 if (db && process.env.E2E_USER_EMAIL) {
@@ -53,14 +44,11 @@ function writeWav(path, pcm) {
 }
 const clips = await Promise.all(sentences.map(speech));
 mkdirSync(".qa", { recursive: true });
-// Chrome loops the fake mic file, so a long silent tail keeps the questions from repeating during the check.
 const talking = writeWav(".qa/voice-call-check.wav", Buffer.concat([silence(3), ...clips.flatMap((clip, index) => [clip, silence(pauses[index] ?? 150)])]));
 const quiet = writeWav(".qa/voice-call-silence.wav", silence(120));
 
-/** Chat messages about Netto that are not inside the call card. */
 const outside = page => page.locator("article:not(:has([aria-label='Voice call']))").filter({ hasText: /Netto/ }).count();
 
-/** A browser whose fake mic plays `wav`, logging the call's data-channel events (not transcripts or audio). */
 async function open(wav) {
   const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${wav}`, "--autoplay-policy=no-user-gesture-required"] });
   const context = await browser.newContext({ storageState: "e2e/.auth.json", permissions: ["microphone"] });
@@ -98,9 +86,7 @@ async function open(wav) {
   });
   return { browser, page, log, chats, timing };
 }
-/** What Moneo said in a call, from its transcript; the call screen shows requests, not captions. */
 const spokenWords = log => log.filter(line => line.startsWith("[call] spoke ")).map(line => line.slice("[call] spoke ".length)).join("");
-/** Clicks Call and waits until the call is live; `timing` gets when each step happened (ms after the click). */
 async function startCall(page, timing) {
   await page.goto(`${base}/ai?conversation=new`);
   await page.getByRole("button", { name: "Call" }).click();
@@ -112,7 +98,6 @@ async function startCall(page, timing) {
   return call;
 }
 
-// --- Call 1: spoken requests, voice, hang-up, summary card ---
 const first = await open(talking);
 const call = await startCall(first.page, first.timing);
 const deadline = Date.now() + 150_000;
@@ -132,17 +117,15 @@ let cardShown = false, summary = "";
 try {
   await card.waitFor({ timeout: 30_000 });
   cardShown = true;
-  // The summary is written after hang-up, so it can take a moment to appear.
   await card.getByRole("list", { name: "Call summary" }).waitFor({ timeout: 90_000 });
   summary = await card.getByRole("list", { name: "Call summary" }).innerText();
-} catch { /* reported below */ }
+} catch {}
 const grouped = await outside(first.page);
 await card.getByText("Full transcript").click().catch(() => {});
 const transcript = await card.getByRole("list", { name: "Transcript" }).innerText().catch(() => "");
 const cardCards = await card.getByRole("region", { name: "Cards from this call" }).locator("section").first().waitFor({ timeout: 20_000 }).then(() => 1, () => 0);
 await card.getByText(/Requests from this call/).click().catch(() => {});
 await first.page.screenshot({ path: ".qa/voice-call-card.png", fullPage: true });
-// The same card comes back from the saved record after a reload.
 await first.page.reload();
 const reloaded = await first.page.getByRole("region", { name: "Voice call", exact: true }).waitFor({ timeout: 30_000 }).then(() => true, () => false);
 const duplicates = await outside(first.page);
@@ -153,14 +136,11 @@ await first.browser.close();
 
 console.log("\n--- Moneo said ---\n" + captions + "\n--- tasks ---\n" + tasks + "\n--- summary ---\n" + summary + "\n--- transcript ---\n" + transcript.slice(0, 600));
 
-// --- Call 2: a typed message must be spoken ---
 const second = await open(quiet);
 const quietCall = await startCall(second.page, second.timing);
 await second.page.waitForTimeout(2000);
 await quietCall.getByLabel("Type to Moneo").fill("How much did I spend at Netto this month?");
 await quietCall.getByRole("button", { name: "Send" }).click();
-// The mic is silent, so speech after the result was handed over is Moneo saying it (GPT-Live may answer in another
-// language, so this counts speech rather than matching words).
 let spoken = false;
 for (const end = Date.now() + 90_000; Date.now() < end && !spoken; await second.page.waitForTimeout(2000)) {
   const results = second.log.findIndex(line => line.startsWith("[call] sent") && line.includes("commentary.append") && line.includes("Result for"));

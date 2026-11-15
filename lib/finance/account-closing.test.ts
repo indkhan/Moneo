@@ -17,7 +17,6 @@ describe("closing a balance", () => {
     const plan = closingPlan(account, 5000n, { outcome: "moved", targetAccountId: savings.id }, [account, savings]);
     expect(plan.out.amountMinor + plan.into!.amountMinor).toBe(0n);
     expect(plan).toMatchObject({ out: { amountMinor: -5000n }, into: { amountMinor: 5000n }, target: { id: savings.id }, createCash: false });
-    // A negative balance moves the other way.
     expect(closingPlan(account, -5000n, { outcome: "moved", targetAccountId: savings.id }, [account, savings])).toMatchObject({ out: { amountMinor: 5000n }, into: { amountMinor: -5000n } });
     expect(() => closingPlan(account, 5000n, { outcome: "moved", targetAccountId: dollars.id }, [account, dollars])).toThrow("Choose another EUR");
   });

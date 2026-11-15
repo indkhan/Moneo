@@ -35,7 +35,6 @@ it("finds a nickname through similar descriptions after the exact matches", asyn
     } } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>;
   const result = await searchTransactions({ query: "Venji", limit: 5 }, context);
   expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Venji", p_limit: 5 }]]);
-  // Filters narrow the similar candidates before their limit, so stronger matches on other dates can't crowd out the right one.
   rpcCalls.length = 0;
   await searchTransactions({ query: "Venji", from: "2026-09-01", to: "2026-09-30", minAmountMinor: "20000", maxAmountMinor: "30000", limit: 5 }, context);
   expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Venji", p_from: "2026-09-01", p_to: "2026-09-30", p_min_minor: "20000", p_max_minor: "30000", p_limit: 5 }]]);

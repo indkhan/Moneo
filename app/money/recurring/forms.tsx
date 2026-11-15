@@ -12,7 +12,6 @@ function Hidden({ values }: { values: Record<string, string> }) {
   return <>{Object.entries(values).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}</>;
 }
 
-/** A plain form whose failure is shown next to it instead of crashing the page. */
 export function ActionForm({ action, hidden = {}, className, children }: { action: Action; hidden?: Record<string, string>; className?: string; children: React.ReactNode }) {
   const [state, submit, pending] = useActionState<ActionState, FormData>(action, {});
   return <form action={submit} className={className}>
@@ -25,18 +24,15 @@ export function ActionForm({ action, hidden = {}, className, children }: { actio
 
 export type ScheduleDefaults = { name: string; amount: string; direction: "out" | "in"; cadence: string; startsOn: string; category: string; currencyCode?: string };
 
-/** Opens a dialog to confirm, edit or add a recurring payment: how much, which way, how often, the next date and a category. */
 export function ScheduleDialog({ title, trigger, triggerLabel, triggerClassName, action, remove, hidden = {}, defaults, accounts, categories, submitLabel, onDone }: {
   title: string; trigger: React.ReactNode; triggerLabel?: string; triggerClassName?: string; action: Action; remove?: Action; hidden?: Record<string, string>; defaults: ScheduleDefaults;
   accounts?: { id: string; name: string; currencyCode: string }[]; categories: string[]; submitLabel: string; onDone?: () => void;
 }) {
-  // When it was opened; a submission that succeeds after that closes it. The action refreshes the page.
   const [openedAt, setOpenedAt] = useState<number | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [state, submit, pending] = useActionState<ActionState, FormData>(action, {});
   const [removed, removeSubmit, removing] = useActionState<ActionState, FormData>(remove ?? (async () => ({})), {});
   const [values, setValues] = useState(defaults);
-  // Tell the owner once a save went through, e.g. so a card can show it is done.
   useEffect(() => { if (state.done) onDone?.(); }, [state.done]); // eslint-disable-line react-hooks/exhaustive-deps
   const [accountId, setAccountId] = useState(accounts?.[0]?.id ?? "");
   const open = openedAt !== null && Math.max(state.done ?? 0, removed.done ?? 0) < openedAt;

@@ -9,11 +9,6 @@ const querySchema = z.object({
   theme: z.enum(["light", "dark"]).optional(),
 });
 
-/**
- * The artifact page on its own URL, so pages that show it (gallery previews, the viewer) render at once and
- * each frame reruns its saved queries for today.
- */
-// Shown inside the sandboxed frame, so it is plain and needs nothing from the app.
 const problem = (message: string, status: number) => new Response(`<!doctype html><meta charset="utf-8"><body style="font:14px system-ui;padding:24px;color:#555">${message}</body>`, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {

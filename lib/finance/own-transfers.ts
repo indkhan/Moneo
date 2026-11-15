@@ -11,13 +11,7 @@ import { wealthAmount } from "./wealth";
 import { closingMovedTo } from "./account-closing";
 import type { BankLeg } from "./transit";
 
-// Money moved between the owner's own accounts is a transfer, never income or spending.
-// Detection is deterministic: a row's counterparty IBAN (or the bank's id for the counterparty's account) is one of the
-// owner's own accounts. Equal opposite amounts without that proof only become a card for the owner. Every decision goes
-// through the audited link or mark RPCs, so each one can be undone. The AI never sets a row's kind.
-
 export const MATCH_DAYS = 3;
-// A closing row says which account the money went to, and it can be archived well after the bank's row arrived.
 const CLOSING_MATCH_DAYS = 30;
 const IBAN = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$/;
 
@@ -26,7 +20,6 @@ export function normalizeIban(value: string) {
   return IBAN.test(iban) ? iban : null;
 }
 
-/** Every IBAN-shaped value in an original source row (counterparty columns differ per bank). */
 export function sourceIbans(row: unknown) {
   if (!row || typeof row !== "object") return [];
   return Object.values(row).flatMap(value => typeof value === "string" ? [normalizeIban(value)].filter((iban): iban is string => Boolean(iban)) : []);
@@ -35,30 +28,23 @@ export function sourceIbans(row: unknown) {
 export type TransferCandidate = {
   id: string; version: number; accountId: string; postedOn: string; amountMinor: bigint; currencyCode: string;
   reviewReasons: string[]; ibans: string[]; text?: string; counterparty?: string; transferId?: string | null;
-  /** The account a closing row says this money went to. */
   closingTo?: string;
-  /** The bank's normalized context, for rows from a bank sync. */
   raw?: RawContext;
   identityId?: string | null;
 };
 
-// Without an IBAN, only the bank's own wording proves own money: a cash machine, or Scalable Capital
-// once the owner connected Scalable (their withdrawals arrive without the broker's IBAN).
 const CASH = /\b(bargeldauszahlung|bargeldeinzahlung|geldautomat|cash withdrawal|atm withdrawal|cash deposit)\b/i;
 const SCALABLE = /\bscalable capital\b/i, SCALABLE_LABEL = /\bscalable\b/i;
 export type NamedAccount = "cash" | "scalable";
 export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital" };
 export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string, string>;
-  /** The bank's own ids for the owner's tracked accounts (from each account's own side) → account id. */
-  ids?: Map<string, string> }; // IBAN → account id / identifier id
+  ids?: Map<string, string> };
 
 const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
 
-/** Every posted leg in the workspace, so a lone leg can tell whether its other side exists. */
 export type Leg = Pick<TransferCandidate, "id" | "accountId" | "postedOn" | "amountMinor" | "currencyCode">;
 
 export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, legs: Leg[] = rows, options: { scalable?: boolean } = {}) {
-  // The posting account's own IBAN often appears in its row too; only the other side counts.
   const counterparts = (row: TransferCandidate) => row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
   const points = (row: TransferCandidate, accountId: string) => row.closingTo === accountId || counterparts(row).some(iban => own.tracked.get(iban) === accountId)
     || !!row.raw?.counterparty_ids.some(id => own.ids?.get(id.identification) === accountId);
@@ -69,16 +55,12 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
   const outs = rows.filter(row => row.amountMinor < 0n), ins = rows.filter(row => row.amountMinor > 0n);
   const take = (out: TransferCandidate, into: TransferCandidate) => { used.add(out.id); used.add(into.id); pairs.push({ outId: out.id, inId: into.id }); };
 
-  // Proven pairs first, closest date wins; two legs equally close are left for the owner.
   for (const out of outs) {
     const proven = ins.filter(into => !used.has(into.id) && matches(out, into) && (points(out, into.accountId) || points(into, out.accountId)))
       .sort((a, b) => days(out.postedOn, a.postedOn) - days(out.postedOn, b.postedOn) || a.id.localeCompare(b.id));
     const tied = proven[1] && days(out.postedOn, proven[1].postedOn) === days(out.postedOn, proven[0].postedOn);
     if (!used.has(out.id) && proven[0] && !tied) take(out, proven[0]);
   }
-  // A leg whose other side is missing: the counterparty is an own account, and no opposite
-  // leg exists in that account within the window. Untracked accounts are named by identifier;
-  // tracked accounts by IBAN.
   const unpaired = (row: TransferCandidate, accountId: string) => !legs.some(other => other.id !== row.id && other.accountId === accountId
     && other.currencyCode === row.currencyCode && other.amountMinor === -row.amountMinor && days(row.postedOn, other.postedOn) <= MATCH_DAYS);
   const single = rows.flatMap((row): { transactionId: string; identifierId?: string; iban?: string }[] => {
@@ -99,13 +81,10 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
   return { pairs, single, named };
 }
 
-// Payment types that always have an outside party: a shop, a creditor, a cash machine, the bank's own fee.
 const OUTSIDE = new Set(["card", "direct_debit", "cash", "fee_interest"]);
 const EXCHANGE_DAYS = 1;
-/** Nobody else on the other side: a bank row with no name and no IBAN other than the owner's own. */
 const noOutsideParty = (row: TransferCandidate) => !!row.raw && !OUTSIDE.has(row.raw.payment_type) && !row.raw.counterparty_name && (!row.raw.counterparty_iban || row.raw.own_account);
 
-/** The bank says this is a currency exchange: its type, or foreign-currency data on a row with nobody else on it. A card paid abroad stays spending. */
 export function exchangeEvidence(row: TransferCandidate) {
   const raw = row.raw;
   if (!raw || OUTSIDE.has(raw.payment_type)) return false;
@@ -117,12 +96,6 @@ const instructedMinor = (row: TransferCandidate) => {
 };
 const magnitude = (amount: bigint) => amount < 0n ? -amount : amount;
 
-/**
- * Currency exchanges between the owner's own money. Each observed leg stays in its own currency; legs are paired only
- * when exactly one opposite posting in another currency and account fits (same day or the next, nobody else on it, and
- * the bank's stated foreign amount when it gives one). A leg with no fitting other side is still an exchange: its other
- * currency sits somewhere Moneo doesn't track. Nothing is invented: no missing leg, rate or balance.
- */
 export function findExchanges(rows: TransferCandidate[]) {
   const stated = (a: TransferCandidate, b: TransferCandidate) => a.raw?.instructed_currency !== b.currencyCode || instructedMinor(a) === null || instructedMinor(a) === magnitude(b.amountMinor);
   const fits = (leg: TransferCandidate, other: TransferCandidate) => other.id !== leg.id && other.accountId !== leg.accountId && other.currencyCode !== leg.currencyCode
@@ -143,11 +116,6 @@ export function findExchanges(rows: TransferCandidate[]) {
   return { pairs, single };
 }
 
-/**
- * The same amount out of one account and into another within a few days, with nothing proving both are the owner's.
- * Only ever a card: two unrelated payments can match by chance. Only when the match is unique both ways, and never for
- * a row the bank shows had someone else on it (a shop, a creditor, another IBAN).
- */
 export function uncertainPairs(rows: TransferCandidate[]) {
   const outsider = (row: TransferCandidate) => !!row.raw && (OUTSIDE.has(row.raw.payment_type) || row.raw.payment_type === "exchange" || !!row.raw.counterparty_iban || !!row.raw.creditor_id);
   const open = rows.filter(row => !outsider(row));
@@ -159,10 +127,6 @@ export function uncertainPairs(rows: TransferCandidate[]) {
   });
 }
 
-/**
- * Bank rows that move money with nobody else on the other side ("To EUR", "To EUR MB:…"), one group per description key:
- * transfer-like by the bank's code, or seen in both directions in one account. Never guessed: the owner is asked once per key.
- */
 export function internalMoves(rows: TransferCandidate[]) {
   const groups = new Map<string, TransferCandidate[]>();
   for (const row of rows) {
@@ -178,10 +142,6 @@ export function internalMoves(rows: TransferCandidate[]) {
     }).sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/**
- * Recent cash machine withdrawals with no other side yet. Until the owner accepts a card, one counts as money that left.
- * Older ones aren't asked about: that cash has most likely been spent, and the owner can set a Cash balance any time.
- */
 export const CASH_CARD_DAYS = 30;
 export function cashWithdrawals<T extends Pick<TransferCandidate, "id" | "postedOn" | "amountMinor" | "text" | "transferId">>(rows: T[], today: string, answered = new Set<string>()) {
   return rows.filter(row => row.amountMinor < 0n && !row.transferId && CASH.test(row.text ?? "") && !answered.has(row.id) && days(row.postedOn, today) <= CASH_CARD_DAYS);
@@ -189,19 +149,12 @@ export function cashWithdrawals<T extends Pick<TransferCandidate, "id" | "posted
 
 const nameKey = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
 
-/**
- * Rows from a name the owner already sent money under to one of their own IBANs (their name on an old or
- * untracked account). A name alone is weak evidence, so these are only ever suggestions for the owner to accept.
- * `seen` are rows that already prove an own account (including linked transfers); `answered` already have a card.
- */
 export function ownNameSuggestions(rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts, answered = new Set<string>()) {
   const names = new Map<string, string>();
   for (const row of seen) {
     const other = row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
     if (row.counterparty?.trim() && other.some(iban => own.tracked.has(iban) || own.untracked.has(iban))) names.set(nameKey(row.counterparty), row.counterparty.trim());
   }
-  // A bank can put the holder's own name on a payment with no real other side (Revolut card refunds);
-  // a transfer the owner made names them in the description too.
   return rows.flatMap(row => {
     const name = row.counterparty ? names.get(nameKey(row.counterparty)) : undefined;
     return name && !answered.has(row.id) && nameKey(row.text ?? "").includes(nameKey(name)) ? [{ transactionId: row.id, name }] : [];
@@ -218,7 +171,6 @@ export async function loadOwnAccounts(db: SupabaseClient, workspaceId: string): 
   ]);
   for (const result of [identifiers, bank, accounts]) if (result.error) throw new Error(result.error.message);
   const tracked = new Map<string, string>(), untracked = new Map<string, string>();
-  // A bank sync imports into the account with the bank's name and currency (see bankAccountNames).
   for (const row of bank.data ?? []) {
     const account = accounts.data?.find(item => item.name === row.account_name && item.currency_code === row.currency_code);
     const iban = normalizeIban(row.iban ?? "");
@@ -233,7 +185,6 @@ export async function loadOwnAccounts(db: SupabaseClient, workspaceId: string): 
 type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null; description: string; transfer_id: string | null; identity_id: string | null;
   transaction_sources: { source_transactions: { original_row: unknown } | null }[] | null };
 
-/** The counterparty name a bank sync stores on its original row; other imports leave it out. */
 const counterpartyOf = (row: unknown) => {
   const value = row && typeof row === "object" ? (row as { counterparty?: unknown }).counterparty : undefined;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -262,7 +213,6 @@ async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary
 
 export const loadTransferCandidates = (db: SupabaseClient, workspaceId: string) => loadRows(db, workspaceId, "ordinary");
 
-/** Own-transfer rows as sides of a transfer: what proves the broker is the other side, and whether a tracked account of the owner's is. */
 export async function loadTransferLegs(db: SupabaseClient, workspaceId: string): Promise<BankLeg[]> {
   const [rows, own, identifiers] = await Promise.all([loadRows(db, workspaceId, "transfer"), loadOwnAccounts(db, workspaceId),
     db.from("own_account_identifiers").select("iban, label").eq("workspace_id", workspaceId)]);
@@ -273,7 +223,6 @@ export async function loadTransferLegs(db: SupabaseClient, workspaceId: string):
     ownAccount: row.ibans.some(iban => own.tracked.has(iban) && own.tracked.get(iban) !== row.accountId) }));
 }
 
-/** Every posted leg, whatever its review state, so a lone leg can see whether its other side exists. */
 async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]> {
   const legs: Leg[] = [];
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
@@ -288,10 +237,8 @@ async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]>
 }
 
 export const ownTransferPayloadSchema = z.union([z.object({ transactionId: z.uuid(), name: z.string().trim().min(1).max(120) }).strict(),
-  /** An equal opposite leg in another account; accepting links the two as a transfer. */
   z.object({ transactionId: z.uuid(), pairWith: z.uuid() }).strict()]);
 
-/** Raises one "your own money?" card per row, once: a declined card is never raised again. */
 async function proposeOwnNames(db: SupabaseClient, workspaceId: string, rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts) {
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").limit(5000);
   if (known.error) throw new Error(known.error.message);
@@ -309,12 +256,10 @@ async function proposeOwnNames(db: SupabaseClient, workspaceId: string, rows: Tr
       payload: ownTransferPayloadSchema.parse({ transactionId, name }) };
   });
   const { data, error } = await db.from("agent_proposals").insert(cards).select("id");
-  // A concurrent sync raised the same card first.
   if (error && error.code !== "23505") throw new Error(error.message);
   return data?.length ?? 0;
 }
 
-/** Raises one "add it to your Cash account?" card per recent withdrawal, once: a declined card is never raised again. */
 async function proposeCashWithdrawals(db: SupabaseClient, workspaceId: string, rows: TransferCandidate[]) {
   const { locale, timezone } = await loadWorkspaceSettings(db, workspaceId);
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "cash_withdrawal").limit(5000);
@@ -335,7 +280,6 @@ async function proposeCashWithdrawals(db: SupabaseClient, workspaceId: string, r
   return data?.length ?? 0;
 }
 
-/** One "moved between your accounts?" card per unproven pair, once: a declined card is never raised again. */
 async function proposePairs(db: SupabaseClient, workspaceId: string, pairs: { outId: string; inId: string }[], byId: Map<string, TransferCandidate>, accounts: { id: string; name: string }[]) {
   if (!pairs.length) return 0;
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").limit(5000);
@@ -358,7 +302,6 @@ async function proposePairs(db: SupabaseClient, workspaceId: string, pairs: { ou
   return data?.length ?? 0;
 }
 
-/** One open question per description key; rows that land later join it while it is open. */
 async function askAboutInternalMoves(db: SupabaseClient, workspaceId: string, moves: ReturnType<typeof internalMoves>) {
   for (const move of moves) {
     const { error } = await db.rpc("raise_organize_question", { p_workspace: workspaceId, p_identity_key: `internal:${move.key}`, p_identity_id: move.identityId,
@@ -368,7 +311,6 @@ async function askAboutInternalMoves(db: SupabaseClient, workspaceId: string, mo
   return moves.length;
 }
 
-/** Adds each row's bank context, and the counterparty IBAN the bank stated there, as evidence. */
 export function withBankContext(rows: TransferCandidate[], raw: Map<string, RawContext>) {
   for (const row of rows) {
     row.raw = raw.get(row.id);
@@ -378,7 +320,6 @@ export function withBankContext(rows: TransferCandidate[], raw: Map<string, RawC
   return rows;
 }
 
-/** The bank's ids for each tracked account, from its own side of its rows. An id seen on two accounts proves nothing. */
 function ownAccountIds(rows: TransferCandidate[]) {
   const ids = new Map<string, string | null>();
   for (const row of rows) for (const { identification } of row.raw?.own_side_ids ?? []) {
@@ -388,10 +329,6 @@ function ownAccountIds(rows: TransferCandidate[]) {
   return new Map([...ids].filter((entry): entry is [string, string] => entry[1] !== null));
 }
 
-/**
- * Find and link transfers between the owner's accounts, mark exchanges, raise cards for unproven pairs and ask about
- * moves with nobody on the other side. The service role acts for the owner.
- */
 export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) {
   const [own, rows, legs, transfers, scalable] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId),
     loadRows(db, workspaceId, "transfer"), db.from("scalable_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "active")]);
@@ -406,7 +343,6 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
   let linked = 0, marked = 0, skipped = 0;
   for (const pair of pairs) {
     const out = byId.get(pair.outId)!, into = byId.get(pair.inId)!;
-    // The RPC rejects pairs it can't prove (e.g. a documented fee); those stay for manual review.
     const { error } = await db.rpc("link_transactions", { p_operation: "transfer", p_primary_id: out.id, p_expected_version: out.version,
       p_other_id: into.id, p_other_version: into.version, p_fx_rate_id: null, p_fees: [], p_request_id: randomUUID() });
     if (error) skipped++; else linked++;
@@ -423,7 +359,6 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
     if (error) skipped++; else marked++;
   }
   const handled = new Set([...pairs.flatMap(pair => [pair.outId, pair.inId]), ...single.map(item => item.transactionId), ...named.map(item => item.transactionId)]);
-  // Each exchange leg is marked on its own, naming the other leg when there is one.
   const exchanges = findExchanges(rows.filter(row => !handled.has(row.id)));
   const exchangeLegs: [string, string | null][] = [...exchanges.pairs.flatMap((pair): [string, string][] => [[pair.outId, pair.inId], [pair.inId, pair.outId]]),
     ...exchanges.single.map((id): [string, null] => [id, null])];
@@ -437,7 +372,6 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
   for (const pair of unproven) { handled.add(pair.outId); handled.add(pair.inId); }
   const questions = await askAboutInternalMoves(db, workspaceId, internalMoves(rows.filter(row => !handled.has(row.id))));
   const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own);
-  // Rows marked as cash a moment ago are transfers now; either way it is the bank's wording that counts.
   const cashCards = await proposeCashWithdrawals(db, workspaceId, [...rows.filter(row => !handled.has(row.id) || named.some(item => item.transactionId === row.id && item.account === "cash")), ...transfers]);
   return { linked, marked, skipped, suggested: suggested + pairCards, cashCards, questions };
 }

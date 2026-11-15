@@ -7,7 +7,6 @@ const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state || !process.env.SUPABASE_DB_URL || !process.env.E2E_USER_EMAIL, gatedSkipReason());
 
-// The run is written directly, as the chat route does when the user has left, so no AI provider is called.
 test("coming back to a chat still answering shows it working, then the saved answer", async ({ page }) => {
   test.setTimeout(60_000);
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
@@ -24,7 +23,6 @@ test("coming back to a chat still answering shows it working, then the saved ans
     await expect(main.getByText(question, { exact: true }).last()).toBeVisible();
     await expect(main.getByRole("status").filter({ hasText: "Thinking…" })).toBeVisible();
 
-    // The run finishes on the server while the page is open.
     await db`insert into public.messages (workspace_id, conversation_id, role, content, reply_to) values (${workspaceId}, ${conversationId}, 'assistant', 'Finished while you were away', ${requestId})`;
     await db`update public.chat_requests set status = 'completed', answer = 'Finished while you were away', updated_at = now() where id = ${requestId}`;
     await expect(main.getByText("Finished while you were away")).toBeVisible({ timeout: 15_000 });

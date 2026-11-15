@@ -25,7 +25,6 @@ export async function createReview(_state:ReviewState,form:FormData):Promise<Rev
   const patch:Record<string,string|null>={};
   if(merchant!=='keep'&&merchant!=='new')patch.merchant_id=merchant||null;
   if(categoryName){
-   // Find-or-create by exact name (unique per workspace); an unused category remains if the review is dismissed.
    const {data:found,error:createError}=await supabase.from('categories').upsert({workspace_id:workspace.id,name:categoryName},{onConflict:'workspace_id,name'}).select('id').single();
    if(createError)throw createError;patch.category_id=z.uuid().parse(found.id);
   }else if(category!=='keep')patch.category_id=category||null;
@@ -37,13 +36,11 @@ export async function createReview(_state:ReviewState,form:FormData):Promise<Rev
   const {data,error}=await supabase.rpc('create_organization_review',{p_rows:rows,p_patch:patch,p_merchant_name:merchantName,
    p_rule_key:ruleKey,p_evidence:evidence,p_request_id:requestId});
   if(error)throw error;reviewId=z.uuid().parse(data.id);
-  // Choosing and pressing Apply is the approval: the review is applied at once and stays undoable.
   const saveRule=ruleKey!==null&&form.get('saveRule')==='true';
   const applied=await supabase.rpc('apply_organization_review',{p_review_id:reviewId,p_save_rule:saveRule});
   if(applied.error)throw applied.error;
  } catch(cause) {
   if(cause instanceof z.ZodError)return {error:'Check the selection and the category or merchant, then try again.'};
-  // The review exists but was not applied; pressing Apply again would make a second one, so point at the first.
   if(reviewId)return {reviewId,error:'Saved as a review, but not applied: '+readableError(cause)};
   return {error:'Nothing was applied: '+readableError(cause)};
  }
