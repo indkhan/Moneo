@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { getModel, modelIdFor } from "./provider";
+import { currentModelId, getModel, modelIdFor } from "./provider";
 import { claudeAccount } from "./claude";
 import { AI_AGENTS, settingsSchema } from "@/lib/settings";
 
@@ -54,4 +54,12 @@ test("with only an OpenRouter key, OpenAI model IDs run through OpenRouter", asy
   const model = await getModel(AI_AGENTS.chat.model);
   expect(model.provider).toContain("openrouter");
   expect(model.modelId).toBe(`openai/${AI_AGENTS.chat.model}`);
+});
+
+test("the shared default reaches every task unless explicitly overridden", async () => {
+  const settings = settingsSchema.parse({ ai_models: { default: "gpt-shared", titles: "gpt-title" } });
+  for (const agent of Object.keys(AI_AGENTS) as (keyof typeof AI_AGENTS)[]) {
+    expect(modelIdFor(settings, agent)).toBe(agent === "titles" ? "gpt-title" : "gpt-shared");
+    expect(await currentModelId(settings, agent)).toBe(agent === "titles" ? "gpt-title" : "gpt-shared");
+  }
 });

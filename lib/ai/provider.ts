@@ -5,7 +5,7 @@ import { chatgptFetch, chatgptStatus, usesChatGPT, type AiSource } from "./chatg
 import { claudeAccount, claudeModel, type ClaudeSteering } from "./claude";
 import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
-import { connectedDefault, modelIsConnected } from "./model-options";
+import { connectedDefault } from "./model-options";
 
 export async function modelConnections() {
   const [chatgpt, claude, openai, openrouter] = await Promise.all([chatgptStatus(), claudeAccount(), serviceKey("openai_api_key"), serviceKey("openrouter_api_key")]);
@@ -45,15 +45,15 @@ export async function getModel(modelId: string) {
 export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent, source?: AiSource): string {
   // A voice call uses the chat model until a faster one is chosen for calls.
   if (agent === "voice_call") return settings?.ai_models.voice_call ?? modelIdFor(settings, "chat", source);
-  return settings?.ai_models[agent] ?? (source === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model);
+  return settings?.ai_models[agent] ?? settings?.ai_models.default ?? (source === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model);
 }
 
 /** The model ID an agent runs with, given the AI source chosen in Settings. */
 export async function currentModelId(settings: WorkspaceSettings | undefined, agent: AiAgent): Promise<string> {
   if (agent === "voice_call" && !settings?.ai_models.voice_call) return currentModelId(settings, "chat");
+  const selected = settings?.ai_models[agent] ?? settings?.ai_models.default;
+  if (selected) return selected;
   const [connections, status] = await Promise.all([modelConnections(), chatgptStatus()]);
-  const selected = settings?.ai_models[agent];
-  if (selected && modelIsConnected(selected, connections)) return selected;
   return connectedDefault(agent, connections, status.source === "claude");
 }
 
