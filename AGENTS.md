@@ -2,7 +2,9 @@
 
 Moneo is an open-source personal-finance app you run on your own computer. One owner imports statements or syncs a bank, tracks accounts and wealth, plans spending, and asks about their money in chat, artifacts and voice calls.
 
-Stack: Next.js 16 + React 19 + TypeScript. The backend is Postgres plus the open-source Supabase Auth, PostgREST and Storage services in Docker (`docker-compose.yml`). Drizzle schema, Workflow (local world) for durable jobs, Vitest and Playwright, and the Vercel AI SDK, paid by the owner's ChatGPT plan or an API key.
+Moneo ships two ways from this one codebase: the desktop app (`desktop/`, Electron, what most owners install) and the source installation (`npm run setup` + Docker). Every change must work in both.
+
+Stack: Next.js 16 + React 19 + TypeScript. The backend is Postgres plus the open-source Supabase Auth, PostgREST and Storage services: in Docker for the source installation (`docker-compose.yml`), as bundled native processes in the desktop app (`desktop/src/backend/`). Drizzle schema, Workflow (local world) for durable jobs, Vitest and Playwright, and the Vercel AI SDK, paid by the owner's ChatGPT plan or an API key.
 
 These are defaults. The developer's instructions override them; if a rule conflicts with the task, say so and ask.
 
@@ -20,7 +22,9 @@ These are defaults. The developer's instructions override them; if a rule confli
 1. **Think before coding.** State your assumptions. If a request has more than one reading, name them and ask instead of picking silently. If a simpler approach exists, say so.
 2. **Simplicity first.** Write the least code that solves the problem: no speculative features, options or single-use abstractions. Prefer existing utilities and dependencies, and Zod for validating user and external input. Would a senior engineer call it overcomplicated? Then simplify.
 3. **Surgical changes.** Touch only what the task needs and match the nearby style. Remove what your own change made unused; mention unrelated dead code instead of deleting it.
-4. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts by reproducing the failure; see Tests for when that becomes a kept test. Purely visual changes get a before/after screenshot instead.
+4. **Never write a comment.** Put the meaning in a name, a type, a test or a lint rule; if a comment would defend a workaround, fix the cause instead. `npm run lint` rejects comments (`moneo/no-comments` in `eslint.config.mjs`) except tool directives such as `eslint-disable-next-line <rule> -- reason`.
+5. **Corrections become checks.** When a review correction could recur, enforce it with a lint rule, a type or a test whose error message says what to do instead. Add a line here only when it needs human judgment.
+6. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts by reproducing the failure; see Tests for when that becomes a kept test. Purely visual changes get a before/after screenshot instead.
 
 ## Safety
 
@@ -39,6 +43,7 @@ Before calling a feature done, check where else it shows up:
 - Chat tools and the system prompt in `lib/ai/provider.ts`, artifacts, and the voice call (`lib/ai/voice-*`).
 - Home widgets and the command palette.
 - Background jobs (`lib/scheduler.ts`, `workflows/`) and imports from files, banks and Scalable.
+- The desktop app: see Desktop app below.
 - The reverse path: undo, reset all data, reconnect, disconnect.
 - Docs: `README.md` for anything the owner sets up or runs, the landing page in `docs/` when a headline feature or install step changes, `.env.example` for new variables. Deferred work goes in GitHub issues.
 
@@ -52,6 +57,7 @@ Use npm (`package-lock.json` is authoritative).
 - Unit: `npm test` · Lint: `npm run lint` · Build: `npm run build` · Bundle budget: `npm run check:bundle` (after a build)
 - Database: `npm run test:db` (needs the backend from `npm run setup`)
 - E2E: `npm run test:e2e` (see `e2e/README.md`)
+- Desktop: `node scripts/desktop/fetch-backend.mjs --platform <win-x64|mac-arm64|mac-x64|linux-x64>` once, then `npm run desktop:build`, `npm run desktop:dev`, `npm run desktop:dist` and `npm run desktop:smoke` (drives the packaged app)
 - Desktop release: push a `v*` tag matching `desktop/package.json`, then publish the drafted release (`desktop/README.md` → Releasing). Never tag or publish unasked.
 
 ## Test backend
@@ -64,6 +70,21 @@ Everything that needs a database or a running app is tested against `moneo-qa`, 
 - `npm run test:db` and the `supabase/tests/*.mjs` scripts read `.env.qa` only.
 - A nightly run (`npm run qa:nightly`, see `e2e/README.md`) runs every spec twice and keeps the issue "Nightly browser suite is failing" up to date; fix what it lists before adding new specs.
 
+## Desktop app
+
+The Electron app (`desktop/README.md`, `desktop/src/backend/README.md`) runs the same Next.js server as a standalone build next to its own Postgres, GoTrue, PostgREST and Storage processes. There is no Docker, Node.js, terminal or `.env` on the owner's machine, so:
+
+- **Settings the owner needs go in the app**, not in `.env`. `desktop:build` unsets every `NEXT_PUBLIC_*` and fails if a local address is baked in; desktop-only behaviour reads `MONEO_DESKTOP_*` at runtime.
+- **Migrations run on the owner's existing database** at the next start, after an automatic `pre-upgrade` backup (`desktop/src/backend/migrations.ts`). They must work without the extensions the bundle lacks: supautils, pg_graphql, pg_net, pg_cron, pgsodium/vault, pg_stat_statements, realtime, and uuid-ossp on Windows.
+- **The app lives on `http://localhost:47300`** (or the port saved in `shell.json`), not 3000. Derive addresses from the request or `NEXT_PUBLIC_APP_URL`; never hard-code a port.
+- **Sign-ins open in the system browser** and return through the loopback callbacks; the result reaches the window through `lib/desktop-bridge.ts` and `desktop/src/bridge.ts`. The window opens only Moneo's own pages and allows only the microphone and copying.
+- **Files the server reads at runtime** by a dynamic path need `/*turbopackIgnore: true*/`, or the standalone build traces source files and `desktop:build` fails.
+- **A new backend service, native module or data folder** must be added to `fetch-backend.mjs`, the start order, backup and restore, and the packaged files in `electron-builder.config.cjs`.
+- **Keep the security fuses** (RunAsNode, `NODE_OPTIONS` and `--inspect` off; asar integrity on); `desktop:smoke` reads them back.
+- Never test against the owner's installed app or its user-data folder; set `MONEO_DESKTOP_HOME` to a scratch folder.
+
+The Desktop workflow builds and smoke-tests every platform on pull requests that touch `desktop/`, `scripts/desktop/`, `next.config.ts`, `package*.json` or `supabase/migrations/`.
+
 ## Project map
 
 - `app/` — App Router pages, route handlers, server actions
@@ -74,7 +95,7 @@ Everything that needs a database or a running app is tested against `moneo-qa`, 
 - `workflows/` — durable background jobs; `lib/scheduler.ts` runs the daily ones
 - `docker-compose.yml`, `docker/`, `scripts/setup.mjs` — the self-hosted backend
 - `e2e/` — Playwright flows; `supabase/tests/` — SQL regressions
-- `desktop/` — the Electron app; `.github/workflows/desktop.yml` builds it and drafts releases
+- `desktop/` — the Electron app (`src/` main process, `src/backend/` native backend, `setup/` status window, `bootstrap/` first-run SQL); `scripts/desktop/` builds, packages and smoke-tests it; `.github/workflows/desktop.yml` runs that and drafts releases
 - `docs/` — the GitHub Pages landing page (https://indkhan.github.io/Moneo/); its download button reads the latest published release
 
 ## Sign-in callbacks and addresses
@@ -85,6 +106,7 @@ Each outside service sends the browser back to a different address. Keep these i
 - **Enable Banking** (`lib/bank/return-listener.ts`): production apps need an `https://` redirect registered in the Enable Banking app. Moneo uses `https://localhost:3443/api/bank/callback` (a local listener with a cert from `npm run setup`), which forwards to `NEXT_PUBLIC_APP_URL`.
 - **Scalable Capital** (`lib/scalable/server.ts`): dynamic client registration with `NEXT_PUBLIC_APP_URL/api/scalable/callback`. `localhost` registers freely; other hosts need Scalable's allowlist (it rejects `*.ts.net`).
 - **Supabase** (`NEXT_PUBLIC_SUPABASE_URL`, `127.0.0.1:54321`): only the server may call it; never send the browser there, or it breaks on other devices.
+- **Desktop app**: the same callbacks on the app's own port (47300 by default) instead of 3000.
 - **Phone and tablet** (`*.ts.net` through Tailscale Serve): the laptop's addresses above never change. The three logins refuse to start from a remote device (`lib/remote-device.ts`) and say to use the computer; everything else, including sync, works from there.
 - **Voice** needs a secure context (https or localhost) for the microphone.
 

@@ -40,9 +40,59 @@ const migrationReaders = [
   "**/*.live.test.ts",
 ];
 
+const toolDirective = /^(\s*eslint-|\s*@ts-(expect-error|ignore|nocheck)|\s*(turbopack|webpack)Ignore:|\s*@vitest-environment|\*\s*@type\s|\/\s*<reference\s)/;
+
+const noComments = {
+  meta: {
+    type: "suggestion",
+    fixable: "code",
+    schema: [],
+    messages: {
+      banned: "Comments are banned: they go stale and nothing checks them. Delete it and put the meaning in a name, a type, a test or a lint rule. If it defends a workaround, fix the cause instead (AGENTS.md How to work).",
+    },
+  },
+  create(context) {
+    const source = context.sourceCode;
+    return {
+      Program() {
+        for (const comment of source.getAllComments()) {
+          if (comment.type === "Shebang" || toolDirective.test(comment.value)) continue;
+          context.report({
+            loc: comment.loc,
+            messageId: "banned",
+            fix(fixer) {
+              const text = source.text;
+              let [start, end] = comment.range;
+              const holder = source.getNodeByRangeIndex(start);
+              if (holder?.type === "JSXEmptyExpression" && source.getCommentsInside(holder.parent).length === 1) [start, end] = holder.parent.range;
+              let lineStart = start;
+              while (lineStart > 0 && (text[lineStart - 1] === " " || text[lineStart - 1] === "\t")) lineStart--;
+              let lineEnd = end;
+              while (lineEnd < text.length && (text[lineEnd] === " " || text[lineEnd] === "\t")) lineEnd++;
+              const opensLine = lineStart === 0 || text[lineStart - 1] === "\n";
+              const closesLine = lineEnd === text.length || text[lineEnd] === "\n" || text[lineEnd] === "\r";
+              if (opensLine && closesLine) {
+                if (text[lineEnd] === "\r") lineEnd++;
+                if (text[lineEnd] === "\n") lineEnd++;
+                return fixer.removeRange([lineStart, lineEnd]);
+              }
+              if (closesLine) return fixer.removeRange([lineStart, end]);
+              return fixer.removeRange([start, opensLine ? lineEnd : end]);
+            },
+          });
+        }
+      },
+    };
+  },
+};
+
 export default defineConfig([
   ...nextVitals,
   ...nextTypescript,
+  {
+    plugins: { moneo: { rules: { "no-comments": noComments } } },
+    rules: { "moneo/no-comments": "error" },
+  },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],
     rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip] },
