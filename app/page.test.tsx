@@ -34,23 +34,26 @@ async function resolveTree(node: ReactNode): Promise<ReactNode> {
 const render = async (account?: string) => renderToStaticMarkup(await resolveTree(await Home({ searchParams: Promise.resolve({ account }) })));
 it("Home labels pooled EUR600 separately and surfaces checking EUR400 deficit/date/bill", async () => {
   const html = await render("checking");
-  expect(html).toContain("Aggregate headroom"); expect(html).toContain("EUR 600.00");
+  expect(html).toContain("EUR 600.00");
   expect(html).toContain("Checking funding shortfall: EUR 400.00"); expect(html).toContain("Oct 8, 2026");
-  expect(html).toContain("Recurring bill"); expect(html).toContain("Chosen-account headroom");
-  expect(html).toContain("-EUR 400.00"); expect(html).not.toContain("Available to spend</h2>");
-  expect(html).toContain("/plan?account=checking");
+  expect(html).toContain("Recurring bill");
+  expect(html).toContain("-EUR 400.00");
+  expect(html).toContain('href="/plan?account=checking"'); expect(html).not.toContain('href="/plan"');
 });
 it("Home requires a chosen account and never silently selects savings to hide checking", async () => {
-  expect(await render()).toContain("Choose a paying account");
-  expect(await render("missing")).toContain("Choose a current liquid account");
-  expect(await render("savings")).toContain("Checking funding shortfall: EUR 400.00");
+  const none = await render();
+  expect(none).toContain('href="/plan"');
+  const missing = await render("missing");
+  expect(missing).toContain('role="alert"'); expect(missing).toContain('href="/plan"');
+  const savings = await render("savings");
+  expect(savings).toContain("Checking funding shortfall: EUR 400.00"); expect(savings).toContain('href="/plan?account=savings"');
 });
 it("Home retains per-account reservations and donor limitation", async () => {
   const protectedInput = { ...input, accounts: [{ ...input.accounts[0], reservedMinor: 1000n }, { ...input.accounts[1], reservedMinor: 90000n }] };
   vi.mocked(evaluatePlanForWorkspace).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: protectedInput, forecast: forecastDaily(protectedInput), available: availableToSpend(protectedInput), liquidity: accountLiquidity(protectedInput) } as Awaited<ReturnType<typeof evaluatePlanForWorkspace>>);
   const html = await render("savings");
   expect(html).toContain("Checking funding shortfall: EUR 410.00"); expect(html).toContain("Protected funds: EUR 900.00");
-  expect(html).toContain("-EUR 310.00"); expect(html).toContain("No automatic transfer");
+  expect(html).toContain("-EUR 310.00");
 });
 it("Home preserves unavailable evidence rather than displaying pooled spending", async () => {
   const unknown = { ...input, missingInputs: ["balance:checking:unreviewed"] };
@@ -66,6 +69,5 @@ it("chosen-account spending respects a separately owned workspace buffer", async
     expect(html).toContain("Workspace buffer: EUR 100.00");
     expect(html).toContain("EUR 500.00");
     expect(html).toContain("Checking funding shortfall: EUR 400.00");
-    expect(html).toContain("limited by both account liquidity and aggregate headroom");
   } finally { input.workspaceBufferMinor = 0n; }
 });

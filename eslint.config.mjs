@@ -32,8 +32,6 @@ const ownerApp = {
 };
 
 const migrationReaders = [
-  "lib/schema.test.ts",
-  "lib/finance/currency-precision-contract.test.ts",
   "supabase/tests/**",
   "**/*.live.test.ts",
 ];

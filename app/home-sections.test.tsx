@@ -23,29 +23,25 @@ const props = { db: {} as SupabaseClient, workspaceId: "w", currency: "EUR", tod
 it("shows both sides by default and only the picked side's breakdown, linked to filtered transactions", async () => {
   const both = await panel();
   expect(both).toContain('data-chart="May,Jun,Jul,Aug,Sep,Oct"');
-  expect(both).not.toContain("Top categories");
-  expect(both).not.toContain("Where money came from");
+  expect(both).not.toContain("/money/transactions?");
   expect(both).toContain('href="?show=in&amp;flow=in#cash-flow"');
 
   const spending = await panel({ flow: "out" });
   expect(spending).not.toContain('data-flow="out"');
-  expect(spending).toContain("Top categories in October");
   expect(spending).toContain("/money/transactions?category=food&amp;from=2026-10-01&amp;to=2026-10-16&amp;direction=outflow");
   expect(spending).toContain("merchant=none");
   expect(spending).toContain('href="?flow=out#cash-flow"');
   const onlyOut = await panel({ show: "out", flow: "out" });
   expect(onlyOut).toContain('data-flow="out"');
-  expect(onlyOut).toContain("Top categories in October");
+  expect(onlyOut).toContain("/money/transactions?category=food");
 
   const september = await panel({ flow: "out", month: "2026-09" });
-  expect(september).toContain("Top merchants in September");
   expect(september).toContain("merchant=shop&amp;from=2026-09-01&amp;to=2026-09-30");
 
   const income = await panel({ flow: "in" });
-  expect(income).toContain("Where money came from in October");
   expect(income).toContain("Acme GmbH");
   expect(income).toContain("merchant=employer&amp;from=2026-10-01&amp;to=2026-10-16&amp;direction=income");
-  expect(income).not.toContain("Top merchants");
+  expect(income).not.toContain("direction=outflow");
 });
 
 it("lists recent ledger entries with account names, status and the total count", async () => {

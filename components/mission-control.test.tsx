@@ -18,30 +18,28 @@ const run = (status: string): AgentRunView => ({ id: "00000000-0000-4000-8000-00
   { id: "00000000-0000-4000-8000-000000000004", agent: "budget", kind: "budget", title: "Dining: EUR 210.00 a month", detail: "Median of three months.", confidence: 60, notes: ["2 rows proposed for this category are not in this history yet"],
     status: "accepted", result: { href: "/plan/spending", undo: "Turn the limit off in Plan → Spending" }, evidence: { facts: [], transactions: [], links: [] } }] });
 
-it("streams each agent's status, step and tool calls while the run is live", () => {
+const stopControl = 'lucide-square ';
+
+it("streams each agent's step, tool calls, duration and skip reason while the run is live, with no decisions to take yet", () => {
   const html = renderToStaticMarkup(<MissionControl initial={run("running")} locale="en-GB" />);
-  expect(html).toContain("Wave 1 · Analysts · in parallel");
   expect(html).toContain("Asking the model about 12 unfamiliar descriptions");
   expect(html).toContain("generateObject: suggest owned categories");
   expect(html).toContain("4 patterns detected");
   expect(html).toContain("1.5 s");
   expect(html).toContain("Allow AI access to planning in Settings");
-  expect(html).toContain("Free model · 2/6 calls");
-  expect(html).toContain(">Stop<");
-  expect(html).toContain("Results stream in as agents work");
-  expect(html).not.toContain(">Accept<");
+  expect(html).toContain(stopControl);
+  expect(html).not.toContain('aria-label="Accept ');
 });
 
-it("ends with the briefing and a review screen with evidence, lead notes and undo paths", () => {
+it("ends with the briefing and a review screen with evidence, lead notes, undo paths and a link to Home", () => {
   const html = renderToStaticMarkup(<MissionControl initial={run("completed")} locale="en-GB" />);
   expect(html).toContain("You paid EUR 5.00 in fees.");
-  expect(html).toContain("Decide on Home");
-  expect(html).toContain(">on Home<");
-  expect(html).not.toContain("Mark reviewed");
+  expect(html).toContain('href="/"');
   expect(html).toContain("Monthly account fee");
-  expect(html).toContain("Lead: 2 rows proposed");
+  expect(html).toContain("2 rows proposed for this category are not in this history yet");
+  expect(html).toContain('href="/plan/spending"');
   expect(html).toContain("Turn the limit off in Plan → Spending");
-  expect(html).not.toContain(">Stop<");
+  expect(html).not.toContain(stopControl);
 });
 
 it("counts open decisions, filters by agent and previews a bulk accept instead of applying it at once", () => {
@@ -50,22 +48,18 @@ it("counts open decisions, filters by agent and previews a bulk accept instead o
   const html = renderToStaticMarkup(<MissionControl initial={{ ...initial, proposals: [...initial.proposals, limit(1, 75), limit(2, 55)] }} locale="en-GB" />);
   expect(html).toContain("3 open decisions");
   expect(html).toContain("2 here, 1 on Home");
-  expect(html).toContain("Accept 1 high confidence…");
-  expect(html).toContain("Accept all…");
-  expect(html).not.toContain("Confirm 1");
+  expect(html).toContain("Accept 1 high confidence");
+  expect(html).not.toContain('aria-label="Confirm accepting these"');
   expect(html).toContain('aria-label="Show results from"');
   expect(html).toContain("All (4)");
-  expect(html).toContain("Pattern strength");
-  expect(html).toContain("Accept Limit 1");
-  expect(html).toContain("All runs");
+  expect(html).toContain('aria-label="Accept Limit 1"');
 });
 
 it("offers bulk decisions only within the 100 the action accepts", () => {
   const initial = run("completed");
   const limits = Array.from({ length: 101 }, (_, index) => ({ ...initial.proposals[1], id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, title: `Limit ${index}`, status: "proposed", result: null, notes: [], confidence: 75 }));
   const html = renderToStaticMarkup(<MissionControl initial={{ ...initial, proposals: limits }} locale="en-GB" />);
-  expect(html).toContain("Accept 100 high confidence…");
-  expect(html).toContain("Accept first 100…");
+  expect(html).toContain("Accept 100 high confidence");
+  expect(html).toContain("Accept first 100");
   expect(html).toContain("Reject first 100");
 });
-

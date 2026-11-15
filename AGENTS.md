@@ -121,6 +121,7 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | Every code path returns; overrides are marked; no switch fall-through | `tsconfig.json` |
 | A stored preference this version cannot read never blocks sign-in | `lib/settings.test.ts` |
 | The assistant's system prompt does not grow by special cases | budget in `lib/ai/provider.test.ts` |
+| `lib/schema.ts` matches the migrated database; app and database agree on currency minor units; SQL conflicts are never raised as `40001` | `lib/schema.live.test.ts` (`npm run test:db`, CI job `database`) |
 | No secrets, statements or personal data in the repo | `npm run check:privacy` (runs before test and lint) |
 | A page's JavaScript stays within its size budget | `npm run check:bundle` |
 | A test file runs in 10 seconds or less | CI, "Slowest test files" |
@@ -155,7 +156,7 @@ A test earns its place by failing when real behaviour breaks. Before writing one
 - When you remove a feature, remove its tests. Never delete or skip a failing test just to get green: fix the cause, or ask.
 - If a pointless test lands, find out why the agent wrote it and fix the guidance here.
 
-Run the smallest relevant test while iterating. Before finishing, run `npm test`, `npm run lint` and `npm run typecheck`; add `npm run build` for app, config or build changes, and Playwright for changed user flows. CI runs the same checks on every pull request.
+Run the smallest relevant test while iterating. Before finishing, run `npm test`, `npm run lint` and `npm run typecheck`; add `npm run build` for app, config or build changes, and Playwright for changed user flows. CI runs the same checks on every pull request, and `npm run test:db` against a fresh test backend.
 
 ## Commits and pull requests
 

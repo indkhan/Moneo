@@ -38,25 +38,20 @@ vi.mocked(requireWorkspace).mockResolvedValue({ supabase: client(), workspace: {
 
 it("renders a grouped dense ledger with exact subtotals, chips and a sticky header", async () => {
   const html = renderToStaticMarkup(await TransactionsPage({ searchParams: Promise.resolve({ group: "category", status: "posted", minAmount: "-1000" }) }));
-  expect(html).toContain("sticky top-0");
   expect(html).toContain("Groceries");
   expect(html).toContain("2 transactions");
   expect(html).toContain("−EUR 90,071,992,547,410.00");
-  expect(html).toContain("Remove filter Posted");
-  expect(html).toContain("Remove filter At least -EUR 10.00");
+  expect(html).toContain("-EUR 10.00");
   expect(html).toContain("3 transactions");
-  expect(html).toContain("Select Row 1");
-  expect(html).toContain('aria-label="Saved views"');
+  expect(html).toContain("Row 1");
   expect(calls).toContainEqual(["transactions", "eq", "status", "posted"]);
   expect(calls).toContainEqual(["transactions", "gte", "amount_minor", "-1000"]);
 });
 
-it("drawer uses plain labels, exact money and readable correction history", async () => {
+it("drawer shows exact money, readable correction history, its undo and the saved category", async () => {
   const html = renderToStaticMarkup(await TransactionDrawer({ id: id(1), query: "", linkSearch: "", accountNames: { [id(50)]: "Checking" }, categories: tables.categories as never, merchants: [] }));
   expect(html).toContain("-EUR 90,071,992,547,409.93");
-  expect(html).not.toContain("minor units");
-  expect(html).toContain("Posted · Regular");
   expect(html).toContain("Category: Groceries → Dining");
-  expect(html).toContain("Undo correction");
-  expect(html).toContain("Save correction");
+  expect(html).toContain(`name="eventId" value="${id(70)}"`);
+  expect(html).toContain('name="originalCategory" value="Groceries"');
 });

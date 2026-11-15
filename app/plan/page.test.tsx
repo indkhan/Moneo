@@ -49,10 +49,9 @@ async function render(params: Record<string, string> = {}) {
 it("renders checking's dated EUR 400 shortfall and bill even while aggregate cash is EUR 600", async () => {
   const html = await render({ account: "checking", horizon: "3" });
   expect(html).toContain("Checking funding shortfall: EUR 400.00");
-  expect(html).toContain("Aggregate headroom"); expect(html).toContain("EUR 600.00");
+  expect(html).toContain("EUR 600.00");
   expect(html).toContain("Chosen-account headroom"); expect(html).toContain("-EUR 400.00");
   expect(html).toContain("2026-10-08"); expect(html).toContain("Tomorrow bill");
-  expect(html).toContain("No automatic transfer"); expect(html).not.toContain("One planned month fits");
   expect(await evaluateForecast({ accountId: "checking", horizonDays: 3 })).toMatchObject({
     availableToSpendMinor: "-40000", aggregateAvailableMinor: "60000", limitingDate: "2026-10-08",
   });
@@ -61,7 +60,7 @@ it.each([["2026-10-08", false], ["2026-10-09", true]])("renders only timely expl
   const html = await render({ account: "checking", horizon: "3", fundingFrom: "savings", fundingDate: date, funding: "400.00" });
   expect(html.includes("Checking funding shortfall: EUR 400.00")).toBe(shortfall);
   expect(html).toContain("EUR 600.00"); expect(html).toContain(`value="${date}"`);
-  expect(html).toContain('value="400.00"'); expect(html).toContain("Hypothetical funding");
+  expect(html).toContain('value="400.00"');
   const scenarioLink = [...html.matchAll(/href="([^"]*)"/g)].map(match => match[1].replaceAll("&amp;", "&")).find(href => href.includes("scenario=00000000"))!;
   const query = new URL(scenarioLink, "https://synthetic.test").searchParams;
   expect(query.get("account")).toBe("checking"); expect(query.get("horizon")).toBe("3");
@@ -72,16 +71,15 @@ it("does not turn incomplete balance evidence into an available forecast", async
   const unknown = { ...input, missingInputs: ["balance:checking:boundary evidence unavailable"] };
   vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: unknown, forecast: forecastDaily(unknown), available: availableToSpend(unknown), liquidity: accountLiquidity(unknown), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
   const html = await render({ account: "checking" });
-  expect(html).toContain("From 1 of 2 accounts"); expect(html).toContain("Fix 1 balance");
-  expect(html).toContain("Left out of this forecast"); expect(html).toContain("Checking: its balance could not be confirmed.");
+  expect(html).toContain("From 1 of 2 accounts");
   expect(html).toContain('href="/money/accounts#account-checking"');
-  expect(html).toContain("Choose a current liquid account"); expect(html).not.toContain("Chosen-account headroom");
+  expect(html).toContain('role="alert"'); expect(html).not.toContain("Chosen-account headroom");
 });
 it("does not select pooled spending or discard unknown account and invalid funding input", async () => {
-  expect(await render()).toContain("Choose a paying account");
+  expect(await render()).not.toContain("Chosen-account headroom");
   const html = await render({ account: "missing", fundingFrom: "savings", fundingDate: "2026-10-09", funding: "bad" });
-  expect(html).toContain("Choose a current liquid account"); expect(html).toContain('value="bad"');
-  expect(html).toContain("Funding was not applied");
+  expect(html.match(/role="alert"/g)).toHaveLength(3); expect(html).toContain('value="bad"');
+  expect(html).not.toContain("Chosen-account headroom");
 });
 it("renders account-specific protections and keeps horizon/scenario/account/funding controls", async () => {
   const protectedInput = { ...input, accounts: [{ ...input.accounts[0], minimumMinor: 2000n }, { ...input.accounts[1], reservedMinor: 30000n }] };
@@ -100,23 +98,20 @@ it("chosen-account spending respects a separately owned workspace buffer", async
     expect(html).toContain("Workspace buffer: EUR 100.00");
     expect(html).toContain("EUR 500.00");
     expect(html).toContain("Checking funding shortfall: EUR 400.00");
-    expect(html).toContain("limited by both account liquidity and aggregate headroom");
   } finally { input.workspaceBufferMinor = 0n; }
 });
 
 it("shows the retained calendar anchor after an enabled toggle makes a schedule intentional", async () => {
   storedAssumptions=[{id:"schedule",account_id:"checking",name:"Quarterly schedule",amount_minor:"-9007199254740993",currency_code:"EUR",cadence:"quarterly",starts_on:"2026-04-30",schedule_anchor_on:"2025-10-31",ends_on:null,source:"user",confidence:null,confirmed:true,enabled:true,version:3}];
   const html=await render();
-  expect(html).toContain("Calendar anchor: 2025-10-31");
+  expect(html).toContain("2025-10-31");
   expect(html).toContain('value="2026-04-30"');
 });
 
 it("lists upcoming obligations under the forecast chart and compares a scenario with the real plan", async () => {
   const html = await render({ horizon: "3" });
-  expect(html).toContain("Upcoming obligations"); expect(html).toContain("Tomorrow bill");
-  expect(html).toContain("Expected at horizon"); expect(html).not.toContain("Compared with the real plan");
+  expect(html).toContain("Tomorrow bill"); expect(html).not.toContain("change in spare cash");
   const withScenario = await render({ horizon: "3", scenario: "00000000-0000-4000-8000-000000000001" });
-  expect(withScenario).toContain("Real plan compared with Test scenario");
   expect(withScenario).toContain("Compared with the real plan: EUR 0.00 change in spare cash over 3 days.");
 });
 

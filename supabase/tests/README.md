@@ -24,6 +24,7 @@ Single regressions run with their `run-*.mjs` script, for example `node supabase
 
 - `precision.mjs` reads Money and budget pages through PostgREST with amounts beyond JavaScript's safe integer range.
 - `summary-live.mjs` (with the app running) checks scheduled summaries end to end: dispatch, deduplication per period, cancellation and disabling.
+- `lib/schema.live.test.ts` checks the migrated database itself: `lib/schema.ts` lists the same tables and columns, the app and `currency_minor_digits` agree on every currency, and no function raises a conflict as `40001`.
 - Opt-in unit tests compare SQL with application logic, for example `RUN_RESERVATION_DB_TESTS=1 npm test -- lib/finance/reservation-balance.live.test.ts` (PowerShell: `$env:RUN_RESERVATION_DB_TESTS='1'` first).
 
 None of these touch the owner's workspace. Migrations themselves are applied by `npm run setup`.
