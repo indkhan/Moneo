@@ -17,7 +17,7 @@ import type { HistoryThread } from "@/lib/ai/conversation-history";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
-const AnalysisPanel = dynamic(() => import("@/app/ai/analysis-panel").then(module => module.AnalysisPanel), {
+const AnalysisPanel = dynamic(() => import("@/components/analysis-panel").then(module => module.AnalysisPanel), {
   ssr: false, loading: () => <p role="status" className="p-6 text-sm text-muted-foreground">Loading review options…</p>,
 });
 const VoiceCall = dynamic(() => import("./voice-call").then(module => module.VoiceCall), { ssr: false });

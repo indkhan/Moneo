@@ -3,9 +3,9 @@ import {resolve} from "node:path";
 
 export function prepareInvestigationRuntime(root, write) {
   cpSync(resolve("lib"), resolve(root, "lib"), {recursive: true});
-  for (const path of ["app/api/analysis/route.ts", "app/api/analysis/[id]/route.ts", "app/ai/analysis-panel.tsx", "components/ai-message.tsx", "components/review-verification.tsx"])
+  for (const path of ["app/api/analysis/route.ts", "app/api/analysis/[id]/route.ts", "components/analysis-panel.tsx", "components/ai-message.tsx", "components/review-verification.tsx"])
     write(path, readFileSync(path, "utf8"));
-  write("app/page.tsx", `import {AnalysisPanel} from '@/app/ai/analysis-panel'; export default function Page() {return <AnalysisPanel locale="en-GB" timezone="UTC"/>;}`);
+  write("app/page.tsx", `import {AnalysisPanel} from '@/components/analysis-panel'; export default function Page() {return <AnalysisPanel locale="en-GB" timezone="UTC"/>;}`);
   write("lib/auth.ts", `import {cookies} from 'next/headers'; import {createClient} from '@supabase/supabase-js'; import {loadWorkspaceSettings} from './settings';
 export async function requireWorkspace() {
  const id=(await cookies()).get('qa-workspace')?.value; if(!id) throw new Error('Synthetic authentication required');

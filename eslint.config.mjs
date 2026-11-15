@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
@@ -37,7 +38,15 @@ const migrationReaders = [
   "**/*.live.test.ts",
 ];
 
-const toolDirective = /^(\s*eslint-|\s*@ts-(expect-error|ignore|nocheck)|\s*(turbopack|webpack)Ignore:|\s*@vitest-environment|\*\s*@type\s|\/\s*<reference\s)/;
+const directiveReason = String.raw`(\s+--?\s.{1,120})?\s*$`;
+const toolDirectives = [
+  new RegExp(String.raw`^\s*eslint-(disable|enable)(-next-line|-line)?\s+[\w@/-]+(\s*,\s*[\w@/-]+)*` + directiveReason),
+  new RegExp(String.raw`^\s*@ts-expect-error` + directiveReason),
+  /^\s*(turbopack|webpack)Ignore:\s*true\s*$/,
+  /^\s*@vitest-environment\s+[\w-]+\s*$/,
+  /^\*\s*@type\s*\{[^}]*\}\s*$/,
+  /^\/\s*<reference\s[^>]*\/>\s*$/,
+];
 
 const noComments = {
   meta: {
@@ -53,7 +62,7 @@ const noComments = {
     return {
       Program() {
         for (const comment of source.getAllComments()) {
-          if (comment.type === "Shebang" || toolDirective.test(comment.value)) continue;
+          if (comment.type === "Shebang" || toolDirectives.some(directive => directive.test(comment.value))) continue;
           context.report({
             loc: comment.loc,
             messageId: "banned",
@@ -74,7 +83,9 @@ const noComments = {
                 return fixer.removeRange([lineStart, lineEnd]);
               }
               if (closesLine) return fixer.removeRange([lineStart, end]);
-              return fixer.removeRange([start, opensLine ? lineEnd : end]);
+              if (opensLine || lineStart < start) return fixer.removeRange([start, lineEnd]);
+              if (lineEnd > end) return fixer.removeRange([start, end]);
+              return fixer.replaceTextRange([start, end], " ");
             },
           });
         }
@@ -83,73 +94,80 @@ const noComments = {
   },
 };
 
-const aboveLib = {
-  group: ["@/app/**", "@/components/**", "**/app/**", "**/components/**"],
-  message: "lib/ and workflows/ sit below app/ and components/. Move the shared code into lib/ and import it from there (AGENTS.md Project map).",
-};
+const isTest = file => /\.(test|spec)\.tsx?$/.test(file);
+const under = (file, folder) => file === folder || file.startsWith(`${folder}/`);
 
-const aboveComponents = {
-  group: ["@/app/**", "**/app/**"],
-  message: "components/ sits below app/. Move the shared component to components/, or the shared logic or server action to lib/ (AGENTS.md Project map).",
-};
+const layers = [
+  {
+    applies: file => !under(file, "desktop") && !under(file, "scripts/desktop"),
+    bans: target => ["electron", "electron-updater"].includes(target.split("/")[0]) || under(target, "desktop"),
+    message: "The Next.js server also runs without Electron. Keep Electron code in desktop/src and reach it through lib/desktop-bridge.ts (AGENTS.md Desktop app).",
+  },
+  {
+    applies: file => under(file, "desktop/src"),
+    bans: (target, local) => local && !under(target, "desktop"),
+    message: "The Electron main process is built apart from the Next.js server. Talk to the server over its loopback address instead of importing its code (AGENTS.md Desktop app).",
+  },
+  {
+    applies: file => (under(file, "lib") || under(file, "workflows")) && !isTest(file),
+    bans: (target, local) => local && (under(target, "app") || under(target, "components")),
+    message: "lib/ and workflows/ sit below app/ and components/. Move the shared code into lib/ and import it from there (AGENTS.md Project map).",
+  },
+  {
+    applies: file => under(file, "components") && !isTest(file),
+    bans: (target, local) => local && under(target, "app"),
+    message: "components/ sits below app/. Move the shared component to components/, or the shared logic or server action to lib/ (AGENTS.md Project map).",
+  },
+  {
+    applies: file => under(file, "lib/finance") && !isTest(file),
+    bans: (target, local) => local && under(target, "lib/ai"),
+    message: "Financial truth comes from code and data, never from AI. lib/finance must not import lib/ai; pass plain data in instead (AGENTS.md Non-negotiables).",
+  },
+];
 
-const aiFromFinance = {
-  group: ["@/lib/ai/**", "**/ai/**"],
-  message: "Financial truth comes from code and data, never from AI. lib/finance must not import lib/ai; pass plain data in instead (AGENTS.md Non-negotiables).",
-};
-
-const electronOutsideDesktop = {
-  group: ["electron", "electron/**", "electron-updater", "@/desktop/**", "**/desktop/src/**"],
-  message: "The Next.js server also runs without Electron. Keep Electron code in desktop/src and reach it through lib/desktop-bridge.ts (AGENTS.md Desktop app).",
-};
-
-const appFromDesktop = {
-  group: ["@/**", "**/app/**", "**/lib/**", "**/components/**", "**/workflows/**"],
-  message: "The Electron main process is built apart from the Next.js server. Talk to the server over its loopback address instead of importing its code (AGENTS.md Desktop app).",
+const importBoundaries = {
+  meta: { type: "problem", schema: [], messages: { crossed: "'{{source}}' crosses a boundary. {{why}}" } },
+  create(context) {
+    const file = path.relative(context.cwd, context.filename).replaceAll("\\", "/");
+    const active = layers.filter(layer => layer.applies(file));
+    const check = source => {
+      if (typeof source?.value !== "string") return;
+      const local = /^(@\/|\.)/.test(source.value);
+      const target = source.value.startsWith("@/") ? source.value.slice(2)
+        : local ? path.posix.normalize(path.posix.join(path.posix.dirname(file), source.value))
+        : source.value;
+      for (const layer of active) if (layer.bans(target, local)) context.report({ node: source, messageId: "crossed", data: { source: source.value, why: layer.message } });
+    };
+    return {
+      ImportDeclaration: node => check(node.source),
+      ExportNamedDeclaration: node => check(node.source),
+      ExportAllDeclaration: node => check(node.source),
+      ImportExpression: node => check(node.source),
+      "CallExpression[callee.name='require']": node => check(node.arguments[0]),
+      "CallExpression[callee.object.name='vi'][callee.property.name=/^(mock|doMock|importActual)$/]": node => check(node.arguments[0]),
+    };
+  },
 };
 
 export default defineConfig([
   ...nextVitals,
   ...nextTypescript,
   {
-    plugins: { moneo: { rules: { "no-comments": noComments } } },
-    rules: { "moneo/no-comments": "error" },
-  },
-  {
-    files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
-    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop] }] },
-  },
-  {
-    files: ["components/**"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx"],
-    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop, aboveComponents] }] },
-  },
-  {
-    files: ["lib/**", "workflows/**"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx"],
-    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop, aboveLib] }] },
-  },
-  {
-    files: ["lib/finance/**"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx"],
-    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop, aboveLib, aiFromFinance] }] },
-  },
-  {
-    files: ["desktop/src/**"],
-    rules: { "no-restricted-imports": ["error", { patterns: [appFromDesktop] }] },
+    plugins: { moneo: { rules: { "no-comments": noComments, "import-boundaries": importBoundaries } } },
+    rules: { "moneo/no-comments": "error", "moneo/import-boundaries": "error" },
   },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],
     rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip] },
   },
   {
-    files: ["e2e/**/*.ts"],
-    rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip, ownerApp] },
-  },
-  {
     files: ["**/*.test.ts", "**/*.test.tsx"],
     ignores: migrationReaders,
     rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip, migrationText] },
+  },
+  {
+    files: ["e2e/**/*.ts"],
+    rules: { "no-restricted-syntax": ["error", ...realWait, dynamicSkip, ownerApp] },
   },
   globalIgnores([".next/**", ".next-qa/**", "out/**", "build/**", "next-env.d.ts", "app/.well-known/workflow/**", ".qa/**", ".claude/**", "promo/**", ".next-desktop/**", "desktop/.build/**", "desktop/.cache/**", "desktop/dist/**", "desktop/release/**", "desktop/release-preview/**"]),
 ]);
