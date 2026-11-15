@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7F7K1ME1M45KMYQAYPEZ9WE",
+  "strategy": "manual-commit",
+  "branch": "t3/agent-codebase-guardrails",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "app/ai/analysis-panel.test.tsx",
+    "app/ai/analysis-panel.tsx",
+    "components/analysis-panel.test.tsx",
+    "components/analysis-panel.tsx",
+    "components/chat-workspace.tsx",
+    "eslint.config.mjs",
+    "scripts/review-investigation-runtime.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 120,
+    "cache_creation_tokens": 418563,
+    "cache_read_tokens": 9149229,
+    "output_tokens": 49805,
+    "api_call_count": 63,
+    "subagent_tokens": {
+      "input_tokens": 84,
+      "cache_creation_tokens": 130914,
+      "cache_read_tokens": 3816424,
+      "output_tokens": 35408,
+      "api_call_count": 42
+    }
+  },
+  "redaction": {
+    "replacements": 7,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 7,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
