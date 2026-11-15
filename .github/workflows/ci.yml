@@ -57,5 +57,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Start the test backend
-        run: npm run setup -- --qa
+        run: |
+          for attempt in 1 2 3 4; do
+            npm run setup -- --qa && exit 0
+            echo "::warning::Starting the test backend failed (attempt $attempt); the image registry limits pulls. Trying again."
+            sleep $((attempt * 30))
+          done
+          exit 1
       - run: npm run test:db
