@@ -14,7 +14,6 @@ const Hidden = ({ account, requestId }: { account: Account; requestId: string })
 </>;
 const ErrorText = ({ error }: { error?: string }) => error ? <p role="alert" className="w-full text-sm text-danger">{error}</p> : null;
 
-// Inline rename/type: the name looks like text until focused. Archive keeps all history.
 export function AccountForm({ account, requestId, moneyLeft, targets = [] }: { account: Account; requestId: string; moneyLeft?: string | null; targets?: { id: string; name: string; type?: string }[] }) {
   const [state, action, pending] = useActionState(editAccount, {});
   const [edited, setEdited] = useState(false);

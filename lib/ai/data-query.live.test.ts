@@ -7,8 +7,6 @@ import { DATA_QUERY_TABLES, DataQueryError, runDataQuery } from "./data-query";
 
 const enabled = process.env.RUN_DATA_QUERY_DB_TESTS === "1";
 
-// The model writes queries from DATA_QUERY_TABLES; a view column it doesn't know about, or one it is told
-// about that doesn't exist, makes it write broken SQL.
 it.skipIf(!enabled)("describes exactly the tables and columns the moneo_query views expose", async () => {
   process.loadEnvFile(".env.qa");
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
@@ -21,7 +19,6 @@ it.skipIf(!enabled)("describes exactly the tables and columns the moneo_query vi
   } finally { await db.end(); }
 });
 
-// Through PostgREST as a signed-in user, the way chat calls it: the function's 5 second limit applies.
 it.skipIf(!enabled)("runs as the signed-in owner through PostgREST and stops slow queries", { timeout: 30_000 }, async () => {
   process.loadEnvFile(".env.qa");
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });

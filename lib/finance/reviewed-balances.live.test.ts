@@ -11,7 +11,6 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL an
   const rollback = new Error("Successful rollback");
   const actor = randomUUID();
   try { try { await db.begin(async tx => {
-    // Test the deployed schema, never replay an applied migration in the fixture.
     const [applied] = await tx`select name,statements from supabase_migrations.schema_migrations where version='202610060001'`;
     expect(applied, "Deploy migration 202610060001 before running this live test").toBeDefined();
     expect(applied.name).toBe("reviewed_balance_boundary");
@@ -47,10 +46,10 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL an
       expect(sql.evidence).toMatchObject({ status: ts.status, amount_minor: ts.amount_minor, estimated_amount_minor: ts.estimated_amount_minor });
       expect(ts.amount_minor).toBe(expected);
     }
-    await parity("9007199254740693"); // covered fee is included already; later fee subtracts once.
+    await parity("9007199254740693");
     await tx`update public.transaction_link_fees set fee_minor=75 where transaction_id=${ledger[0].id}`;
     effective[0].amount_minor = "-175";
-    await parity(null); // correcting covered financial evidence requires renewed review.
+    await parity(null);
     await tx`update public.transaction_link_fees set fee_minor=50 where transaction_id=${ledger[0].id}`;
     effective[0].amount_minor = "-150";
     await parity("9007199254740693");

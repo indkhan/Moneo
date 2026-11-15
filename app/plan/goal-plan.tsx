@@ -28,7 +28,6 @@ export function GoalPlanEditor({ goal, today }: { goal: Goal; today: string }) {
 
 const when = (value: string, workspace: { locale: string; timezone: string }) => new Date(value).toLocaleString(workspace.locale, { timeZone: workspace.timezone });
 
-// Goals come from the page's own query, so history only loads its events.
 export async function GoalPlanHistory({ goals }: { goals: Pick<Goal, "id" | "version">[] }) {
   const { supabase, workspace } = await requireWorkspace();
   const { data: events, error } = await supabase.from("goal_events").select("id, goal_id, before, after, created_at, undone").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50);

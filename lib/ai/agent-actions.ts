@@ -5,7 +5,6 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { decideProposals } from "@/lib/ai/agent-apply";
 
-/** Accept or reject proposals; accepted ones go through the existing audited actions. */
 export async function decideAgentProposals(ids: string[], decision: "accept" | "reject", accountId?: string) {
   const input = z.object({ ids: z.array(z.uuid()).min(1).max(100), decision: z.enum(["accept", "reject"]), accountId: z.uuid().optional() }).parse({ ids, decision, accountId });
   const outcomes = await decideProposals(await requireWorkspace(), [...new Set(input.ids)], input.decision, { accountId: input.accountId });
@@ -13,7 +12,6 @@ export async function decideAgentProposals(ids: string[], decision: "accept" | "
   return outcomes;
 }
 
-/** Takes back one automatic Categorizer decision: every AI label it wrote that hasn't changed since. */
 export async function undoAutoOrganization(proposalId: string) {
   const id = z.uuid().parse(proposalId);
   const { supabase, workspace } = await requireWorkspace();
@@ -26,7 +24,6 @@ export async function undoAutoOrganization(proposalId: string) {
   return z.object({ undone: z.number().int(), skipped: z.number().int() }).parse(result.data);
 }
 
-/** Titles and current statuses for a chat decision card. */
 export async function loadAgentProposals(ids: string[]) {
   const parsed = z.array(z.uuid()).min(1).max(100).parse(ids);
   const { supabase, workspace } = await requireWorkspace();

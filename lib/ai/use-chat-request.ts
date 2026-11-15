@@ -15,7 +15,6 @@ export type ChatStreamEvent =
   | ({ type: "answer" } & ChatAnswer)
   | { type: "result"; status: number; body: unknown };
 
-/** Reads the opt-in NDJSON stream, or a plain JSON response, into the final status and body. */
 export async function readResponse(response: Response, onEvent: (event: ChatStreamEvent) => void): Promise<{ ok: boolean; status: number; body: { error?: string } & Partial<ChatAnswer> }> {
   if (!response.headers.get("content-type")?.includes("application/x-ndjson") || !response.body) return { ok: response.ok, status: response.status, body: await response.json() };
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -50,7 +49,6 @@ export function useChatRequest() {
     try {
       const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/x-ndjson, application/json" },
         signal: run.controller.signal, body: JSON.stringify({ ...payload, requestId: run.requestId }) });
-      // Events from a canceled run are never shown.
       const result = await readResponse(response, event => { if (active.current === run) onEvent?.(event); });
       if (active.current !== run) return null;
       if (!result.ok) throw new Error(result.body.error ?? "Could not answer");
@@ -67,7 +65,6 @@ export function useChatRequest() {
     if (!run) return;
     try {
       let response: Response | undefined;
-      // Cancellation can arrive before the server has claimed this request.
       for (let attempt = 0; attempt < 10; attempt++) {
         response = await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: run.requestId }) });
         if (response.status !== 404) break;
@@ -83,7 +80,6 @@ export function useChatRequest() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not cancel; try again"); }
   }
 
-  /** The in-flight request, which steer messages target. */
   const requestId = () => active.current?.requestId ?? null;
   return { send, cancel, requestId, status, error, busy: status === "running", conversationId };
 }

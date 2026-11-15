@@ -9,21 +9,15 @@ import { safely, type SafeState } from "@/lib/safe-action";
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 
-/** Version-checked write, so two tabs editing Home cannot overwrite each other. Returns the new version, or null when another tab saved first. */
 async function writeLayout({ supabase, workspace }: Workspace, version: number, items: string[], sizes?: Record<string, CardSize>) {
   const result = version === 0
     ? await supabase.from("dashboard_layouts").insert({ workspace_id: workspace.id, items, ...(sizes && { sizes }) }).select("version").single()
     : await supabase.from("dashboard_layouts").update({ items, ...(sizes && { sizes }), version: version + 1, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("version", version).select("version").maybeSingle();
-  // A second tab's first save collides on the primary key instead of the version.
   if (result.error?.code === "23505") return null;
   if (result.error) throw new Error("Dashboard could not be saved; try again");
   return result.data ? result.data.version as number : null;
 }
 
-/**
- * Saves Home's widgets, order and widths from the grid. Home already shows the change, so nothing re-renders,
- * except when a widget was added: its content comes with the refreshed page.
- */
 export async function saveHomeLayout(version: number, items: string[], sizes: Record<string, string>, added = false): Promise<{ version: number } | { error: string }> {
   const context = await requireWorkspace();
   const saved = await writeLayout(context, z.number().int().min(0).max(2147483646).parse(version), dashboardLayoutSchema.parse(items), widgetSizesSchema.parse(sizes));
@@ -32,7 +26,6 @@ export async function saveHomeLayout(version: number, items: string[], sizes: Re
   return { version: saved };
 }
 
-/** The saved Home layout, ready to change. */
 async function loadLayout({ supabase, workspace }: Workspace) {
   const layout = await supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle();
   if (layout.error) throw new Error("Dashboard could not be loaded; try again");
@@ -50,10 +43,6 @@ async function setCardOnHome(context: Workspace, cardId: string, on: boolean) {
   revalidatePath("/");
 }
 
-/**
- * Puts a card version on Home, or moves Home to a newer version. Only the version the user previewed is
- * published, and only if Home still shows what they saw, so two tabs can't publish over each other.
- */
 export async function publishCard(id: string, version: number, shown: number | null) {
   const cardId = z.uuid().parse(id);
   const target = z.number().int().min(1).parse(version);
@@ -63,8 +52,6 @@ export async function publishCard(id: string, version: number, shown: number | n
   const exists = await supabase.from("artifact_card_versions").select("title").eq("workspace_id", workspace.id).eq("card_id", cardId).eq("version", target).maybeSingle();
   if (exists.error || !exists.data) throw new Error("That card version is not available");
   let update = supabase.from("artifact_cards").update({ published_version: target, title: exists.data.title, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", cardId).is("deleted_at", null);
-  // Publishing the same version again is allowed: if the Home layout write below failed (Home full, another tab),
-  // the card is published but not on Home, the page says so, and pressing Add to Home again finishes the job.
   update = update.or(`${previous === null ? "published_version.is.null" : `published_version.eq.${previous}`},published_version.eq.${target}`);
   const { data, error } = await update.select("artifact_id").maybeSingle();
   if (error) throw new Error("Card could not be published; try again");
@@ -73,7 +60,6 @@ export async function publishCard(id: string, version: number, shown: number | n
   revalidatePath(`/ai/artifacts/${data.artifact_id}`);
 }
 
-/** Takes a card off Home; it stays in the artifact to add again. */
 export async function unpublishCard(id: string) {
   const cardId = z.uuid().parse(id);
   const context = await requireWorkspace();
@@ -93,18 +79,15 @@ async function writeCardSize(id: string, size: string) {
   return data.artifact_id as string;
 }
 
-/** A card's size on Home (and in its preview), set from its artifact. */
 export async function setCardSize(id: string, size: string) {
   revalidatePath(`/ai/artifacts/${await writeCardSize(id, size)}`);
   revalidatePath("/");
 }
 
-/** A card resized on Home: the grid already shows the new width and the card fetches its new body, so nothing re-renders. */
 export async function resizeHomeCard(id: string, size: string) {
   await writeCardSize(id, size);
 }
 
-/** The artifact page's card controls: a refusal comes back as a message beside the control, not the error page. */
 export async function publishCardSafely(_state: SafeState, form: FormData) {
   return safely(form, data => { const shown = String(data.get("shown") ?? ""); return publishCard(String(data.get("id")), Number(data.get("version")), shown ? Number(shown) : null); });
 }

@@ -1,17 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages } from "@/lib/all-pages";
 
-// Rows from banks without transaction IDs that went to review before Moneo could compare occurrence counts: each overlapping
-// sync re-listed rows already in the ledger. A bank's answer is complete for the dates it covers, so if one import states
-// no more identical rows than the ledger has, they are all repeats. More than that may be a real second payment: it stays.
-
 export type StagedRow = { sourceId: string; importId: string; status: string; accountId: string; postedOn: string; amountMinor: string; description: string; currencyCode: string; rowStatus: string; externalId: string | null };
 type LedgerRow = { id: string; account_id: string; posted_on: string; amount_minor: string; description: string; currency_code: string; status: string };
 
 const fingerprint = (row: Pick<StagedRow, "accountId" | "postedOn" | "amountMinor" | "description" | "currencyCode">) =>
   JSON.stringify([row.accountId, row.postedOn, row.amountMinor, row.description, row.currencyCode]);
 
-/** The waiting rows that are exact repeats: `rows` is every row of those imports, `ledger` the canonical transactions. */
 export function waitingRepeats(rows: StagedRow[], ledger: LedgerRow[]) {
   const canonical = new Map<string, number>();
   for (const row of ledger) if (row.status === "posted") {
@@ -26,11 +21,9 @@ export function waitingRepeats(rows: StagedRow[], ledger: LedgerRow[]) {
 
 type SourceRow = { id: string; import_id: string; status: string; external_id: string | null; normalized_row: { accountId?: string; row?: { postedOn: string; amountMinor: string; description: string; currencyCode: string; status: string } } | null };
 
-/** Bank windows only: new ones say so; older ones are known by the fixed name and mapping a bank sync gives them. */
 export const isBankWindow = (imported: { filename: string; mapping: { completeWindow?: boolean; externalIdColumn?: string } | null }) =>
   imported.mapping?.completeWindow === true || (/ bank sync \d{4}-\d{2}-\d{2}\.csv$/.test(imported.filename) && imported.mapping?.externalIdColumn === "id");
 
-/** What the review page offers to resolve. */
 export async function findWaitingRepeats(db: SupabaseClient, workspaceId: string) {
   const waiting = await db.from("source_transactions").select("import_id").eq("workspace_id", workspaceId).eq("status", "review").limit(5000);
   if (waiting.error) throw new Error(waiting.error.message);

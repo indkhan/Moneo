@@ -3,21 +3,13 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { UpdateStatus } from "./updates";
 
-// The only pages a sign-in may return to: the connection results on Import and Settings.
 const RETURN_PATH = /^\/(import\?(bank|scalable)=(connected|error|invalid)(#scalable)?|settings\?chatgpt=[A-Za-z0-9%._~-]{1,600}#ai-access)$/;
 
 export type BridgeHandlers = {
-  /** A sign-in in the system browser finished: show its result in the app window. */
   onReturn(path: string): Promise<void>;
   update: { status(): UpdateStatus; check(): Promise<UpdateStatus>; install(): Promise<UpdateStatus> };
 };
 
-/**
- * A loopback address, secret to this launch, through which Moneo's server asks the desktop app for
- * what only it can do: open a sign-in's result in its window, and check for and install updates.
- * Browsers cannot use it: they do not know the address, and their cross-site requests carry an
- * Origin header, which is refused.
- */
 export async function startBridge(handlers: BridgeHandlers) {
   const token = randomUUID();
   const server = http.createServer(async (req, res) => {

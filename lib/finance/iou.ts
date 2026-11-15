@@ -1,8 +1,6 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Money lent to or borrowed from a person lives in Wealth as an ordinary asset ("Lent to Sam")
-// or debt ("Owed to Sam"), so net worth, history and Undo work unchanged. The name carries the person.
 export type IouDirection = "lent" | "borrowed";
 const prefixes = { lent: "Lent to ", borrowed: "Owed to " } as const;
 
@@ -16,7 +14,6 @@ export function parseIouName(name: string): { direction: IouDirection; person: s
   return null;
 }
 
-/** The wealth record a new IOU saves: a lent amount is an asset, a borrowed amount a zero-interest debt. */
 export function iouRecord(input: z.infer<typeof iouCreateSchema>) {
   const lent = input.direction === "lent";
   return { kind: lent ? "asset" : "debt", name: iouName(input.direction, input.person), currency_code: input.currencyCode,
@@ -39,11 +36,6 @@ function mentions(description: string, person: string) {
 export type LoanStart = { person: string; direction: IouDirection; amountMinor: bigint; currencyCode: string; date: string };
 const dayGap = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
 
-/**
- * The bank transaction that paid each IOU out (money lent leaves the account, money borrowed arrives): the exact amount
- * and currency, within 10 days of the IOU's date, naming the person (first name is enough). It is a loan, not spending,
- * so nothing should ask for its category or flag it as unusual.
- */
 export function loanPayouts(loans: LoanStart[], transactions: IouTransaction[]) {
   const ids = new Set<string>();
   for (const loan of loans) {
@@ -56,12 +48,6 @@ export function loanPayouts(loans: LoanStart[], transactions: IouTransaction[]) 
   return ids;
 }
 
-/**
- * Bank transactions that look like a repayment: they name the person, move money the right way
- * (in for money lent, out for money borrowed), match the currency and come on or after the IOU's date.
- * Each transaction goes to the open IOU whose remaining amount is closest; partial payments count.
- * `counted` is how much of each transaction already went against a loan: only what is left can go again.
- */
 export function repaymentMatches(items: IouItem[], transactions: IouTransaction[], counted: Map<string, bigint> = new Map()): RepaymentMatch[] {
   const open = items.flatMap(item => {
     const parsed = parseIouName(item.name);
@@ -85,7 +71,6 @@ export function repaymentMatches(items: IouItem[], transactions: IouTransaction[
   return matches;
 }
 
-/** How much of each bank transaction already went against a loan, while the repayment stands. */
 export async function loadCountedRepayments(supabase: SupabaseClient, workspaceId: string) {
   const { data, error } = await supabase.from("iou_repayments").select("transaction_id, applied_minor::text").eq("workspace_id", workspaceId).is("undone_at", null).not("transaction_id", "is", null).limit(2000);
   if (error) throw new Error(error.message);
@@ -94,10 +79,6 @@ export async function loadCountedRepayments(supabase: SupabaseClient, workspaceI
   return counted;
 }
 
-/**
- * Ids of the bank transactions that paid out a recorded IOU (e.g. the transfer that lent Bilal €1,000) or repaid one. Each IOU is read as
- * first recorded in Wealth, so a later repayment or a full settlement does not lose its payout.
- */
 export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: string): Promise<Set<string>> {
   const events = await supabase.from("wealth_events").select("item_id, after").eq("workspace_id", workspaceId).is("undone_at", null).order("created_at").limit(2000);
   if (events.error) throw new Error(events.error.message);
@@ -108,7 +89,6 @@ export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: s
     const amount = BigInt(after.amount_minor);
     loans.set(item_id, { ...parsed, amountMinor: amount < 0n ? -amount : amount, currencyCode: after.currency_code, date: String(after.as_of).slice(0, 10) });
   }
-  // Accepted repayments are loan money too.
   const settled = await supabase.from("agent_proposals").select("payload").eq("workspace_id", workspaceId).eq("kind", "iou_settle").eq("status", "accepted").limit(1000);
   if (settled.error) throw new Error(settled.error.message);
   const repaid = (settled.data ?? []).map(row => row.payload?.transactionId).filter((id): id is string => typeof id === "string");

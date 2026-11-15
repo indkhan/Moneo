@@ -26,7 +26,7 @@ it("is refused without the cron secret", async () => {
 });
 
 it("runs each connection without a good history once per workspace day", async () => {
-  vi.useFakeTimers({ now: new Date("2026-11-07T23:30:00Z"), toFake: ["Date"] }); // already Nov 8 in Berlin
+  vi.useFakeTimers({ now: new Date("2026-11-07T23:30:00Z"), toFake: ["Date"] });
   setup([row("new", null, null), row("done", "ok", "2026-11-01"), row("tried-today", "failed", "2026-11-08"), row("tried-yesterday", "failed", "2026-11-07")]);
   const response = await GET(request());
   expect(await response.json()).toEqual({ saved: 2, failed: 0, skipped: 0 });

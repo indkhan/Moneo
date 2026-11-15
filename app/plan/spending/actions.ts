@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 
 async function editPlan(form: FormData, patch: Record<string, unknown>) {
   const { supabase } = await requireWorkspace();
@@ -37,8 +37,6 @@ export async function saveSpendingPlan(form: FormData) {
   const { data: category } = await supabase.from("categories").select("id")
     .eq("workspace_id", workspace.id).eq("id", categoryId).maybeSingle();
   if (!category) throw new Error("Category not found");
-  // Target only: one monthly limit per category + currency. Never touches
-  // account balances or goal allocations.
   const { error } = await supabase.from("spending_plans").insert({
     workspace_id: workspace.id, category_id: categoryId, currency_code: currency,
     limit_minor: limit.toString(), enabled: true, updated_at: new Date().toISOString(),

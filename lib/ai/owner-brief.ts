@@ -6,13 +6,9 @@ import type { AiDataScope } from "@/lib/settings";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; locale: string }; settings: { ai_data_scopes: AiDataScope[] } };
 
-/** A short "About the owner" brief for each chat, so the model already knows their accounts, the people they lent
- * to or borrowed from, and their recurring payments, the way an assistant would. Only allowed scopes are read;
- * `scopes` lists what was read so later tool results keep the same checks. */
 export async function ownerBrief({ supabase, workspace, settings }: Context) {
   const allowed = (scope: AiDataScope) => settings.ai_data_scopes.includes(scope);
   const money = (minor: string, currency: string) => formatMoney(minor, currency, workspace.locale);
-  // Names are record data: one line each and quoted, so a name can never read as a heading or an instruction.
   const name = (value: string) => JSON.stringify(value.replace(/\s+/g, " ").trim().slice(0, 80));
   const scopes: AiDataScope[] = [];
   const [accounts, people, recurring] = await Promise.all([

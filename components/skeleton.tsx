@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-// Decorative placeholders: pair them with one visible or sr-only status message per region.
 export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden="true" className={cn("rounded-md bg-muted motion-safe:animate-pulse", className)} />;
 }

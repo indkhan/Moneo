@@ -6,12 +6,11 @@ import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { expandSchedule } from "@/lib/finance/model";
 import { wealthAmount } from "@/lib/finance/wealth";
 import { liveAccounts } from "@/lib/ai/transaction-proposals";
-import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields, type SeriesDecision } from "@/app/money/recurring/schedules";
-import { loadSuggestions, olderRuns, priceChanges, seriesDecision } from "@/app/money/recurring/suggestions";
+import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields, type SeriesDecision } from "@/lib/recurring/schedules";
+import { loadSuggestions, olderRuns, priceChanges, seriesDecision } from "@/lib/recurring/suggestions";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
-/** The model's view of a recurring change; the application resolves names and turns amounts into exact minor units. */
 export const recurringInputSchema = z.object({
   action: z.enum(["add", "change", "remove", "confirm"]).describe("add a new schedule, change or remove an existing one, or confirm a detected suggestion"),
   target: z.string().trim().min(1).max(200).optional().describe("For change/remove: the schedule's name or id. For confirm: the suggestion's label or id from recurring_list"),
@@ -41,7 +40,6 @@ async function activeSchedules({ supabase, workspace }: Context) {
   return (data ?? []) as unknown as Schedule[];
 }
 
-/** One item whose id or name matches; several or none is an error the model relays. */
 function pick<T extends { id: string; name: string }>(items: T[], target: string | undefined, what: string) {
   if (!target) throw new Error(`Say which ${what}`);
   const word = target.toLocaleLowerCase("en");
@@ -51,7 +49,6 @@ function pick<T extends { id: string; name: string }>(items: T[], target: string
   return found[0];
 }
 
-/** Confirmed schedules and pending suggestions, for the model to name the right one. */
 export async function listRecurring(context: Context) {
   const today = calendarDate(new Date(), context.workspace.timezone);
   const money = (minor: string | bigint, currency: string) => formatMoney(minor, currency, context.workspace.locale);
@@ -72,7 +69,6 @@ function signed(amount: string, currency: string, direction: "out" | "in") {
   return (direction === "out" ? -minor : minor).toString();
 }
 
-/** Stores a pending recurring change as a card. Nothing changes until the owner accepts. */
 export async function proposeRecurring(context: Context, input: z.infer<typeof recurringInputSchema>) {
   const { supabase, workspace } = context;
   const money = (minor: string, currency: string) => formatMoney(minor, currency, workspace.locale);
@@ -80,7 +76,6 @@ export async function proposeRecurring(context: Context, input: z.infer<typeof r
     fields.amountMinor && `${money(fields.amountMinor.replace("-", ""), currency)} ${fields.amountMinor.startsWith("-") ? "going out" : "coming in"}`,
     fields.cadence, fields.startsOn && `next on ${fields.startsOn}`, fields.category !== undefined && (fields.category ? `category ${fields.category}` : "no category"),
   ].filter(Boolean).join(", ");
-  // Only what the user asked to change; a direction alone flips the current amount's sign.
   const changes = (currency: string, currentMinor?: string): Partial<ScheduleFields> => {
     const direction = input.direction ?? (currentMinor && !currentMinor.startsWith("-") ? "in" : "out");
     const current = currentMinor?.replace("-", "");
@@ -125,19 +120,13 @@ export async function proposeRecurring(context: Context, input: z.infer<typeof r
   return { proposalId: data.id as string, title };
 }
 
-/**
- * Decides a detected pattern against its transactions as they are now: a card stores the versions it saw, and a later edit
- * (a category, a new charge) would otherwise fail with "Source changed". Earlier runs at an older price are closed with it.
- */
 export async function decideCurrentSeries(context: Context, stored: SeriesDecision, decision: "confirmed" | "dismissed", changes: Partial<ScheduleFields> = {}, requestId?: string) {
   const { candidates, superseded } = await loadSuggestions(context.supabase, context.workspace);
   const found = candidates.find(item => item.series.accountId === stored.accountId && item.series.runAnchorId === stored.runAnchorId);
   await decideSeries(context, found ? seriesDecision(found) : stored, decision, changes, requestId);
-  // Best effort: an old run that cannot be closed stays hidden behind the current one anyway.
   for (const older of found ? olderRuns(superseded, found) : []) await decideSeries(context, seriesDecision(older), "dismissed").catch(() => undefined);
 }
 
-/** Applies an accepted card through the same functions as the Recurring page; the proposal id is the request id. `edits` are what the person set in the confirm dialog. */
 export async function applyRecurringProposal(context: Context, proposalId: string, payload: unknown, edits: Partial<ScheduleFields> = {}) {
   const parsed = recurringEditSchema.parse(payload);
   if (parsed.action === "add") await createSchedule(context, parsed.accountId, parsed.fields);
@@ -147,7 +136,6 @@ export async function applyRecurringProposal(context: Context, proposalId: strin
   return { href: "/money/recurring", undo: parsed.action === "add" ? "Remove it on the Recurring page" : "Undo the change in Plan history" };
 }
 
-/** "Not recurring" on a detected pattern: the series is dismissed, so neither Home nor the Recurring page suggests it again. */
 export async function dismissRecurringProposal(context: Context, proposalId: string, payload: unknown) {
   const parsed = recurringEditSchema.parse(payload);
   if (parsed.action === "confirm") await decideCurrentSeries(context, parsed.series, "dismissed", {}, proposalId);
@@ -158,7 +146,6 @@ export type RecurringCardDetails = {
   transactions: { id: string; date: string; description: string; amountMinor: string }[];
 };
 
-/** What a confirm card's dialog and details show, read fresh from detection; null when the pattern is gone (decided elsewhere or its transactions changed). */
 export async function recurringCardDetails(context: Context, proposals: { id: string; payload: unknown }[]): Promise<Record<string, RecurringCardDetails | null>> {
   const { candidates } = await loadSuggestions(context.supabase, context.workspace);
   const today = calendarDate(new Date(), context.workspace.timezone);
@@ -171,7 +158,6 @@ export async function recurringCardDetails(context: Context, proposals: { id: st
     const { series, evidence, assumption } = found;
     const latest = evidence.at(-1);
     const amount = BigInt(changes.amountMinor ?? latest?.amount_minor ?? series.amountMaxMinor);
-    // The next date this pattern is expected, as the Recurring page prefills it.
     const next = latest ? expandSchedule({ account_id: series.accountId, amount_minor: amount.toString(), currency_code: series.currencyCode, cadence: series.cadence,
       starts_on: latest.posted_on, ends_on: null, schedule_anchor_on: series.anchorDate }, today, 400)[0]?.date : undefined;
     const details: RecurringCardDetails = { name: assumption?.name ?? series.label, amount: formatInputAmount(amount < 0n ? -amount : amount, series.currencyCode),
@@ -184,12 +170,6 @@ export async function recurringCardDetails(context: Context, proposals: { id: st
 const AUTO = ["recurring_new:", "recurring_price:"];
 const MAX_NEW = 10;
 
-/**
- * Turns what detection catches into the same recurring_edit cards chat creates: a price change on a confirmed payment
- * (one card per new charge) and new patterns to confirm. Idempotent: the conflict key is unique per workspace, so a
- * dismissed card is never re-raised, and open cards whose cause disappeared (confirmed elsewhere) are closed.
- * Resolves to whether any card was raised or closed.
- */
 export async function syncRecurringProposals(context: Context): Promise<boolean> {
   const { supabase, workspace } = context;
   const suggestions = await loadSuggestions(supabase, workspace);
@@ -213,9 +193,7 @@ export async function syncRecurringProposals(context: Context): Promise<boolean>
   if (open.error) return false;
   const keys = new Set(wanted.map(item => item.conflict_key));
   const stale = (open.data ?? []).filter(row => AUTO.some(prefix => String(row.conflict_key).startsWith(prefix)) && !keys.has(row.conflict_key)).map(row => row.id);
-  // A failed write reports no change, so Home does not reload into the same failure again and again.
   const closed = stale.length ? !(await supabase.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString(), result: { stale: true } }).eq("workspace_id", workspace.id).in("id", stale).in("status", ["proposed", "failed"])).error : false;
-  // Each cause is raised once: already open, accepted or dismissed keys are skipped (the unique key also guards races).
   const seen = wanted.length ? await supabase.from("agent_proposals").select("conflict_key").eq("workspace_id", workspace.id).is("run_id", null).in("conflict_key", [...keys]) : { data: [], error: null };
   if (seen.error) return false;
   const raised = new Set((seen.data ?? []).map(row => row.conflict_key));
@@ -224,7 +202,6 @@ export async function syncRecurringProposals(context: Context): Promise<boolean>
   return closed || raisedNew;
 }
 
-/** Open recurring cards raised by detection, newest first; prefix narrows to price changes or new patterns. */
 export async function openRecurringProposals(supabase: SupabaseClient, workspaceId: string, prefixes = AUTO) {
   const { data } = await supabase.from("agent_proposals").select("id, title, detail, conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "recurring_edit")
     .in("status", ["proposed", "failed"]).order("created_at", { ascending: false }).limit(50);

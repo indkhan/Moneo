@@ -1,5 +1,3 @@
-// Preload for the local setup/status window only (the app window has none). It exposes progress
-// updates and four buttons, nothing else; the main process checks every call's sender.
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("moneoSetup", {

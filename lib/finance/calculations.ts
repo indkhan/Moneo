@@ -1,4 +1,3 @@
-// Money is always signed integer minor units. Conversion must happen before calling.
 export type Balance = { amountMinor: bigint | null; currencyCode: string };
 
 export function netWorth(balances: Balance[], currencyCode: string): bigint | null {
@@ -35,7 +34,6 @@ export type ForecastAccount = {
   id: string;
   currencyCode: string;
   balanceMinor: bigint | null;
-  // A bank's available balance already includes pending holds. Use it instead of deducting holds again.
   availableMinor?: bigint | null;
   pendingHoldMinor?: bigint;
   reservedMinor?: bigint;
@@ -72,8 +70,6 @@ type ForecastDay = {
   conservativeByAccount: Record<string, bigint>;
 };
 
-// The cash there is right now, before anything scheduled today (days[0] is the expected end of today).
-// A what-if the owner is trying out today counts: that is them acting now, not money still expected.
 type ForecastOpening = { date: string; conservativeMinor: bigint; conservativeByAccount: Record<string, bigint> };
 
 type ForecastResult =
@@ -141,22 +137,13 @@ export function availableToSpend(input: ForecastInput):
   const forecast = forecastDaily(input);
   if (forecast.status === "unavailable") return forecast;
   const protectedMinor = (input.workspaceBufferMinor ?? 0n) + input.accounts.reduce((sum, account) => sum + (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n), 0n);
-  // Money you only expect to receive today can't be spent before it arrives, so the opening cash counts as a day too.
   const limitingDay = forecast.days.reduce<Pick<ForecastDay, "date" | "conservativeMinor">>((lowest, day) => day.conservativeMinor < lowest.conservativeMinor ? day : lowest, forecast.opening);
   return { status: "available", amountMinor: limitingDay.conservativeMinor - protectedMinor, limitingDate: limitingDay.date };
 }
 
-// These amounts are in input.currencyCode, after explicit dated FX conversion by the loader.
-// Inputs that make one account's own cash unknown, as opposed to the plan's as a whole.
 const ACCOUNT_INPUT = /^(?:balance|available-balance|fx:balance|fx:allocation|fx:pending|fx:assumption|fx:debt|debt|fx):([^:]+)/;
-/** The account a missing input is about, when it names one. */
 export const missingInputAccount = (key: string) => ACCOUNT_INPUT.exec(key)?.[1] ?? null;
 
-/**
- * The forecast limited to accounts whose cash is known, for a person who asked for an answer with its coverage stated.
- * A left-out account's balance and scheduled money are absent, so callers must show `excluded`. Gaps that are not
- * tied to one account (a schedule with no account, a missing spending account) still stop the forecast.
- */
 export function usableForecastInput(input: ForecastInput) {
   const known = new Set(input.accounts.map(account => account.id));
   const named = (key: string) => { const id = ACCOUNT_INPUT.exec(key)?.[1]; return id && known.has(id) ? id : null; };
@@ -185,7 +172,6 @@ export function accountLiquidity(input: ForecastInput) {
       spendableMinor: amountMinor < aggregate.amountMinor ? amountMinor : aggregate.amountMinor,
       spendingLimitingDate: amountMinor <= aggregate.amountMinor ? limitingDay.date : aggregate.limitingDate,
       shortfallMinor: amountMinor < 0n ? -amountMinor : 0n, firstShortfallDate,
-      // When today's opening cash is the low point, no scheduled event explains it.
       supportingEvents: limitingDay === forecast.opening ? [] : [...input.events, ...(input.scenarioEvents ?? [])].filter(event =>
         event.accountId === account.id && event.date >= input.startDate && event.date <= limitingDay.date),
     };
@@ -198,7 +184,6 @@ export function accountLiquidity(input: ForecastInput) {
     hasShortfall: aggregate.amountMinor < 0n || accounts.some(account => account.shortfallMinor > 0n) };
 }
 
-// Paired movements in the forecast currency; never an inferred cross-currency transfer.
 export function internalFundingEvents(input: { date: string; fromAccountId: string; toAccountId: string; amountMinor: bigint }): ForecastEvent[] {
   parseDate(input.date);
   if (!input.fromAccountId || !input.toAccountId || input.fromAccountId === input.toAccountId || input.amountMinor <= 0n)

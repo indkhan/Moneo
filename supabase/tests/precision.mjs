@@ -1,4 +1,3 @@
-// Actual PostgREST verification with synthetic records and targeted cleanup.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
@@ -31,7 +30,6 @@ try {
   writeFileSync(recoveryPath, JSON.stringify({ project, user, workspace, account, transaction, category, plan }));
   const url = new URL("/rest/v1/transactions", endpoint);
   url.searchParams.set("id", `eq.${transaction}`);
-  // Read the actual page selectors so wildcard detail reads are checked too.
   const { readFileSync } = await import("node:fs");
   const files = ["app/money/transactions/page.tsx", "app/money/recurring/page.tsx", "app/plan/spending/page.tsx"];
   const selections = [...new Set(files.flatMap(file => [...readFileSync(file, "utf8").matchAll(/\.from\(([^)]*)\)\s*\.select\("([^"]*amount_minor[^"]*)"/g)]

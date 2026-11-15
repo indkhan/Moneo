@@ -7,11 +7,9 @@ import { formatMoney } from "@/lib/finance/format";
 
 type Row = { id: string; version: number; description: string; posted_on: string; amount_minor: string; currency_code: string; category_id: string | null };
 
-/** Approving a category proposal: every entry, its current and new category, and one Apply. A refusal stays on this page with the selection. */
 export function CategoryApproval({ rows, category, names, requestId, locale }: { rows: Row[]; category: { id: string; name: string }; names: Record<string, string>; requestId: string; locale: string }) {
   const [selected, setSelected] = useState(rows.map(row => row.id));
   const targets = rows.filter(row => selected.includes(row.id));
-  // Net of inflows and outflows, for what is ticked right now; currencies never mix.
   const totals = new Map<string, bigint>();
   for (const row of targets) totals.set(row.currency_code, (totals.get(row.currency_code) ?? 0n) + BigInt(row.amount_minor));
   return <SafeForm action={bulkEditTransactionsSafely} className="space-y-4">

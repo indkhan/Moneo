@@ -40,7 +40,6 @@ export default async function InvestigationPage({ searchParams }: { searchParams
   let spec: InvestigationSpec | undefined;
   let result: Awaited<ReturnType<typeof runInvestigation>> | undefined;
   let error: string | undefined;
-  // One entities read serves both this page's labels and the investigation itself.
   const entitiesRead = loadInvestigationEntities(context);
   entitiesRead.catch(() => undefined);
   const params = await searchParams;

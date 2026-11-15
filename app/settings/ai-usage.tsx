@@ -3,7 +3,6 @@ import { requireWorkspace } from "@/lib/auth";
 import { usageByModel, usageSince, usageWindows, type UsageWindow } from "@/lib/ai/usage";
 import { UsageChart } from "./usage-chart";
 
-// Enough recent requests to cover a busy workspace; the all-time view reads at most this many.
 const ROW_LIMIT = 10_000;
 const windowLabels: Record<UsageWindow, string> = { "7d": "7 days", "30d": "30 days", all: "All time" };
 

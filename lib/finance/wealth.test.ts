@@ -47,7 +47,6 @@ it("keeps forecasting a debt whose principal was evidenced earlier, carrying it 
   const loan = { principalMinor: -100000n, annualRate: "0", monthlyPaymentMinor: 10000n, nextPaymentOn: "2026-10-05", asOf: "2026-10-01" };
   expect(carriedDebtPayments(loan, "2026-11-01", 40).map(payment => [payment.date, payment.remainingMinor])).toEqual([["2026-11-05", 80000n], ["2026-12-05", 70000n]]);
   expect(carriedDebtPayments({ ...loan, nextPaymentOn: "2026-11-05" }, "2026-11-01", 10).map(payment => payment.remainingMinor)).toEqual([90000n]);
-  // A schedule that starts before the principal, or evidence over a year behind it, can't speak for today.
   expect(() => carriedDebtPayments({ ...loan, nextPaymentOn: "2026-09-05" }, "2026-11-01", 30)).toThrow("Update");
   expect(() => carriedDebtPayments({ ...loan, asOf: "2025-01-01", nextPaymentOn: "2025-02-01" }, "2026-11-01", 30)).toThrow("Update");
 
@@ -58,7 +57,6 @@ it("keeps forecasting a debt whose principal was evidenced earlier, carrying it 
   expect(buildDebtForecast([debt], accounts, [], [], "2026-11-01", 30)).toMatchObject({ missingInputs: [], events: [{ date: "2026-11-05", amountMinor: -10000n }] });
   expect(buildDebtForecast([{ ...debt, as_of: "2026-11-02" }], accounts, [], [], "2026-11-01", 30).missingInputs).toEqual(["debt:debt:principal is dated in the future"]);
   expect(buildDebtForecast([{ ...debt, annual_rate_text: null }], accounts, [], [], "2026-11-01", 30).missingInputs).toEqual(["debt:debt:repayment assumptions"]);
-  // Money owed with no plan has nothing to schedule and doesn't stop the forecast.
   expect(buildDebtForecast([{ ...debt, payment_account_id: null, monthly_payment_minor: "0", next_payment_on: null }], accounts, [], [], "2026-11-01", 30)).toEqual({ events: [], excludedAssumptionIds: [], missingInputs: [] });
 });
 

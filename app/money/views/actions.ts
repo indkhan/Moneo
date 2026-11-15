@@ -29,7 +29,6 @@ async function assertOwned(
   if (error || !data) throw new Error(`${label} not found`);
 }
 
-/** Save the current filter setup under a name, then open it via opaque id. */
 function currentFilters(form: FormData) {
   return buildSavedFilters({
     q: str(form.get("q")),
@@ -83,7 +82,6 @@ export async function updateTransactionViewFilters(form: FormData) {
   redirect(`/money/transactions?view=${id}`);
 }
 
-/** Retain the saved filters and history so removal can be undone. */
 export async function deleteTransactionView(form: FormData) {
   const { supabase } = await requireWorkspace();
   const viewId = parseViewId(form.get("viewId"));

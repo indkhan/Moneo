@@ -33,7 +33,6 @@ const storedUsage = z.object({
 
 export type ModelUsage = { model_id: string; requests: number; input_tokens: number; output_tokens: number };
 
-// Missing counts are left out of the totals and counted in `unreported`, never treated as zero.
 export function usageByModel(rows: { usage: unknown }[]) {
   const models = new Map<string, ModelUsage>();
   let unreported = 0;

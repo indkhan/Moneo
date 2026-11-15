@@ -1,4 +1,3 @@
-// Schema replay/races use an exactly removed disposable schema; regression fixtures roll back.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -32,7 +31,6 @@ try {
   console.log("PASS: disposable schema replay, review request identity, run election/receipts, privilege/workspace checks, terminal replay and cancel/publication acceptance");
   await reviewRuntimeRaces(db, schema);
 } finally {
-  // Exact generated schema only. Public application/auth/storage data is never written.
   assert.match(schema, /^mne020_[a-f0-9]{32}$/);
   try {
     await db.unsafe(`drop schema if exists ${schema} cascade`);

@@ -45,7 +45,6 @@ export const mappingSchema = z.object({
   merchantColumn: z.string().min(1).optional(),
   categoryColumn: z.string().min(1).optional(),
   externalIdColumn: z.string().min(1).optional(),
-  // Set by a bank sync: the bank's answer is complete for the dates it covers, so identical rows can be counted.
   completeWindow: z.literal(true).optional(),
   statusColumn: z.string().min(1).optional(),
   typeColumn: z.string().min(1).optional(),
@@ -81,18 +80,15 @@ export type ImportMapping = z.infer<typeof mappingSchema>;
 
 type AccountRoute = NonNullable<ImportMapping["accountRoutes"]>[number];
 
-// IBANs and long account numbers become "••1234"; anything else is kept as written.
 export function maskAccountNumber(value: string): string {
   const compact = value.replace(/\s/g, "");
   return /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/i.test(compact) || /^\d{6,}$/.test(compact) ? `••${compact.slice(-4)}` : value;
 }
 
-/** Every IBAN and long account number inside a text, masked the same way. */
 export function maskAccountNumbers(text: string): string {
   return text.replace(/(?<![A-Z0-9])[A-Z]{2}\d{2}[A-Z0-9]{10,30}|(?<!\d)\d{9,}(?!\d)/gi, maskAccountNumber);
 }
 
-// A readable default from a statement filename: no extension, dates, long numbers or separators.
 export function friendlyAccountName(filename: string): string {
   const name = maskAccountNumbers(filename.replace(/\.(csv|xlsx)$/i, ""))
     .replace(/(?<!\d)\d{4}[-_.]?\d{2}(?:[-_.]?\d{2})?(?!\d)/g, " ")
@@ -116,20 +112,16 @@ function knownStatement(rows: SourceRow[]) {
   return knownStatements.find(known => known.headers.every(column => headers.includes(column)));
 }
 
-// The recognized statement format, shown so users can tell a known layout from a proposal.
 export function detectStatementFormat(rows: SourceRow[]): string | undefined {
   return knownStatement(rows)?.format;
 }
 
-// Same-named routes in several currencies get the currency appended, so each account reads distinctly.
 function distinctRouteNames(routes: AccountRoute[]): AccountRoute[] {
   const counts = new Map<string, number>();
   for (const route of routes) counts.set(route.accountName, (counts.get(route.accountName) ?? 0) + 1);
   return routes.map(route => counts.get(route.accountName)! > 1 ? { ...route, accountName: `${route.accountName} ${route.currencyCode}` } : route);
 }
 
-// Recognized statement formats avoid a provider round trip; every proposal still needs review.
-// Account names default to bank/product plus the last account digits, never the filename or a full IBAN.
 export function proposeKnownStatementMapping(rows: SourceRow[], accountName: string, currencyCode: string): ImportMapping | undefined {
   const known = knownStatement(rows);
   if (!known) return undefined;
@@ -137,10 +129,6 @@ export function proposeKnownStatementMapping(rows: SourceRow[], accountName: str
   return proposed.accountRoutes ? { ...proposed, accountRoutes: distinctRouteNames(proposed.accountRoutes.map(route => ({ ...route, accountName: known.routeName(route) }))) } : proposed;
 }
 
-/**
- * The number format when the file itself proves it: exactly one convention reads every amount, debit, credit,
- * balance and fee cell. Otherwise it stays unset for the user to choose; a proven one still shows for review.
- */
 export function provenNumericConvention(rows: SourceRow[], mapping: ImportMapping): ImportMapping["numericConvention"] {
   const columns = [mapping.amountColumn, mapping.debitColumn, mapping.creditColumn, mapping.balanceColumn, mapping.feeColumn].filter((column): column is string => !!column);
   const cells = rows.flatMap(row => {
@@ -263,14 +251,11 @@ async function loadWorkbook(file: ArrayBuffer) {
 export async function inspectExcel(file: ArrayBuffer, scope?: WorkbookScope) {
   const workbook = await loadWorkbook(file);
   const inventory = workbook.worksheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, state: sheet.state, rowCount: sheet.rowCount, columnCount: sheet.columnCount,
-    // The first rows show the header; the last ones show footers and totals to leave out.
     preview: [...new Set([...Array.from({length: Math.min(sheet.rowCount, 20)}, (_, index) => index + 1), ...Array.from({length: Math.min(sheet.rowCount, 5)}, (_, index) => sheet.rowCount - index).reverse()])]
       .map(rowNumber => ({rowNumber, values: Array.from({length: Math.min(sheet.columnCount, 50)}, (_, column) => cellText(sheet.getRow(rowNumber).getCell(column + 1), true)) })) }));
   return { inventory, rows: scope ? workbookRows(workbook, scope) : null };
 }
 
-// Replay only an already confirmed pre-scope import using its original contract.
-// New confirmation always requires explicit scope and cannot request this mode.
 export async function parseLegacyExcel(file: ArrayBuffer): Promise<SourceRow[]> {
   return workbookRows(await loadWorkbook(file), undefined, true);
 }
@@ -281,7 +266,6 @@ export async function parseExcel(file: ArrayBuffer, scope?: WorkbookScope): Prom
 
 export function validateMapping(input: unknown, rows: SourceRow[]): ImportMapping {
   const mapping = mappingSchema.parse(input);
-  // Exclusions and corrections never rewrite incompatible original evidence.
   assertStorageCompatible(rows);
   assertStorageCompatible(mapping);
   if (!rows.length) throw new Error("File has no data rows");
@@ -309,12 +293,10 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
 }
 
 export function validateAiMapping(input: unknown, rows: SourceRow[], workspaceCurrency: string): ImportMapping {
-  // Only the user chooses the source convention; provenance is stamped by confirmation.
   const mapping = { ...mappingSchema.parse(input), numericConvention: undefined, parserVersion: undefined, rowContractVersion: undefined, rowDecisions: undefined };
   return validateMapping(proposeAccountRoutes(rows, mapping.currencyColumn ? mapping : { ...mapping, currencyCode: workspaceCurrency }), rows);
 }
 
-// Suggestions are displayed in the preview; confirmation validates the exact reviewed routes.
 export function proposeAccountRoutes(rows: SourceRow[], input: unknown): ImportMapping {
   const mapping = mappingSchema.parse(input);
   const headers = Object.keys(rows[0] ?? {});
@@ -327,8 +309,6 @@ export function proposeAccountRoutes(rows: SourceRow[], input: unknown): ImportM
     const accountValue = accountColumn ? row[accountColumn]?.trim() : undefined;
     const productValue = productColumn ? row[productColumn]?.trim() : undefined;
     const currencyCode = (mapping.currencyColumn ? row[mapping.currencyColumn] : mapping.currencyCode)?.trim().toUpperCase();
-    // Invalid source currencies remain quarantined observations, rather than
-    // poisoning the route proposal for valid neighboring rows.
     if (!/^[A-Z]{3}$/.test(currencyCode ?? "")) continue;
     const key = JSON.stringify([accountValue, productValue, currencyCode]);
     routes.set(key, { accountValue, productValue, currencyCode,
@@ -390,7 +370,6 @@ function parseTimestamp(value: string, timeZone?: string): string | undefined {
     if (!Number.isFinite(instant.getTime())) throw new Error("Invalid timestamp offset");
     return instant.toISOString();
   }
-  // Legacy mappings keep their original posting date; new confirmations require the timezone.
   if (!timeZone) return undefined;
   return reviewedLocalTimestamp(value, timeZone);
 }
@@ -417,8 +396,6 @@ export type MappedRow = {
   balanceMinor?: bigint;
 };
 
-// Explicit posted/pending/completed indicator only. Empty means posted. Anything else
-// throws so a mis-mapped column never silently flips pending/posted.
 export function parseTransactionStatus(input: string | undefined): "posted" | "pending" {
   if (input === undefined) return "posted";
   const value = input.trim().toLowerCase();
@@ -428,9 +405,6 @@ export function parseTransactionStatus(input: string | undefined): "posted" | "p
   throw new Error(`Invalid status: ${input}`);
 }
 
-// Tiny explicit high-confidence merchant canonicalization. Only these
-// substrings may produce a merchant name when no merchant column exists.
-// Anything else stays unknown (null) — no speculative AI guessing.
 export const MERCHANT_CANONICALS: Record<string, string> = {
   amazon: "Amazon",
   amzn: "Amazon",
@@ -451,10 +425,6 @@ export function normalizeMerchantDisplay(value: string): string {
   return Array.from(value.trim().replace(/\s+/g, " ")).slice(0, 100).join("");
 }
 
-// Resolve the canonical merchant display name for one row.
-// Explicit merchant columns win (normalized, canonicalized when known).
-// Without one, only a tiny explicit fragment table may infer a name;
-// otherwise returns null (unknown merchant, import continues).
 export function resolveMerchantName(explicit: string | undefined, description: string): string | null {
   const cleaned = explicit?.trim().replace(/\s+/g, " ");
   if (cleaned) {
@@ -466,8 +436,6 @@ export function resolveMerchantName(explicit: string | undefined, description: s
   return canonicalizeFragment(description.toLowerCase());
 }
 
-// Explicit source categories only. Empty or overlong values become null
-// (uncategorized) so they never block an otherwise valid import.
 export function normalizeCategoryName(input: string | undefined): string | null {
   if (!input) return null;
   const trimmed = input.trim();
@@ -542,11 +510,7 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
       }
       const description = sourceRow[mapping.descriptionColumn]?.trim();
       if (!description) throw new Error("Missing description");
-      // PostgreSQL length counts Unicode code points, rather than UTF-16 units.
       if (Array.from(description).length > 500) throw new Error("Description exceeds 500 characters");
-      // The RPC has an 11 MB JSON record boundary. Account for escaped original
-      // evidence, JSONB separator spaces and duplicated external IDs, reserving
-      // 1 MB for bounded fields.
       if (new TextEncoder().encode(JSON.stringify({ originalRow: rows[index],
         externalId: mapping.externalIdColumn ? sourceRow[mapping.externalIdColumn] : null })).byteLength + 2 * Object.keys(rows[index]).length > 10_000_000)
         throw new Error("Source evidence exceeds the import record limit; review an explicit exclusion");
@@ -630,7 +594,6 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
     if (row.feeMinor !== undefined && row.feeMinor !== 0n) row.feeEvidence = { treatment: "unknown" };
   }
   for (const group of groups.values()) {
-    // Missing/excluded observations cannot establish adjacent statement balances.
     if (unresolvedRows.length || excludedRows.length) continue;
     if (group.some(row => !row.postedAt)) continue;
     group.sort((a, b) => a.postedAt!.localeCompare(b.postedAt!));

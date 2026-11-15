@@ -11,7 +11,6 @@ async function owned(params: Promise<{ id: string }>) {
   return { context, id };
 }
 
-/** Live state for mission control (polled while the run is active). */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   let target: Awaited<ReturnType<typeof owned>>;
   try { target = await owned(params); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
@@ -20,7 +19,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json(run, { headers: { "Cache-Control": "no-store" } });
 }
 
-/** Stop or resume. Ownership is checked through RLS before the service role acts. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let target: Awaited<ReturnType<typeof owned>>;
   try { target = await owned(params); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }

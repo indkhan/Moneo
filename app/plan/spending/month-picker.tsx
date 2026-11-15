@@ -2,7 +2,6 @@
 
 import { useRef } from "react";
 
-/** Changing the month opens it; the short wait lets someone finish typing a year first. */
 export function MonthPicker({ month, className }: { month: string; className: string }) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   return <form method="get" className="flex flex-wrap items-end gap-2">

@@ -9,7 +9,6 @@ import { DeleteArtifactButton } from "./delete-artifact-button";
 
 export const metadata = { title: "Artifacts" };
 
-// Match chat's recovery window: older running requests were interrupted.
 const runningSince = () => new Date(Date.now() - 6 * 60_000).toISOString();
 
 export default async function ArtifactsPage({ searchParams }: { searchParams: Promise<{ prompt?: string; q?: string }> }) {
@@ -25,7 +24,6 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
   const requests = conversationIds.length ? await supabase.from("chat_requests").select("conversation_id")
     .eq("workspace_id", workspace.id).in("conversation_id", conversationIds).eq("status", "running")
     .gt("created_at", runningSince()) : null;
-  // Only the Building label depends on this, so a failure here must not take the gallery down with it.
   const running = new Set(requests?.data?.map(request => request.conversation_id));
   const date = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeZone: workspace.timezone });
   return <main className="mx-auto grid w-full max-w-[1400px] gap-8 px-4 py-6 sm:px-8 lg:py-8">
@@ -48,16 +46,13 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
         <ArtifactPreview id={artifact.id} title={artifact.title} hasPage={!!artifact.artifact_versions.length} building={artifact.conversations.some(chat => running.has(chat.id))} />
         <div className="flex items-start gap-2 border-t border-border p-4">
           <div className="min-w-0 flex-1">
-            {/* The stretched link makes the whole card clickable while the delete button stays its own control. */}
             <Link href={`/ai/artifacts/${artifact.id}`} className="block font-medium after:absolute after:inset-0 after:rounded-xl">{artifact.title}</Link>
-            {/* The original request says what the artifact is for. */}
             {artifact.artifact_versions[0]?.prompt && <span className="mt-1 line-clamp-2 text-sm text-muted-foreground">{artifact.artifact_versions[0].prompt}</span>}
             <span className="mt-1 block text-xs text-muted-foreground">Updated {date.format(new Date(artifact.updated_at))}</span>
           </div>
           <DeleteArtifactButton id={artifact.id} title={artifact.title} label="" className="relative z-10 -m-1 p-1" />
         </div></li>)}</ul>}
     </section>
-    {/* Open for a first visit; returning users come for their saved work. */}
     <details open={!data?.length || undefined} aria-label="Examples">
       <summary className="min-h-10 cursor-pointer py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Browse examples <span className="font-normal">(these fill the prompt; nothing runs until you press Build)</span></summary>
       <div className="mt-2"><ArtifactExamples examples={artifactExamples} /></div>

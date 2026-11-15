@@ -5,7 +5,6 @@ import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_LABEL, type ChatA
 
 type Item = { id: string; name: string; preview?: string; file?: ChatAttachment; error?: string };
 
-/** Phone photos are large; a 2000px JPEG keeps receipts readable and well under the upload limit. */
 async function shrink(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
   try {
@@ -18,7 +17,6 @@ async function shrink(file: File): Promise<Blob> {
   } catch { return file; }
 }
 
-/** Files picked in the composer upload straight away; sending passes only the finished ones. */
 export function useChatAttachments() {
   const [items, setItems] = useState<Item[]>([]);
   const update = (id: string, patch: Partial<Item>) => setItems(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
@@ -47,7 +45,6 @@ export function useChatAttachments() {
   }
   const ready = items.flatMap(item => item.file ? [item.file] : []);
   function clear() { for (const item of items) if (item.preview) URL.revokeObjectURL(item.preview); setItems([]); }
-  /** Puts files back after a send that did not go through. */
   function restore(files: ChatAttachment[]) { setItems(current => current.length ? current : files.map(file => ({ id: crypto.randomUUID(), name: file.name, file }))); }
   return { items, add, remove, clear, restore, ready, uploading: items.some(item => !item.file && !item.error), full: items.length >= MAX_ATTACHMENTS };
 }

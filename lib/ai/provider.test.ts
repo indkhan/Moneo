@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { currentModelId, getModel, modelIdFor } from "./provider";
+import { currentModelId, getModel, modelIdFor, SYSTEM_PROMPT } from "./provider";
 import { claudeAccount } from "./claude";
 import { AI_AGENTS, settingsSchema } from "@/lib/settings";
 
@@ -11,7 +11,6 @@ test("uses each agent's typed model and falls back to its default", () => {
   expect(modelIdFor(settings, "chat")).toBe("gpt-custom");
   expect(modelIdFor(settings, "imports")).toBe(AI_AGENTS.imports.model);
   expect(modelIdFor(undefined, "chat")).toBe(AI_AGENTS.chat.model);
-  // On a Claude plan the defaults are Claude models; a typed model still wins.
   expect(modelIdFor(settings, "imports", "claude")).toBe(AI_AGENTS.imports.claude);
   expect(modelIdFor(settings, "chat", "claude")).toBe("gpt-custom");
 });
@@ -62,4 +61,9 @@ test("the shared default reaches every task unless explicitly overridden", async
     expect(modelIdFor(settings, agent)).toBe(agent === "titles" ? "gpt-title" : "gpt-shared");
     expect(await currentModelId(settings, agent)).toBe(agent === "titles" ? "gpt-title" : "gpt-shared");
   }
+});
+
+test("the system prompt stays within its budget", () => {
+  const budget = 8000;
+  expect(SYSTEM_PROMPT.length, `The system prompt is ${SYSTEM_PROMPT.length} characters; its budget is ${budget}. Do not add a sentence to make one request work: give the assistant the tool, data or scope it lacks (AGENTS.md How to work, "Fix the class"). For guidance that applies to every request, shorten something else first. Raise the budget only when the owner asks.`).toBeLessThanOrEqual(budget);
 });

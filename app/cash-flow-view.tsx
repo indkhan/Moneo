@@ -19,10 +19,6 @@ const flowHref = (search: URLSearchParams, changes: Changes) => {
   return `?${next}#cash-flow`;
 };
 
-/**
- * Changes the cash-flow selection in the URL without a server round trip: Home already holds
- * every month's breakdown, and Next syncs native history updates with useSearchParams.
- */
 export function CashFlowLink({ changes, className, children, ...props }: { changes: Changes; className?: string; children: ReactNode; "aria-pressed"?: boolean }) {
   const search = useSearchParams();
   const href = flowHref(search, changes);
@@ -50,12 +46,10 @@ function TopList({ title, groups, metric, names, param, from, to, currency, loca
   </div>;
 }
 
-/** Six months of money in vs out. Picking In or Out shows only that side and where it came from or went. */
 export function CashFlowView({ months, scale, categoryNames, merchantNames, currency, locale, ask }: {
   months: CashFlowMonth[]; scale: number; categoryNames: Record<string, string>; merchantNames: Record<string, string>; currency: string; locale: string; ask: ReactNode;
 }) {
   const search = useSearchParams();
-  // `show` is which bars are drawn and changes only from these buttons; `flow` is which breakdown is open below.
   const show = flowOf(search.get("show")), flow = flowOf(search.get("flow"));
   const selected = months.find(row => row.month === search.get("month")) ?? months[months.length - 1];
   const when = `in ${selected.name}`;

@@ -1,5 +1,3 @@
-// GoTrue's /user check has no retry, unlike PostgREST reads and token refreshes. A dropped local
-// connection must not send an otherwise signed-in owner to setup (#220).
 export const supabaseFetch: typeof fetch = async (input, init) => {
   const request = input instanceof Request ? input : undefined;
   const signal = init?.signal ?? request?.signal;

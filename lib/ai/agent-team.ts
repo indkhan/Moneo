@@ -4,10 +4,6 @@ import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
 import { recurringCadences } from "@/lib/finance/cadences";
 
-// The agent team's deterministic core. Every number here is computed from
-// application data in exact minor units; models only phrase or suggest, and
-// every proposal carries the evidence a person needs to accept or reject it.
-
 export const AGENTS = {
   lead: { name: "Lead", role: "Plans the run, assigns work, merges results and resolves conflicts", scopes: [] },
   categorizer: { name: "Categorizer", role: "Organizes every unorganized row: your rules, memory and the bank's data first, then the AI; sure labels are applied, marked and undoable, and the rest become questions for you", scopes: ["transactions"] },
@@ -19,16 +15,13 @@ export const AGENTS = {
 } as const satisfies Record<string, { name: string; role: string; scopes: AiDataScope[] }>;
 export type AgentId = keyof typeof AGENTS;
 export const AGENT_IDS = Object.keys(AGENTS) as AgentId[];
-/** Agents in the same wave run in parallel; later waves read earlier proposals. The categorizer goes first, alone. */
 export const WAVES: AgentId[][] = [["categorizer"], ["recurring", "anomaly", "budget"], ["forecaster"], ["writer"]];
 
 const versioned = z.object({ id: z.uuid(), version: z.number().int().min(0).max(2147483647) }).strict();
 export const payloadSchemas = {
   categorize: z.object({ rows: z.array(versioned).min(1).max(50), patch: z.object({ merchant_id: z.uuid().nullable().optional(), category_id: z.uuid().nullable().optional() }).strict(),
     merchantName: z.string().trim().min(1).max(100).nullable(), ruleKey: z.string().min(3).max(1000).nullable(), evidence: z.array(versioned).max(2000),
-    // The identity (or description) key; an undone label is suppressed for it. Missing on proposals from before it existed.
     identityKey: z.string().max(1000).optional(),
-    // Who decided: the AI, or the owner's rule or memory or the bank's own data ('system'). Missing means the AI.
     source: z.enum(["ai", "rule", "memory", "system"]).optional() }).strict(),
   recurring: z.object({ accountId: z.uuid(), label: z.string().trim().min(1).max(200), cadence: z.enum(recurringCadences), currencyCode: z.string().regex(/^[A-Z]{3}$/),
     evidence: z.array(versioned).min(3).max(1000), runAnchorId: z.uuid(), evidenceLimited: z.boolean() }).strict(),
@@ -58,11 +51,9 @@ const median = (values: bigint[]) => {
 export const reviewed = (row: LedgerRow) => row.status === "posted" && row.kind === "ordinary" && !row.reviewReasons.length;
 export const daysBefore = (today: string, days: number) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
 
-// ── Lead: plan ───────────────────────────────────────────────────────────────
 export type Profile = { transactions: number; unorganized: number; months: number; spendingLimits: number; scopes: AiDataScope[] };
 export type PlannedTask = { agent: AgentId; wave: number; status: "pending" | "skipped"; reason: string };
 
-/** Deterministic plan: which agents run, in which wave, and why the others are skipped. */
 export function planRun(profile: Profile): PlannedTask[] {
   const why: Partial<Record<AgentId, string>> = {
     categorizer: profile.unorganized ? `${profile.unorganized} rows lack a merchant or category` : "",
@@ -72,7 +63,6 @@ export function planRun(profile: Profile): PlannedTask[] {
   const skip: Partial<Record<AgentId, string>> = {
     categorizer: profile.unorganized ? undefined : "Every recent row already has a merchant and category",
     recurring: profile.months >= 2 ? undefined : "Needs at least two months of history",
-    // The coach tunes limits the owner chose to keep; it does not invent a budget for someone who has none.
     budget: !profile.spendingLimits ? "No spending limits set up" : profile.months >= 2 ? undefined : "Needs at least two months of history",
   };
   return WAVES.flatMap((agents, wave) => agents.map(agent => {
@@ -85,13 +75,6 @@ export function planRun(profile: Profile): PlannedTask[] {
 
 export type Backlog = { transactionsAllowed: boolean; unorganized: number; recentRuns: string[]; unorganizedSinceLatestRun: boolean; retryAt: string | null; now: number };
 
-/**
- * Whether the hourly check should start a run for rows still lacking a merchant or category.
- * recentRuns holds the newest runs' statuses, newest first; retryAt is when the latest run's organizer may try
- * the rows it left blank (a plan limit until it resets, a spent budget right away). Until then nothing starts,
- * not even for new rows, which would hit the same limit. Rows a finished run looked at and left alone stay
- * alone; new rows or a failed run are worth another go, up to three failures in a row.
- */
 export function backlogRerunNeeded(backlog: Backlog) {
   const [latest] = backlog.recentRuns;
   if (!backlog.transactionsAllowed || !backlog.unorganized || backlog.recentRuns.some(status => status === "queued" || status === "running")) return false;
@@ -101,11 +84,8 @@ export function backlogRerunNeeded(backlog: Backlog) {
   return latest === "failed" && !(backlog.recentRuns.length >= 3 && backlog.recentRuns.slice(0, 3).every(status => status === "failed"));
 }
 
-// ── Categorizer ──────────────────────────────────────────────────────────────
-/** High and medium labels are applied by the organizer itself; low ones wait for the owner. */
 export const aiConfidence = (confidence: number) => confidence >= 85 ? "high" as const : confidence >= 60 ? "medium" as const : "low" as const;
 
-// ── Anomaly hunter ───────────────────────────────────────────────────────────
 const FEE = /\b(?:fee|fees|commission|overdraft|penalty|late charge|interest charge|atm|service charge)\b/i;
 export function anomalyFindings(rows: LedgerRow[], today: string, locale?: string): Proposal<"finding">[] {
   const findings: Proposal<"finding">[] = [];
@@ -149,8 +129,6 @@ export function anomalyFindings(rows: LedgerRow[], today: string, locale?: strin
   return findings;
 }
 
-// ── Budget coach ─────────────────────────────────────────────────────────────
-/** Monthly limit = the median of the last three complete months, rounded up to a round step. */
 export function budgetProposals(rows: LedgerRow[], categories: Map<string, string>, existing: { categoryId: string; currencyCode: string }[], today: string, locale?: string): Proposal<"budget">[] {
   const month = (offset: number) => { const date = new Date(`${today.slice(0, 7)}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() - offset); return date.toISOString().slice(0, 7); };
   const months = [3, 2, 1].map(month);
@@ -182,8 +160,6 @@ export function budgetProposals(rows: LedgerRow[], categories: Map<string, strin
   return result.sort((a, b) => Number(BigInt(b.payload.limitMinor) - BigInt(a.payload.limitMinor))).slice(0, 12);
 }
 
-// ── Lead: merge and resolve conflicts ────────────────────────────────────────
-/** Deduplicates proposals and resolves cross-agent conflicts; returns the decisions it made. */
 export function mergeProposals(input: Proposal[]): { proposals: Proposal[]; resolutions: string[] } {
   const resolutions: string[] = [];
   const byKey = new Map<string, Proposal>();
@@ -194,7 +170,6 @@ export function mergeProposals(input: Proposal[]): { proposals: Proposal[]; reso
   }
   let proposals = [...byKey.values()];
   const recurringIds = new Set(proposals.flatMap(item => item.kind === "recurring" ? (item as Proposal<"recurring">).payload.evidence.map(row => row.id) : []));
-  // A large charge that belongs to a recurring series is explained by it (for example a yearly plan).
   proposals = proposals.filter(item => {
     if (!item.conflictKey.startsWith("large:") || !recurringIds.has((item as Proposal<"finding">).payload.transactionIds[0])) return true;
     resolutions.push(`Dropped “${item.title}”: the Recurring detective explains it as a scheduled payment`);
@@ -217,12 +192,10 @@ export function mergeProposals(input: Proposal[]): { proposals: Proposal[]; reso
   return { proposals, resolutions };
 }
 
-// ── Insight writer ───────────────────────────────────────────────────────────
 export type BriefingFacts = { headline: string[]; findings: string[]; actions: string[] };
 export function deterministicBriefing(facts: BriefingFacts) {
   return [facts.headline.join(" "), facts.findings.length ? `Worth a look: ${facts.findings.slice(0, 4).join("; ")}.` : "", facts.actions.length ? `Ready for your review: ${facts.actions.join(", ")}.` : ""].filter(Boolean).join("\n\n");
 }
-/** A model briefing is used only when every number it states appears in the verified facts. */
 export function verifiedBriefing(text: string, facts: BriefingFacts): string | null {
   const corpus = [...facts.headline, ...facts.findings, ...facts.actions].join(" ");
   const trimmed = text.trim();

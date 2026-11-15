@@ -1,4 +1,3 @@
-// Individual user actions, expected outcomes and separate usability judgments.
 const row = (area, route, action, expected, ux, type = 'Functional', priority = 'P1') => [area, route, type, priority, action, expected, ux];
 const groups = [
 ['W17','P11','Bank connection and consent lifecycle','/settings#banks',[

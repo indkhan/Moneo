@@ -8,7 +8,6 @@ import { wealthAmount } from "@/lib/finance/wealth";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
-/** The model's view of a balance the user states: a decimal amount; the application turns it into exact minor units. */
 export const balanceInputSchema = z.object({
   account: z.string().trim().min(1).max(120).optional().describe("The account's name, e.g. 'Wallet EUR'. Omit for cash: the currency's single cash account, or a new Cash account when there is none"),
   amount: z.string().trim().regex(/^-?\d{1,15}(\.\d{1,4})?$/).describe("The balance as a decimal, e.g. 115 or 1250.40"),
@@ -16,12 +15,10 @@ export const balanceInputSchema = z.object({
   asOf: z.iso.date().optional().describe("The date the balance was true; defaults to today"),
 }).strict();
 
-/** A null accountId means the accepted proposal creates the currency's Cash account first. */
 export const balanceSetSchema = z.object({
   accountId: z.uuid().nullable(), amountMinor: z.string().regex(/^-?\d{1,18}$/), currencyCode: z.string().regex(/^[A-Z]{3}$/), asOf: z.iso.date(),
 }).strict();
 
-/** Stores a pending "set this account's balance" proposal. Nothing changes until the owner accepts. */
 export async function proposeBalance({ supabase, workspace, chatRequestId }: Context, input: z.infer<typeof balanceInputSchema>) {
   minorDigits(input.currency);
   const today = calendarDate(new Date(), workspace.timezone);
@@ -43,7 +40,6 @@ export async function proposeBalance({ supabase, workspace, chatRequestId }: Con
   return { proposalId: data.id as string, title };
 }
 
-/** Records the accepted balance through the same audited RPC as Accounts; the proposal id is the request id, so accepting twice cannot duplicate it. */
 export async function applyBalanceProposal({ supabase, workspace }: Context, proposalId: string, payload: unknown) {
   const parsed = balanceSetSchema.parse(payload);
   let accountId = parsed.accountId, createdAccount = false;
@@ -56,7 +52,6 @@ export async function applyBalanceProposal({ supabase, workspace }: Context, pro
     if (created.error) throw new Error(created.error.message);
     accountId = created.data.id as string; createdAccount = true;
   }
-  // The RPC refuses the write if the history changed since this read, so the owner is never overwriting an unseen balance.
   const latest = await supabase.from("balance_snapshots").select("id, version").eq("workspace_id", workspace.id).eq("account_id", accountId)
     .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
   if (latest.error) throw new Error(latest.error.message);

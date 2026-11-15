@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import type { Route } from "@playwright/test";
 import { e2eStorageStatePath } from "./fixtures";
 
-// Pages need a session; the data behind them stays mocked.
 const signedIn = e2eStorageStatePath();
 if (signedIn) test.use({ storageState: signedIn });
 

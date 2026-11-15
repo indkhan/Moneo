@@ -18,6 +18,7 @@
     "qa:auth": "node scripts/e2e-auth.mjs",
     "qa:reset": "node scripts/e2e-auth.mjs --reset",
     "qa:nightly": "node scripts/nightly-e2e.mjs",
+    "qa:shots": "node scripts/qa-screenshots.mjs",
     "check:privacy": "node scripts/check-private-data.mjs",
     "desktop:build": "node scripts/desktop/build.mjs",
     "desktop:dev": "node scripts/desktop/build.mjs --main && electron desktop",

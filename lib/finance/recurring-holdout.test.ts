@@ -1,8 +1,6 @@
 import {expect, it} from "vitest";
 import {detectRecurring, type RecurringTransaction} from "./recurring";
 
-// Fixed synthetic holdout. Keep these cases separate from pattern-development fixtures;
-// results describe this set only, never provider quality or calibrated probability.
 const holdout = [
   {name: "references", recurring: true, cadence: "monthly", dates: ["2025-08-12", "2025-09-12", "2025-10-12"], labels: ["Service ref A1", "Service ref A2", "Service ref A3"]},
   {name: "extra purchase", recurring: true, cadence: "monthly", dates: ["2025-08-10", "2025-08-19", "2025-09-10", "2025-10-10"], amounts: [-2000n, -2010n, -2000n, -2000n]},
@@ -28,7 +26,6 @@ it("records observed holdout candidates and discretionary review burden without 
     return {name: fixture.name, recurring: fixture.recurring, candidates: candidates.length, evidenceRows: candidates.reduce((sum, candidate) => sum + candidate.occurrences, 0)};
   });
   const falsePositiveCases = results.filter(result => !result.recurring && result.candidates > 0);
-  // This detector cannot infer purchase intent from dates/amounts. The holdout proves that limitation.
   expect(falsePositiveCases.map(result => result.name)).toEqual(["monthly discretionary retail"]);
   console.info("MNE014 SYNTHETIC HOLDOUT", JSON.stringify({cases: results.length, recurringCases: 7, discretionaryCases: 5,
     falsePositiveCases: falsePositiveCases.length, reviewCandidates: results.reduce((sum, result) => sum + result.candidates, 0),

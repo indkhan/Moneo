@@ -7,7 +7,6 @@ import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 
 const inputSchema = z.object({ sdp: z.string().min(1).max(20_000), conversationId: z.uuid() }).strict();
 
-/** Starts a GPT-Live WebRTC session for the browser's offer; the API key stays on the server. */
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
@@ -17,7 +16,6 @@ export async function POST(request: Request) {
   if (!apiKey) return Response.json({ error: VOICE_NEEDS_OPENAI_KEY }, { status: 503 });
   const { sdp, conversationId } = parsed.data;
   const { supabase, workspace, settings } = context;
-  // Both reads go together; a new chat has no row or messages yet, and its first call request creates it.
   const [existing, messages] = await Promise.all([
     supabase.from("conversations").select("id, deleted_at").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle(),
     supabase.from("messages").select("role, content").eq("workspace_id", workspace.id).eq("conversation_id", conversationId)

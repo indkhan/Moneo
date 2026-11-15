@@ -13,7 +13,6 @@ vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
 vi.mock("@/lib/import/follow-up", () => ({ startSyncAgentRun: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", async original => ({ ...await original<typeof import("@/lib/bank/enable-banking")>(), enableBankingClient: vi.fn() }));
 
-// A minimal in-memory Supabase: the imports(workspace_id, file_hash) unique index is what makes a repeated sync a no-op.
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
 function table(name: string) {
@@ -28,7 +27,6 @@ function table(name: string) {
       return { data: row, error: null };
     }
     if (upsert) {
-      // bank_transaction_raw primary key (import_id, row_number), ignoreDuplicates.
       for (const row of upsert) if (!tables[name].some(have => have.import_id === row.import_id && have.row_number === row.row_number)) tables[name].push(row);
       return { data: null, error: null };
     }
@@ -54,7 +52,6 @@ let bank: { balances: ReturnType<typeof vi.fn>; bookedTransactions: ReturnType<t
 let rpc: ReturnType<typeof vi.fn>;
 const now = Date.parse("2026-11-13T12:00:00Z");
 const PSU: PsuContext = { ip: "127.0.0.1", userAgent: "test" };
-// claim_bank_sync and hold_bank_sync as the database runs them (supabase/tests/bank-sync-lease.sql).
 const LEASE_MS = 15 * 60_000;
 async function lease(name: string, args: Record<string, string>) {
   const connection = tables.bank_connections.find(row => row.id === args.p_connection_id)!;
@@ -68,7 +65,6 @@ async function lease(name: string, args: Record<string, string>) {
   if (held) connection.sync_lease_until = Date.now() + LEASE_MS;
   return { data: held, error: null };
 }
-// What every trigger does: take the lease, then run the sync with it. Owner present unless said otherwise.
 async function sync(psu: PsuContext | undefined = PSU) {
   const token = await claimBankSync(serviceDb(), "c1", "w1");
   expect(token).toEqual(expect.any(String));
@@ -107,7 +103,6 @@ it("stores the bank's full data once per CSV row, and a repeated window adds non
     { ...tx("b", "2026-10-02", "7.25"), bank_transaction_code: { code: "TRANSFER" }, creditor: { name: "Savings" }, creditor_account: { iban: "NL91 ABNA 0417 1643 00" } },
     { ...tx("a", "2026-10-01", "5.00"), bank_transaction_code: { code: "CARD_PAYMENT" }, merchant_category_code: "5411" }]);
   await sync();
-  // Row numbers follow the CSV's sorted order (a, then b), not the bank's order; the header is row 1.
   expect(tables.bank_transaction_raw.map(row => [row.import_id, row.row_number, row.bank_id, row.payment_type, row.mcc, row.own_account])).toEqual([
     ["import-1", 2, "a", "card", "5411", false], ["import-1", 3, "b", "transfer", null, true]]);
   expect(tables.bank_transaction_raw[1].raw).toMatchObject({ entry_reference: "b", bank_transaction_code: { code: "TRANSFER" } });
@@ -126,7 +121,6 @@ it("stores the raw rows of an import an earlier attempt left queued, without dup
 });
 
 it("records progress when work after a completed import fails", async () => {
-  // importFile is flattened into this run: its optional tail (first review, agent team) can throw after the rows are in.
   vi.mocked(importFile).mockImplementationOnce(async importId => {
     tables.imports.find(row => row.id === importId)!.status = "completed";
     throw new Error("Selected model is unavailable");
@@ -170,7 +164,6 @@ it("saves the bank's balance even when no transaction arrives", async () => {
   expect(tables.bank_connections[0].last_error).toBeNull();
 });
 
-// A 429 on the first account ended the whole sync, so the second account never landed.
 it("keeps syncing the other accounts when one is rate limited, and holds that one until the bank's Retry-After", async () => {
   tables.bank_connection_accounts.push({ connection_id: "c1", provider_account_uid: "u2", currency_code: "EUR", account_name: "Revolut ••5678", last_booked_on: "2026-09-30" });
   bank.bookedTransactions.mockImplementation(async (uid: string) => {
@@ -183,25 +176,21 @@ it("keeps syncing the other accounts when one is rate limited, and holds that on
   expect(importFile).toHaveBeenCalledOnce();
   expect(limited).toMatchObject({ last_booked_on: null, next_allowed_at: new Date(now + 120_000).toISOString(), last_error: expect.stringContaining("rate limit") });
   expect(tables.bank_connections[0]).toMatchObject({ status: "active", last_error: expect.stringContaining("Revolut ••1234") });
-  // Opening Moneo again within those two minutes leaves the limited account alone.
   bank.bookedTransactions.mockClear();
   await sync();
   expect(bank.bookedTransactions.mock.calls.map(call => call[0])).toEqual(["u2"]);
 });
 
-// Every 401 marked the consent expired, though a wrong App ID, key or clock answers 401 too.
 it("asks Enable Banking about the app before calling an unexplained 401 an ended consent", async () => {
   bank.bookedTransactions.mockRejectedValueOnce(new EnableBankingError(401, "UNAUTHORIZED", "refused"));
   bank.application.mockRejectedValueOnce(new EnableBankingError(401, "UNAUTHORIZED", "refused"));
   await sync();
   expect(tables.bank_connections[0]).toMatchObject({ status: "active", last_error: expect.stringContaining("App ID or private key") });
-  // The hourly job doesn't ask again with the same rejected key for 6 hours.
   expect(tables.bank_connection_accounts[0]).toMatchObject({ next_allowed_at: new Date(now + 6 * 3_600_000).toISOString() });
   expect(tables.bank_connection_accounts[0].last_error ?? null).toBeNull();
   bank.bookedTransactions.mockClear();
   await sync(undefined);
   expect(bank.bookedTransactions).not.toHaveBeenCalled();
-  // Saving new credentials lifts that wait (app/api/bank/credentials).
   tables.bank_connection_accounts[0].next_allowed_at = null;
   bank.bookedTransactions.mockRejectedValueOnce(new EnableBankingError(401, "UNAUTHORIZED", "refused"));
   await sync();
@@ -209,7 +198,6 @@ it("asks Enable Banking about the app before calling an unexplained 401 an ended
   expect(importFile).not.toHaveBeenCalled();
 });
 
-// A sync that outlived its lease finished after a newer one started and moved the cursor past rows that never landed.
 it("does not move the cursor or publish when its lease ran out and another sync took over", async () => {
   vi.mocked(importFile).mockImplementationOnce(async importId => {
     tables.imports.find(row => row.id === importId)!.status = "completed";
@@ -221,7 +209,6 @@ it("does not move the cursor or publish when its lease ran out and another sync 
   expect(tables.bank_connections[0].last_synced_at).toBeUndefined();
 });
 
-// Banks share full history only near consent: a first sync that hit an outage left the account without its history.
 it("retries a first sync that failed for a passing reason, at most three times", async () => {
   const sleep = vi.fn(async (until: Date) => { vi.setSystemTime(until); });
   (globalThis as Record<symbol, unknown>)[Symbol.for("WORKFLOW_SLEEP")] = sleep;
@@ -261,7 +248,6 @@ it("asks for full history on the first sync and falls back to 90 days when the b
   expect(bank.bookedTransactions.mock.calls[1][1]).not.toBe("2000-01-01");
 });
 
-// A bank with two accounts started two agent runs, each seeing one account.
 it("requests one agent pass after every account is imported", async () => {
   tables.bank_connection_accounts.push({ connection_id: "c1", provider_account_uid: "u2", currency_code: "EUR", account_name: "Revolut ••5678", last_booked_on: null });
   bank.bookedTransactions.mockImplementation(async (uid: string) => [tx(`${uid}-a`, "2026-10-01", "5.00")]);

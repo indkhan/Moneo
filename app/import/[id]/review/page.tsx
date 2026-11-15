@@ -12,7 +12,6 @@ import { findWaitingRepeats } from "@/lib/import/repeats";
 
 export const metadata = { title: "Review import" };
 
-// Original source evidence as a compact field list; internal parser columns stay hidden.
 function SourceFields({ row }: { row: SourceRow }) {
   return <dl className="grid gap-x-4 gap-y-1 rounded-lg bg-muted p-3 text-xs sm:grid-cols-[max-content_1fr]">{Object.entries(row ?? {}).filter(([column]) => !column.startsWith("__moneo_csv_")).map(([column, value]) =>
     <div key={column} className="contents"><dt className="font-medium text-muted-foreground">{column}</dt><dd className="break-words [overflow-wrap:anywhere]">{String(value) || "—"}</dd></div>)}</dl>;
@@ -26,7 +25,6 @@ export default async function ImportReviewPage({ params, searchParams }: { param
   try { context = await requireWorkspace(); }
   catch { redirect("/setup"); }
   const { id } = await params;
-  // By row number, not offset: deciding rows shrinks the list, and an offset would then skip the ones left.
   const query = await searchParams;
   const rowCursor = (value?: string) => { const number = Number(value); return Number.isSafeInteger(number) && number > 0 ? number : 0; };
   const after = rowCursor(query.after), reviewedAfter = rowCursor(query.reviewedAfter), decidedAfter = rowCursor(query.decidedAfter);
@@ -67,7 +65,6 @@ export default async function ImportReviewPage({ params, searchParams }: { param
     .select("id, source_id, action, created_at, undone_at").eq("workspace_id", workspace.id)
     .in("source_id", decisionSources).order("created_at", { ascending: false }).limit(1000) : null;
   const complete = imported.status === "completed" && !imported.review_rows && !imported.classification_review_rows;
-  // A failed check only hides the shortcut: each row can still be decided below.
   const repeats = await findWaitingRepeats(supabase, workspace.id).catch(() => []);
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
@@ -97,7 +94,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
           const route = JSON.parse(key);
           return route[0] === mapped.accountName && route[1] === mapped.currencyCode;
         })?.[1] as string ?? null;
-      } catch { /* The server reports unavailable legacy interpretation on acceptance. */ }
+      } catch {}
       const frozen = destinations.data?.find(account => account.id === frozenId);
       const eligible = destinations.error ? [] : (destinations.data ?? []).filter(account => !account.archived_at && account.currency_code === currency);
       return <article className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-6" key={row.id}>

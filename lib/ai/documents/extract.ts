@@ -4,17 +4,11 @@ import Papa from "papaparse";
 import { createIsomorphicCanvasFactory, extractText, getDocumentProxy } from "unpdf";
 import type { AttachmentType } from "@/lib/ai/chat-attachments";
 
-// Every document becomes text on this computer, the same way for every AI source, split into units that
-// carry their location: PDF pages, PPTX slides, DOCX paragraphs and spreadsheet rows. Answers cite these
-// locations and document_read pages through them.
-
 export type DocumentKind = "pdf" | "docx" | "pptx" | "xlsx" | "csv";
 export type DocumentUnit =
   | { kind: "page"; n: number; text: string }
   | { kind: "slide"; n: number; text: string }
-  /** A DOCX paragraph or table row; headings carry their level. */
   | { kind: "para"; n: number; text: string; heading?: number }
-  /** A spreadsheet row; `sheet` indexes `sheets`, cells start at column A. */
   | { kind: "row"; sheet: number; n: number; cells: string[] };
 export type ExtractedDocument = { kind: DocumentKind; units: DocumentUnit[]; sheets?: { name: string; columns: number }[]; pages?: number; scannedPages?: number[] };
 
@@ -26,7 +20,6 @@ export const DOCUMENT_KINDS: Partial<Record<AttachmentType, DocumentKind>> = {
   "text/csv": "csv", "text/tab-separated-values": "csv",
 };
 
-/** A PDF page with less text than this has no real text layer (a scan, or a photo saved as PDF). */
 const MIN_PAGE_CHARS = 10;
 const MAX_CELL_CHARS = 300;
 
@@ -41,16 +34,12 @@ export async function extractDocument(bytes: Uint8Array, type: AttachmentType): 
   }
 }
 
-// ---- PDF ----
-
 async function extractPdf(bytes: Uint8Array): Promise<ExtractedDocument> {
-  // pdf.js may take ownership of the buffer, so it gets a copy.
   const { text } = await extractText(new Uint8Array(bytes), { mergePages: false });
   const units = text.map((page, index) => ({ kind: "page" as const, n: index + 1, text: page.trim() }));
   return { kind: "pdf", units, pages: units.length, scannedPages: units.filter(unit => unit.text.replace(/\s/g, "").length < MIN_PAGE_CHARS).map(unit => unit.n) };
 }
 
-/** PDF pages drawn as JPEG images on this computer, for pages that have no text to read. */
 export async function renderPdfPages(bytes: Uint8Array, pages: number[], width = 1400): Promise<{ page: number; image: Uint8Array }[]> {
   const CanvasFactory = await createIsomorphicCanvasFactory(() => import("@napi-rs/canvas"));
   const pdf = await getDocumentProxy(new Uint8Array(bytes), { CanvasFactory } as never);
@@ -62,7 +51,6 @@ export async function renderPdfPages(bytes: Uint8Array, pages: number[], width =
       const viewport = page.getViewport({ scale: Math.min(3, width / page.getViewport({ scale: 1 }).width) });
       const drawing = factory.create(viewport.width, viewport.height);
       try {
-        // Scans are usually printed on white; a transparent page would turn black as JPEG.
         const context = drawing.context as unknown as CanvasRenderingContext2D;
         context.fillStyle = "#fff"; context.fillRect(0, 0, viewport.width, viewport.height);
         await page.render({ canvas: drawing.canvas as never, canvasContext: context, viewport } as never).promise;
@@ -72,8 +60,6 @@ export async function renderPdfPages(bytes: Uint8Array, pages: number[], width =
   } finally { await pdf.loadingTask.destroy(); }
   return images;
 }
-
-// ---- Office XML ----
 
 type Token = { tag: string; close: boolean; empty: boolean; attrs: string } | { text: string };
 const TOKEN = /<(\/?)([A-Za-z_][\w.:-]*)([^>]*?)(\/?)>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[([\s\S]*?)\]\]>|([^<]+)/g;
@@ -97,7 +83,6 @@ async function zipText(zip: JSZip, path: string) {
   return file.async("string");
 }
 
-/** Heading levels by DOCX style id: built-in "heading n" and "Title" styles, or any style with an outline level. */
 function headingStyles(stylesXml: string | undefined) {
   const levels = new Map<string, number>();
   for (const match of (stylesXml ?? "").matchAll(/<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g)) {
@@ -134,7 +119,6 @@ async function extractDocx(bytes: Uint8Array): Promise<ExtractedDocument> {
   return { kind: "docx", units };
 }
 
-/** Paths in .rels files are relative to the folder of the part that owns them. */
 function resolvePart(from: string, target: string) {
   const parts = from.split("/").slice(0, -1);
   for (const piece of target.split("/")) { if (piece === "..") parts.pop(); else if (piece !== ".") parts.push(piece); }
@@ -146,7 +130,6 @@ async function relationships(zip: JSZip, part: string) {
   return [...xml.matchAll(/<Relationship\b([^>]*)\/?>/g)].map(match => ({ id: attribute(match[1], "Id") ?? "", type: attribute(match[1], "Type") ?? "", target: resolvePart(part, attribute(match[1], "Target") ?? "") }));
 }
 
-/** A slide or notes page's text, one line per paragraph; slide-number fields are left out. */
 function drawingText(xml: string) {
   let text = "", inText = false, field = 0;
   for (const token of xmlTokens(xml)) {
@@ -173,8 +156,6 @@ async function extractPptx(bytes: Uint8Array): Promise<ExtractedDocument> {
   }));
   return { kind: "pptx", units };
 }
-
-// ---- Spreadsheets ----
 
 const cellString = (text: string) => text.replace(/\s*\r?\n\s*/g, " ").trim().slice(0, MAX_CELL_CHARS);
 
@@ -210,7 +191,6 @@ async function extractXlsx(bytes: Uint8Array): Promise<ExtractedDocument> {
   return { kind: "xlsx", units, sheets };
 }
 
-/** Bank exports are often Windows-1252 rather than UTF-8. */
 function decodeText(bytes: Uint8Array) {
   try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^﻿/, ""); }
   catch { return new TextDecoder("windows-1252").decode(bytes); }

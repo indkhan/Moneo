@@ -2,16 +2,15 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { decideAgentProposals, loadAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals, loadAgentProposals } from "@/lib/ai/agent-actions";
 import { agentDecisionSchema } from "@/lib/ai/agent-findings";
 
 type Row = Awaited<ReturnType<typeof loadAgentProposals>>[number];
 const label = { proposed: "Open", failed: "Failed", applying: "Applying", accepted: "Accepted", rejected: "Dismissed" } as Record<string, string>;
 
-/** Agent-team proposals the chat suggested accepting or dismissing; nothing changes until Confirm is pressed. */
 export function DecisionCard({ source }: { source: string }) {
   let request: ReturnType<typeof agentDecisionSchema.parse> | null = null;
-  try { request = agentDecisionSchema.parse(JSON.parse(source)); } catch { /* not a decision block */ }
+  try { request = agentDecisionSchema.parse(JSON.parse(source)); } catch {}
   const ids = request?.ids.join(",");
   const [rows, setRows] = useState<Row[]>();
   const [error, setError] = useState<string>();

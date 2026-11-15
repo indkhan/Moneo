@@ -51,7 +51,6 @@ export function setSetupState(patch: Partial<SetupState>) {
   if (window && !window.isDestroyed()) window.webContents.send("setup:state", state);
 }
 
-/** Feeds the backend's Progress callback into the step list. */
 export const progress: Progress = step => {
   const steps = state.steps.some(existing => existing.id === step.id)
     ? state.steps.map(existing => existing.id === step.id ? step : existing)
@@ -65,7 +64,6 @@ export function closeSetup() {
 }
 
 export function registerSetupIpc(actions: { retry(): void; restore(): Promise<void>; quit(): void }) {
-  // Only the setup page itself, loaded from the app bundle, may call these.
   const fromSetup = (event: IpcMainInvokeEvent) =>
     Boolean(window && event.sender === window.webContents && event.senderFrame?.url === pathToFileURL(page()).href);
   const handle = (channel: string, run: () => unknown) => ipcMain.handle(channel, async event => {

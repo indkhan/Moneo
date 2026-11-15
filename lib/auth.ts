@@ -1,11 +1,8 @@
 import { cache } from "react";
 import { isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase-server";
-import { settingsSchema } from "@/lib/settings";
+import { readSettings } from "@/lib/settings";
 
-// A session confirmed with Supabase Auth is trusted for a minute, so most navigations skip that
-// round trip. Signing out here clears the cookie at once; a session revoked elsewhere stops
-// working within the minute. Failed checks are never remembered.
 const CONFIRMED_MS = 60_000;
 const confirmed = new Map<string, { user: User; until: number }>();
 
@@ -17,7 +14,6 @@ async function confirmUser(supabase: Awaited<ReturnType<typeof createClient>>, u
   if (error || !user || user.id !== userId) {
     console.warn("[workspace-access] user-confirmation-failed", { status: error?.status ?? null });
     if (key) confirmed.delete(key);
-    // An auth outage (Moneo Desktop's GoTrue failing to open a connection) is not a signed-out owner.
     if (error && (isAuthRetryableFetchError(error) || (error.status ?? 0) >= 500)) throw new Error("Workspace unavailable");
     throw new Error("Unauthorized");
   }
@@ -28,11 +24,8 @@ async function confirmUser(supabase: Awaited<ReturnType<typeof createClient>>, u
   return user;
 }
 
-// Memoized per request so the root layout and the page share one auth and workspace lookup.
 export const requireWorkspace = cache(async () => {
   const supabase = await createClient();
-  // getClaims verifies the JWT locally, so the RLS-scoped workspace read can run while
-  // the session is confirmed with Supabase Auth (or was within the last minute).
   const { data: claims, error: claimsError } = await supabase.auth.getClaims();
   const userId = claims?.claims.sub;
   if (!userId) {
@@ -48,11 +41,6 @@ export const requireWorkspace = cache(async () => {
     throw new Error("Workspace unavailable");
   }
   const { workspace_settings: stored, ...workspace } = data as typeof data & { workspace_settings: unknown };
-  const parsed = settingsSchema.safeParse(stored ?? {});
-  if (!parsed.success) {
-    console.warn("[workspace-access] settings-invalid");
-    throw new Error("Workspace settings unavailable");
-  }
-  const settings = parsed.data;
+  const settings = readSettings(stored);
   return { supabase, user, settings, workspace: { ...workspace, timezone: settings.timezone, locale: settings.locale, settings } };
 });

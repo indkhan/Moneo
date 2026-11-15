@@ -1,24 +1,18 @@
 import JSZip from "jszip";
 import type { AttachmentType } from "@/lib/ai/chat-attachments";
 
-// Office files are zip archives; the main part's content type in [Content_Types].xml says which kind.
 const OFFICE_PARTS: [string, AttachmentType][] = [
   ["wordprocessingml.document.main+xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   ["presentationml.presentation.main+xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   ["spreadsheetml.sheet.main+xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
 ];
 
-/** Text has no NUL or other control bytes besides tab, line feed, carriage return and form feed. */
 function looksLikeText(bytes: Uint8Array) {
   if (!bytes.length) return false;
   for (const byte of bytes.subarray(0, 64 * 1024)) if (byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d && byte !== 0x0c) return false;
   return true;
 }
 
-/**
- * The file's real type from its bytes, so a renamed file cannot pass as another. Text has no signature, so a
- * CSV or TSV is a file with that extension whose bytes are text.
- */
 export async function sniffType(bytes: Uint8Array, name: string): Promise<AttachmentType | null> {
   const starts = (...signature: number[]) => signature.every((byte, index) => bytes[index] === byte);
   if (starts(0xff, 0xd8, 0xff)) return "image/jpeg";

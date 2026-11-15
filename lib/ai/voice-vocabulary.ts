@@ -4,10 +4,6 @@ import type { AiDataScope } from "@/lib/settings";
 const MAX_TERMS = 80;
 const MAX_TERM_LENGTH = 60;
 
-/**
- * Names that help speech-to-text spell a spoken note the way the workspace does: accounts, the most
- * used recent merchants, then categories. Bounded and limited to the AI data scopes Settings allows.
- */
 export async function loadVoiceVocabulary(supabase: SupabaseClient, workspaceId: string, scopes: readonly AiDataScope[]): Promise<string[]> {
   const transactions = scopes.includes("transactions");
   const [accounts, categories, recent] = await Promise.all([

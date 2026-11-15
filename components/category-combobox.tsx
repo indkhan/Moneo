@@ -4,7 +4,6 @@ import { useEffect, useId, useState } from "react";
 
 export type CategoryOption = { id: string; name: string };
 
-/** Categories that start with the text come first, then ones that contain it. */
 export function matchCategories(options: CategoryOption[], text: string) {
   const query = text.trim().toLowerCase();
   if (!query) return options;
@@ -12,7 +11,6 @@ export function matchCategories(options: CategoryOption[], text: string) {
   return [...starts, ...options.filter(option => !starts.includes(option) && option.name.toLowerCase().includes(query))];
 }
 
-/** What typed text means: an existing category, a new one to create (only when allowed), or nothing. */
 export function resolveCategory(options: CategoryOption[], text: string, allowCreate = false): { id: string } | { name: string } | null {
   const typed = text.trim();
   const match = options.find(option => option.name.toLowerCase() === typed.toLowerCase());
@@ -20,7 +18,6 @@ export function resolveCategory(options: CategoryOption[], text: string, allowCr
   return allowCreate && typed ? { name: typed } : null;
 }
 
-/** A category field you can type in: it lists matching categories and, when allowed, offers to create what you typed. */
 export function CategoryCombobox({ label, options, value, onChange, allowCreate = false, placeholder, disabled, className = "" }: {
   label: string; options: CategoryOption[]; value: string; onChange: (text: string) => void;
   allowCreate?: boolean; placeholder?: string; disabled?: boolean; className?: string;
@@ -30,7 +27,6 @@ export function CategoryCombobox({ label, options, value, onChange, allowCreate 
   const [active, setActive] = useState(-1);
   const typed = value.trim();
   const exact = options.some(option => option.name.toLowerCase() === typed.toLowerCase());
-  // A chosen category lists everything again, so changing your mind does not start with clearing the field.
   const matches = exact ? options : matchCategories(options, value);
   const create = allowCreate && typed && !exact ? typed.slice(0, 100) : "";
   const shown = open ? [...matches.map(option => ({ key: option.id, text: option.name, label: option.name })), ...(create ? [{ key: "+new", text: create, label: `Create “${create}”` }] : [])] : [];

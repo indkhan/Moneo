@@ -10,15 +10,17 @@ vi.mock('react',async importOriginal=>({...await importOriginal<typeof import('r
 }));
 const id='00000000-0000-4000-8000-000000000001';
 function element(node:ReactNode,type:string,name?:string,prop='name'):Record<string,unknown>|undefined{
- if(!isValidElement<{children?:ReactNode;[key:string]:unknown}>(node))return;
+ if(!isValidElement<{children?:ReactNode;[key:string]:unknown}>(node))return undefined;
  if(node.type===type&&(!name||node.props[prop]===name))return node.props;
  for(const child of Children.toArray(node.props.children)){const found=element(child,type,name,prop);if(found)return found;}
+ return undefined;
 }
 beforeEach(()=>{state.length=0;preselected.ids=[];});afterEach(()=>vi.unstubAllGlobals());
 function chip(node:ReactNode,label:string):(()=>void)|undefined{
- if(!isValidElement<{children?:ReactNode;onClick?:()=>void}>(node))return;
+ if(!isValidElement<{children?:ReactNode;onClick?:()=>void}>(node))return undefined;
  if(node.type==='button'&&Children.toArray(node.props.children).join('').includes(label))return node.props.onClick;
  for(const child of Children.toArray(node.props.children)){const found=chip(child,label);if(found)return found;}
+ return undefined;
 }
 const taxiId='00000000-0000-4000-8000-000000000002';
 const queueItem=(rowId:string,description:string,merchantName:string)=>({row:{id:rowId,version:0,description,posted_on:'2026-09-01',amount_minor:'-100',currency_code:'EUR'},

@@ -8,7 +8,6 @@ import SetupPage from "./page";
 
 afterEach(() => vi.resetAllMocks());
 
-// #220: a recovered owner remained on a failure screen until manually clicking Try again.
 it("sends an authenticated workspace home when setup has recovered", async () => {
   workspace.mockResolvedValue({ workspace: { id: "workspace" } });
   await expect(SetupPage()).rejects.toThrow("redirect:/");

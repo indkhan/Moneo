@@ -9,7 +9,6 @@ import { encryptToken } from "@/lib/bank/token-crypto";
 
 const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1).max(2000).optional(), error: z.string().max(200).optional() });
 
-// The bank redirects here. The state must match a fresh pending connection in the caller's workspace.
 export async function GET(request: Request) {
   const back = (result: string) => connectionReturn(request.url, `/import?bank=${result}`);
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -36,11 +35,9 @@ export async function GET(request: Request) {
       iban: account.account_id?.iban?.replace(/\s/g, "") ?? null, currency_code: account.currency, account_name: names[index],
     })));
     if (linked.error) throw linked.error;
-    // The status filter makes the state single-use even if the callback is replayed concurrently.
     const activated = await db.from("bank_connections").update({ status: "active", session_id_encrypted: encryptToken(session.session_id, connectionId),
       valid_until: session.access.valid_until, last_error: null }).eq("id", connectionId).eq("status", "pending").select("id").single();
     if (activated.error) throw activated.error;
-    // A reconnect supersedes older connections to the same bank; account names match, so imports land in the same accounts.
     await db.from("bank_connections").update({ status: "revoked", session_id_encrypted: null }).eq("workspace_id", workspaceId)
       .eq("aspsp_name", pending.data.aspsp_name).in("status", ["active", "expired", "error"]).neq("id", connectionId);
     await startBankSync(connectionId, workspaceId, psu);

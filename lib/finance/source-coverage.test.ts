@@ -65,7 +65,6 @@ it("loads metadata pages in parallel from the first count and still reads past a
   const sources = Array.from({ length: 1201 }, (_, index) => ({ ...source("new"), id: index }));
   const db = { from: (table: string) => {
     const query = { select: () => query, eq: () => query, order: () => query,
-      // The count is stale (1000) while 1201 rows exist, as if rows were written mid-read.
       range: async (from: number, to: number) => ({ data: (table === "imports" ? imports : sources).slice(from, to + 1), count: table === "imports" ? 1 : 1000, error: null }) };
     return query;
   } } as unknown as SupabaseClient;

@@ -8,7 +8,6 @@ import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 
 const bodySchema = z.object({ aspspName: z.string().trim().min(1).max(200), country: z.string().regex(/^[A-Z]{2}$/) }).strict();
 
-// Starts consent: a pending connection holds the redirect state, the browser goes to the bank.
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
@@ -29,7 +28,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ url });
   } catch (error) {
-    // The message carries method, path, status and code only; never the JWT or the key.
     console.error("bank connect failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: enableBankingErrorMessage(error, "The bank connection could not be started") }, { status: 502 });
   }

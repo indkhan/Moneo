@@ -27,7 +27,6 @@ function parseRateText(raw: unknown): string {
 export async function setDisplayCurrency(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const currency = parseCurrency(form.get("currency"));
-  // Display-only: original transactions, accounts and balances are never mutated.
   const { error } = await supabase.from("workspaces").update({ display_currency: currency }).eq("id", workspace.id);
   if (error) throw error;
   revalidatePath("/", "layout");
@@ -44,7 +43,6 @@ export async function addFxRate(form: FormData) {
   if (rateDate > calendarDate(new Date(), workspace.timezone)) throw new Error("Rate date cannot be in the future");
   const sourceRaw = String(form.get("source") ?? "manual").trim() || "manual";
   const source = z.string().trim().min(1).max(120).parse(sourceRaw);
-  // Manual dated rate only; never rewrites original financial records.
   const { error } = await supabase.from("fx_rates").insert({
     workspace_id: workspace.id,
     from_currency: from,

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ScalableMcp } from "@/lib/scalable/client";
 
-// Every Scalable call made through the chat tools is recorded, so the test can prove none of them submits.
 const calls: string[] = [];
 const mcp = { connect: async () => {}, listTools: async () => [], callTool: vi.fn(async (name: string) => { calls.push(name); return {}; }) } as unknown as ScalableMcp;
 vi.mock("@/lib/scalable/server", () => ({ withScalable: (_: string, __: string, work: (client: ScalableMcp) => Promise<unknown>) => work(mcp) }));
@@ -25,7 +24,6 @@ describe("Scalable chat tools", () => {
     const all = await tools.investments_transactions.execute({ allPages: true }) as { data: { transactions: unknown[]; more: boolean } };
     expect(all.data.transactions).toHaveLength(4);
     expect(all.data.more).toBe(false);
-    // Raw reads use the same evidence boundary and preserve fields that convenient summaries omit.
     vi.spyOn(mcp, "listTools").mockResolvedValue([{ name: "get_portfolio_holdings" }]);
     const held = await tools.investments_read.execute({ name: "get_portfolio_holdings", arguments: {} }) as { datasetId: string };
     expect(await tools.investments_calculate.execute({ datasetIds: [first.datasetId, second.datasetId, held.datasetId], code: `
@@ -58,7 +56,6 @@ describe("Scalable chat tools", () => {
   it("leaves out order cards when Scalable is connected read-only", () => {
     expect(build("buy 2 shares of Alphabet", [], "read")).not.toHaveProperty("investments_order");
     expect(build("cancel my open order", [], "read")).not.toHaveProperty("investments_cancelOrder");
-    // Not known yet (connected before access was recorded): the order tool checks Scalable live.
     expect(build("buy 2 shares of Alphabet", [], null)).toHaveProperty("investments_order");
   });
 

@@ -3,7 +3,6 @@ import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
 
-// Chat answering from the same net worth calculation as Home. Calls the real AI provider, so it costs money: run it only when you mean to.
 const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state || !process.env.E2E_REAL_AI, process.env.E2E_REAL_AI ? gatedSkipReason() : "Set E2E_REAL_AI=1 to call the real AI provider");

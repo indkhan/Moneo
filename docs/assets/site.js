@@ -1,10 +1,6 @@
-// Moneo landing page: finds the newest published release on GitHub, points every download at its
-// installer, and suggests the one for this computer. Without a release (or without the API), the
-// links fall back to the releases page.
 const REPO = "indkhan/Moneo";
 const RELEASES = `https://github.com/${REPO}/releases`;
 
-// Installer names from desktop/electron-builder.config.cjs.
 const ASSETS = {
   win: name => /^Moneo-Setup-.*-x64\.exe$/i.test(name),
   "mac-arm": name => /-arm64\.dmg$/i.test(name),
@@ -20,11 +16,10 @@ async function platform() {
   if (/Android|iPhone|iPad|iPod/i.test(ua)) return null;
   if (/Win/i.test(hint) || /Windows/i.test(ua)) return "win";
   if (/mac/i.test(hint) || /Macintosh/i.test(ua)) {
-    // Chromium can tell Intel from Apple silicon; Safari reports Intel on both, and most Macs today are Apple silicon.
     try {
       const { architecture } = await navigator.userAgentData.getHighEntropyValues(["architecture"]);
       if (architecture === "x86") return "mac-intel";
-    } catch { /* not available */ }
+    } catch {}
     return "mac-arm";
   }
   if (/Linux|X11/i.test(hint + ua)) return "appimage";
@@ -66,7 +61,6 @@ async function setUpDownloads() {
   for (const card of cards) {
     const asset = release.assets.find(item => ASSETS[card.dataset.asset](item.name));
     if (!asset) {
-      // Not built for this release (the first macOS builds came later): say so instead of sending people to a page without it.
       card.href = "#run";
       card.setAttribute("aria-disabled", "true");
       card.querySelector("[data-size]").textContent = "Not in this release yet";
@@ -92,7 +86,7 @@ async function showStars() {
     if (!response.ok) return;
     const { stargazers_count: stars } = await response.json();
     if (stars > 0) { badge.textContent = stars >= 1000 ? `${(stars / 1000).toFixed(1)}K` : String(stars); badge.hidden = false; }
-  } catch { /* optional */ }
+  } catch {}
 }
 
 function setUpCopy() {

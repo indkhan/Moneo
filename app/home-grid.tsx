@@ -17,24 +17,15 @@ type Notice = { text: string; action?: { label: string; run: () => void } };
 export type HomeGridProps = Layout & { version: number; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]> };
 
 const CARD_KEY = "card:";
-// Widgets never shift under the dragged one: the order itself changes as it moves, and the grid lays out for real.
 const stay = () => null;
-// The page scrolls only when a widget is held right at the screen's edge: the default 20% band is most of a phone screen.
 const autoScroll = { threshold: { x: 0, y: 0.12 }, acceleration: 10 };
-// Plain text in a widget's heading row starts a drag too; its links and buttons keep working.
 const dragsWidget = (target: EventTarget) => target instanceof Element && !!target.closest("h2, h3") && !target.closest("a, button, input, select, textarea, summary");
 const nearest = (options: CardSize[], columns: number) => options.reduce((best, size) => Math.abs(CARD_SIZES[size].columns - columns) < Math.abs(CARD_SIZES[best].columns - columns) ? size : best);
 
-/**
- * Home's widgets in the user's order and widths. Drag a widget by its grip (or hold it on a phone) to move it, drag its right
- * edge to resize it, and hide or add widgets in place. Every change shows at once and saves in the background.
- */
 export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
   const currentLayout = useRef(layout);
   useLayoutEffect(() => { currentLayout.current = layout; }, [layout]);
-  // The grid owns the layout once shown: a later server render (an added widget's content arriving) can carry an older one.
-  // Another tab's change surfaces as a conflict on the next save.
   const saved = useRef(version);
   const queue = useRef(Promise.resolve());
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -54,7 +45,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
-  /** Widget positions relative to the grid, so the next change can animate from them. */
   function measure() {
     const origin = grid.current?.getBoundingClientRect();
     if (!origin) return [];
@@ -65,7 +55,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
       return [node, at] as const;
     });
   }
-  // Widgets that moved glide from where they were. The dragged one's slot jumps, so the lifted copy stays under the pointer.
   useLayoutEffect(() => {
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     for (const [node, at] of measure()) {
@@ -74,29 +63,23 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
       rects.current.set(key, at);
     }
   }, [layout, resizing]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Masonry on wide screens: each widget is only as tall as its content, and the grid packs the next ones into the gaps.
-  // The grid runs in 4px rows; a widget spans enough of them for its height plus the 16px gap below it.
   useLayoutEffect(() => {
     const node = grid.current;
     if (!node) return;
     const rows = new ResizeObserver(entries => {
       for (const entry of entries) (entry.target as HTMLElement).style.setProperty("--rows", String(Math.ceil((entry.borderBoxSize[0].blockSize + 16) / 4)));
-      // Until every widget has its span, plain rows keep them from drawing on top of each other.
       node.dataset.masonry = "";
     });
     for (const child of node.children) rows.observe(child);
     return () => rows.disconnect();
   }, [layout.items, adding]);
-  /** Content streams in after the last measure, so take positions again just before a change. */
   const remember = () => { for (const [node, at] of measure()) rects.current.set(node.dataset.widget!, at); };
 
   useEffect(() => {
-    // Something to act on stays until it is used, dismissed or replaced: slow readers must not lose Undo.
     if (!notice || notice.action) return;
     const timer = setTimeout(() => setNotice(null), 6000);
     return () => clearTimeout(timer);
   }, [notice]);
-  // A held widget on a phone shows its tools until the next touch elsewhere.
   useEffect(() => {
     if (!selected) return;
     const away = (event: PointerEvent) => { if (!(event.target as Element).closest(`[data-widget="${CSS.escape(selected)}"]`)) setSelected(null); };
@@ -104,7 +87,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     return () => document.removeEventListener("pointerdown", away);
   }, [selected]);
 
-  /** Saves one change after the ones before it, each against the version the last one returned. */
   function save(run: () => Promise<{ version: number } | { error: string } | void>) {
     queue.current = queue.current.then(async () => {
       const result = await run().catch(() => ({ error: "Home could not be saved" }));
@@ -119,7 +101,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     const id = String(active.id), node = grid.current?.querySelector<HTMLElement>(`:scope > [data-widget="${CSS.escape(id)}"]`);
     if (!node) return;
     remember();
-    // The lifted widget is a still copy of itself, so its content never renders twice.
     const clone = node.cloneNode(true) as HTMLElement;
     clone.removeAttribute("data-widget");
     clone.querySelectorAll("[id]").forEach(element => element.removeAttribute("id"));
@@ -131,7 +112,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     setSelected(null);
     setDrag({ id, from: layout.items, clone, width: node.offsetWidth, height: node.offsetHeight, touch });
   }
-  /** A widget under the pointer, or else the nearest one, so empty space in a row or below the grid is somewhere to drop. */
   const nearestWidget: CollisionDetection = args => {
     pointer.current = args.pointerCoordinates;
     const within = pointerWithin(args);
@@ -146,7 +126,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     const at = pointer.current;
     if (!over || !at || over.id === active.id) { skip.current = null; return; }
     const side = dropSide(over.rect, at);
-    // The widget it just moved past can still be nearest; wait until the pointer goes somewhere new.
     const target = `${over.id}:${side}`;
     if (target === skip.current) return;
     skip.current = target;
@@ -169,7 +148,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     if (key.startsWith(CARD_KEY)) save(() => resizeHomeCard(key.slice(CARD_KEY.length), size));
     else persist(next);
   }
-  /** Drag the right edge: the width snaps to the nearest size the widget can take. */
   function startResize(key: string, event: ReactPointerEvent<HTMLElement>) {
     const handle = event.currentTarget, node = handle.closest<HTMLElement>("[data-widget]"), area = grid.current;
     if (!node || !area || event.button !== 0) return;
@@ -193,7 +171,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     handle.addEventListener("pointerup", end, { once: true });
     handle.addEventListener("pointercancel", end, { once: true });
   }
-  /** Arrow keys on the grip move a widget one place; widths differ too much for keyboard dragging to land where expected. */
   function moveKey(key: string, event: KeyboardEvent) {
     const by = ({ ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 } as Record<string, number>)[event.key];
     if (!by) return;
@@ -202,7 +179,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     if (to < 0 || to >= layout.items.length) return;
     change({ ...layout, items: arrayMove(layout.items, from, to) });
     setSaid(`${labels[key] ?? "Widget"} moved to position ${to + 1} of ${layout.items.length}.`);
-    // Moving the widget's node drops focus; give it back to the grip.
     requestAnimationFrame(() => grid.current?.querySelector<HTMLElement>(`:scope > [data-widget="${CSS.escape(key)}"] [data-grip]`)?.focus());
   }
   function resizeKey(key: string, event: KeyboardEvent) {
@@ -224,8 +200,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
       const current = currentLayout.current;
       const items = current.items.filter(item => item !== key);
       items.splice(Math.min(before.items.indexOf(key), items.length), 0, key);
-      // Its content may be here now, yet a refresh still on its way from an earlier save (an added widget) carries none,
-      // so the restore always brings its own; until then the widget shows its placeholder.
       setAdding(current => current.includes(key) ? current : [...current, key]);
       change({ ...current, items }, true);
     } } });
@@ -233,7 +207,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
   function add(key: string) {
     setMenu(false);
     setAdding(current => [...current, key]);
-    // Its content comes with the refreshed page the save returns.
     change({ ...layout, items: [...layout.items, key] }, true);
   }
 
@@ -290,14 +263,11 @@ type WidgetProps = { id: string; label: string; size: CardSize; lifted: boolean;
 
 function Widget({ id, label, size, lifted, options, selected, resizing, children, onHide, onMoveKey, onResizeStart, onResizeKey }: WidgetProps) {
   const { setNodeRef, setActivatorNodeRef, listeners, attributes } = useSortable({ id });
-  // One sensor per event: touch on the whole widget, the mouse on the grip.
   const { onTouchStart, onMouseDown } = (listeners ?? {}) as Record<string, (event: SyntheticEvent) => void>;
   const tools = `transition-opacity ${lifted ? "invisible" : selected || resizing ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"}`;
-  // A mouse drags by the grip or heading, so other text and links stay usable; a finger holds anywhere on the widget.
   return <div ref={setNodeRef} data-widget={id} onTouchStart={onTouchStart} onMouseDown={event => { if (dragsWidget(event.target)) onMouseDown?.(event); }}
     className={`group relative min-w-0 ${CARD_SIZES[size].span} [&:has(>[data-tools]:first-child)]:hidden touch-manipulation [-webkit-touch-callout:none] pointer-coarse:select-none [&>section]:h-full [&_h2]:cursor-grab [&_h3:first-child]:cursor-grab ${lifted ? "rounded-2xl bg-muted/50 outline-2 outline-offset-0 outline-dashed outline-input [&>*]:opacity-0" : ""} ${selected ? "rounded-2xl outline-2 outline-brand" : ""}`}>
     {children}
-    {/* First child only when the widget has nothing to show: it then takes no space in the grid. */}
     <div data-tools className={`absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-border bg-card shadow-sm ${tools}`}>
       <button type="button" ref={setActivatorNodeRef} {...attributes} aria-label={`Move ${label}`} data-grip title="Drag to move" onMouseDown={onMouseDown} onKeyDown={onMoveKey}
         className="flex h-7 cursor-grab items-center rounded-l-full px-2.5 pointer-coarse:h-11 pointer-coarse:px-4 text-muted-foreground hover:text-foreground active:cursor-grabbing"><GripHorizontal className="size-4" aria-hidden="true" /></button>

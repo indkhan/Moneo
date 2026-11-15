@@ -95,10 +95,8 @@ export default function ImportPage() {
   const [index, setIndex] = useState(0);
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [mapping, setMapping] = useState<ImportMapping | null>(null);
-  // `stale`: the shown preview no longer matches the mapping; `editorOpen`: the column editor is visible.
   const [stale, setStale] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  // The user changed the mapping, row decisions or workbook tables, so discarding them needs a warning.
   const [edited, setEdited] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState(false);
   const [moreColumnsOpen, setMoreColumnsOpen] = useState(false);
@@ -119,7 +117,6 @@ export default function ImportPage() {
   const file = files[index];
 
   useEffect(() => () => inspectionRequest.current?.abort(), []);
-  // The review appears far below the upload, so keyboard and screen-reader users are taken to it.
   useEffect(() => { if (inspection) reviewHeading.current?.focus(); }, [inspection]);
   useEffect(() => {
     if (!edited) return;
@@ -128,7 +125,6 @@ export default function ImportPage() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [edited]);
 
-  // Merge rules keep a delayed or reordered status response from regressing a newer state.
   function mergeHistory(updates: HistoryUpdate[], requestOrder: number) {
     setHistory((current) => {
       const byId = new Map(current.map((item) => [item.id, item]));
@@ -169,7 +165,6 @@ export default function ImportPage() {
       setHistoryState("loaded");
     }).catch(() => setHistoryState("failed"));
   }, []);
-  // ponytail: one small status read per active import every 3 s, paused in hidden tabs; batch ids if many run at once.
   useEffect(() => {
     if (!history.some((item) => active(item.status))) return;
     const timer = setInterval(async () => {
@@ -219,9 +214,7 @@ export default function ImportPage() {
       };
       setMapping(nextMapping);
       setSplitAmounts(!nextMapping.amountColumn && !!(nextMapping.debitColumn || nextMapping.creditColumn));
-      // A column set by a proposal must stay visible, so its section starts open.
       setMoreColumnsOpen(MORE_COLUMNS.some(([, key]) => nextMapping[key]));
-      // A proposed reversed sign is easy to miss, so it opens the editor; a reviewed one is the user's choice.
       const needsEditor = !result.mapping || !result.preview || (!corrected && result.mapping.amountSign === "outflow-positive");
       setEditorOpen(needsEditor);
       setStale(needsEditor);
@@ -247,7 +240,6 @@ export default function ImportPage() {
     setEdited(false); setFiles([]); setIndex(0); setInspection(null); setMapping(null); setEditorOpen(false); setStale(false); setBusy(false); setInterpreting(false); setError("");
   }
 
-  // Runs one user action with the shared busy flag and surfaces its error.
   async function run(fallback: string, action: () => Promise<void>, onError?: () => void) {
     setBusy(true);
     setError("");
@@ -280,7 +272,6 @@ export default function ImportPage() {
     });
   }
 
-  // Replaces (or with no decision, clears) the review of one source row.
   function setRowDecision(rowNumber: number, decision?: NonNullable<ImportMapping["rowDecisions"]>[number]) {
     setMapping(current => current && ({ ...current, rowDecisions: [...(current.rowDecisions ?? []).filter(item => item.rowNumber !== rowNumber), ...(decision ? [decision] : [])] }));
     setStale(true); setRowsReviewed(false); setEdited(true);
@@ -374,7 +365,6 @@ export default function ImportPage() {
     <label className={`relative block rounded-xl border border-dashed border-border bg-card text-center transition-colors hover:bg-muted/40 focus-within:ring-2 focus-within:ring-brand ${file ? "p-5" : "p-10"}`}>
       <span className="block text-base font-semibold">{file ? "Drop more statements to replace this selection" : "Drop statements here, or click to choose"}</span>
       <span className="mt-1 block text-sm text-muted-foreground">CSV or XLSX, up to 10 MB each. Several files are imported one after another.</span>
-      {/* The native input covers the zone so dropping files works without a drag-and-drop library. */}
       <input className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed" type="file" accept=".csv,.xlsx" multiple disabled={!hydrated || busy} aria-label="Financial statement files"
         onChange={(event) => {
           const selected = Array.from(event.target.files ?? []);
@@ -467,7 +457,6 @@ export default function ImportPage() {
 
       {result && <div className="space-y-2">
         <h3 className="text-sm font-semibold">Mapping preview</h3>
-        {/* One table restyled as stacked rows on phones, so every value stays readable without sideways scrolling. */}
         <div className="rounded-lg border border-border bg-card md:overflow-x-auto"><table className="w-full text-left text-sm max-md:block md:table-fixed [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-medium [&_th]:text-muted-foreground md:[&_td]:px-3 md:[&_td]:py-2.5 md:[&_td]:align-top"><colgroup className="max-md:hidden"><col className="w-24" /><col /><col className="w-28" /><col className="w-20" /><col className="w-28" /><col className="w-28" /></colgroup><thead className="max-md:hidden"><tr><th>Date</th><th>Description</th><th className="text-right">Amount</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody className="max-md:block">
           {result.examples.slice(0, 10).map((row, i) => <tr key={i} className="border-border max-md:grid max-md:grid-cols-[1fr_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:p-3 [&:not(:first-child)]:border-t md:border-t">
             <td className="whitespace-nowrap tabular-nums text-muted-foreground max-md:text-xs">{row.postedOn}</td>

@@ -22,7 +22,6 @@ function input(): OrganizeInput {
   };
 }
 
-// The old categorizer told the model to omit anything uncertain, and 46% of rows stayed blank with nothing to show for it.
 it("ends every row with a label or a question: skipped answers are asked again once, then become questions", async () => {
   const prompts: string[] = [];
   const ask = vi.fn(async ({ prompt }: AskRequest) => {
@@ -33,7 +32,7 @@ it("ends every row with a label or a question: skipped answers are asked again o
       const answer = { ref: item.ref, decision: "label", category: "c1", newCategory: null, merchant: item.who.name, confidence: 90, reason: "Supermarket", question: null };
       if (item.who.name === "Northstar Market") return [answer];
       if (item.who.name === "Bistro Vela") return retry ? [{ ...answer, category: "c2", confidence: 70 }] : [];
-      if (item.who.name === "Glanzwerk") return [{ ...answer, category: "c99" }]; // not a category it was given
+      if (item.who.name === "Glanzwerk") return [{ ...answer, category: "c99" }];
       return [];
     }) };
   });
@@ -44,20 +43,16 @@ it("ends every row with a label or a question: skipped answers are asked again o
   expect(result.decided.flatMap(item => item.rows).length).toBe(8);
   expect(decided.size).toBe(8);
   expect(result.left).toEqual([]);
-  // The owner's rule, memory and the bank's code decide without the AI.
   expect(decided.get(id(6))).toMatchObject({ kind: "label", source: "rule", categoryId: dining });
   expect(decided.get(id(7))).toMatchObject({ kind: "label", source: "memory", categoryId: dining });
   expect(decided.get(id(8))).toMatchObject({ kind: "label", source: "system", categoryId: groceries, merchantName: "Freshkorb" });
-  // One decision per identity: both Northstar rows share one answer.
   expect(decided.get(id(1))).toMatchObject({ kind: "label", source: "ai", categoryId: groceries, merchantName: "Northstar Market", confidence: 90 });
   expect(decided.get(id(2))).toBe(decided.get(id(1)));
   expect(decided.get(id(3))).toMatchObject({ kind: "label", categoryId: dining, confidence: 70 });
   expect(decided.get(id(4))).toMatchObject({ kind: "question" });
   expect(decided.get(id(5))).toMatchObject({ kind: "question" });
   expect(JSON.parse(prompts[0].slice(prompts[0].indexOf("{"))).items).toHaveLength(4);
-  // Only the skipped and unusable answers are asked again.
   expect(JSON.parse(prompts[1].slice(prompts[1].indexOf("{"))).items.map((item: { who: { name: string } }) => item.who.name).sort()).toEqual(["Bistro Vela", "Glanzwerk", "Mystery Shop"]);
-  // No IBAN or full account number leaves the computer.
   expect(prompts.join("\n")).not.toMatch(/DE89370400440532013000|0532013000/);
 });
 

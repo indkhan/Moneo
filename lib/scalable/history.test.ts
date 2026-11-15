@@ -20,9 +20,9 @@ const days = (over: Partial<HistoryInput> = {}) => { const result = calculateHis
 it("values each day from the first transaction through the day before the first sync, using the latest price and never interpolating", () => {
   expect(days().map(day => [day.date, day.securitiesMinor, day.cashMinor, day.totalMinor])).toEqual([
     ["2026-01-01", 0n, 10000n, 10000n],
-    ["2026-01-02", 2000n, 8000n, 10000n], // the trade's own price
+    ["2026-01-02", 2000n, 8000n, 10000n],
     ["2026-01-03", 2200n, 8000n, 10200n],
-    ["2026-01-04", 2200n, 8000n, 10200n], // a gap in the chart keeps the last price
+    ["2026-01-04", 2200n, 8000n, 10200n],
     ["2026-01-05", 2400n, 8000n, 10400n],
   ]);
 });
@@ -34,7 +34,6 @@ it("signs shares by side, adds exact decimals and keeps selling on the right sid
 });
 
 it("uses the workspace's calendar day for transactions and prices", () => {
-  // 23:30 UTC on Jan 1 is already Jan 2 in Berlin.
   const rows = [cash("d", "2026-01-01T23:30:00Z", "100"), buy("b", "2026-01-02T23:30:00Z", "2", "-20")];
   const over = { rows, charts: { [ISIN]: chart(["2026-01-03T23:30:00Z", 15]) }, before: "2026-01-05" };
   expect(days({ ...over, timeZone: "Europe/Berlin" }).map(day => [day.date, day.totalMinor])).toEqual([["2026-01-02", 10000n], ["2026-01-03", 10000n], ["2026-01-04", 11000n]]);
@@ -70,7 +69,6 @@ it("fails when shares go negative on any day, even if they end right", () => {
   expect(failed({ rows, charts: { [ISIN]: chart() } })).toMatch(/negative/i);
   const crypto = [cash("d", "2026-01-01T09:00:00Z", "100"), etp("s", "2026-01-02T10:00:00Z", "SELL", "1", "10"), etp("b", "2026-01-03T10:00:00Z", "BUY", "1", "-10")];
   expect(failed({ rows: crypto, charts: {}, holdings: [], cashBalance: 100 })).toMatch(/negative/i);
-  // Same-day order does not matter: only each day's end counts.
   expect(days({ rows: [cash("d", "2026-01-01T09:00:00Z", "100"), sell("s", "2026-01-02T09:00:00Z", "1", "10"), buy("b", "2026-01-02T10:00:00Z", "3", "-30")],
     charts: { [ISIN]: chart() } }).length).toBe(5);
 });
@@ -98,7 +96,7 @@ it("values crypto as its ETP's shares at the ETP's own price, counted apart from
   });
   expect(result.map(day => [day.date, day.securitiesMinor, day.cryptoMinor, day.cashMinor, day.totalMinor])).toEqual([
     ["2026-01-01", 0n, 0n, 100000n, 100000n],
-    ["2026-01-02", 0n, 40000n, 60000n, 100000n], // the trade's own price
+    ["2026-01-02", 0n, 40000n, 60000n, 100000n],
     ["2026-01-03", 0n, 45000n, 60000n, 105000n],
     ["2026-01-04", 0n, 45000n, 60000n, 105000n],
     ["2026-01-05", 0n, 50000n, 60000n, 110000n],
@@ -113,7 +111,6 @@ it("stops counting an ETP that was sold", () => {
   expect(result.map(day => [day.cryptoMinor, day.cashMinor])).toEqual([[0n, 100000n], [40000n, 60000n], [40000n, 60000n], [0n, 110000n]]);
 });
 
-// The stand-in below answers like the real server: an exhausted stream starts again when its cursor is left out.
 function fakeMcp(pages: { securities: unknown[][]; crypto: unknown[][] }, charts: Record<string, unknown> = {}, catalog: unknown[] = []) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   return { calls, callTool: async (name: string, args: Record<string, unknown> = {}) => {

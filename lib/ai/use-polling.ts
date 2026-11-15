@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 
-/** Calls `tick` every `ms` while `active` and the tab is visible; a hidden tab pauses and checks once on return. */
 export function usePolling(tick: () => void, ms: number, active: boolean) {
   const latest = useRef(tick);
   useEffect(() => { latest.current = tick; });

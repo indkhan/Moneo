@@ -38,6 +38,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
 
 beforeEach(() => {
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-key");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
   fixture.imports = [{ id: "old-import", status: "undone" }];
   fixture.inserts = [];
   fixture.race = false;

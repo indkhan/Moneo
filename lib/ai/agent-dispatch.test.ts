@@ -6,7 +6,6 @@ vi.mock("workflow/api", () => ({ start: vi.fn(), getRun: vi.fn() }));
 vi.mock("@/workflows/agent-team", () => ({ agentTeam: () => undefined }));
 vi.mock("@/lib/settings", () => ({ loadWorkspaceSettings: async () => ({ ai_data_scopes: ["accounts", "transactions", "planning"] }) }));
 
-// agent_runs with its two unique indexes: one run per import, and one queued/running run per workspace.
 type Run = { id: string; workspace_id: string; import_id: string | null; trigger: string; status: string; rerun_trigger?: string };
 let runs: Run[];
 let rivalBeforeInsert: Run | null;
@@ -35,7 +34,6 @@ const db = { from: () => {
 
 beforeEach(() => { runs = []; rivalBeforeInsert = null; vi.clearAllMocks(); });
 
-// Three bank syncs and a CSV import within minutes started a run each, and each ran every analysis agent and the writer.
 it("collapses imports and syncs landing within the debounce into one waiting run", async () => {
   vi.useFakeTimers({ toFake: ["Date"] }).setSystemTime(Date.parse("2026-11-14T06:00:00Z"));
   const ids = [await startAgentRun(db, "w1", { trigger: "sync" }), await startAgentRun(db, "w1", { trigger: "sync" }),
@@ -47,21 +45,18 @@ it("collapses imports and syncs landing within the debounce into one waiting run
   vi.useRealTimers();
 });
 
-// Rows landing after a run's categorizer read waited an hour for the backlog check.
 it("marks a working run when rows land, so it starts exactly one follow-up", async () => {
   runs.push({ id: "sync-run", workspace_id: "w1", import_id: null, trigger: "sync", status: "running" });
   expect(await startAgentRun(db, "w1", { importId: "import-1" })).toBe("sync-run");
   expect(await startAgentRun(db, "w1", { trigger: "sync" })).toBe("sync-run");
   expect(runs).toEqual([expect.objectContaining({ id: "sync-run", rerun_trigger: "sync" })]);
   expect(start).not.toHaveBeenCalled();
-  // A manual start joins the working run without asking for another.
   runs[0].rerun_trigger = undefined;
   expect(await startAgentRun(db, "w1")).toBe("sync-run");
   expect(runs[0].rerun_trigger).toBeUndefined();
 });
 
 it("two starts racing for an idle workspace end up on one run", async () => {
-  // The other start checked, inserted and won between this start's check and its insert.
   rivalBeforeInsert = { id: "rival", workspace_id: "w1", import_id: null, trigger: "sync", status: "queued" };
   expect(await startAgentRun(db, "w1", { importId: "import-1" })).toBe("rival");
   rivalBeforeInsert = { id: "rival-2", workspace_id: "w2", import_id: null, trigger: "backlog", status: "queued" };

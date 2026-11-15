@@ -12,7 +12,6 @@ it("calls every job in order with the cron secret and keeps going after a failur
   await runCronJobs("http://127.0.0.1:3000", "secret", fetcher as typeof fetch);
   expect(fetcher.mock.calls.map(call => String(call[0]))).toEqual(CRON_JOBS.map(path => `http://127.0.0.1:3000${path}`));
   expect(fetcher.mock.calls.every(call => (call[1]?.headers as Record<string, string>).authorization === "Bearer secret")).toBe(true);
-  // A feature that isn't set up (503) is not worth a warning; the thrown error is.
   expect(console.warn).toHaveBeenCalledOnce();
 });
 

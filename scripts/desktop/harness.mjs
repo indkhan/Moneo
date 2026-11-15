@@ -1,6 +1,3 @@
-// Shared helpers for the packaged-app checks (package-smoke.mjs, package-journey.mjs, package-upgrade.mjs).
-// Every run uses temporary Moneo homes, logs external links instead of opening a browser, and only
-// ever stops processes it started itself.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -49,7 +46,6 @@ const user32 = `Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("use
 export const powershell = command => execFileSync("powershell.exe", ["-NoProfile", "-Command", command], { encoding: "utf8", maxBuffer: 64 << 20 }).trim();
 const win32 = command => powershell(`${user32}; ${command}`);
 
-/** Process table: pid, parent, name, command line. */
 function processTable() {
   if (process.platform === "win32") {
     return JSON.parse(powershell("Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress"))
@@ -61,7 +57,6 @@ function processTable() {
   });
 }
 
-/** Every process started from the app, or naming its home folder (pg_ctl's postgres outlives its parent). */
 export function processesOf(mainPid, home) {
   const rows = processTable();
   const found = new Map(rows.filter(row => row.pid === mainPid || row.command.toLowerCase().includes(home.toLowerCase())).map(row => [row.pid, row]));
@@ -81,7 +76,6 @@ export function tempHome(label) {
   return mkdtempSync(path.join(os.tmpdir(), `moneo-shell-${label}-`));
 }
 
-/** A Moneo home plus the processes launched in it. */
 export class Desktop {
   constructor(exe, label, extraEnv = {}) {
     this.exe = exe;
@@ -92,7 +86,6 @@ export class Desktop {
     this.seen = new Map();
   }
 
-  /** Starts the app with a DevTools port (allowed only with MONEO_DESKTOP_DEBUG=1). */
   async launch(args = []) {
     this.cdpPort = await freePort();
     const child = spawn(this.exe, [`--remote-debugging-port=${this.cdpPort}`, "--use-fake-device-for-media-stream", ...args], { env: this.env, stdio: "ignore" });
@@ -122,13 +115,11 @@ export class Desktop {
   appPage(timeout) { return this.page(/^http:\/\/localhost:\d+\//, timeout); }
   setupPage(timeout = 30_000) { return this.page(/\/setup\/index\.html$/, timeout); }
 
-  /** Remembers this launch's processes so the checks (and cleanup) can account for them. */
   snapshot() {
     for (const row of processesOf(this.child.pid, this.home)) this.seen.set(row.pid, row);
     return [...this.seen.values()];
   }
 
-  /** A second launch: forwards its arguments to the running app, then exits. */
   async second(args) {
     const child = spawn(this.exe, args, { env: this.env, stdio: "ignore" });
     await new Promise(resolve => child.on("exit", resolve));
@@ -151,16 +142,14 @@ export class Desktop {
   mainWindow() {
     return win32(`(Get-Process -Id ${this.child.pid}).MainWindowHandle`);
   }
-  /** Windows: the message the title bar's close button sends. */
   closeWindow(handle) { win32(`[W.U]::PostMessage([IntPtr]${handle}, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)`); }
   windowVisible(handle) { return win32(`[W.U]::IsWindowVisible([IntPtr]${handle})`) === "True"; }
 
   async cleanup({ keepHome = false } = {}) {
     await this.cdp?.close().catch(() => {});
     if (this.child && !this.child.exited) await this.quit().catch(() => {});
-    // Only processes these launches started.
     const current = new Map(processTable().map(row => [row.pid, row]));
-    for (const row of this.snapshotSafe()) if (current.get(row.pid)?.command === row.command && alive(row.pid)) try { process.kill(row.pid); } catch { /* gone */ }
+    for (const row of this.snapshotSafe()) if (current.get(row.pid)?.command === row.command && alive(row.pid)) try { process.kill(row.pid); } catch {}
     if (results.some(result => !result.ok)) {
       for (const name of ["main.log", "next.log", "backend.log", "rest.log", "auth.log"]) {
         const text = this.log(name);
@@ -172,12 +161,11 @@ export class Desktop {
   }
 
   snapshotSafe() {
-    try { if (this.child) this.snapshot(); } catch { /* process table unavailable */ }
+    try { if (this.child) this.snapshot(); } catch {}
     return [...this.seen.values()];
   }
 }
 
-/** Imports a CSV through the app's own API, as the import page does once the columns are chosen, and waits for it. */
 export async function importCsv(page, { filename, csv, accountName }) {
   const mapping = { accountName, currencyCode: "EUR", dateColumn: "date", descriptionColumn: "description", amountColumn: "amount", dateFormat: "iso", amountSign: "signed", numericConvention: "decimal-dot" };
   const origin = new URL(page.url()).origin;
@@ -193,7 +181,6 @@ export async function importCsv(page, { filename, csv, accountName }) {
 
 export async function transactionsText(page) {
   const origin = new URL(page.url()).origin;
-  // Right after a (re)start the shell's own first load may still be running and cancel this one.
   for (let attempt = 0; ; attempt++) {
     try { await page.goto(`${origin}/money/transactions`); break; }
     catch (error) { if (attempt >= 4 || !/ERR_ABORTED/.test(error.message)) throw error; await page.waitForLoadState("load").catch(() => {}); }

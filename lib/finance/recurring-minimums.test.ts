@@ -13,7 +13,6 @@ function monthly(prefix: string, months: string[], description: string): Recurri
 }
 const cadences = (rows: RecurringTransaction[]) => detectRecurring(rows).map(item => item.cadence);
 
-// Short cadences fit by chance more easily, so they need more payments before Moneo suggests them.
 describe("recurring minimum evidence", () => {
   it("needs 5 bi-weekly payments", () => {
     expect(cadences(series("b", "2026-01-02", 14, 3, "Cleaner"))).toEqual([]);

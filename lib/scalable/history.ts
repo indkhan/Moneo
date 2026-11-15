@@ -1,31 +1,24 @@
 import { z } from "zod";
-import { dayRange } from "@/app/money/wealth/net-worth";
+import { dayRange } from "@/lib/finance/net-worth";
 import { calendarDate } from "@/lib/finance/calendar";
 import { decimalRatio, holdingValue } from "@/lib/finance/wealth";
 import type { ScalableMcp } from "./client";
 import { toMinor } from "./live";
 import { decimalText } from "./portfolio";
 
-// Past daily values of a Scalable portfolio, worked out from its own transactions and price charts. This is a
-// calculation, not a record: it is saved apart from wealth_items and wealth_events, and only after replaying
-// everything lands on today's real holdings and cash.
-
 const CURRENCY = "EUR";
 const PAGE_SIZE = 100, MAX_PAGES = 1000;
-// Sparse far back, close to daily recently; merged so every date gets the best price available.
 const TIMEFRAMES = ["max", "one_year", "six_months", "year_to_date"];
 
 type Chart = { currency: string; points: { at: string; price: string }[] };
 export type HistoryRow = { id: string; at: string; currency?: string } & (
   | { kind: "security"; isin: string; side: string; quantity: string | null; amountText: string; price?: string | null }
   | { kind: "cash"; quantity?: undefined; amountText: string }
-  // Scalable holds crypto as shares of an ETP, so `isin` and `quantity` are the ETP's.
   | { kind: "crypto"; isin: string; side: string; quantity: string | null; amountText: string; price?: string | null });
 export type HistoryInput = {
   rows: HistoryRow[]; charts: Record<string, Chart>;
   holdings: { isin: string; filled: number | string; currency?: string }[];
   cashBalance: number | string; timeZone: string;
-  /** The date of the first real synced value: days stop before it. */
   before: string;
 };
 export type HistoryDay = { date: string; securitiesMinor: bigint; cryptoMinor: bigint; cashMinor: bigint; totalMinor: bigint };
@@ -48,12 +41,10 @@ const holdingsSchema = z.object({
 });
 const chartSchema = z.object({ currency: z.string().nullish(), dataPoints: z.array(z.object({ midPrice: decimal.nullish(), timestampUtc: z.string() })).default([]) });
 const detailsSchema = z.object({ transaction: z.object({ security: z.object({ isin: z.string() }), securityTrade: z.object({ averagePrice: decimal.nullish() }).nullish() }) });
-/** What a trade's details add to the list: the ETP behind a crypto row, and the price paid without fees. These never change, so each trade is asked about once. */
 export type TradeDetail = { isin: string; price: string | null };
 export type TradeDetails = { known: Map<string, TradeDetail>; remember: (id: string, detail: TradeDetail) => Promise<void> };
 const settled = (row: { status: string; isCancellation?: boolean | null }) => row.status === "SETTLED" && !row.isCancellation;
 
-/** Every settled trade and cash move. Security and crypto rows page separately, and a stream whose cursor runs out starts over if asked again. */
 async function readRows(mcp: Pick<ScalableMcp, "callTool">, details: TradeDetails) {
   const securities = new Map<string, HistoryRow>(), crypto = new Map<string, Omit<Extract<HistoryRow, { kind: "crypto" }>, "isin">>();
   let cursor: string | undefined, cryptoCursor: string | undefined, securitiesDone = false, cryptoDone = false;
@@ -64,7 +55,6 @@ async function readRows(mcp: Pick<ScalableMcp, "callTool">, details: TradeDetail
       const base = { id: row.id, at: row.lastEventAt, ...(row.currency ? { currency: row.currency } : {}) };
       if (row.security) securities.set(row.id, { ...base, kind: "security", isin: row.security.isin, side: row.security.side ?? "unknown", quantity: row.security.quantity == null ? null : text(row.security.quantity), amountText: String(row.security.amount ?? 0) });
       else if (row.cash) securities.set(row.id, { ...base, kind: "cash", amountText: String(row.cash.amount ?? 0) });
-      // nonTradeSecurity and eltif rows say nothing reliable about quantity; if they matter, the check below fails.
     }
     if (!cryptoDone) for (const row of (reply.crypto?.transactions ?? []).filter(settled))
       crypto.set(row.id, { id: row.id, at: row.lastEventAt, kind: "crypto", side: row.side ?? "unknown", quantity: row.quantity == null ? null : text(row.quantity), amountText: String(row.amount ?? 0) });
@@ -78,13 +68,11 @@ async function readRows(mcp: Pick<ScalableMcp, "callTool">, details: TradeDetail
     const { security, securityTrade } = detailsSchema.parse(await mcp.callTool("get_transaction_details", { transactionId: id })).transaction;
     const price = securityTrade?.averagePrice != null && Number(securityTrade.averagePrice) > 0 ? text(securityTrade.averagePrice) : null;
     const found = { isin: security.isin, price };
-    // Saved straight away, so a run that stops partway doesn't ask again.
     await details.remember(id, found);
     return found;
   };
   const rows: HistoryRow[] = [];
   for (const row of securities.values()) rows.push(row.kind === "security" ? { ...row, price: (await detail(row.id)).price } : row);
-  // A crypto row only names the coin; its details name the ETP that was actually bought.
   for (const row of crypto.values()) { const { isin, price } = await detail(row.id); rows.push({ ...row, isin, price }); }
   return rows;
 }
@@ -96,12 +84,10 @@ async function readChart(mcp: Pick<ScalableMcp, "callTool">, isin: string): Prom
   return { currency: replies.find(reply => reply.dataPoints.length && reply.currency !== CURRENCY)?.currency ?? CURRENCY, points: [...points].map(([at, price]) => ({ at, price })) };
 }
 
-/** Everything the calculation needs, through Scalable's read tools only. A security chart that fails stops the run, to retry another day. */
 export async function readHistoryInput(mcp: Pick<ScalableMcp, "callTool">, timeZone: string, before: string, details: TradeDetails): Promise<HistoryInput> {
   const rows = await readRows(mcp, details);
   const holdings = holdingsSchema.parse(await mcp.callTool("get_portfolio_holdings"));
   const cash = z.object({ cash: z.object({ cashBalance: decimal }) }).parse(await mcp.callTool("get_portfolio_cash_breakdown"));
-  // Scalable's coin figure shrinks over time, while the ETP's shares and price are exact, so those are what count.
   const unbacked = holdings.cryptoHoldings.find(coin => Number(coin.position?.filled ?? 0) > 0 && !coin.etpPositions?.some(etp => Number(etp.position?.filled ?? 0) > 0));
   if (unbacked) throw new Error(`${unbacked.ticker} is held without an ETP position`);
   const charts: Record<string, Chart> = {};
@@ -111,14 +97,12 @@ export async function readHistoryInput(mcp: Pick<ScalableMcp, "callTool">, timeZ
       ...holdings.cryptoHoldings.flatMap(coin => (coin.etpPositions ?? []).flatMap(etp => etp.position ? [{ isin: etp.isin, filled: etp.position.filled }] : []))] };
 }
 
-// Shares and prices are fixed-point bigints with 18 decimals, so nothing drifts the way floats do.
-const ONE = 10n ** 18n, TOLERANCE = 10n ** 12n /* a millionth of a share */, CASH_TOLERANCE = 100n /* one euro */;
+const ONE = 10n ** 18n, TOLERANCE = 10n ** 12n, CASH_TOLERANCE = 100n;
 const CENTS = 100n, CENT_SCALE = ONE / CENTS;
 const scaled = (value: number | string) => { const ratio = decimalRatio(text(value)); return ratio.numerator * ONE / ratio.denominator; };
 const decimalOf = (value: bigint) => `${value / ONE}.${(value % ONE).toString().padStart(18, "0")}`;
 const value = (quantity: bigint, price: bigint) => holdingValue(decimalOf(quantity), decimalOf(price), CURRENCY);
 const absolute = (minor: bigint) => minor < 0n ? -minor : minor;
-/** The price per unit each trade paid, without fees when Scalable says so, otherwise worked out from its amount. A trade with no money or quantity says nothing. */
 const tradePrices = (rows: Exclude<HistoryRow, { kind: "cash" }>[]) => rows.flatMap(row => {
   if (row.price) return [{ at: row.at, price: scaled(row.price) }];
   const minor = BigInt(toMinor(row.amountText, CURRENCY)), quantity = scaled(row.quantity!);
@@ -131,7 +115,6 @@ function pricesFrom(chart: Chart | undefined, timeZone: string, trades: { at: st
     .map(point => ({ day: calendarDate(point.at, timeZone), at: Date.parse(point.at), price: point.price })).sort((a, b) => a.at - b.at);
   return { points, next: 0, current: null };
 }
-/** The latest price on or before `date`, which must only move forward; a price is never interpolated. */
 function priceOn(prices: Prices, date: string) {
   while (prices.next < prices.points.length && prices.points[prices.next].day <= date) prices.current = prices.points[prices.next++].price;
   return prices.current;
@@ -200,7 +183,6 @@ function replay(input: HistoryInput): HistoryResult {
   return { ok: true, days: days.filter(day => day.date < input.before) };
 }
 
-/** Each past day's value, or why it can't be trusted. The check runs over everything before any day is returned. */
 export function calculateHistory(input: HistoryInput): HistoryResult {
   try { return replay(input); } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : "The transactions could not be read" }; }
 }

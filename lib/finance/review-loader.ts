@@ -1,4 +1,4 @@
-import { netWorth } from "@/app/money/wealth/net-worth";
+import { netWorth } from "@/lib/finance/net-worth";
 import { loadNetWorthEvidence, netWorthModel } from "./net-worth-source";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
@@ -67,9 +67,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     obligations: assumptions.filter(row => row.confirmed && row.enabled && !row.removed_at).map(row => ({ ...row, link: "/plan" })),
     wealth: { included: datedWealth.included, excludedLinked: datedWealth.excludedLinked, missingInputs: datedWealth.missingInputs, outdated: datedWealth.outdated, sourceCoverage: datedWealth.sourceCoverage, manualRecords: datedWealth.manualRecords, link: "/money/wealth" },
     forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceVersion: plan.sourceVersion, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
-  // Workflow transport, persistence and prompts receive exact decimal strings, never JSON numbers for money.
   const fullCalculationEvidence = JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input, forecastSource: plan.calculationEvidence }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
-  // The shared calculation, on the review's last day, so a review quotes the total every screen shows.
   const worth = netWorthModel(await loadNetWorthEvidence(db, { id: workspace.id, timezone: settings.timezone }, { balances: Promise.resolve(balances) }));
   const [lastDay] = worth.points([to > worth.today ? worth.today : to]);
   return { ...base, accountBalanceTotals: base.netWorth, netWorth: Object.fromEntries([...netWorth(lastDay)].map(([currency, amount]) => [currency, amount.toString()])), investigation, queryInvestigation,

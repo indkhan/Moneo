@@ -1,14 +1,6 @@
 type Page = PromiseLike<{ data: unknown[] | null; error: unknown; count?: number | null }>;
 const PARALLEL = 6;
 
-/**
- * Reads every row of a stably ordered query, `size` rows per request. The first page's
- * exact count lets the remaining pages load several at a time instead of one round trip
- * at a time; reading continues while pages come back full, so rows added meanwhile are not dropped.
- * The default matches Supabase's 1000-row response limit; a server that caps pages lower is
- * detected from the first page (short of both the request and the count) and paged at its limit.
- * `page` must build a fresh query each call (PostgREST builders are mutable).
- */
 export async function allPages<T>(page: (from: number, to: number, count?: "exact") => Page, requested = 1000): Promise<T[]> {
   let size = requested;
   const read = async (index: number, count?: "exact") => {

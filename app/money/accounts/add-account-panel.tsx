@@ -2,7 +2,6 @@
 
 import { useRef, type ReactNode } from "react";
 
-/** The Add account disclosure: Escape or Cancel closes it and returns focus to its button. */
 export function AddAccountPanel({ children }: { children: ReactNode }) {
   const panel = useRef<HTMLDetailsElement>(null);
   const close = () => { if (panel.current) panel.current.open = false; panel.current?.querySelector("summary")?.focus(); };

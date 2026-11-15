@@ -1,5 +1,3 @@
-// Loads desktop/src/backend under plain Node, bundled the way scripts/desktop/build.mjs bundles it
-// for Electron (CommonJS, node22). Used by the backend-* scripts.
 import { mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";

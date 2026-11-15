@@ -13,7 +13,6 @@ export const dashboardLayouts = pgTable("dashboard_layouts", {
   check("dashboard_layouts_sizes_check", sql`jsonb_typeof(${table.sizes}) = 'object'`),
 ]);
 
-// Supabase owns the rest of auth.users; only its referenced primary key belongs here.
 const authUsers = pgSchema("auth").table("users", { id: uuid("id").primaryKey() });
 
 export const summaryRuns = pgTable("summary_runs", {
@@ -151,7 +150,6 @@ export const bankConnections = pgTable("bank_connections", {
   provider: text("provider").notNull().default("enable_banking"),
   aspspName: text("aspsp_name").notNull(),
   aspspCountry: text("aspsp_country").notNull(),
-  // AES-256-GCM ciphertext of the Enable Banking session id; service_role only.
   sessionIdEncrypted: text("session_id_encrypted"),
   authState: uuid("auth_state").defaultRandom().notNull().unique(),
   status: text("status").notNull().default("pending"),
@@ -160,7 +158,6 @@ export const bankConnections = pgTable("bank_connections", {
   syncStartedAt: timestamp("sync_started_at", { withTimezone: true }),
   lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
   lastError: text("last_error"),
-  // One sync at a time (202611130003): claim_bank_sync takes the lease, hold_bank_sync keeps it.
   syncLeaseToken: uuid("sync_lease_token"),
   syncLeaseUntil: timestamp("sync_lease_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -195,7 +192,6 @@ export const bankConnectionAccounts = pgTable("bank_connection_accounts", {
   check("bank_connection_accounts_last_error_check", sql`char_length(${table.lastError}) <= 1000`),
 ]);
 
-// Scalable Capital over the official MCP (202611050001). Verifier and tokens are sealed, service_role only.
 export const scalableConnections = pgTable("scalable_connections", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -230,7 +226,6 @@ export const scalableConnections = pgTable("scalable_connections", {
   check("scalable_connections_history_error_check", sql`char_length(${table.historyError}) <= 1000`),
 ]);
 
-// Money Scalable says moved in or out of the broker, once per its own ID (202611080006). Read-time rules decide how charts show it.
 export const scalableTransfers = pgTable("scalable_transfers", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   providerId: text("provider_id").notNull(),
@@ -254,7 +249,6 @@ export const scalableTransfers = pgTable("scalable_transfers", {
   check("scalable_transfers_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
 ]);
 
-// A loan repayment tied to one bank payment, in the state it had when accepted (202611080005).
 export const iouRepayments = pgTable("iou_repayments", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -277,7 +271,6 @@ export const iouRepayments = pgTable("iou_repayments", {
   check("iou_repayments_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
 ]);
 
-// Past Scalable values calculated from its transactions and price charts (202611080002). A calculation, not a record.
 export const scalableTradeDetails = pgTable("scalable_trade_details", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   providerId: text("provider_id").notNull(),
@@ -302,7 +295,6 @@ export const scalableValueHistory = pgTable("scalable_value_history", {
   check("scalable_value_history_check", sql`${table.totalMinor} = ${table.securitiesMinor} + ${table.cryptoMinor} + ${table.cashMinor}`),
 ]);
 
-// The owner's service keys entered in the app (202611070002). Sealed, service_role only, kept on reset.
 export const serviceKeys = pgTable("service_keys", {
   name: text("name").primaryKey(),
   valueEncrypted: text("value_encrypted").notNull(),
@@ -312,8 +304,6 @@ export const serviceKeys = pgTable("service_keys", {
   check("service_keys_value_encrypted_check", sql`char_length(${table.valueEncrypted}) between 1 and 20000`),
 ]);
 
-// IBANs of the owner's own accounts (202610260001): money moved between them is a transfer.
-// account_id null names an own account that Moneo does not track.
 export const ownAccountIdentifiers = pgTable("own_account_identifiers", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -454,12 +444,10 @@ export const transactions = pgTable("transactions", {
   refundOfId: uuid("refund_of_id").references((): AnyPgColumn => transactions.id, { onDelete: "set null" }),
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  // Who set category/merchant: null = not organized yet. AI labels carry their confidence, reason and organizer_ops entry.
   organizedBy: text("organized_by"),
   aiConfidence: text("ai_confidence"),
   aiReason: text("ai_reason"),
   organizeOpId: uuid("organize_op_id"),
-  // The identity the row resolved to when it landed (202611130006); never financial data.
   identityId: uuid("identity_id").references((): AnyPgColumn => organizeIdentities.id, { onDelete: "set null" }),
 }, (table) => [
   index("transactions_workspace_id").on(table.workspaceId, table.id),
@@ -481,8 +469,6 @@ export const transactions = pgTable("transactions", {
   check("transactions_ai_reason_check", sql`char_length(${table.aiReason}) <= 500`),
 ]);
 
-// The bank's full transaction beside the statement CSV (202611130005), keyed like source_transactions.
-// Context for the organizer only; never used for ledger amounts. Removed when its import is undone and on reset.
 export const bankTransactionRaw = pgTable("bank_transaction_raw", {
   importId: uuid("import_id").notNull().references(() => imports.id, { onDelete: "cascade" }),
   rowNumber: integer("row_number").notNull(),
@@ -558,7 +544,6 @@ export const correctionEvents = pgTable("correction_events", {
   check("correction_events_origin_check", sql`${table.origin} in ('owner','ai')`),
 ]);
 
-/** One AI label write: its Undo record and, once undone, a suppressed suggestion for that identity. */
 export const organizerOps = pgTable("organizer_ops", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -582,7 +567,6 @@ export const organizerOps = pgTable("organizer_ops", {
   check("organizer_ops_check", sql`${table.categoryId} is not null or ${table.merchantId} is not null`),
 ]);
 
-// Who a payment is with (202611130006): evidence from the bank's data and the description, with aliases so spellings unify.
 export const organizeIdentities = pgTable("organize_identities", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -613,7 +597,6 @@ export const organizeIdentityAliases = pgTable("organize_identity_aliases", {
   check("organize_identity_aliases_value_check", sql`char_length(${table.value}) between 1 and 1000`),
 ]);
 
-// "Needs you": one question per identity, raised by the landing checks or the organizer.
 export const organizeQuestions = pgTable("organize_questions", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -638,7 +621,6 @@ export const organizeQuestions = pgTable("organize_questions", {
   check("organize_questions_created_by_check", sql`${table.createdBy} in ('system','ai')`),
 ]);
 
-// What an identity is, as the owner confirmed it (source 'owner'); only those rows are memory the organizer trusts.
 export const organizeMemory = pgTable("organize_memory", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -888,9 +870,7 @@ export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   title: text("title").notNull(),
-  // False while the title is a stand-in Moneo may still replace; a rename settles it.
   titleSettled: boolean("title_settled").default(false).notNull(),
-  // Set for an artifact's own chat, which stays out of the chat list.
   artifactId: uuid("artifact_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -1310,7 +1290,6 @@ export const financialEvidenceReceipts = pgTable("financial_evidence_receipts", 
     and jsonb_typeof(${table.receipt}->'sources') = 'array' and ${table.receipt}->'scopes' = to_jsonb(${table.scopes})) is true`),
 ]);
 
-// Agent team (202610160010). Agents write through the service role; owners only decide proposals and cancel runs.
 export const agentRuns = pgTable("agent_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
@@ -1325,7 +1304,6 @@ export const agentRuns = pgTable("agent_runs", {
   modelBudget: integer("model_budget").notNull().default(6),
   modelStatus: text("model_status").notNull().default("unknown"),
   error: text("error"),
-  // 202611130008: a request that arrived while the run worked; what the analysis saw; when blank rows are retried.
   rerunTrigger: text("rerun_trigger"),
   dataFingerprint: text("data_fingerprint"),
   organizeAfter: timestamp("organize_after", { withTimezone: true }),

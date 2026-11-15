@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 import { reviewedCoverage } from "@/app/balance-input";
 import { accountTypes } from "./naming";
 import { minorDigits } from "@/lib/finance/fx";
@@ -22,7 +22,6 @@ const accountType = z.enum(accountTypes);
 export async function editAccount(_state: { error?: string }, form: FormData): Promise<{ error?: string }> {
   try {
   const { supabase, workspace } = await requireWorkspace();
-  // Asked again here, not only in the form: archiving can't drop money from net worth without an answer.
   if (form.get("operation") === "archive") {
     const evidence = await loadBalanceEvidence(supabase, workspace.id);
     const account = resolveBalances(evidence.accounts.filter(row => row.id === form.get("accountId")), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
@@ -44,11 +43,6 @@ export async function editAccount(_state: { error?: string }, form: FormData): P
   redirect(`/money/accounts?saved=account:${String(form.get("accountId"))}#account-${String(form.get("accountId"))}`);
 }
 
-/**
- * Archives an account that still holds money, after the owner said where it went. Each row uses the same audited tools as
- * by hand, keyed by this request, so pressing again after a failure can't add the money twice. Restoring the account
- * leaves these rows in place; each can be undone from its transaction.
- */
 export async function archiveWithAnswer(_state: { error?: string }, form: FormData): Promise<{ error?: string }> {
   const accountId = String(form.get("accountId"));
   try {
@@ -64,7 +58,6 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
     const today = calendarDate(new Date(evidence.asOf), workspace.timezone);
     let targetId = plan.target?.id ?? null;
     if (plan.createCash) {
-      // Keyed by this request, so pressing again after a failure finds the same account.
       targetId = stableId(`${requestId}:cash`);
       const existing = await supabase.from("accounts").select("id").eq("id", targetId).maybeSingle();
       if (existing.error) throw new Error(existing.error.message);
@@ -72,7 +65,6 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
         const created = await supabase.from("accounts").insert({ id: targetId, workspace_id: workspace.id, name: "Cash", type: "cash", currency_code: account.currency_code });
         if (created.error) throw new Error(created.error.message);
       }
-      // A new account counts from a balance; the money moved in today is what's in it.
       const dayBefore = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
       const opening = await supabase.rpc("record_manual_balance", { p_account_id: targetId, p_amount_minor: "0", p_date: dayBefore, p_reviewed: false, p_covered_transactions: null, p_expected_snapshot_id: null, p_expected_version: 0, p_request_id: stableId(`${requestId}:opening`) });
       if (opening.error) throw new Error(opening.error.message);
@@ -93,7 +85,6 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
         if (linked.error) throw new Error(linked.error.message);
       }
     }
-    // The bank's row may already be here. If not, the next sync links it, so this can't stop the archiving.
     if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id).catch(() => undefined);
     const fresh = await supabase.from("accounts").select("version").eq("id", accountId).single();
     if (fresh.error) throw new Error(fresh.error.message);
@@ -117,7 +108,6 @@ export async function undoMoneyMetadata(form: FormData) {
   redirect("/money/accounts");
 }
 
-// Same RPC and confirmation of today's activity as Home's manual balance, returning here.
 export async function updateBalance(_state: { error?: string }, form: FormData): Promise<{ error?: string }> {
   try {
     const { supabase, workspace } = await requireWorkspace();
@@ -172,7 +162,6 @@ function transfersRedirect(result: { linked: number; marked: number; skipped: nu
   redirect(`/money/accounts?${new URLSearchParams({ transfers: `${result.linked}-${result.marked}-${result.skipped}` })}#own-accounts`);
 }
 
-// Saving an own IBAN immediately looks for the transfers it explains.
 export async function addOwnAccount(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const iban = normalizeIban(String(form.get("iban") ?? ""));
@@ -184,7 +173,6 @@ export async function addOwnAccount(form: FormData) {
   transfersRedirect(await linkOwnTransfers(supabase, workspace.id));
 }
 
-// Removing an IBAN keeps transfers already linked; each can be undone from its transaction.
 export async function removeOwnAccount(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const { error } = await supabase.from("own_account_identifiers").delete().eq("workspace_id", workspace.id).eq("id", z.uuid().parse(form.get("id")));

@@ -11,7 +11,6 @@ afterEach(async () => {
   if (dir) await rm(dir, { recursive: true, force: true });
 });
 
-// Regression: a fresh Moneo install inherited the computer's Claude Code login without consent.
 it("uses an existing Claude login only after connection, and stops using it after disconnection", async () => {
   dir = await mkdtemp(path.join(tmpdir(), "moneo-claude-consent-"));
   vi.stubEnv("MONEO_DATA_DIR", dir);

@@ -12,7 +12,6 @@ export type BalanceTransaction = { id: string; account_id: string; amount_minor:
   kind?: string; review_reasons?: string[]; canonical_amount_minor?: string | number; pending_released_minor?: string };
 export type CoveredTransaction = { id: string; version: number; amount_minor: string; currency_code: string; posted_on: string; posted_at: string | null };
 
-// A review records financial fields and canonical identity, never ingestion order.
 export function coveredTransaction(row: BalanceTransaction): CoveredTransaction {
   return { id: row.id, version: row.version ?? 0, amount_minor: exactMinor(row.amount_minor).toString(),
     currency_code: row.currency_code, posted_on: row.posted_on, posted_at: row.posted_at ? new Date(row.posted_at).toISOString() : null };
@@ -24,8 +23,6 @@ export function balanceReviewRows(ledger: BalanceTransaction[], accountId: strin
     .map(coveredTransaction).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-// What point in the day a balance describes. A date-only closing balance means the same whichever source row carried it,
-// so overlapping imports of one statement agree; a reviewed or after-transaction boundary is defined by its evidence.
 function boundaryEvidence(snapshot: BalanceSnapshot) {
   if ((snapshot.boundary_kind ?? "date_only") === "date_only") return "date_only";
   return JSON.stringify([snapshot.boundary_kind, snapshot.source_transaction_id ?? null,
@@ -37,14 +34,11 @@ function exactMinor(value: string | number): bigint {
   return BigInt(value);
 }
 
-/** Newest financial moment first; records of the same moment settle on the most recently recorded one, whatever order they were read in. */
 export const latestSnapshotFirst = (a: BalanceSnapshot, b: BalanceSnapshot) => Date.parse(b.as_of) - Date.parse(a.as_of)
   || (Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "") || 0) || (b.id ?? "").localeCompare(a.id ?? "");
-/** Records of the same moment that say something different from the chosen one. */
 export const conflictingSnapshots = (snapshot: BalanceSnapshot, candidates: BalanceSnapshot[]) => candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of)
   && (item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== exactMinor(snapshot.amount_minor) || boundaryEvidence(item) !== boundaryEvidence(snapshot)));
 
-/** Where a posted row falls against a balance: already inside it, or after it. Throws when the records can't say. One rule, for today and every past day. */
 export function rowAgainstSnapshot(row: BalanceTransaction, postingDate: string, snapshot: BalanceSnapshot, boundaryDate: string, observedDuringDay: boolean): "inside" | "after" {
   if (postingDate < boundaryDate) return "inside";
   if (snapshot.boundary_kind === "reviewed_activity" && postingDate === boundaryDate) {
@@ -60,12 +54,10 @@ export function rowAgainstSnapshot(row: BalanceTransaction, postingDate: string,
     }
     return "after";
   }
-  // A date-only balance is that day's closing balance, unless it was observed during the day: then later timed rows still move it.
   if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) return "inside";
   return "after";
 }
 
-/** The rows a reviewed balance says it covers; refuses when they changed since the review. */
 export function coveredRows(snapshot: BalanceSnapshot, ledger: BalanceTransaction[]) {
   const covered = new Set<string>();
   if (snapshot.boundary_kind !== "reviewed_activity") return covered;
@@ -102,7 +94,6 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       if (balance.conflicts.length) balance.warnings.push("Conflicting balances on the same date; using the most recently recorded one");
       balance.snapshot_valid = true;
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
-      // Balances entered for today record the moment they were observed; past-dated ones start at local midnight.
       const observedDuringDay = calendarDate(new Date(Date.parse(snapshot.as_of) - 1).toISOString(), timeZone) === boundaryDate;
       const covered = coveredRows(snapshot, ledger);
       let estimate = amount;
@@ -114,7 +105,6 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
         const delta = exactMinor(row.amount_minor);
         if (delta === 0n) continue;
         if (rowAgainstSnapshot(row, postingDate, snapshot, boundaryDate, observedDuringDay) === "inside") {
-          // A balance typed in today without confirming today's postings may or may not include them.
           if (postingDate === boundaryDate && boundaryDate === today && snapshot.actor_id && (snapshot.boundary_kind ?? "date_only") === "date_only") balance.unconfirmed_rows++;
           continue;
         }
@@ -125,7 +115,6 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       balance.estimated_amount_minor = estimate.toString();
       balance.status = boundaryDate === today ? "current" : "stale";
       if (balance.unconfirmed_rows) balance.warnings.push(`Not confirmed to include today's ${balance.unconfirmed_rows === 1 ? "posting" : `${balance.unconfirmed_rows} postings`}; confirm today's activity when you set the balance`);
-      // Older balance plus recorded later activity is still the best known balance; status keeps it labelled.
       balance.amount_minor = estimate.toString();
     } catch (error) {
       balance.status = "ambiguous";
@@ -140,7 +129,6 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
   }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources) }));
 }
 
-// Every reader gets complete, workspace-scoped evidence instead of a silently truncated first page.
 export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: string, asOf = new Date().toISOString()): Promise<{
   accounts: BalanceAccount[]; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; asOf: string;
 }> {
@@ -167,7 +155,6 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
   return { accounts, snapshots, ledger: ledger.map(row => ({ ...row,
     pending_released_minor: (released.get(row.id) ?? 0n).toString(),
     canonical_amount_minor: row.amount_minor,
-    // This is derived balance evidence; the source posting and its boundary identity remain unchanged.
     amount_minor: additionalFees.has(row.id) ? (exactMinor(row.amount_minor) - additionalFees.get(row.id)!).toString() : row.amount_minor,
     source_transaction_ids: row.transaction_sources?.map(source => source.source_transaction_id) ?? [] })), asOf };
 }

@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { buildSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "../../lib/finance/source-coverage.ts";
 
-// Synthetic normalized ingestion, actual scoped SQL projections, and the shared reader.
-// Caller owns the disposable schema transaction; this helper never commits.
 export async function sourceCoverageReaderProof(tx, schema) {
   const actor = randomUUID(), account = randomUUID(), initial = randomUUID(), overlap = randomUUID(), source = randomUUID();
   await tx.unsafe(`insert into ${schema}.auth_users(id,email) values($1,$2)`, [actor, `qa-${actor}@example.invalid`]);

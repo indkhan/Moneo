@@ -15,7 +15,6 @@ export type InvestigationEntities = Record<"accounts" | "categories" | "merchant
 const entityKeys = ["accounts", "categories", "merchants"] as const;
 const normalized = (value: string) => value.normalize("NFKC").trim().toLocaleLowerCase("en");
 
-/** Resolve only owned entities; ambiguity is a correction request, never a guessed ID. */
 export function resolveInvestigation(input: unknown, entities: InvestigationEntities): InvestigationSpec {
   const spec = investigationSchema.parse(input);
   for (const key of entityKeys) {
@@ -36,14 +35,12 @@ export function resolveInvestigation(input: unknown, entities: InvestigationEnti
     for (const operation of ["include", "exclude"] as const) filter[operation] = filter[operation]?.map(value => {
       const owned = labels.filter(label => normalized(label) === normalized(value)).sort()[0];
       if (!owned) throw new Error(`Unknown owned ${key}: ${value}`);
-      // These entities are stored as text labels, not UUIDs. Use the existing stable label.
       return owned;
     });
   }
   return spec;
 }
 
-// Sort object keys and set-valued query fields so equivalent requests share identities.
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)]));
@@ -66,7 +63,6 @@ function metricValue(row: InvestigationRow, metric: InvestigationSpec["metric"])
   if (metric === "count") return 1n;
   if (metric === "absolute") return abs(amount);
   if (metric === "signed") return amount;
-  // Transfer principals are gross flows, never financial income/spending/net.
   if (row.kind === "transfer") return 0n;
   if (metric === "net") return amount;
   if (metric === "income") return row.kind !== "refund" && amount > 0n ? amount : 0n;
@@ -75,7 +71,6 @@ function metricValue(row: InvestigationRow, metric: InvestigationSpec["metric"])
 export function investigationGroup(row: InvestigationRow, dimensions: InvestigationSpec["groupBy"]) {
   return Object.fromEntries(dimensions.map(d => [d,
     d === "account" ? row.accountId : d === "category" ? row.categoryId : d === "merchant" ? row.merchantId :
-      // Tags are a set-valued partition: a record belongs once, never once per tag.
       d === "tag" ? [...new Set(row.tags)].sort() : d === "event" ? row.event : d === "date" ? row.date : d === "month" ? row.date.slice(0, 7) : row[d],
   ]));
 }
@@ -112,7 +107,6 @@ function allocatedReporting(rows: InvestigationRow[], spec: InvestigationSpec, r
   return { report: { ...report, allocationPolicy: "largest-remainder of exact signed component quotas; canonical rounded amount conserved; ties by effective ID" }, allocated };
 }
 
-/** All effective records are loaded before totals; pagination applies solely to support. No financial writes. */
 export function investigate(input: unknown, rows: InvestigationRow[], context: InvestigationContext, options: { retainSupport?: boolean } = {}) {
   const spec = investigationSchema.parse(input);
   const { page, ...meaning } = spec;
@@ -151,7 +145,6 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
   const sorted = [...groups.values()].sort((a, b) => {
     const deltaA = a.current - a.comparison, deltaB = b.current - b.comparison;
     const amountOrder = spec.sort === "delta-desc" ? compare(deltaB, deltaA) : spec.sort === "delta-asc" ? compare(deltaA, deltaB) : spec.sort === "absolute-delta-desc" ? compare(abs(deltaB), abs(deltaA)) : spec.sort === "current-desc" ? compare(b.current, a.current) : spec.sort === "current-asc" ? compare(a.current, b.current) : 0;
-    // No ranking across currencies: exact minor units are comparable only within a currency.
     return a.currency.localeCompare(b.currency) || amountOrder || a.key.localeCompare(b.key);
   });
   if (page.groupKey && !groups.has(page.groupKey)) throw new Error("Unknown investigation group");

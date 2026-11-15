@@ -20,13 +20,11 @@ function describe(state: AppUpdateState) {
   }
 }
 
-/** Moneo Desktop only: check GitHub releases for a newer version and install it. */
 export function AppUpdate({ initial }: { initial: AppUpdateState }) {
   const [state, setState] = useState(initial);
   const [pending, start] = useTransition();
   const run = (action: "check" | "install") => start(async () => setState(await appUpdate(action, state)));
   const working = state.state === "downloading" || state.state === "installing";
-  // Follow the download. Once it installs, Moneo restarts and opens a new window by itself.
   useEffect(() => {
     if (!working) return;
     const timer = setTimeout(async () => setState(await appUpdate("status", state).catch(() => state)), 1_000);

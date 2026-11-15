@@ -6,7 +6,6 @@ export type AgentProposalView = { id: string; agent: AgentId; kind: ProposalKind
 export type AgentRunView = { id: string; status: string; trigger: string; import_id: string | null; briefing: string | null; model_calls: number; model_budget: number; model_status: string; error: string | null; created_at: string; finished_at: string | null;
   tasks: AgentTaskView[]; proposals: AgentProposalView[] };
 
-/** One RLS-scoped read of a run with its tasks and proposals, for the page and its live polling. */
 export async function loadAgentRun(db: SupabaseClient, workspaceId: string, runId: string): Promise<AgentRunView | null> {
   const [run, tasks, proposals] = await Promise.all([
     db.from("agent_runs").select("id, status, trigger, import_id, briefing, model_calls, model_budget, model_status, error, created_at, finished_at").eq("workspace_id", workspaceId).eq("id", runId).maybeSingle(),

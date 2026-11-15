@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { NetWorthChart } from "@/app/net-worth-chart";
+import { NetWorthChart } from "@/components/net-worth-chart";
 import { displayFormat } from "@/lib/display-format";
 import { calendarDate } from "@/lib/finance/calendar";
 import type { WealthItem } from "@/lib/finance/wealth";
@@ -11,13 +11,8 @@ const signed = (minor: bigint, text: string) => minor > 0n ? `+${text}` : text;
 const tone = (minor: bigint) => minor > 0n ? "text-success" : minor < 0n ? "text-danger" : "text-muted-foreground";
 const pct = (part: bigint, whole: bigint) => whole > 0n ? Number(part * 10000n / whole) / 100 : null;
 const pctText = (value: number | null) => value === null ? "" : `${value > 0 ? "+" : ""}${value.toLocaleString("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
-// Distinct steps of the brand colour for the allocation bar; cash is always the muted segment.
 const SHADES = ["bg-brand", "bg-brand/75", "bg-brand/55", "bg-brand/40", "bg-brand/25", "bg-amber-500/70"];
 
-/**
- * The Scalable portfolio on Wealth: value with today's move, Scalable's gain or loss per period, the recorded value
- * over time, where the money sits, each position's gain, and the latest activity and watchlist from the last sync.
- */
 export function ScalableInvestments({ portfolio, positions, history, calculatedBefore, historyFailed, syncedAt, active, locale, timeZone }: {
   portfolio: ScalablePortfolio; positions: WealthItem[]; history: Point[]; calculatedBefore: string | null; historyFailed: boolean; syncedAt: string | null; active: boolean; locale: string; timeZone: string;
 }) {
@@ -26,7 +21,6 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
   const total = BigInt(portfolio.totalMinor);
   const today = portfolio.performance.find(entry => entry.timeframe === "INTRADAY");
   const todayMinor = today ? BigInt(today.returnMinor) : null;
-  // A market closed over the weekend: Friday's move is Friday's, whenever the sync ran. A price from today, or none on record, reads as today.
   const movedOn = portfolio.valuedAt ? calendarDate(portfolio.valuedAt, timeZone) : null;
   const moveLabel = !movedOn || movedOn === calendarDate(new Date(), timeZone) ? "today" : `on ${date(movedOn)}`;
   const periods = Object.entries(PERIODS).filter(([key]) => key !== "INTRADAY").flatMap(([key, label]) => {
@@ -34,7 +28,6 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
   const slices = [...positions.map(item => ({ name: item.name, minor: BigInt(item.amount_minor) })),
     ...(BigInt(portfolio.cryptoMinor) > 0n ? [{ name: "Crypto", minor: BigInt(portfolio.cryptoMinor) }] : [])].sort((a, b) => Number(b.minor - a.minor));
   const cash = BigInt(portfolio.cashMinor);
-  // From the first trade this difference is mostly money paid in, not a gain, so it is only shown for synced days.
   const first = calculatedBefore ? undefined : history[0]?.value, change = first === undefined ? null : total - first;
 
   return <section aria-labelledby="scalable-heading" className="space-y-5 rounded-xl border border-border bg-card p-6">

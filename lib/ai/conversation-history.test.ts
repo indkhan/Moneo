@@ -80,7 +80,6 @@ it("searches live titles and message text with escaped wildcards", async () => {
   expect(found.threads.map(thread => thread.id)).toEqual(["b", "a"]);
   expect(found.threadsCursor).toBeNull();
   expect(calls.filter(call => call[1] === "ilike").map(call => call[2][1])).toEqual(["%100\\%\\_rent_%", "%100\\%\\_rent_%"]);
-  // Both reads keep to live chats and leave out artifacts' own chats.
   expect(calls.filter(call => call[0] === "conversations" && call[1] === "is").map(call => call[2][0])).toEqual(["deleted_at", "artifact_id", "deleted_at", "artifact_id"]);
   expect(calls.find(call => call[1] === "in")?.[2]).toEqual(["id", ["b"]]);
 });
@@ -116,7 +115,6 @@ describe("saved answer activity", () => {
     expect(answer?.tools?.[1].output).toHaveLength(2000 + "\n… (truncated)".length);
     expect(answer).not.toHaveProperty("reply_to");
     expect(messages.find(row => row.id === "m3")).not.toHaveProperty("tools");
-    // A spoken question keeps only its badge, not the raw context.
     expect(messages.find(row => row.id === "m1")).toMatchObject({ spoken: true });
     expect(messages.find(row => row.id === "m1")).not.toHaveProperty("context");
     expect(answer).not.toHaveProperty("spoken");

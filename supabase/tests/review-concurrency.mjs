@@ -1,4 +1,3 @@
-// Real database roles/connections; committed synthetic fixtures are removed by exact IDs.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -28,7 +27,6 @@ async function whileBlocked(holderWork, waitingWork, queryName, expected = "canc
   const lockError = await locked;
   if (lockError) throw lockError;
   const waiter = db.begin(waitingWork);
-  // Observe rejection immediately while the lock holder is still alive.
   waiter.catch(() => {});
   try {
     let blocked = false;
@@ -58,7 +56,6 @@ try {
   await whileBlocked(async tx => {
     await tx`select set_config('request.jwt.claim.sub',${user},true)`;
     await tx.unsafe("set local role authenticated");
-    // Exercise the first preference insert, not only updates of an existing row.
     await tx`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspace},array['accounts'])`;
   }, tx => finish(tx, permissionsJob), "finish_financial_review");
   assert.equal((await db`select count(*)::integer count from public.saved_analyses where workspace_id=${workspace}`)[0].count, 0);

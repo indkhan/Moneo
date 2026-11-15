@@ -2,7 +2,6 @@ import { Children, isValidElement, type ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { CurrencySelect } from "./currency-select";
 
-// A mounted picker keeps its hook state across renders; this replays that without a DOM.
 const hooks = vi.hoisted(() => ({ state: [] as unknown[], cursor: 0, dirty: false }));
 vi.mock("react", async importOriginal => ({ ...await importOriginal<typeof import("react")>(), useId: () => "id", useEffect: () => {},
   useState: (initial: unknown) => {

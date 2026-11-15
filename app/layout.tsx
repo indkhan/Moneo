@@ -11,7 +11,6 @@ import { ThemePreference } from "@/components/theme-preference";
 import { hasSupabase } from "@/lib/env";
 import { requireWorkspace } from "@/lib/auth";
 
-// Downloaded at build time and served by Moneo itself, so the app stays local-first and works offline.
 const sans = Geist({ subsets: ["latin"], variable: "--font-geist" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage", axes: ["opsz"] });
@@ -22,30 +21,24 @@ export const metadata: Metadata = {
   applicationName: "Moneo",
   appleWebApp: { capable: true, title: "Moneo", statusBarStyle: "default" },
   icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
-  // iPhone Safari reads this tag, not mobile-web-app-capable, to open the Home Screen app standalone.
   other: { "apple-mobile-web-app-capable": "yes" },
 };
 
-// viewport-fit=cover lets env(safe-area-inset-*) report the iPhone notch and home indicator, which the mobile nav relies on.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  // Matches the page background in each mode so the browser bar and iOS status area blend in.
   themeColor: [{ media: "(prefers-color-scheme: light)", color: "#f4f3ee" }, { media: "(prefers-color-scheme: dark)", color: "#0f1011" }],
 };
 
 type Theme = "light" | "dark" | "system";
 
-// Streams in after the shell so the saved theme never blocks the first paint or loading.tsx.
 async function WorkspaceTheme({ fallback }: { fallback: Theme }) {
   let theme = fallback;
-  try { theme = (await requireWorkspace()).settings.theme; } catch { /* signed out or no workspace: keep the cookie theme */ }
+  try { theme = (await requireWorkspace()).settings.theme; } catch {}
   return <ThemePreference preference={theme} />;
 }
 
-// Sidebar counts and palette accounts. Not awaited: the shell streams them in behind <Suspense>.
-// ponytail: root layouts don't re-render on client navigation, so counts refresh on reload or router.refresh().
 async function loadShellData(): Promise<ShellData> {
   try {
     const { supabase, workspace } = await requireWorkspace();

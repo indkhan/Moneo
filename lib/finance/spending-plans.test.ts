@@ -39,14 +39,12 @@ describe("monthly category spending", () => {
     const transactions = [
       row({ amountMinor: -4000n }),
       row({ amountMinor: -1500n, categoryId: "other" }),
-      row({ amountMinor: 10000n }), // income is not spending
+      row({ amountMinor: 10000n }),
       row({ amountMinor: -99999n, status: "pending" }),
       row({ amountMinor: -99999n, kind: "transfer" }),
       row({ amountMinor: -99999n, postedOn: "2026-08-31" }),
       row({ amountMinor: -99999n, currencyCode: "USD" }),
-      // Linked refund posted this month against a Groceries original.
       row({ amountMinor: 1000n, kind: "refund", categoryId: null, refundOfCategoryId: CATEGORY, refundOfCurrencyCode: EUR }),
-      // Refund linked to another category must not reduce this one.
       row({ amountMinor: 5000n, kind: "refund", categoryId: null, refundOfCategoryId: "other", refundOfCurrencyCode: EUR }),
     ];
     expect(spendingForCategory(transactions, CATEGORY, EUR, MONTH)).toBe(3000n);

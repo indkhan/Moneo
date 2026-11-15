@@ -5,12 +5,11 @@ import { expandSchedule } from "@/lib/finance/model";
 import { formatInputAmount } from "@/lib/finance/format";
 import { confirmSeries, declineSeries } from "./actions";
 import { ActionForm, ScheduleDialog } from "./forms";
-import { formatMoney as formatCurrency, seriesKey } from "./series";
-import { loadSuggestions, MAX_TRANSACTIONS, rankSuggestions, seriesDecision, type Suggestion } from "./suggestions";
+import { formatMoney as formatCurrency, seriesKey } from "@/lib/recurring/series";
+import { loadSuggestions, MAX_TRANSACTIONS, rankSuggestions, seriesDecision, type Suggestion } from "@/lib/recurring/suggestions";
 
 const FIRST_BATCH = 10;
 
-// Detection reads up to 10k postings in serial keyset pages, so the page streams this section.
 export async function DetectedPatterns({ supabase, workspace, names, today, categories }: { supabase: SupabaseClient; workspace: { id: string; locale: string }; names: Record<string, string>; today: string; categories: string[] }) {
   const formatMoney = (amount: string | bigint, currency: string) => formatCurrency(amount, currency, workspace.locale);
   const { pending, reviewed, invalidated, truncated, cutoff, observedFrom, observedTo, detected, queryError, storedError, detectError } = await loadSuggestions(supabase, workspace);
@@ -22,7 +21,6 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
     const decision = seriesDecision({ series, evidence });
     const hidden = { accountId: decision.accountId, label: decision.label, cadence: decision.cadence, currencyCode: decision.currencyCode,
       sourceEvidence: JSON.stringify(decision.evidence), runAnchorId: decision.runAnchorId, evidenceLimited: String(decision.evidenceLimited) };
-    // Prefill the latest amount and the next date this pattern is expected, so confirming is usually one click.
     const latest = evidence.at(-1);
     const amount = BigInt(latest?.amount_minor ?? series.amountMaxMinor);
     const next = latest ? expandSchedule({ account_id: series.accountId, amount_minor: amount.toString(), currency_code: series.currencyCode, cadence: series.cadence,
@@ -34,7 +32,6 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
         <span className="rounded bg-muted px-2 py-0.5 text-xs">{cadenceWords[series.cadence] ?? series.cadence}</span>
         {status === "confirmed" && <span className="rounded bg-success-soft px-2 py-0.5 text-xs text-success">Confirmed{assumption?.confirmed && assumption.enabled && !assumption.removed_at ? " · used in forecast" : " · review schedule in Plan"}</span>}
         {status === "dismissed" && <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">Dismissed</span>}
-        {/* Smallest to largest payment, whichever way the money goes. */}
         <span className="font-mono text-sm tabular-nums">{series.amountMinMinor === series.amountMaxMinor ? formatMoney(series.amountMinMinor, series.currencyCode)
           : series.amountMaxMinor < 0n ? <>{formatMoney(series.amountMaxMinor, series.currencyCode)} to {formatMoney(series.amountMinMinor, series.currencyCode)}</>
           : <>{formatMoney(series.amountMinMinor, series.currencyCode)} to {formatMoney(series.amountMaxMinor, series.currencyCode)}</>}</span>
@@ -78,7 +75,6 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
       <details className="text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">How detection works</summary><p className="mt-2">Looks at up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} recent posted transactions. Statement intervals, missing statements and account completeness are unknown. Pending items, transfers and unresolved classifications are excluded. A pattern needs at least three payments, so yearly ones need two years of history. Confirming creates one forecast assumption; schedules you edited in Plan are kept. Regular purchases can look like this too, so check the evidence before confirming.</p></details>
     </section>
 
-    {/* Already decided: out of the way until wanted, but still there to change a decision. */}
     {reviewed.length > 0 && <details aria-label="Reviewed patterns" className="group space-y-3">
       <summary className="cursor-pointer text-sm font-medium">Already decided <span className="text-muted-foreground">({reviewed.length})</span></summary>
       <div className="mt-3 space-y-3">{reviewed.map(card)}</div>

@@ -7,22 +7,18 @@ import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 
-/** `label` is the payee's name, never the bank's raw text; `recent` are the newest few transactions, so a person can decide from the sheet without opening Organize. */
 export type UncategorizedGroup = { key: string; label: string; count: number; rows: { id: string; version: number }[]; suggested: string | null;
   recent: { id: string; date: string; amountMinor: string; currency: string }[] };
 
 const MAX_GROUPS = 30;
 
-/** Uncategorized spending grouped by what the bank wrote, biggest groups first, each with the category the app would pick. */
 export async function loadUncategorizedGroups() {
   const { supabase, workspace } = await requireWorkspace();
   const [rows, categories, proposals, loans] = await Promise.all([
     supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code, merchants(name)").eq("workspace_id", workspace.id).eq("status", "posted").is("category_id", null).neq("kind", "transfer")
       .order("posted_on", { ascending: false }).limit(1000),
     supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).order("name").limit(500),
-    // The Categorizer's picks it was not sure enough to apply.
     supabase.from("agent_proposals").select("payload").eq("workspace_id", workspace.id).eq("kind", "categorize").in("status", ["proposed", "failed"]).limit(200),
-    // A loan's payout is recorded in Wealth, not spending to categorize.
     loadLoanPayoutIds(supabase, workspace.id).catch(() => new Set<string>()),
   ]);
   if (rows.error || categories.error || proposals.error) throw new Error((rows.error ?? categories.error ?? proposals.error)!.message);
@@ -44,10 +40,8 @@ export async function loadUncategorizedGroups() {
     groups.set(key, group);
   }
   const top = [...groups.values()].sort((a, b) => b.count - a.count).slice(0, MAX_GROUPS);
-  // Payments to one person for different things share a name; the cleaned text keeps what each was for.
   const named = Map.groupBy(top, group => group.label);
   for (const group of top) if (named.get(group.label)!.length > 1) group.label = organizationDisplayName(group.key);
-  // History and approved rules suggest a category for groups the Categorizer left open.
   const open = top.filter(group => !group.suggested);
   if (open.length) {
     const history = await loadOrganizationSuggestions(supabase, workspace.id, open.map(group => group.rows[0])).catch(() => null);
@@ -59,20 +53,13 @@ export async function loadUncategorizedGroups() {
   return { groups: top, total: spending.length, categories: (categories.data ?? []) as { id: string; name: string }[] };
 }
 
-// A group names an existing category or a new one the person typed.
 const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.number().int().min(0) }).strict()).min(1).max(1000), categoryId: z.uuid().optional(),
   newCategory: z.string().trim().min(1).max(100).optional(), key: z.string().max(1000) }).refine(group => !!group.categoryId !== !!group.newCategory);
 
-/**
- * Categorizes a group through the audited organization review, 50 rows per batch. Only when the person asks does it also
- * save a rule, so later syncs categorize the same description by themselves. Rows a person corrected meanwhile are left alone; each batch can be undone.
- * A failure comes back as `error` with the groups applied before it, because production hides a thrown action's message.
- */
 export async function categorizeGroups(inputs: z.input<typeof groupInput>[], remember = false): Promise<{ applied: Record<string, number>; error?: string }> {
   const groups = z.array(groupInput).min(1).max(30).safeParse(inputs);
   if (!groups.success) return { applied: {}, error: "These transactions could not be categorized. Reload and try again." };
   const context = await requireWorkspace();
-  // One request and one refresh for the whole batch: each refresh re-renders Home, which is slow on a phone.
   const applied: Record<string, number> = {};
   let error: string | undefined;
   try {

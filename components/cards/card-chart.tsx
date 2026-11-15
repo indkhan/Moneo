@@ -6,11 +6,9 @@ import { minorDigits } from "@/lib/finance/fx";
 type Series = { name: string; values: (number | null)[]; color?: string };
 export type CardChartProps = { type: "line" | "area" | "bar" | "hbar" | "donut" | "sparkline"; labels: string[]; series: Series[]; stacked?: boolean; axis?: boolean; currency?: string; minor?: boolean; height?: number; className?: string; style?: React.CSSProperties };
 
-// The app's own chart colours, in order, for series that don't pick one.
 const PALETTE = ["var(--color-brand)", "var(--color-ai)", "var(--color-chart-out)", "var(--color-warning)", "var(--color-chart-input)", "var(--color-success)", "var(--color-danger)", "var(--color-muted-foreground)"];
 const W = 600;
 
-/** A chart value as shown: minor-unit values (cents) are divided down to the currency's major unit first. */
 export function format(value: number | null | undefined, currency?: string, minor?: boolean) {
   if (value === null || value === undefined) return "–";
   if (currency && minor) value = value / 10 ** minorDigits(currency);
@@ -18,7 +16,6 @@ export function format(value: number | null | undefined, currency?: string, mino
     : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
-/** Charts drawn as SVG by the app from the card's numbers; the card never passes code or HTML to a chart. */
 export function CardChart({ type, labels, series, stacked, axis, currency, minor, height, className, style }: CardChartProps) {
   const shown = (value: number | null | undefined) => format(value, currency, minor);
   const [active, setActive] = useState<number | null>(null);
@@ -33,7 +30,6 @@ export function CardChart({ type, labels, series, stacked, axis, currency, minor
   if (type === "donut") {
     const values = series[0].values.map(value => Math.max(0, value ?? 0));
     const total = values.reduce((sum, value) => sum + value, 0) || 1;
-    // Each slice starts where the ones before it end.
     const starts = values.map((_, index) => values.slice(0, index).reduce((sum, value) => sum + (value / total) * 100, 0));
     const size = height ?? 140;
     return <div className={`relative flex items-center gap-4 ${className ?? ""}`} style={style} onPointerLeave={() => setActive(null)}>

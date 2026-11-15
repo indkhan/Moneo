@@ -1,6 +1,5 @@
 export type Point = { date: string; value: bigint };
 
-// Server-rendered SVG: no chart library or client JS. Numbers are used only for pixel scale.
 export function Sparkline({ points, label, width = 120, height = 32, className = "text-brand", area = false }: { points: Point[]; label: string; width?: number; height?: number; className?: string; area?: boolean }) {
   if (points.length < 2) return <span className="text-xs text-muted-foreground">No trend yet</span>;
   const values = points.map(point => Number(point.value));

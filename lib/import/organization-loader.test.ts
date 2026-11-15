@@ -28,7 +28,6 @@ it('suppresses later suggestions for retained user corrections and refuses stale
  expect((await loadOrganizationSuggestions(client({corrected:true}).db,id(10),[{id:id(4),version:0}])).proposals).toEqual([]);
  for(const options of [{stale:true},{rulesError:true}])await expect(loadOrganizationSuggestions(client(options).db,id(10),[{id:id(4),version:0}])).rejects.toThrow();
 });
-// The old auto-apply stored AI guesses as owner corrections, and its labelled rows then counted as "consistent history" for more guesses.
 it('never treats AI labels as consistent history or AI-origin events as owner corrections',async()=>{
  const selection=[{id:id(4),version:0}];
  expect((await loadOrganizationSuggestions(client({noRules:true,historyBy:'owner'}).db,id(10),selection)).proposals).toMatchObject([{basis:'consistent-history',categoryId:id(21)}]);

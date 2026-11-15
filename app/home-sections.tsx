@@ -11,7 +11,6 @@ type SectionProps = { db: SupabaseClient; workspaceId: string; currency: string;
 
 import { card } from "./section-fallback";
 
-/** A formatted amount with its minor units dimmed, like the design's hero figures. */
 export function Figure({ value, digits, className }: { value: string; digits: number; className?: string }) {
   const match = digits > 0 ? value.match(new RegExp(`^(.*\\d)([.,]\\d{${digits}})(\\D*)$`)) : null;
   return <p className={className}>{match ? <>{match[1]}<span className="text-[0.5em] tracking-tight text-subtle">{match[2]}</span>{match[3]}</> : value}</p>;
@@ -19,7 +18,6 @@ export function Figure({ value, digits, className }: { value: string; digits: nu
 
 const monthName = (from: string, locale: string, month: "short" | "long" = "long") => month === "short" ? displayFormat(locale).shortMonth(from) : displayFormat(locale).month(from);
 
-/** Six months of money in vs out; the In/Out/month selection happens in the browser over this one read. */
 export async function CashFlowPanel({ db, workspaceId, currency, today, locale }: SectionProps) {
   let data;
   try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }

@@ -15,8 +15,6 @@ type Scheduled = { account_id: string | null; amount_minor: string; currency_cod
 
 export function expandSchedule(item: Scheduled, start: string, days: number, uncertaintyBps = 1000): ForecastEvent[] {
   if (item.enabled === false || !item.account_id) return [];
-  // edit_assumption retains this anchor for non-schedule edits and replaces it
-  // with the intentional start date when date/cadence actually changes.
   const anchor = item.schedule_anchor_on ?? item.starts_on;
   const first = new Date(`${anchor}T00:00:00Z`);
   const horizon = new Date(`${start}T00:00:00Z`);
@@ -117,15 +115,12 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   missingInputs.push(...debts.missingInputs);
   const events: ForecastEvent[] = (assumptions ?? []).filter(item => item.account_id && accountIds.has(item.account_id) && !debts.excludedAssumptionIds.includes(item.id)).flatMap(item => {
     const planned = expandSchedule(item, startDate, horizonDays, preferences.uncertainty_bps);
-    // Retain overdue explicit occurrences, including those reopened by undo or changed evidence.
     for (const date of new Set(settlements.filter(link => link.assumption_id === item.id && link.scheduled_on < startDate).map(link => link.scheduled_on))) {
       const past = expandSchedule(item, date, 1, preferences.uncertainty_bps);
       if (past[0]?.date === date) planned.push(past[0]);
     }
     return planned.flatMap(event => {
       const explicit = settlements.filter(link => link.assumption_id === item.id && link.scheduled_on === event.date);
-      // Candidate dismissal and association Undo retain independent fulfillment proof
-      // for an eligible user schedule; source corrections still invalidate it.
       if (!explicit.some(link => !link.undone_at) && (item.source === "recurring_confirmed" || item.recurring_evidence_eligible === true) && recurringSeries.some(series =>
         series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
           balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
@@ -219,7 +214,6 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   const coverageEnd = new Date(Date.parse(`${startDate}T00:00:00Z`) + horizonDays * 86400000).toISOString().slice(0, 10);
   const sourceCoverage = buildSourceCoverage({ from: boundary ?? "0001-01-01", to: coverageEnd, accountIds: [...accountIds], ledgerBasis: "balance_activity" },
     balanceEvidence.ledger.filter(row => accountIds.has(row.account_id)).map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources);
-  // Preserve pre-conversion facts and revisions even when a changed rate rounds to the same minor unit.
   const calculationEvidence = { workspace: { displayCurrency: workspace.display_currency, timezone: workspace.timezone }, startDate,
     balances: { accounts: balanceEvidence.accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger },
     wealth, debts, preferences, preferencesVersion, allocations, assumptions, rates, recurringSeries, settlements, sourceMetadata, scenario: scenarioEvidence, conversions };

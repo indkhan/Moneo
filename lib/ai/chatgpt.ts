@@ -5,9 +5,6 @@ import { z } from "zod";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 import { serviceKey } from "@/lib/service-keys";
 
-// "Sign in with ChatGPT" for open-source, locally hosted apps: the owner's ChatGPT plan pays for
-// AI requests instead of an API key. Dynamic client registration with PKCE, no client secret.
-// Docs: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
 const AUTH = "https://auth.openai.com/api/accounts";
 const RESOURCE = "https://api.openai.com/v1";
 const SCOPE = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
@@ -19,7 +16,6 @@ export type AiSource = "chatgpt" | "claude" | "api_key";
 const tokensSchema = z.object({ accessToken: z.string(), refreshToken: z.string().nullable(), expiresAt: z.number(), scopes: z.array(z.string()) });
 const stateSchema = z.object({
   hostId: z.string().transform(value => z.uuid().safeParse(value).success ? `urn:uuid:${value}` : value),
-  // Which one pays when both are set up; the owner picks it in Settings.
   source: z.enum(["chatgpt", "claude", "api_key"]).default("chatgpt"),
   account: z.object({ clientId: z.string(), email: z.string().nullable(), idToken: z.string().nullable(), tokens: tokensSchema }).nullable().default(null),
   pending: z.object({ state: z.string(), verifier: z.string(), redirectUri: z.string(), clientId: z.string(), createdAt: z.number() }).nullable().default(null),
@@ -29,7 +25,6 @@ type Tokens = z.infer<typeof tokensSchema>;
 
 export class ChatGPTError extends Error {}
 
-// Tokens are sealed with the app's encryption key, so the file alone does not leak them.
 async function load(): Promise<State> {
   try { return stateSchema.parse(JSON.parse(decryptToken(await readFile(file(), "utf8"), AAD))); }
   catch (error) {
@@ -56,13 +51,11 @@ async function token(body: Record<string, string>, previous?: Tokens) {
   return { tokens, idToken: data.id_token ?? null };
 }
 
-// Only shown in Settings; nothing is authorized from it, so the payload is read without verifying.
 function emailFrom(idToken: string | null) {
   try { return z.object({ email: z.string() }).parse(JSON.parse(Buffer.from(idToken!.split(".")[1], "base64url").toString())).email; }
   catch { return null; }
 }
 
-/** The ChatGPT authorize URL. OpenAI only accepts a 127.0.0.1 loopback callback. */
 export async function startSignIn(port: number) {
   const state = await load();
   const verifier = randomBytes(32).toString("base64url"), oauthState = randomUUID();
@@ -96,11 +89,9 @@ export async function finishSignIn(query: URLSearchParams) {
 export async function signOut() {
   const state = await load();
   if (state.account?.tokens.refreshToken) {
-    // Best effort; the owner can also disconnect Moneo in ChatGPT settings.
     await fetch(`${AUTH}/oauth/revoke`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ token: state.account.tokens.refreshToken, token_type_hint: "refresh_token", client_id: state.account.clientId }) }).catch(() => undefined);
   }
-  // The registered client id stays with the host id for a later sign-in to the same account.
   await save({ ...state, account: null, source: state.source === "claude" ? "claude" : "api_key" });
 }
 
@@ -114,7 +105,6 @@ export async function chatgptStatus() {
 }
 
 let refreshing: Promise<string> | null = null;
-/** A valid access token, refreshed near expiry. Refreshes are serialized because the refresh token rotates. */
 export async function chatgptAccessToken(): Promise<string> {
   if (refreshing) return refreshing;
   const account = (await load()).account;
@@ -122,7 +112,6 @@ export async function chatgptAccessToken(): Promise<string> {
   if (account.tokens.expiresAt - Date.now() > 120_000) return account.tokens.accessToken;
   refreshing ??= (async () => {
     try {
-      // Read again inside the lock: another caller may have just stored a rotated token.
       const account = (await load()).account;
       if (!account) throw new ChatGPTError("Not signed in with ChatGPT");
       if (account.tokens.expiresAt - Date.now() > 120_000) return account.tokens.accessToken;
@@ -135,20 +124,14 @@ export async function chatgptAccessToken(): Promise<string> {
   return refreshing;
 }
 
-/**
- * True when AI requests for plain OpenAI model ids should use the ChatGPT plan: unless the owner picked the
- * API key, a signed-in plan pays, including for GPT models mixed in while Claude is the main source.
- */
 export async function usesChatGPT() {
   const status = await chatgptStatus();
   return status.signedIn && (status.source !== "api_key" || !(await serviceKey("openai_api_key")));
 }
 
-// Plan usage accepts only streaming Responses calls with store: false and without sampling limits.
 const UNSUPPORTED = ["background", "conversation", "max_output_tokens", "max_tool_calls", "metadata", "moderation", "previous_response_id", "prompt",
   "prompt_cache_retention", "safety_identifier", "service_tier", "temperature", "top_logprobs", "top_p", "truncation", "user"];
 
-/** fetch for the OpenAI provider: adds the plan token and turns a non-streaming call into a stream it reads to the end. */
 export async function chatgptFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${await chatgptAccessToken()}`);
@@ -163,7 +146,6 @@ export async function chatgptFetch(input: RequestInfo | URL, init: RequestInit =
   return new Response(JSON.stringify(final), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-/** The response object from the stream's terminal event (completed, incomplete or failed). */
 export async function finalResponse(stream: ReadableStream<Uint8Array>) {
   const reader = stream.pipeThrough(new TextDecoderStream() as unknown as ReadableWritablePair<string, Uint8Array>).getReader();
   let buffer = "", last: unknown = null;

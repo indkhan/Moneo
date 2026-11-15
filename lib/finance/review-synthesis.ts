@@ -7,7 +7,6 @@ type Dependencies = {
   now?: () => number; signal?: AbortSignal;
 };
 
-/** Reserve before transport: a failed/interrupted durable attempt cannot spend the model budget again. */
 export async function synthesizeReview(progress: ReviewProgress, input: Input, dependencies: Dependencies) {
   dependencies.signal?.throwIfAborted();
   const remaining = progress.request.budget.maxDurationMs - ((dependencies.now ?? Date.now)() - progress.startedAt);
@@ -17,7 +16,6 @@ export async function synthesizeReview(progress: ReviewProgress, input: Input, d
   if (limitation) return {text: null, limitation};
   const reserved = {...progress, synthesisAttempted: true};
   if (!await dependencies.reserve(reserved)) return {text: null, limitation: "Model attempt budget already spent; retained supported measures are shown."};
-  // Recheck elapsed time after checkpoint transport; it counts against the same durable deadline.
   const timeLeft = progress.request.budget.maxDurationMs - ((dependencies.now ?? Date.now)() - progress.startedAt);
   if (timeLeft <= 0) return {text: null, limitation: "Investigation time budget reached; retained supported measures are shown."};
   const result = await dependencies.generate({...input!, maxOutputTokens: progress.request.budget.maxOutputTokens, maxRetries: 0,

@@ -1,8 +1,5 @@
 import { z } from "zod";
 
-// The ```moneo-chart spec. Model-written charts can only use these fields, so no code or styling reaches the page.
-// The server resolves dataset references and validates every block before an answer is saved; the client parses again.
-
 const amount = z.string().regex(/^-?(?:0|[1-9]\d{0,17})$/, "Values are whole minor-unit strings");
 const positive = amount.refine(value => !value.startsWith("-") && value !== "0", "Values must be above zero");
 const notNegative = amount.refine(value => !value.startsWith("-"), "Values must not be negative");
@@ -17,12 +14,10 @@ const header = { title: z.string().trim().min(1).max(80), unit };
 const MAX_POINTS = 400;
 const labels = z.array(text).min(2).max(MAX_POINTS);
 const values = z.array(amount).min(1).max(MAX_POINTS);
-/** A horizontal line: a fixed amount ("Budget") or the average of one series, worked out by the app. */
 const reference = z.union([
   z.object({ label: text, value: amount }).strict(),
   z.object({ label: text, average: text }).strict(),
 ]);
-/** A vertical line at one of the labels ("Today"). */
 const marker = z.object({ label: text, at: text }).strict();
 const annotations = { references: z.array(reference).max(3).optional(), markers: z.array(marker).max(3).optional() };
 
@@ -45,7 +40,6 @@ const cartesian = z.object({
   .refine(chart => !chart.horizontal || chart.labels.length <= 40, "Horizontal bars take at most 40 labels")
   .refine(annotationsFit, annotationMessage);
 
-/** Bars and lines on one chart; a line may use a second scale on the right (e.g. a balance beside monthly spending). */
 const combo = z.object({
   ...header, ...annotations,
   type: z.literal("combo"),
@@ -56,7 +50,6 @@ const combo = z.object({
   .refine(chart => chart.series.some(series => series.axis !== "right"), "At least one series uses the left axis")
   .refine(annotationsFit, annotationMessage);
 
-/** Lines with a shaded range, such as a forecast between its low and high case. */
 const band = z.object({
   ...header, ...annotations,
   type: z.literal("band"),
@@ -69,7 +62,6 @@ const band = z.object({
   .refine(chart => chart.band.low.every((low, index) => BigInt(low) <= BigInt(chart.band.high[index])), "Band lows must not be above highs")
   .refine(annotationsFit, annotationMessage);
 
-/** Signed steps from an optional start; the app adds them up for the end bar, so the bridge always balances. */
 const waterfall = z.object({
   ...header,
   type: z.literal("waterfall"),
@@ -142,7 +134,6 @@ function acyclic(links: { from: string; to: string }[]) {
   return [...next.keys()].every(visit);
 }
 
-/** Average of minor units, rounded half away from zero, so a reference line is exact to the cent. */
 export function averageMinor(items: string[]): bigint {
   if (!items.length) return 0n;
   const sum = items.reduce((total, item) => total + BigInt(item), 0n), count = BigInt(items.length);
@@ -151,7 +142,6 @@ export function averageMinor(items: string[]): bigint {
   return away ? quotient + (sum < 0n ? -1n : 1n) : quotient;
 }
 
-/** The waterfall's bars: the start, each step floating from the running total, and the end the app worked out. */
 export function waterfallBars(chart: WaterfallSpec) {
   let running = chart.start ? BigInt(chart.start.value) : 0n;
   const bars: { label: string; kind: "total" | "step"; from: bigint; to: bigint; value: bigint }[] = [];
@@ -174,13 +164,10 @@ export function parseChart(source: unknown): ParsedChart {
   return { ok: false, error: issue?.message && !issue.message.startsWith("Invalid") ? issue.message : "The chart data doesn't fit its type" };
 }
 
-// ---- Datasets: exact rows from tools (chart_data and data_query) that a chart references instead of copying numbers.
-
 const columnName = z.string().min(1).max(60);
 export const chartColumnSchema = z.union([
   z.object({ kind: z.enum(["text", "date", "count"]) }).strict(),
   z.object({ kind: z.literal("money"), currency }).strict(),
-  /** Rows in several currencies: each row names its own, and a chart takes only rows in its unit's currency. */
   z.object({ kind: z.literal("money"), currencyColumn: columnName }).strict(),
 ]);
 export const chartDatasetSchema = z.object({
@@ -190,7 +177,6 @@ export const chartDatasetSchema = z.object({
 export type ChartDataset = z.infer<typeof chartDatasetSchema>;
 export type ChartColumn = ChartDataset["columns"][string];
 
-/** Per-request store of datasets; ids are handed to the model and resolved before the answer is saved. */
 export function chartDatasets(prefix = "chart") {
   const stored = new Map<string, ChartDataset>();
   return {
@@ -204,7 +190,6 @@ export function chartDatasets(prefix = "chart") {
 }
 
 const datasetRef = z.object({ datasetId: z.string().min(1).max(60), where: z.record(columnName, z.string().max(200)).optional() }).passthrough();
-// Lists whose entries are objects: a reference maps each field to a column, e.g. "items": {"label": "category", "value": "amount"}.
 const ROW_LISTS = new Set(["items", "steps", "links", "points", "days"]);
 const NUMERIC = new Set(["values", "low", "high", "value", "x", "y"]);
 const OPTIONAL = new Set(["href", "label"]);
@@ -212,10 +197,6 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 
 class ChartDataError extends Error {}
 
-/**
- * Turns a chart that references a dataset into an inline chart with the dataset's exact values. Any list in the spec can
- * be {"column": name}; a list of objects maps its fields to columns. Money columns must be in the chart unit's currency.
- */
 export function resolveChart(source: unknown, lookup: (id: string) => ChartDataset | undefined): ParsedChart {
   if (!isObject(source) || !("datasetId" in source)) return parseChart(source);
   const ref = datasetRef.safeParse(source);
@@ -238,7 +219,6 @@ export function resolveChart(source: unknown, lookup: (id: string) => ChartDatas
       return rows.map(row => {
         const value = row[name];
         if (value === null || value === undefined) {
-          // An optional field (a link or point label) is simply left off a row without one.
           if (OPTIONAL.has(field)) return null;
           throw new ChartDataError(`Column ${name} has empty values`);
         }
@@ -270,10 +250,6 @@ export function resolveChart(source: unknown, lookup: (id: string) => ChartDatas
 
 const BLOCK = /```moneo-chart\n([\s\S]*?)```/g;
 
-/**
- * Every chart block in an answer, checked and with dataset references replaced by their exact values, so the saved
- * answer is self-contained. A block that can't be drawn says why instead.
- */
 export function resolveChartBlocks(answer: string, lookup: (id: string) => ChartDataset | undefined) {
   return answer.replace(BLOCK, (_, body: string) => {
     let source: unknown;

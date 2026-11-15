@@ -7,7 +7,6 @@ import type { ServiceKeyStatus } from "@/lib/service-keys";
 
 const button = "min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50";
 
-/** Paste, replace or remove one API key. The saved key is never sent back to the browser, only its last four characters. */
 export function AiKeyForm({ name, label, placeholder, status }: { name: AiKeyName; label: string; placeholder: string; status: ServiceKeyStatus }) {
   const [state, action, pending] = useActionState<AiKeyState, FormData>(saveAiKey, {});
   return <form action={action} className="mt-3 grid gap-2">

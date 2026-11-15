@@ -36,7 +36,6 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       const auth = createServerClient(url, key, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => { for (const value of values) cookies.set(value.name, value.value); } } });
       const signedIn = await auth.auth.signInWithPassword({ email, password });
       expect(signedIn.error).toBeNull();
-      // Inherits the base URL from playwright.config.ts, so it can only reach the QA server.
       const context = await browser.newContext();
       contexts.push(context);
       await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
@@ -67,7 +66,6 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     const stranger = await foreign.newPage();
     for (const path of [`/import/${imported}/review`, `/ai/activity/${job}`]) {
       const response = await stranger.goto(path);
-      // loading.tsx may stream headers before the owned-resource lookup finishes.
       expect([200, 404]).toContain(response?.status());
       await expect(stranger.getByRole("heading", { name: "This page isn’t here", exact: true })).toBeVisible();
       await expect(stranger.locator('meta[name="robots"]').first()).toHaveAttribute("content", "noindex");
@@ -83,7 +81,6 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await article.getByLabel(/^Name of /).fill(`${secret} renamed`);
     await article.getByRole("button", { name: /^Save changes/ }).click();
     await expect(article.first().getByLabel(/^Name of /)).toHaveValue(`${secret} renamed`);
-    // The saved row remounts when its version changes, so wait for that before opening its menu.
     await expect(page.getByRole("button", { name: /^Save changes/ })).toHaveCount(0);
     await page.locator("article").getByText("More", { exact: true }).first().click();
     await page.getByRole("button", { name: /^Archive / }).click();
@@ -91,7 +88,6 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await expect(page.locator("article")).toContainText("Archived");
     await page.getByRole("button", { name: /^Undo: / }).first().click();
     await expect(page.locator("button", { hasText: "Archive account" })).toHaveCount(1);
-    // The history list refreshes after the page; wait, so the next Undo is the rename and not the one just used.
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: /^Undo: / }).first().click();
     await expect(page.locator("article").getByLabel(/^Name of /).first()).toHaveValue(secret);
@@ -104,7 +100,6 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await views.getByText(`Manage ${secret} renamed view`, { exact: true }).click();
     await views.getByRole("button", { name: `Delete saved view ${secret} renamed view`, exact: true }).click();
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toHaveCount(0);
-    // History streams in after the page, and Undo needs hydration.
     await page.goto("/money/accounts", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Undo: / }).first().click();
     await expect.poll(async () => (await db`select removed_at from public.transaction_views where id=${savedView}`)[0].removed_at).toBeNull();
@@ -119,9 +114,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     const stopped = await owner.request.delete(`/api/analysis/${job}`);
     expect(stopped.status()).toBe(200);
     expect(await stopped.json()).toEqual({ status: "cancel_requested" });
-    // This fixture has no worker: a persisted request does not acknowledge termination.
     expect((await db`select status,stage,cancel_requested from public.background_jobs where id=${job}`)[0]).toMatchObject({ status: "queued", stage: "cancel_requested", cancel_requested: true });
-    // Home's briefing only shows big findings, which this fixture has none of; the owner dismisses through RLS directly.
     const evidenceKey = "a".repeat(64);
     expect((await sessions[0].from("insight_dismissals").insert({ workspace_id: workspace, evidence_key: evidenceKey, insight_type: "data_quality" })).error).toBeNull();
     await expect.poll(async () => (await db`select evidence_key from public.insight_dismissals where workspace_id=${workspace} and evidence_key=${evidenceKey}`).length).toBe(1);

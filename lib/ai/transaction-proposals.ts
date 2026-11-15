@@ -8,7 +8,6 @@ import { wealthAmount } from "@/lib/finance/wealth";
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 type Account = { id: string; name: string; type: string; currency_code: string };
 
-/** The model's view of money the user spent or received: a decimal amount; the application turns it into exact minor units. */
 export const transactionInputSchema = z.object({
   direction: z.enum(["spent", "received"]),
   amount: z.string().trim().regex(/^\d{1,15}(\.\d{1,4})?$/).describe("Positive decimal amount, e.g. 10 or 12.50"),
@@ -22,7 +21,6 @@ export const transactionInputSchema = z.object({
 export const transactionCreateSchema = z.object({
   direction: z.enum(["spent", "received"]), amountMinor: z.string().regex(/^[1-9]\d{0,17}$/), currencyCode: z.string().regex(/^[A-Z]{3}$/),
   date: z.iso.date(), description: z.string().trim().min(1).max(200), accountId: z.uuid().nullable(), categoryId: z.uuid().nullable(),
-  // The user said they paid in cash, so accepting may create a Cash account. Without it, no account means ask.
   paidInCash: z.boolean().optional(),
 }).strict();
 
@@ -33,10 +31,6 @@ export async function liveAccounts(supabase: SupabaseClient, workspaceId: string
   return (data ?? []) as Account[];
 }
 
-/**
- * The account a named payment method points to. Stated cash goes to the cash account, and card spend to the card account
- * used most recently when there are several. Anything else is null: the card asks, rather than guessing where money went.
- */
 export function chooseAccount(accounts: Account[], named?: string, lastUsed?: string | null) {
   const word = named?.toLocaleLowerCase("en");
   if (!word) return null;
@@ -54,7 +48,6 @@ async function lastUsedAccount(supabase: SupabaseClient, workspaceId: string, ac
   return (data?.[0]?.account_id as string | undefined) ?? null;
 }
 
-/** Stores a pending "add this transaction" proposal. Nothing reaches the ledger until the owner accepts. */
 export async function proposeTransaction({ supabase, workspace, chatRequestId }: Context, input: z.infer<typeof transactionInputSchema>) {
   minorDigits(input.currency);
   const today = calendarDate(new Date(), workspace.timezone);
@@ -76,16 +69,13 @@ export async function proposeTransaction({ supabase, workspace, chatRequestId }:
   return { proposalId: data.id as string, title };
 }
 
-/** What the card offers: accounts in the proposal's currency, with the proposed one selected. */
 export async function transactionAccountOptions(supabase: SupabaseClient, workspaceId: string, payload: unknown) {
   const parsed = transactionCreateSchema.parse(payload);
   const accounts = await liveAccounts(supabase, workspaceId, parsed.currencyCode);
-  // A Cash account may have appeared since this was proposed, for instance by accepting another stated-cash card.
   const cash = parsed.paidInCash ? accounts.find(account => account.type === "cash") : undefined;
   return { accounts: accounts.map(({ id, name }) => ({ id, name })), selected: parsed.accountId ?? cash?.id ?? null, createsCash: !!parsed.paidInCash && !cash };
 }
 
-/** Records the accepted proposal as an audited manual transaction; the proposal id is the request id, so accepting twice cannot duplicate it. */
 export async function applyTransactionProposal({ supabase, workspace }: Context, proposalId: string, payload: unknown, accountOverride?: string) {
   const parsed = transactionCreateSchema.parse(payload);
   let accountId = accountOverride ?? parsed.accountId, createdAccount = false;

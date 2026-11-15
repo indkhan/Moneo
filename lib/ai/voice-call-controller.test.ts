@@ -19,10 +19,8 @@ function setup() {
     await new Promise(resolve => setImmediate(resolve));
   };
   const say = (text: string, endMs?: number, startMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, start_ms: startMs, end_ms: endMs });
-  // A hand-off arrives once the transcript has caught up, unless a test says otherwise.
   const delegate = (id: string, offsetMs?: number, settled = true) => { if (settled) clock += TRANSCRIPT_SETTLE_MS; call.handle({ type: "session.delegation.created", offset_ms: offsetMs, delegation: { id } }); };
   const answer = async (message: string, text: string, status = 200) => { pending[message]({ ok: status < 400, status, body: status < 400 ? { answer: text, conversationId: "c" } : { error: "x" } }); await new Promise(resolve => setImmediate(resolve)); };
-  // Time passes in small steps, so retries the controller schedules run too; Moneo's voice is metered every 100 ms.
   const wait = async (ms: number) => { for (let time = 0; time < ms; time += 100) await advance(100); };
   const moneoTalks = async (ms: number) => { for (let time = 0; time < ms; time += 100) { call.heardMoneo(); await advance(100); } };
   return { call, sent, asks, advance, wait, moneoTalks, say, delegate, answer, onAnswer };
@@ -34,7 +32,6 @@ it("turns each delegation into a call request with the words since the previous 
   say("And when is rent due?"); delegate("d2");
   expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto this month?", "And when is rent due?"]);
   expect(asks[0][0]).toMatchObject({ conversationId: "c", requestId: "r1", context: { via: "call", input: "voice", runningTasks: [], answered: [] } });
-  // The second request knows the first is still running, so it neither answers it again nor misses a correction.
   expect(asks[1][0].context).toMatchObject({ via: "call", input: "voice", runningTasks: [{ requestId: "r1", text: "How much at Netto this month?" }] });
   asks[0][1]({ type: "tool", name: "finance_investigate", state: "running" });
   expect(call.tasks[0].step).toBe("searching transactions");
@@ -83,9 +80,7 @@ it("never says a request is still running once it has finished while another res
   await answer("Netto?", "42 euros.");
   await wait(1600);
   await moneoTalks(1000);
-  // Rent finishes while Moneo is still saying the Netto result.
   await answer("Rent?", "EUR 850.");
-  // Nothing about it reaches GPT-Live before its result: a note that it finished made GPT-Live announce an amount it made up.
   expect(sent.some(event => String(event.content).startsWith("Finished"))).toBe(false);
   await moneoTalks(1000);
   await wait(2700);
@@ -104,7 +99,6 @@ it("hands over the next result after a short pause when the mic stayed quiet, an
   await wait(1300);
   expect(spoken()).toHaveLength(2);
   await moneoTalks(1000);
-  // The user is loud on the mic as Moneo stops; their words are not transcribed yet.
   call.heardUser();
   await wait(1300);
   expect(spoken()).toHaveLength(2);
@@ -141,7 +135,7 @@ it("holds results while the user is speaking", async () => {
   const { sent, say, delegate, answer, advance } = setup();
   say("Netto?"); delegate("d1");
   await advance(2000);
-  say("um, also"); // the user is talking when the answer lands
+  say("um, also");
   await answer("Netto?", "42 euros.");
   expect(sent.some(event => event.type === "session.commentary.append")).toBe(false);
   await advance(800); await advance(800);
@@ -239,7 +233,6 @@ it("asks Moneo to finish a result the user cut off, after it has answered them, 
   const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
   expect(spoken()).toHaveLength(1);
   await moneoTalks(1000);
-  // GPT-Live goes quiet the moment the user cuts in; their words are transcribed a second later.
   await wait(1000);
   say("wait, who did I lend to?"); delegate("d3"); asks[2][1]({ type: "tool", name: "finance_investigate", state: "running" });
   await wait(1600);
@@ -268,7 +261,6 @@ it("finishes a cut-off result without saying a request that finished meanwhile i
   expect(spoken()).toHaveLength(2);
   expect(spoken()[1]).toMatch(/Result for "Netto\?"/);
   expect(spoken()[1]).not.toMatch(/Still working/);
-  // Rent finishes while Moneo is finishing the Netto result.
   await moneoTalks(500);
   await answer("Rent?", "Rent is EUR 850.00 on Nov 1.");
   await moneoTalks(1000);
@@ -293,7 +285,6 @@ it("waits for Moneo's voice, not its transcript, before handing over the next re
   await answer("This month?", "Housing EUR 355.00, groceries EUR 327.30.");
   await answer("September?", "Bilal EUR 1011.34.");
   await wait(1600);
-  // The whole transcript arrives at once, well ahead of the voice saying it.
   call.handle({ type: "session.output_transcript.delta", delta: "Housing 355, groceries 327.30." });
   await moneoTalks(4000);
   expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(1);

@@ -27,8 +27,6 @@ type Wealth = { id: string; name: string; kind: string; amount_minor: string; cu
 type InsightPanelProps = {
   db: SupabaseClient; workspaceId: string; currency: string; today: string; settings: WorkspaceSettings; projection: Projection; missingInputs: string[]; names?: Map<string, string>; wealth: Wealth[];
 };
-// Database reads only, memoized per request so Home can start them before its own data
-// resolves; nothing here depends on the projection. Independent reads load together.
 export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId: string, currency: string, today: string) => {
     async function rows<T>(table: string, columns: string, start?: string): Promise<T[]> {
       const collected = await allPages<T>((from, to, count) => {
@@ -71,7 +69,6 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
       byIds<ReviewTransaction & { account_id: string }>(canonicalColumns, missingBaselineIds),
       loadLoanPayoutIds(db, workspaceId).catch(() => new Set<string>()),
     ]);
-    // Money lent or repaid is not spending: the briefing and budgets treat it like a transfer.
     const transactions = effective.map(row => loans.has(row.parent_transaction_id ?? row.id) ? { ...row, kind: "transfer" as const } : row);
     for (const row of older) recurringEvidence.set(row.id, row);
     const refundIds = [...new Set(transactions.flatMap(row => row.refund_of_id ? [row.refund_of_id] : []))];
@@ -81,7 +78,6 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
 });
 
 type InsightEvidence = Awaited<ReturnType<typeof loadInsightEvidence>>;
-/** This month's progress for every enabled budget, shared by Home's Budgets card and the budget insights. */
 export function budgetsThisMonth({ budgets, categories, limits, transactions, sourceMetadata }: InsightEvidence, today: string) {
   const spendingRows = transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id,
     ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
@@ -124,7 +120,6 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
 const LABELS: Partial<Record<Insight["type"], [label: string, evidence: string]>> = { cash_shortfall: ["Shortfall", "forecast"], budget_pressure: ["Budget", "budget"],
   unusual_activity: ["Unusual", "transaction"], spending_changes: ["Spending", "transactions"], recurring_changes: ["Recurring", "evidence"] };
 
-// Wording is cached per finding set: keys hash the evidence, so the model runs again only when the facts change.
 const cachedWording = unstable_cache(async (_workspaceId: string, modelId: string, findings: Pick<Insight, "key" | "type" | "title" | "detail">[]) =>
   Object.fromEntries(await rephraseFindings(await getModel(modelId), findings)), ["weekly-briefing-wording", "v2"], { revalidate: 7 * 86400 });
 
@@ -136,7 +131,6 @@ async function wording(props: InsightPanelProps, findings: Insight[]) {
   } catch { return new Map<string, string>(); }
 }
 
-/** Home's weekly briefing: only findings worth interrupting for, in AI wording checked against the code-computed facts. Hidden when nothing is big. */
 export async function WeeklyBriefing(props: InsightPanelProps) {
   let findings: Insight[];
   try { findings = briefingFindings(await loadInsights(props)); } catch { return null; }

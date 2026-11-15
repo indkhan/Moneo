@@ -11,7 +11,6 @@ it("compiles “coffee over €5 last month” into exact signed minor-unit filt
   const { params, understood } = compile("coffee over €5 last month");
   expect(params).toEqual({ direction: "outflow", maxAmount: "-500", from: "2026-09-01", to: "2026-09-30", category: id(2) });
   expect(understood).toEqual(["Money out", "Over EUR 5.00", "Last month", "Category: Coffee"]);
-  // The result is exactly what the URL filter model accepts.
   expect(parseTransactionParams(params)).toMatchObject({ direction: "outflow", maxAmountMinor: "-500", from: "2026-09-01", to: "2026-09-30", categoryId: id(2) });
 });
 

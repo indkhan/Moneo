@@ -59,16 +59,13 @@ function ModelPicker({ name, initial, placeholder, options, invalid, onChange }:
   </div>;
 }
 
-/** The voice choice for calls, with a short sample of whichever voice is selected. */
 function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
   const [voice, setVoice] = useState(value);
   const [state, setState] = useState<"idle" | "loading" | "playing" | "failed">("idle");
   const [needsKey, setNeedsKey] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
-  // Samples are spoken by OpenAI, so they need the OpenAI API key too.
   const access = useAiAccess();
   const stop = () => { audio.current?.pause(); audio.current = null; setState("idle"); };
-  // Leaving Settings must not leave a sample talking.
   useEffect(() => () => audio.current?.pause(), []);
   async function play() {
     if (state === "playing") return stop();
@@ -90,7 +87,6 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
         {state === "loading" ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : state === "playing" ? <Square className="size-4 text-ai" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
         {state === "loading" ? "Loading…" : state === "playing" ? "Stop sample" : "Play sample"}</button>
     </div>
-    {/* Only present on failure: an always-mounted empty status would match every page-wide status lookup (and the specs') beside "Preferences saved". */}
     {needsKey && <VoiceKeyToast onDismiss={() => setNeedsKey(false)} />}
     {state === "failed" && <span role="alert" className="text-sm font-normal text-danger">{"Couldn’t play the sample. Check your sound and try again."}</span>}</div>;
 }
@@ -103,17 +99,14 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
   const form = useRef<HTMLFormElement>(null);
   const unsaved = dirty || !!state.error;
   const invalid = (name: string) => state.field === name ? { "aria-invalid": true, "aria-describedby": "settings-error" } : {};
-  // The browser's own prompt covers closing and reloading; in-app links are not interceptable in the App Router.
   useEffect(() => {
     if (!unsaved) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsaved]);
-  // Take the person to the field that failed, even inside the closed Advanced section.
   useEffect(() => {
     const named = state.field && form.current?.elements.namedItem(state.field);
-    // A currency picker submits a hidden field; the box beside it is what can take focus.
     const field = named instanceof HTMLInputElement && named.type === "hidden" ? named.nextElementSibling : named;
     if (!(field instanceof HTMLElement)) return;
     field.closest("details")?.setAttribute("open", "");
@@ -122,7 +115,6 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
   const zones = timeZones.includes(settings.timezone) ? timeZones : [settings.timezone, ...timeZones];
   const locales = LOCALES.some(([code]) => code === settings.locale) ? LOCALES : [[settings.locale, settings.locale], ...LOCALES];
   const example = displayFormat(locale);
-  // React also resets uncontrolled fields when an action returns a validation error.
   return <form ref={form} action={action} onChange={() => setDirty(true)} onSubmit={() => setDirty(false)} onReset={event => event.preventDefault()} className="space-y-8">
     <fieldset id="display" className={card}><legend className={legend}>Display and calendar</legend>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -160,7 +152,6 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
       <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-medium">In-app summary preference<select className={input} name="summary_cadence" defaultValue={settings.summary_cadence}><option value="none">Off</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label className={label}>Preferred local time<input className={input} type="time" name="summary_time" defaultValue={settings.summary_time} required {...invalid("summary_time")} /></label></div>
       <p className={help}>Summaries appear in the Activity log and may arrive up to a day late.</p>
     </fieldset>
-    {/* Kept in view while scrolling a long form, above the phone's bottom bar. */}
     <div className="sticky bottom-20 z-10 max-lg:bottom-[calc(4rem+env(safe-area-inset-bottom))] space-y-2 rounded-xl border border-border bg-card p-3 shadow-sm lg:bottom-4">
       {state.error && !pending && <p id="settings-error" role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger">{state.error}</p>}
       <div className="flex flex-wrap items-center gap-3">

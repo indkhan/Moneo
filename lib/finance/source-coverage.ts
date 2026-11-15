@@ -7,8 +7,6 @@ type EffectiveRow = { account_id?: string; posted_on?: string; currency_code: st
 type ImportRow = { id: string; status: string; total_rows: number };
 type SourceRow = { import_id: string; status: string; posted_on: string | null; currency_code: string | null; account_id?: string | null; resolved_account_id?: string | null; review_reasons?: string[] };
 
-// Observed posting dates are not statement intervals. Nothing in today's schema
-// establishes which statements/accounts are missing or a reconciled-through date.
 export function buildSourceCoverage(scope: CoverageScope, rows: EffectiveRow[], imports?: ImportRow[], sources?: SourceRow[]) {
   const effectiveRows = rows.filter(row => (!row.posted_on || row.posted_on >= scope.from && row.posted_on <= scope.to) &&
     (!scope.accountId || row.account_id === scope.accountId) && (!scope.accountIds || row.account_id && scope.accountIds.includes(row.account_id)));
@@ -84,16 +82,12 @@ export async function loadSourceCoverage(db: SupabaseClient, workspaceId: string
   return buildSourceCoverage(scope, rows, metadata?.imports, metadata?.sources);
 }
 
-// Internal shared read for readers with several periods/currencies. Consumers
-// receive the envelope, never these individual observations or import identities.
-// Memoized per request: Home, its cashflow and insights, and an artifact's saved queries all read the same metadata.
 export const loadSourceCoverageMetadata = perClient(async (db: SupabaseClient, workspaceId: string, canReadImports: boolean) => {
   if (!canReadImports) return undefined;
   const all = <T>(table: string, columns: string) =>
     allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));
   const [imports, sources] = await Promise.all([
     all<ImportRow>("imports", "id, status, total_rows"),
-    // Project only scope metadata: never source descriptions, amounts, mappings or original input.
     all<SourceRow>("source_transactions", "import_id, status, review_reasons, posted_on:normalized_row->row->>postedOn, currency_code:normalized_row->row->>currencyCode, account_id:normalized_row->>accountId, resolved_account_id:normalized_row->resolution->>accountId"),
   ]);
   return { imports, sources };

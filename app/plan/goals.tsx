@@ -21,7 +21,6 @@ function GoalCard({ goal, allocations, accounts, locale, today }: { goal: Goal; 
   const monthly = BigInt(goal.planned_monthly_minor);
   const plan = goalContributionProjection({ targetMinor: target, savedMinor: saved, monthlyMinor: monthly, startsOn: goal.contribution_starts_on }, today);
   const late = !!(goal.target_date && plan.completionDate && plan.completionDate > goal.target_date);
-  // The bar tracks recorded savings only; reserved cash is a separate, virtual earmark with its own figure below.
   const progress = saved;
   const reservable = accounts.filter(account => allocations.some(item => item.account_id === account.id) || (goal.status === "active" && !account.archived_at && account.currency_code === goal.currency_code && liquid.includes(account.type)));
   return <article className="flex flex-col gap-3.5 rounded-2xl border border-border p-[18px]">

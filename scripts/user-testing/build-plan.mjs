@@ -16,7 +16,6 @@ const content=csv(records,headers);
 assert.equal(new Set(records.map(record=>record.case_id)).size,records.length,'Case IDs must be unique');
 assert(records.every(record=>record.action&&record.expected_result&&record.persona),'Every case needs an action, expectation and persona');
 await Workbook.fromCSV(content,{sheetName:'User testing'});
-// This runtime's workbook.export does not support CSV; serialize the exact authored records.
 writeFileSync('.qa/user-testing/test-plan.csv',content);
 writeFileSync('.qa/user-testing/cases.json',JSON.stringify(records,null,2));
 console.log(JSON.stringify({cases:records.length,walkthroughs:walkthroughs.length,personas:Object.keys(personas).length}));

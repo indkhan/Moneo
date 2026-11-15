@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { netWorth } from "@/app/money/wealth/net-worth";
+import { netWorth } from "@/lib/finance/net-worth";
 import { buildReviewEvidence } from "./review";
 import { resolveBalances } from "./balances";
 import { convertedNetWorth, describeMonthSplit, loadNetWorthEvidence, netWorthModel, readNetWorth } from "./net-worth-source";
@@ -43,9 +43,9 @@ describe("one source", () => {
     const fund = item("fund", "Fund", "asset", "50000", "2026-10-01"), owed = item("loan", "Car loan", "debt", "-10000", "2026-10-01", { annual_rate_text: "0", monthly_payment_minor: "0" });
     tables.wealth_items = [fund, owed]; tables.wealth_events = [event(fund, "2026-10-01T00:00:00Z"), event(owed, "2026-10-01T00:00:00Z")];
     const model = await load();
-    const home = convertedNetWorth(model, [], "EUR").totalMinor;       // Home's headline
-    const wealth = netWorth(model.now).get("EUR");                     // Wealth's total
-    const chat = await readNetWorth({ supabase: db, workspace }, {});  // Chat, the voice call and artifacts
+    const home = convertedNetWorth(model, [], "EUR").totalMinor;
+    const wealth = netWorth(model.now).get("EUR");
+    const chat = await readNetWorth({ supabase: db, workspace }, {});
     const graph = netWorth(model.points([`2026-11-07`, TODAY]).at(-1)!).get("EUR");
     expect(home).toBe(90000n);
     expect(wealth).toBe(home);
@@ -97,7 +97,6 @@ describe("one source", () => {
 describe("own money between accounts, on every screen", () => {
   const leg = (id: string, account: string, amount: string, on: string, other: string | null, over: Row = {}) => posting(id, account, amount, on, { kind: "transfer", transfer_id: other, ...over });
   it("corrects past days without touching today's total, and the Scalable seam counts it once", async () => {
-    // First real Scalable value on 7 Nov, with calculated days before it. 600.00 went in on the 1st, and the bank paid on the 2nd.
     const cash = item("cash", "Scalable cash", "asset", "60000", TODAY);
     tables.wealth_items = [cash]; tables.wealth_events = [event({ ...cash, as_of: "2026-11-07" }, "2026-11-07T10:00:00Z"), event(cash, `${TODAY}T10:00:00Z`)];
     tables.scalable_connections = [{ portfolio: { itemIds: ["cash"] }, transfers_backfilled_at: "2026-11-07T10:00:00Z" }];
@@ -155,7 +154,6 @@ describe("this month, split", () => {
     tables.wealth_items = [now]; tables.wealth_events = [event(before, "2026-10-01T10:00:00Z"), event(now, `${TODAY}T10:00:00Z`)];
     tables.scalable_connections = [{ portfolio: { itemIds: ["fund"] }, transfers_backfilled_at: null }];
     tables.scalable_value_history = [{ on_date: "2026-09-30", currency_code: "EUR", total_minor: "1" }];
-    // 60.00 into the broker, paid from the bank: the fund rose 650.00 of which 60.00 is that deposit.
     tables.scalable_transfers = [{ provider_id: "D", type: "DEPOSIT", amount_minor: "6000", currency_code: "EUR", on_date: "2026-11-02", occurred_at: "2026-11-02T00:00:00Z", status: "SETTLED", is_cancellation: false, returns_provider_id: null, description: null }];
     tables.transactions = [posting("pay", "bank", "-6000", "2026-11-02", { kind: "transfer" })];
     const split = (await load()).monthSplit("EUR")!;

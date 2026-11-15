@@ -1,5 +1,3 @@
-// The one Supabase URL the app talks to, replacing docker/Caddyfile: /auth/v1 → GoTrue,
-// /rest/v1 → PostgREST, /storage/v1 → Storage, with the prefix stripped. Bodies stream both ways.
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -9,10 +7,6 @@ const PREFIXES: [string, keyof Routes][] = [["/auth/v1", "auth"], ["/rest/v1", "
 const HOP_BY_HOP = ["connection", "keep-alive", "proxy-connection", "proxy-authenticate", "proxy-authorization", "te", "trailer", "upgrade"];
 
 export function startGateway(port: number, routes: Routes, log: (line: string) => void) {
-  // PostgREST (Warp) closes connections idle for 30-60 s without telling clients, and a request sent
-  // on such a connection fails with "socket hang up": pages showed "This page couldn't load" after
-  // Moneo sat idle. An idle connection is dropped here after 4 s, long before that. (The timeout
-  // only notifies requests in flight; it ends nothing but idle connections.)
   const agent = new http.Agent({ keepAlive: true, maxSockets: 64, timeout: 4_000 });
   const server = http.createServer((req, res) => {
     const url = req.url ?? "/";
@@ -39,7 +33,6 @@ export function startGateway(port: number, routes: Routes, log: (line: string) =
     res.once("close", () => { if (!res.writableFinished) upstream.destroy(); });
     req.pipe(upstream);
   });
-  // Uploads up to Storage's 50 MB limit can take a while on slow disks.
   server.requestTimeout = 0;
   return new Promise<{ port: number; close(): Promise<void> }>((resolve, reject) => {
     server.once("error", reject);

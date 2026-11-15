@@ -4,7 +4,6 @@ import { requireWorkspace } from "@/lib/auth";
 import { enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
 import { enableBankingErrorMessage } from "@/lib/bank/server";
 
-// Bank picker list for one country, cached in the browser for a day.
 export async function GET(request: Request) {
   try { await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!(await enableBankingConfigured())) return NextResponse.json({ error: "Bank sync is not configured" }, { status: 503 });

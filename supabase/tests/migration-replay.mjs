@@ -7,16 +7,12 @@ export async function replayMigrations(tx, migrations, path) {
   }
 }
 
-// Fixtures share one rollback-only transaction. A savepoint per fixture keeps
-// their data, role and transaction-local settings from reaching the next one.
 export async function runIsolatedFixture(tx, label, sql) {
   const done = new Error("Fixture rolled back");
   try { await tx.savepoint(async savepoint => { await savepoint.unsafe(sql); throw done; }); }
   catch (cause) { if (cause !== done) throw new Error(`${label}: ${cause.message}`, { cause }); }
 }
 
-// Historical pg_get_functiondef bodies retain checkout newlines. Only code
-// whitespace is equivalent; quoted data and the generated header stay exact.
 export function canonicalFunctionDefinition(definition) {
   const opening = /^[ \t]*AS (\$(?:[A-Za-z_\u0080-\uffff][A-Za-z_0-9\u0080-\uffff]*)?\$)/m.exec(definition);
   if (!opening || !/\bLANGUAGE (?:sql|plpgsql)\b/.test(definition.slice(0, opening.index))) return definition;
@@ -31,7 +27,6 @@ export function canonicalFunctionDefinition(definition) {
       const escaped = quote === "'" && /[eE]/.test(body[index - 1] ?? "") && !/[\w$\u0080-\uffff]/.test(body[index - 2] ?? "");
       index++;
       while (index < body.length) {
-        // Unknown standard_conforming_strings: fail closed on ambiguous quotes.
         if (!escaped && quote === "'" && body[index] === "\\" && body[index + 1] === "'") return definition;
         if (escaped && body[index] === "\\") { index += 2; continue; }
         if (body[index++] === quote) { if (body[index] !== quote) break; index++; }
@@ -63,8 +58,6 @@ export function canonicalFunctionDefinition(definition) {
   }
   return definition.slice(0, start) + normalized + definition.slice(end);
 }
-// Disposable application replays must not change Supabase-owned storage setup.
-/** @param {string} file @param {string} sql @param {string} [schema] */
 export function applicationMigrationSql(file, sql, schema) {
   if (schema) {
     if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error("Invalid disposable schema name");

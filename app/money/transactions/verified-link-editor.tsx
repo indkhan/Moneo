@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { verifiedLinkSafely } from "./actions";
 import { SafeForm } from "@/components/safe-form";
-import { parseManualAmount } from "./input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { comparisonMinor, transferPrincipal, type LinkRate } from "@/lib/finance/verified-links";
 export type LinkPosting = { id: string; version: number; posted_on: string; description: string; amount_minor: string; currency_code: string };

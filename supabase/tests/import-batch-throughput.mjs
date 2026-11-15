@@ -1,7 +1,4 @@
 import { applicationMigrationSql } from "./migration-replay.mjs";
-// Real database budgets in one rollback-only complete private application
-// replay. Serialize with auth/browser gates: this managed database acquires
-// real auth-table locks even for CREATE POLICY on a private dummy table.
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
@@ -49,8 +46,6 @@ try {
       assert.equal(count, total); assert.equal(amount, String(-101n * BigInt(total)));
       const [{ originals }] = await app`select count(*)::integer originals from public.source_transactions where import_id=${imported} and original_row->>'Amount'='-1.01'`;
       assert.equal(originals, total);
-      // Work budget: one staging call, then a candidates and an ingest call per 250-row batch, each
-      // batch's candidates small enough for one request. Time is printed, not gated: it depends on load.
       assert.equal(calls, 1 + 2 * Math.ceil(total / 250), `${total} rows took ${calls} staging/batch RPC calls`);
       assert(maxCandidatesBytes <= 32 * 1024, `${total} rows: a candidates batch was ${maxCandidatesBytes} bytes, over 32 KB`);
       results.push({ rows: total, stagingAndBatchRpcCalls: calls, stagedUtf8Bytes: Buffer.byteLength(JSON.stringify(rows)), maxCandidatesUtf8Bytes: maxCandidatesBytes, databaseFixtureMs: Math.round(performance.now() - started), clientRssDeltaBytes: process.memoryUsage().rss - rssBefore });
@@ -59,8 +54,6 @@ try {
         await tx.unsafe(`analyze ${schema}.transactions; analyze ${schema}.source_transactions; analyze ${schema}.transaction_sources`);
         const fingerprint = await app`explain (analyze,buffers,format json) select id,status from public.transactions where workspace_id=${workspace} and account_id=${account} and posted_on='2026-10-01' and amount_minor=-101 and currency_code='EUR' and description='Synthetic 42'`;
         const linked = await app`explain (analyze,buffers,format json) select transaction_id from public.transaction_sources where transaction_id=(select id from public.transactions where workspace_id=${workspace} and account_id=${account} and description='Synthetic 42')`;
-        // One synthetic stable external ID makes the old exact external lookup
-        // selective, including all original source/link evidence.
         await app`update public.source_transactions set external_id='synthetic-stable-external' where import_id=${imported} and row_number=2`;
         await tx.unsafe(`analyze ${schema}.source_transactions`);
         const external = await app`explain (analyze,buffers,format json) select id from public.source_transactions where workspace_id=${workspace} and external_id='synthetic-stable-external' and import_id<>${randomUUID()}`;

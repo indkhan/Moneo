@@ -7,7 +7,6 @@ import { formatMoney } from "@/lib/finance/format";
 
 const inputClass = "min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
 
-/** "1 EUR = 1.08 USD" plus a sample of 100, worked out by the same exact conversion the app uses. */
 export function ratePreview(from: string, to: string, rate: string, locale?: string): string | null {
   if (from === to) return /^[A-Z]{3}$/.test(from) ? "Choose two different currencies." : null;
   if (!/^\d+(\.\d+)?$/.test(rate.trim())) return null;

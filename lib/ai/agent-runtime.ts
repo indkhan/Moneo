@@ -18,12 +18,6 @@ import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurri
 import { AGENTS, WAVES, aiConfidence, anomalyFindings, budgetProposals, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
   daysBefore, payloadSchemas, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
-// Server-only agent runtime. Agents read through the service role, so every
-// query is fenced by workspace_id; they write only agent_* rows. Canonical
-// data changes happen later, when the owner accepts a proposal. The one
-// exception is the Categorizer's labels (autoApplyRun), marked with their source and
-// undoable; it also raises questions for the owner and may add AI-made categories.
-
 class RunInactive extends Error {}
 type Db = SupabaseClient;
 type Workspace = { id: string; display_currency: string; timezone: string; locale: string };
@@ -60,7 +54,6 @@ async function report(context: Pick<Context, "db" | "runId" | "workspace" | "age
     .eq("run_id", runId).eq("workspace_id", workspace.id).eq("agent", agent));
 }
 
-/** Spends one call from the run's shared budget; false means continue without a model. */
 async function withModel<T>(context: Context, label: string, call: (model: Awaited<ReturnType<typeof modelForSettings>>) => Promise<T>): Promise<T | null> {
   const { db, runId, workspace } = context;
   const run = await activeRun(db, runId, workspace.id);
@@ -84,7 +77,6 @@ type RawRow = { id: string; version: number; posted_on: string; description: str
 const toLedger = (row: RawRow): LedgerRow => ({ id: row.id, version: row.version, date: row.posted_on, description: row.description, amountMinor: BigInt(row.amount_minor), currency: row.currency_code,
   accountId: row.account_id, categoryId: row.category_id, merchantId: row.merchant_id, kind: row.kind, status: row.status, reviewReasons: row.review_reasons ?? [] });
 
-/** Newest-first keyset pages of the canonical (or split-aware) ledger since a date. */
 async function loadLedger(db: Db, workspaceId: string, since: string, table: "transactions" | "effective_transactions" = "transactions", limit = 10_000) {
   const rows: LedgerRow[] = [];
   for (let offset = 0; rows.length < limit; offset += 1000) {
@@ -107,25 +99,21 @@ async function runProposals(db: Db, runId: string, workspaceId: string) {
     .map(row => ({ agent: row.agent, kind: row.kind, conflictKey: row.conflict_key, title: row.title, detail: row.detail, evidence: row.evidence, payload: row.payload, confidence: row.confidence, notes: row.notes }) as Proposal);
 }
 
-// ── Agents ───────────────────────────────────────────────────────────────────
-const MODEL_BUDGET_CEILING = 200; // mirrors agent_runs_budget_check; a runaway guard, not a work cap
+const MODEL_BUDGET_CEILING = 200;
 const SOURCE: Record<Source, string> = { ai: "AI organizer", rule: "Your rule", memory: "Your confirmed payee", system: "The bank's own data" };
 
-/** One organizer batch: the model may read the owner's history with tools, then answers in the checked format. */
 async function askModel(model: Awaited<ReturnType<typeof modelForSettings>>, { system, prompt, tools }: AskRequest) {
   try {
     const result = await generateText({ model, system, prompt, tools, stopWhen: stepCountIs(6), output: Output.object({ schema: answersSchema }),
       maxRetries: 0, maxOutputTokens: 16_000, abortSignal: AbortSignal.timeout(180_000) });
     return result.output;
   } catch (error) {
-    // An answer that doesn't fit the format as a whole may still hold good answers; the organizer checks each one.
     if (NoObjectGeneratedError.isInstance(error)) { try { return JSON.parse(error.text ?? ""); } catch { return null; } }
     if (NoOutputGeneratedError.isInstance(error)) return null;
     throw error;
   }
 }
 
-/** Creates the categories the AI asked for (at most five a run, only for labels being applied); returns labels left without a target. */
 async function withNewCategories(context: Context, categories: Map<string, string>, labels: Label[]) {
   const byName = new Map([...categories].map(([id, name]) => [name.toLocaleLowerCase("en"), id]));
   const wanted = [...new Set(labels.filter(item => !item.categoryId && item.newCategory).map(item => item.newCategory!))].slice(0, 5);
@@ -143,7 +131,6 @@ async function withNewCategories(context: Context, categories: Map<string, strin
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 const rowCount = (items: { rows: unknown[] }[]) => items.reduce((sum, item) => sum + item.rows.length, 0);
 
-/** One proposal per decision, 50 rows at a time; autoApplyRun applies them as labels with their source. */
 function organizeProposals(item: Decided, index: number, input: OrganizeInput): Proposal<"categorize">[] {
   const decision = item.decision as Label;
   const name = item.identity?.displayName ?? (organizationDisplayName(organizationDescriptionKey(item.rows[0].description)) || item.rows[0].description);
@@ -166,7 +153,6 @@ function organizeProposals(item: Decided, index: number, input: OrganizeInput): 
   return proposals;
 }
 
-/** "Needs you": what the AI asked, or its unsure guess put as a question. One question per identity; new rows join it. */
 function questionText(item: Decided, input: OrganizeInput) {
   const decision = item.decision;
   if (decision.kind === "question") return decision.question.slice(0, 500);
@@ -175,12 +161,6 @@ function questionText(item: Decided, input: OrganizeInput) {
   return `${name.slice(0, 80)}: the AI thinks “${guess}” (${decision.confidence}% sure: ${decision.reason.slice(0, 200)}). Is that right?`.slice(0, 500);
 }
 
-/**
- * The organizer, as the team's first wave. Every row it reads ends labelled, as a question for the owner, or (when the AI
- * is unavailable, out of budget or at its plan's limit) left for the next run. The owner's rules and memory and the bank's
- * own data decide first; the AI decides once per identity. High labels, and medium ones while calibration holds, are
- * applied by autoApplyRun; everything else waits for the owner. Never an owner rule or correction.
- */
 async function categorizer(context: Context): Promise<{ proposals: Proposal[]; summary: string }> {
   const { db, workspace, runId } = context;
   await report(context, { type: "step", text: "Reading rows without a merchant or category" });
@@ -189,7 +169,6 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
   if (calibrated.reason) await report(context, { type: "note", text: calibrated.reason });
   await report(context, { type: "tool", text: `${plural(input.rows.length, "row")} to organize; ${plural(input.rules.length, "rule")}, ${plural(input.memory.size, "confirmed payee")}, ${plural(input.history.length, "labelled row")} as examples` });
   const run = await activeRun(db, runId, workspace.id);
-  // A limit an earlier run hit holds until it resets (organize_after): asking sooner would only fail again.
   const previous = checked(await db.from("agent_runs").select("organize_after").eq("workspace_id", workspace.id).neq("id", runId)
     .order("created_at", { ascending: false }).limit(1).maybeSingle()) as { organize_after: string | null } | null;
   const pausedUntil = previous?.organize_after && Date.parse(previous.organize_after) > Date.now() ? previous.organize_after : null;
@@ -200,7 +179,6 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
     return askModel(model, request);
   });
   const result = await organize(input, ask, { onPlan: async batches => {
-    // The organizer sizes the run's budget from its backlog: each batch plus one retry, and one call left for the writer.
     const current = checked(await db.from("agent_runs").select("model_calls, model_budget").eq("id", runId).eq("workspace_id", workspace.id).single()) as { model_calls: number; model_budget: number };
     checked(await db.from("agent_runs").update({ model_budget: Math.min(MODEL_BUDGET_CEILING, Math.max(current.model_budget, current.model_calls + batches * 2 + 1)) }).eq("id", runId).eq("workspace_id", workspace.id));
     await report(context, { type: "step", text: `Asking the AI about the rest in ${plural(batches, "batch", "batches")}, one decision per payee` });
@@ -210,7 +188,6 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
   if (!ask && result.left.length) await report(context, { type: "note", text: pausedUntil ? `The AI hit its limit in an earlier run and is asked again at ${resumes}; ${plural(result.left.length, "row")} wait until then`
     : `No AI available; ${plural(result.left.length, "row")} the bank's data and your rules couldn't decide wait for the next run` });
   if (result.stopped) await report(context, { type: "note", text: `${result.stopped instanceof StopWork ? result.stopped.message : "The AI plan's usage limit was reached"}; ${plural(result.left.length, "row")} wait for the next run` });
-  // Rows left blank are retried by the hourly check at this time (backlogRerunNeeded); rows the AI failed on are not.
   const retryAt = !result.left.length ? null : pausedUntil ?? (ask ? new Date(retryLeftoversAt(result.stopped, Date.now())).toISOString() : null);
   if (retryAt) checked(await db.from("agent_runs").update({ organize_after: retryAt }).eq("id", runId).eq("workspace_id", workspace.id));
   for (const failure of result.failed.slice(0, 3)) await report(context, { type: "note", text: `The AI failed on ${plural(failure.rows.length, "row")} (${failure.error instanceof Error ? failure.error.message : String(failure.error)}); they wait for the next run` });
@@ -239,10 +216,8 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
 async function recurring(context: Context) {
   const { db, workspace } = context;
   await report(context, { type: "step", text: "Scanning posted transactions for repeating payments" });
-  // Home raises recurring cards from the same detection, so a "Not recurring" there is the only decision needed.
   const raised = await syncRecurringProposals({ supabase: db, workspace });
   const waiting = (await openRecurringProposals(db, workspace.id)).length;
-  // Cards earlier runs kept here now live on Home.
   checked(await db.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString(), result: { movedToHome: true } })
     .eq("workspace_id", workspace.id).eq("kind", "recurring").eq("status", "proposed").not("run_id", "is", null));
   return { proposals: [], summary: `${waiting} recurring ${waiting === 1 ? "payment waits" : "payments wait"} on Home${raised ? "" : "; nothing new"}` };
@@ -251,7 +226,6 @@ async function recurring(context: Context) {
 async function anomaly(context: Context) {
   await report(context, { type: "step", text: "Comparing the last 13 months for duplicates, fees and outliers" });
   const loans = await loadLoanPayoutIds(context.db, context.workspace.id).catch(() => new Set<string>());
-  // Lending someone money is not an unusual charge.
   const rows = (await loadLedger(context.db, context.workspace.id, daysBefore(context.today, 400))).filter(row => !loans.has(row.id));
   await report(context, { type: "tool", text: `anomalyFindings over ${rows.length} postings` });
   const findings = anomalyFindings(rows, context.today, context.workspace.locale);
@@ -315,8 +289,6 @@ async function writer(context: Context) {
 
 const RUNNERS: Record<Exclude<AgentId, "lead">, (context: Context) => Promise<{ proposals: Proposal[]; summary: string }>> = { categorizer, recurring, anomaly, budget, forecaster, writer };
 
-// ── Steps called by the durable workflow ─────────────────────────────────────
-/** Registers the workflow, profiles the data and writes the lead's plan. Resumes keep finished tasks. */
 export async function startRun(runId: string, workspaceId: string, workflowRunId: string): Promise<AgentId[][] | null> {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return null; throw error; }
@@ -353,11 +325,6 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
   return WAVES.map(wave => wave.filter(agent => pending.has(agent)));
 }
 
-/**
- * Runs one agent. Agent failures stay inside the task so the rest of the team continues. With
- * retryTransient, a dropped database connection is thrown instead, leaving the task running for the
- * workflow step to try again; rerunning is safe because proposals upsert on their conflict key.
- */
 export async function runAgent(runId: string, workspaceId: string, agent: Exclude<AgentId, "lead">, retryTransient = false): Promise<string> {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return "canceled"; throw error; }
@@ -369,7 +336,6 @@ export async function runAgent(runId: string, workspaceId: string, agent: Exclud
   try {
     requireAiScope(settings, ...AGENTS[agent].scopes);
     const { proposals: found, summary } = await RUNNERS[agent](context);
-    // A finding is raised once: an earlier run's open or decided one stands, so "It's fine" on Home sticks.
     const findingKeys = found.filter(item => item.kind === "finding").map(item => item.conflictKey);
     const earlier = findingKeys.length ? new Set((checked(await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).eq("kind", "finding")
       .neq("run_id", runId).in("conflict_key", findingKeys)) as { conflict_key: string }[]).map(row => row.conflict_key)) : new Set<string>();
@@ -393,7 +359,6 @@ export async function runAgent(runId: string, workspaceId: string, agent: Exclud
   }
 }
 
-/** The lead merges every agent's proposals and resolves conflicts between them. */
 export async function mergeRun(runId: string, workspaceId: string) {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return false; throw error; }
@@ -411,29 +376,23 @@ export async function mergeRun(runId: string, workspaceId: string) {
       checked(await db.from("agent_proposals").update({ confidence: item.confidence, notes: item.notes }).eq("run_id", runId).eq("workspace_id", workspaceId).eq("conflict_key", item.conflictKey));
   }
   for (const text of resolutions.slice(0, 10)) await report(lead, { type: "note", text });
-  // Repayments of money lent or borrowed wait for review on Home and here; a failed lookup never fails the run.
   try { for (const found of await proposeRepayments({ supabase: db, workspace })) await report(lead, { type: "finding", text: found.title }); }
   catch (cause) { await report(lead, { type: "note", text: `Could not check loan repayments: ${cause instanceof Error ? cause.message : String(cause)}` }); }
   await report(lead, { type: "step", text: `${proposals.length} proposals ready for review` }, { summary: `Merged ${before.length} results into ${proposals.length} proposals; ${resolutions.length} conflicts resolved` });
   return true;
 }
 
-/** Whether a bank sync of this workspace still holds its lease (lib/bank/sync-lease.ts), so its rows are still landing. */
 export async function banksSyncing(workspaceId: string) {
   const held = checked(await service().from("bank_connections").select("id").eq("workspace_id", workspaceId).eq("status", "active")
     .gt("sync_lease_until", new Date().toISOString()).limit(1)) as unknown[];
   return held.length > 0;
 }
 
-/**
- * Whether the analysis agents run: only when rows landed, changed or got labels since the last completed analysis
- * (a manual run always does). Otherwise their tasks are skipped and the run ends after organizing.
- */
 export async function startAnalysis(runId: string, workspaceId: string) {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return false; throw error; }
   const run = checked(await db.from("agent_runs").select("trigger, data_fingerprint").eq("id", runId).eq("workspace_id", workspaceId).single()) as { trigger: string; data_fingerprint: string | null };
-  if (run.data_fingerprint) return true; // Resumed after its analysis began.
+  if (run.data_fingerprint) return true;
   const [fingerprint, last] = await Promise.all([db.rpc("agent_data_fingerprint", { p_workspace_id: workspaceId }),
     db.from("agent_runs").select("data_fingerprint").eq("workspace_id", workspaceId).eq("status", "completed").not("data_fingerprint", "is", null)
       .order("created_at", { ascending: false }).limit(1).maybeSingle()]);
@@ -454,11 +413,6 @@ type AiApplied = { applied: number; transactionIds: string[]; skipped: Record<st
 const appliedResult = (outcome: AiApplied) => ({ auto: true, applied: outcome.applied, skipped: outcome.skipped,
   href: outcome.transactionIds[0] ? `/money/transactions?transaction=${outcome.transactionIds[0]}` : "/money/transactions", undo: "Undo below" });
 
-/**
- * Applies the Categorizer's high- and medium-confidence proposals right away as AI labels, before the
- * other agents read categories: marked organized_by = 'ai', logged for Undo, never an owner correction
- * or rule. Low-confidence ones stay proposed for the owner. Each lands under "Decided automatically".
- */
 export async function autoApplyRun(runId: string, workspaceId: string) {
   const db = service();
   try { await activeRun(db, runId, workspaceId); } catch (error) { if (error instanceof RunInactive) return; throw error; }
@@ -480,12 +434,6 @@ export async function autoApplyRun(runId: string, workspaceId: string) {
   }
 }
 
-/**
- * A crash between claiming a categorize proposal and recording the answer leaves it "applying".
- * Its organizer_ops rows (proposal_id) tell what happened: the apply is one transaction, so any
- * row means it landed; none means nothing changed and the proposal waits again. Other kinds stay
- * put: a trade that may have been sent must never be offered twice.
- */
 export async function recoverStuckProposals(db: Db, workspaceId: string, now = Date.now()) {
   const stuck = checked(await db.from("agent_proposals").select("id").eq("workspace_id", workspaceId).eq("kind", "categorize").eq("status", "applying")
     .lt("decided_at", new Date(now - 5 * 60_000).toISOString())) as { id: string }[];
@@ -498,18 +446,15 @@ export async function recoverStuckProposals(db: Db, workspaceId: string, now = D
   }
 }
 
-/** Closes the run; rerun is the trigger of an import or sync that landed while it worked, which gets one follow-up run. */
 export async function finishRun(runId: string, workspaceId: string, error?: string): Promise<{ status: string; rerun: "import" | "sync" | null }> {
   const db = service();
   const now = new Date().toISOString();
   const run = checked(await db.from("agent_runs").select("status, cancel_requested").eq("id", runId).eq("workspace_id", workspaceId).single()) as { status: string; cancel_requested: boolean };
   if (!["queued", "running"].includes(run.status)) return { status: run.status, rerun: null };
-  // A run whose agents failed did not finish its work; saying "completed" hid 417 uncategorized rows.
   const failed = (checked(await db.from("agent_tasks").select("agent, status").eq("run_id", runId).eq("workspace_id", workspaceId)) as { agent: AgentId; status: string }[])
     .filter(task => task.status === "failed").map(task => AGENTS[task.agent].name);
   error ??= failed.length ? `${failed.join(", ")} failed; resume the run to try again` : undefined;
   const status = run.cancel_requested ? "canceled" : error ? "failed" : "completed";
-  // One statement with the status change, so a request either marked this run first or sees it finished and starts its own.
   const closed = checked(await db.from("agent_runs").update({ status, error: error?.slice(0, 2000) ?? null, finished_at: now, updated_at: now }).eq("id", runId).eq("workspace_id", workspaceId)
     .in("status", ["queued", "running"]).select("rerun_trigger").maybeSingle()) as { rerun_trigger: "import" | "sync" | null } | null;
   checked(await db.from("agent_tasks").update({ status: status === "completed" ? "done" : "canceled", finished_at: now }).eq("run_id", runId).eq("workspace_id", workspaceId).in("status", ["pending", "running"]));

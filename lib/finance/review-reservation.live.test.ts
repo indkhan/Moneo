@@ -50,7 +50,6 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("elects only o
       });
       void contender.catch(() => {});
       const pid = await competingPid;
-      // Observe a real overlapping lock wait, rather than relying on a sleep or sequential calls.
       await expect.poll(async () => (await leader`select ${leaderPid}::integer = any(pg_blocking_pids(${pid}::integer)) as blocked`)[0].blocked,
         {timeout: 3000, interval: 50}).toBe(true);
       return accepted;

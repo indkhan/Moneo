@@ -1,9 +1,3 @@
-// Helpers for the Money → Transactions browser.
-//
-// URL params stay validated and sort columns stay on a fixed allowlist so a
-// crafted query string can never inject an arbitrary column into the
-// Supabase query. Amounts are exact minor-unit integer strings (never
-// floats) validated against the Postgres bigint range.
 
 export const TRANSACTION_SORTS = ["date-desc", "date-asc", "amount-desc", "amount-asc"] as const;
 
@@ -40,7 +34,6 @@ export type ParsedTransactionParams = {
   sort: TransactionSort;
   page?: number;
   transactionId?: string;
-  /** Display-only grouping; never stored in saved views. */
   group?: TransactionGroup;
 };
 
@@ -48,7 +41,6 @@ const UUID_PATTERN = /^[0-9a-f-]{36}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MINOR_PATTERN = /^-?\d+$/;
 
-// Postgres bigint range; amounts outside this would error in the database.
 const BIGINT_MIN = -(2n ** 63n);
 const BIGINT_MAX = 2n ** 63n - 1n;
 
@@ -61,7 +53,6 @@ function validDate(value: string): boolean {
   return DATE_PATTERN.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
 
-/** Canonicalize an exact minor-unit integer string, or undefined if invalid. */
 export function parseMinorUnits(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
   const trimmed = raw.trim();
@@ -75,7 +66,6 @@ export function parseMinorUnits(raw: string | undefined): string | undefined {
   }
 }
 
-/** Stored tag form (trimmed, lowercase, 1–40 chars), matching bulk tagging. */
 export function normalizeTag(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const tag = raw.trim().toLowerCase();
@@ -83,7 +73,6 @@ export function normalizeTag(raw: unknown): string | undefined {
   return tag;
 }
 
-/** Spending-group identity: trimmed, case preserved, 1–120 chars (exact `event_name` match). */
 export function normalizeEventName(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const eventName = raw.trim();
@@ -91,7 +80,6 @@ export function normalizeEventName(raw: unknown): string | undefined {
   return eventName;
 }
 
-/** Page 1 is the default and never appears in the URL. */
 function parsePage(raw: string | undefined): number | undefined {
   if (!raw || !/^\d{1,6}$/.test(raw)) return undefined;
   const page = Number(raw);
@@ -152,13 +140,11 @@ export function parseTransactionParams(
   };
 }
 
-/** Toggle helper for the Date / Amount column headers. */
 export function toggleSort(current: TransactionSort, column: "date" | "amount"): TransactionSort {
   if (column === "date") return current === "date-desc" ? "date-asc" : "date-desc";
   return current === "amount-desc" ? "amount-asc" : "amount-desc";
 }
 
-/** Serialize filters back to shareable URL params (page dropped by default). */
 export function toQueryParams(
   filters: ParsedTransactionParams,
   options: { includePage?: boolean } = {},

@@ -38,7 +38,6 @@ async function session(userStatus: number | "socket") {
   return () => checks;
 }
 
-// #220: a single failed auth check sends a healthy signed-in workspace to setup.
 it.each([503, "socket"] as const)("recovers a signed-in workspace after temporary auth failure %s", async status => {
   await session(status);
   expect((await requireWorkspace()).workspace.id).toBe("workspace");

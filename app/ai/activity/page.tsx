@@ -16,7 +16,6 @@ const JOB_STATE: Record<string, string> = { queued: "In progress", running: "In 
 const EMPTY: Record<Exclude<Filter, "all" | "attention">, string> = { imports: "No imports yet.", analyses: "No deep reviews yet.", chats: "No chat activity yet." };
 const truncate = (value: string | null | undefined, max = 200) => !value ? "" : value.length > max ? `${value.slice(0, max)}…` : value;
 
-// One feed for Activity and Notifications. Each filter queries only the sources it shows.
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/setup"); }
@@ -25,7 +24,6 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const filter: Filter = requested && requested in FILTERS ? requested as Filter : "all";
   const wants = (kind: Kind) => filter === "all" || filter === "attention" || filter === kind;
   const none = Promise.resolve({ data: null, error: null });
-  // Needs attention asks for what is unresolved directly, so older work cannot fall out of a recent sample.
   const attention = filter === "attention";
   const heldCards = attention ? await supabase.from("agent_proposals").select("chat_request_id").eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).not("chat_request_id", "is", null).order("created_at", { ascending: false }).limit(1000) : { data: [], error: null };
   const heldRequests = [...new Set((heldCards.data ?? []).map(row => row.chat_request_id as string))].slice(0, 100);
@@ -39,13 +37,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     wants("chats") ? supabase.from("conversations").select("id, title, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
     wants("chats") ? (query => attention ? query.or(`status.eq.failed${heldRequests.length ? `,id.in.(${heldRequests.join(",")})` : ""}`).limit(100) : query.limit(30))(supabase.from("chat_requests").select("id, conversation_id, status, error, usage, answer, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false })) : none,
   ]);
-  // A reply whose cards are still open needs attention, so cards from a chat that finished after the user left stay findable.
   const cards = new Map((requests.data ?? []).map(row => [row.id, row.status === "completed" ? answerCardIds(row.answer) : []]));
   const cardIds = [...new Set([...cards.values()].flat())];
   const open = await (cardIds.length ? supabase.from("agent_proposals").select("id, title").eq("workspace_id", workspace.id).in("id", cardIds).in("status", ["proposed", "failed"]) : none);
   const openIds = new Map((open.data ?? []).map(row => [row.id as string, (row as { title?: string }).title ?? ""]));
   const waiting = (id: string) => (cards.get(id) ?? []).filter(card => openIds.has(card)).length;
-  // What is waiting, in the words of the first card, so several replies can be told apart.
   const subject = (id: string) => { const first = (cards.get(id) ?? []).map(card => openIds.get(card)).find(Boolean); return first ? truncate(first, 120) : null; };
   const errors = [heldCards, imports, jobs, saved, conversations, requests, open].map(result => result.error).filter(Boolean);
   const titles = new Map((saved.data ?? []).map(row => [row.job_id, row.title]));
@@ -63,10 +59,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       href: `/ai/activity/${row.id}`, attention: row.status === "failed", state: JOB_STATE[row.status] ?? "In progress", action: row.status === "completed" ? "Open review" : row.status === "failed" ? "See next steps" : "View progress" })),
     ...(conversations.data ?? []).map(row => ({ key: `conversation:${row.id}`, kind: "chats" as const, at: row.created_at, badge: "Conversation", title: row.title,
       detail: "", href: `/ai?conversation=${row.id}`, attention: false, quiet: true, state: "Chat", action: "Open chat" })),
-    // Chat rows and successful replies are noise in the combined feed unless cards they raised are still waiting; the rest stay under Chats.
     ...(requests.data ?? []).map(row => ({ key: `chat:${row.id}`, kind: "chats" as const, at: row.updated_at, badge: "Chat",
       title: waiting(row.id) ? subject(row.id) ?? `Chat reply · ${waiting(row.id)} ${waiting(row.id) === 1 ? "card" : "cards"} waiting for you` : `Chat reply ${row.status}`,
-      // Model and token details belong to the Chats history, not to a row asking for a decision.
       detail: row.status === "failed" ? "This reply failed. Open the chat to send it again." : waiting(row.id) ? `${waiting(row.id)} ${waiting(row.id) === 1 ? "card" : "cards"} waiting for your decision` : filter === "chats" && row.usage ? usageLabel(row.usage as ReportedUsage) : "",
       state: row.status === "failed" ? "Failed" : waiting(row.id) ? "Ready to review" : row.status === "completed" ? "Completed" : "In progress", action: waiting(row.id) ? "Review in chat" : "Open chat",
       href: `/ai?conversation=${row.conversation_id}`, attention: row.status === "failed" || waiting(row.id) > 0, quiet: row.status !== "failed" && !waiting(row.id) })),

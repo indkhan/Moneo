@@ -1,5 +1,3 @@
-// Fresh and upgraded application-schema verification; every write is rolled back.
-// Supabase-owned auth/storage setup is excluded from the fresh replay.
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
@@ -51,7 +49,6 @@ try {
   let fresh, upgraded;
   await rolledBack(async tx => {
     await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users (id uuid primary key, email text)`);
-    // Supabase supplies schema USAGE; grant it only on the disposable replay schema.
     await tx.unsafe(`grant usage on schema ${schema} to authenticated, service_role`);
     const isolated = sql => sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);
     const isolatedMigrations = migrations.map(migration => {

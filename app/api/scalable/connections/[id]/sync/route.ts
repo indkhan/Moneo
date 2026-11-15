@@ -7,7 +7,6 @@ import { syncScalable } from "@/lib/scalable/sync";
 
 export const maxDuration = 60;
 
-// "Sync now": a handful of MCP reads and one database call, so it runs inline.
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }

@@ -1,9 +1,3 @@
-// Nightly browser suite on the moneo-qa test backend. It runs every spec twice, so specs that only
-// pass on a clean start show up, on a production build of origin/main, in its own worktree
-// (~/.moneo/nightly), and keeps one GitHub issue up to date: opened or commented on failure, closed
-// when green. A missed night (PC off, Docker off, port 3100 busy) is skipped quietly.
-//   npm run qa:nightly                 run now
-//   npm run qa:nightly -- --install    schedule it daily at 03:00 (Windows; runs late if the PC was off)
 import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
@@ -15,7 +9,6 @@ const tree = join(home, "nightly");
 const TITLE = "Nightly browser suite is failing";
 mkdirSync(home, { recursive: true });
 const log = message => { console.log(message); writeFileSync(join(home, "nightly.log"), `${new Date().toISOString()} ${message}\n`, { flag: "a" }); };
-// npm and npx are .cmd files on Windows and need a shell; git, gh and docker do not.
 const shell = command => process.platform === "win32" && (command === "npm" || command === "npx");
 const ok = (command, args) => spawnSync(command, args, { stdio: "ignore", shell: shell(command) }).status === 0;
 const run = (command, args, cwd) => execFileSync(command, args, { cwd, stdio: "inherit", shell: shell(command) });
@@ -43,7 +36,6 @@ const portBusy = () => new Promise(done => { const socket = createConnection(310
 if (!ok("docker", ["info"])) { log("Skipped: Docker is not running."); process.exit(0); }
 if (await portBusy()) { log("Skipped: port 3100 is in use by another QA server."); process.exit(0); }
 
-// Always the latest main, in a worktree nobody edits by hand.
 run("git", ["fetch", "--quiet", "origin", "main"], repo);
 if (!existsSync(tree)) run("git", ["worktree", "add", "--detach", tree, "origin/main"], repo);
 else run("git", ["checkout", "--quiet", "--force", "--detach", "origin/main"], tree);

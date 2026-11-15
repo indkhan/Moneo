@@ -34,8 +34,6 @@ describe("requireWorkspace session confirmation", () => {
     expect(auth.getUser).toHaveBeenCalledTimes(2);
   });
 
-  // Moneo Desktop on Windows: GoTrue answered 500 when Postgres failed to start a connection, and
-  // pages sent the owner to "could not sign you in" instead of offering a retry.
   it("treats an auth outage as unavailable, not as a signed-out owner", async () => {
     auth.session = "outage";
     auth.getUser.mockResolvedValue({ data: { user: null }, error: Object.assign(new Error("database error"), { status: 500 }) });

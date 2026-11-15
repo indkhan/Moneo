@@ -10,7 +10,6 @@ export function planLiquidity(input: ForecastInput, params: LiquidityParams) {
   let fundingError: string | null = null;
   let fundingMinor: string | null = null;
   if (params.fundingFrom || params.fundingDate || params.funding) {
-    // Decimal currency input becomes exact minor units here, before the shared schema validates it.
     fundingMinor = positiveMinor(params.funding ?? "", input.currencyCode);
     const parsed = forecastInput.safeParse({ funding: [{ fromAccountId: params.fundingFrom, toAccountId: params.account,
       date: params.fundingDate, amountMinor: fundingMinor ?? undefined, currencyCode: input.currencyCode }] });
@@ -25,7 +24,6 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
   input: ForecastInput; params: LiquidityParams; names: Map<string, string>; locale?: string; result: ReturnType<typeof planLiquidity>;
 }) {
   const { liquidity, fundingError, fundingMinor } = result;
-  // The page lists what to fix first; there is nothing to evaluate until then.
   if (liquidity.status === "unavailable") return null;
   const money = (amount: bigint) => formatMoney(amount, input.currencyCode, locale);
   const selected = liquidity.accounts.find(account => account.accountId === params.account);

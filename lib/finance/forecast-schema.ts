@@ -1,6 +1,5 @@
 import {z} from "zod";
 
-// Shared with the client-side review request; keep server readers out of this schema module.
 export const forecastInput = z.object({
   horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional(),
   accountId: z.string().min(1).max(100).optional(),

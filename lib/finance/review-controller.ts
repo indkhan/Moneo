@@ -23,7 +23,6 @@ type Dependencies = {
 };
 const magnitude = (value: string) => {const n = BigInt(value); return n < 0n ? -n : n;};
 
-/** Materiality ordering is local to a currency; round-robin prevents a currency being starved. */
 function materialGroups<T extends {currency: string; deltaMinor: string | null; key: string}>(groups: T[]) {
   const currencies = new Map<string, T[]>();
   for (const group of groups) {
@@ -40,13 +39,11 @@ function materialGroups<T extends {currency: string; deltaMinor: string | null; 
   return result;
 }
 
-/** The caller reads owned deterministic data, persists complete receipts, and fences checkpoints to the current run. */
 export async function runReviewInvestigation(request: ReviewRequest, dependencies: Dependencies, previous?: ReviewProgress): Promise<ReviewProgress> {
   if (previous && investigationIdentity(previous.request) !== investigationIdentity(request)) throw new Error("Investigation resume request changed");
   const now = dependencies.now ?? Date.now;
   const progress: ReviewProgress = previous ? structuredClone(previous) : {version: 1, request, startedAt: now(), queries: [], supportRecords: 0, limitations: ["Causal explanations are unproven; only recorded measures and separately labelled hypotheses may be published."]};
   const note = (text: string) => {if (!progress.limitations.includes(text)) progress.limitations.push(text);};
-  // A process interrupted during a query still spent that query. Never reset budgets on retry.
   for (const query of progress.queries) if (query.status === "reading") {query.status = "unavailable"; note("An interrupted read was unavailable; its attempt remains counted against the query budget.");}
   const remaining = request.budget.maxDurationMs - (now() - progress.startedAt);
   if (remaining <= 0) {note("Investigation time budget reached; retained supported sections remain available."); await dependencies.checkpoint?.(progress); return progress;}
@@ -83,7 +80,6 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
     const financialQueries = progress.queries.filter(query => !query.query.planning);
     const baselineQuery = financialQueries.find(query => query.status === "completed" && !query.query.page.groupKey);
     const baseline = baselineQuery?.result;
-    // One same-scope aggregate fallback can retain useful facts without repeating an unavailable detailed read.
     if (baselineQuery?.query.groupBy?.length === 0 || !baseline && financialQueries.length &&
       (!request.query.groupBy.length || financialQueries.some(query => query.query.groupBy?.length === 0))) break;
     const aggregateFallback = !baseline && financialQueries.length > 0;
@@ -94,14 +90,13 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
     const attempt: ReviewProgress["queries"][number] = {query: {page: query.page, ...(aggregateFallback ? {groupBy: []} : {})}, status: "reading"};
     if (aggregateFallback) note("Detailed grouping was unavailable; the fallback preserves the exact dated filters and currency policy but cannot explain individual group changes.");
     progress.queries.push(attempt);
-    await dependencies.checkpoint?.(progress); // Persist spent budget before starting network work.
+    await dependencies.checkpoint?.(progress);
     try {
       signal.throwIfAborted();
       const {result, receiptId} = await dependencies.read(query, signal);
       signal.throwIfAborted();
       if (result.records.items.length > query.page.size) throw new Error("Evidence reader exceeded its supporting-record budget");
       const ranked = materialGroups(result.groups);
-      // Keep the largest changes, including declines, before filling remaining unchanged groups.
       const selected = group ? result.groups.filter(candidate => candidate.key === group.key)
         : [...ranked, ...result.groups.filter(group => !ranked.some(candidate => candidate.key === group.key))].slice(0, 20);
       const groups = selected.map(({dimensions, ...values}) => ({...values, label: JSON.stringify(dimensions).slice(0, 200)}));
@@ -118,7 +113,6 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
       attempt.status = "unavailable";
       if (signal.aborted) note("Investigation time budget reached; retained supported sections remain available.");
       else note("Some evidence was unavailable; retained supported sections remain available without an inferred cause.");
-      // Do not publish raw transport errors or private source data in the progress summary.
       void error;
     }
     await dependencies.checkpoint?.(progress);

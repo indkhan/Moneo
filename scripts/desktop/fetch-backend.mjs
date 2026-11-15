@@ -1,15 +1,3 @@
-// Downloads, verifies and builds the native backend that Moneo Desktop bundles instead of Docker:
-// PostgreSQL 17 with contrib, PostgREST, GoTrue (supabase/auth, cross-compiled with CGO off),
-// mkcert and the Storage API (supabase/storage, a Node app). Every download is pinned by
-// SHA-256 below; downloads are cached in desktop/.cache, results land in desktop/.build:
-//   desktop/.build/backend/<platform>/{postgres/,postgrest/,gotrue/,mkcert[.exe],fs-xattr/,manifest.json}
-//   desktop/.build/storage-api/            (platform-independent; see fs-xattr below)
-//   desktop/.build/migrations/, desktop/.build/bootstrap/   (copies of supabase/migrations, desktop/bootstrap)
-//
-//   node scripts/desktop/fetch-backend.mjs --platform win-x64 [--platform mac-arm64 ...] [--skip storage,gotrue]
-//
-// Platforms: win-x64, mac-arm64, mac-x64, linux-x64. Everything cross-builds from any host except
-// safeupdate and the fs-xattr addon, which compile only on their native host (CI does that).
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
@@ -30,10 +18,7 @@ const PLATFORMS = {
   "linux-x64": { os: "linux", arch: "x64", goos: "linux", goarch: "amd64", exe: "", postgres: "x86_64-unknown-linux-gnu", postgrest: "linux-static-x86-64.tar.xz", mkcert: "linux-amd64" },
 };
 
-// Pinned inputs. To upgrade one, change its version and every sha256 next to it.
 export const PINS = {
-  // Relocatable builds from PostgreSQL source with all client tools and contrib (pgcrypto, pg_trgm),
-  // PostgreSQL License, with bundled dependency notices. zonky's embedded binaries lack pg_dump/pg_restore.
   postgres: {
     version: "17.11", release: "17.11.1", license: "PostgreSQL",
     url: target => `https://github.com/theseus-rs/postgresql-binaries/releases/download/17.11.1/postgresql-17.11.1-${target}.tar.gz`,
@@ -64,12 +49,6 @@ export const PINS = {
       "linux-x64": "6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52",
     },
   },
-  // The Microsoft Visual C++ 2015-2022 runtime that the Windows PostgreSQL build (MSVC) needs, copied
-  // app-local next to postgres.exe and postgrest.exe so a clean Windows needs no vc_redist install.
-  // Taken from Microsoft's signed VC_redist.x64.exe (versioned download URL; its path carries the
-  // SHA-256) without running it: the DLLs sit in the bundle's vcRuntimeMinimum cabinet and are
-  // checked against the hashes below. Redistribution basis: Visual Studio's "Distributable Code"
-  // (REDIST.TXT lists these DLLs for app-local deployment); the runtime's own license.rtf ships too.
   vcruntime: {
     version: "14.44.35211.0",
     url: "https://download.visualstudio.microsoft.com/download/pr/e9604e21-4b79-4096-a4b3-1b63d4b55b4d/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
@@ -80,7 +59,6 @@ export const PINS = {
       "msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
     },
   },
-  // Build-only toolchain for GoTrue, matching supabase/auth's go.mod and Dockerfile.
   go: {
     version: "go1.27.0",
     sha256: {
@@ -103,7 +81,6 @@ export const PINS = {
   },
 };
 
-// PostgreSQL programs the backend uses: server, cluster setup, backups and a shell for support.
 const POSTGRES_PROGRAMS = new Set(["postgres", "initdb", "pg_ctl", "pg_dump", "pg_dumpall", "pg_restore", "psql",
   "pg_isready", "pg_controldata", "pg_resetwal", "pg_upgrade", "pg_checksums"]);
 
@@ -153,8 +130,6 @@ async function download(url, expected, name) {
   return file;
 }
 
-// bsdtar (Windows 10+, macOS) reads zip, gzip and xz; GNU tar on Linux needs unzip for zips.
-// On Windows always the system bsdtar, never Git's GNU tar, which reads "C:" as a remote host.
 async function extract(archive, dest) {
   await fs.rm(dest, { recursive: true, force: true });
   await fs.mkdir(dest, { recursive: true });
@@ -182,7 +157,6 @@ const mb = bytes => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 async function postgres(platform, target) {
   const p = PLATFORMS[platform];
   const archive = await download(PINS.postgres.url(p.postgres), PINS.postgres.sha256[platform], `postgresql-${PINS.postgres.release}-${p.postgres}.tar.gz`);
-  // The macOS/Linux archives hold library symlinks (libpq.so → libpq.so.5), which Windows cannot extract.
   if (process.platform === "win32" && p.os !== "win32") {
     console.warn(`Skipping PostgreSQL for ${platform}: its archive (verified) has symlinks; build it on a macOS or Linux host.`);
     return;
@@ -191,8 +165,6 @@ async function postgres(platform, target) {
   await extract(archive, work);
   const src = await single(work);
   await safeupdate(platform, src, work);
-  // Drop what a running database never loads: headers, docs, static libraries, build files,
-  // PL/Python (and the Python runtime it bundles) and the LLVM JIT (the backend sets jit = off).
   await remove(join(src, "include"));
   await remove(join(src, "share", "doc"));
   for (const entry of await fs.readdir(join(src, "bin"))) {
@@ -208,7 +180,6 @@ async function postgres(platform, target) {
   await remove(work);
 }
 
-// Build the same parser guard that the Docker image preloads for PostgREST.
 async function safeupdate(platform, pg, work) {
   const p = PLATFORMS[platform];
   if (process.platform !== p.os || process.arch !== p.arch)
@@ -233,12 +204,9 @@ async function safeupdate(platform, pg, work) {
     await fs.writeFile(join(build, "build.cmd"), batch);
     run("cmd.exe", ["/d", "/c", join(build, "build.cmd")], { cwd: build });
   } else {
-    // This module needs only server headers and unresolved backend symbols, avoiding PGXS'
-    // build-time paths and make's handling of spaces in the extracted PostgreSQL location.
     run("cc", ["-fPIC", ...(p.os === "darwin" ? ["-bundle", "-undefined", "dynamic_lookup"] : ["-shared"]),
       `-I${join(pg, "include", "server")}`, `-I${join(pg, "include")}`, "safeupdate.c", "-o", "safeupdate.so"], { cwd: build });
   }
-  // PostgreSQL loads modules by its platform suffix (DLSUFFIX): .dylib on macOS since PostgreSQL 16.
   const library = `safeupdate${{ win32: ".dll", darwin: ".dylib" }[p.os] ?? ".so"}`;
   await fs.copyFile(join(build, p.os === "win32" ? "safeupdate.dll" : "safeupdate.so"), join(pg, "lib", library));
 }
@@ -249,9 +217,6 @@ async function postgrest(platform, target) {
   await extract(archive, join(target, "postgrest"));
   const binary = join(target, "postgrest", `postgrest${p.exe}`);
   if (!existsSync(binary)) throw new Error(`PostgREST archive for ${platform} has no postgrest${p.exe}`);
-  // The macOS releases link Homebrew's libpq by absolute path (/opt/homebrew/opt/libpq/... on arm64,
-  // /usr/local/opt/libpq/... on x64). Point it at the bundled one; DYLD_* variables would not help
-  // once the binary is signed with the hardened runtime. Needs install_name_tool, so a macOS host.
   if (p.os === "darwin") {
     const homebrew = { arm64: "/opt/homebrew/opt/libpq/lib/libpq.5.dylib", x64: "/usr/local/opt/libpq/lib/libpq.5.dylib" }[p.arch];
     if (process.platform !== "darwin") console.warn(`PostgREST for ${platform} still links ${homebrew}; run this on macOS to relink it.`);
@@ -269,8 +234,6 @@ async function mkcert(platform, target) {
   await fs.chmod(join(target, `mkcert${p.exe}`), 0o755);
 }
 
-// Cabinet files ("MSCF", version 1.3) embedded in a WiX Burn bundle, in order: the UX container
-// (with the manifest) first, then the attached payload container.
 async function embeddedCabinets(file) {
   const bytes = await fs.readFile(file);
   const cabinets = [];
@@ -287,7 +250,6 @@ async function extractCabinet(bytes, dest) {
   await fs.mkdir(dest, { recursive: true });
   const file = `${dest}.cab`;
   await fs.writeFile(file, bytes);
-  // libarchive's bsdtar reads cabinets: the system tar on Windows and macOS, bsdtar on Linux.
   if (process.platform === "win32") run(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe"), ["-xf", file, "-C", dest]);
   else run(process.platform === "linux" ? "bsdtar" : "tar", ["-xf", file, "-C", dest]);
 }
@@ -345,10 +307,6 @@ async function source(pin, name) {
   return join(dir, pin.folder);
 }
 
-// GoTrue's HTTP listener sets SO_REUSEPORT through golang.org/x/sys/unix, which does not compile for
-// Windows (and Windows has no SO_REUSEPORT; GoTrue uses it only for overlapping restarts). For the
-// Windows build only, a `go build -overlay` swaps in a copy of cmd/serve_cmd.go without that call;
-// the source tree and every other platform stay upstream.
 async function gotrueWindowsOverlay(p, src) {
   if (p.goos !== "windows") return [];
   const file = join(src, "cmd", "serve_cmd.go");
@@ -383,11 +341,9 @@ async function gotrue(platform, target) {
 }
 
 function npm(npmArgs, cwd) {
-  // npm is npm.cmd on Windows, which spawn only runs through a shell.
   run("npm", npmArgs, { cwd, shell: process.platform === "win32" });
 }
 
-// The license texts of every npm package esbuild put into the bundle, for THIRD_PARTY_NOTICES.txt.
 async function bundledNotices(src, metafile) {
   const packages = new Map();
   for (const input of Object.keys(metafile.inputs)) {
@@ -404,13 +360,6 @@ async function bundledNotices(src, metafile) {
   return { count: sections.length, text: sections.join("\n\n") };
 }
 
-// supabase/storage built like its Dockerfile (npm ci without install scripts, esbuild into dist/),
-// then bundled with its own esbuild into a few flat files: no node_modules, short paths, about 12 MB
-// instead of a 340 MB tree. pino writes logs from worker threads that load files by path, so those
-// workers are separate entry points, found through pino's __bundlerPathsOverrides. Storage's file
-// backend imports fs-xattr, a native addon that refuses to install on Windows; it is replaced by
-// scripts/desktop/backend-fs-xattr-shim, so this folder is the same on every platform and the
-// macOS/Linux addon is built per platform. Migrations are read from ./migrations/tenant (cwd).
 async function storage() {
   const src = await source(PINS.storage, "storage");
   const dest = join(out, "storage-api");
@@ -440,8 +389,6 @@ async function storage() {
     },
     outdir: staging, bundle: true, platform: "node", format: "cjs", target: "node22",
     alias: { "fs-xattr": join(shim, "index.js") },
-    // Besides pino's worker paths: exit once the backend that started this server is gone (a
-    // force-quit leaves no one to stop it), checked from the main thread every second.
     banner: { js: `globalThis.__bundlerPathsOverrides = { ${overrides} };
 if (process.env.MONEO_PARENT_PID && require("worker_threads").isMainThread) {
   const parent = Number(process.env.MONEO_PARENT_PID);
@@ -449,8 +396,6 @@ if (process.env.MONEO_PARENT_PID && require("worker_threads").isMainThread) {
 }` },
     minify: true, keepNames: true, legalComments: "none", metafile: true, logLevel: "warning",
     plugins: [{
-      // `require(__dirname + "/file.js")` (pg-format's reserved words) is invisible to the bundler;
-      // as a plain relative require it gets bundled.
       name: "dirname-require",
       setup(bundler) {
         bundler.onLoad({ filter: /[\\/]node_modules[\\/].*\.js$/ }, async args => {
@@ -462,7 +407,6 @@ if (process.env.MONEO_PARENT_PID && require("worker_threads").isMainThread) {
     }],
   });
   await fs.cp(join(src, "migrations"), join(staging, "migrations"), { recursive: true });
-  // postgres-migrations reads its bootstrap SQL from <its dir>/migrations, now the bundle's folder.
   await fs.copyFile(fromSource.resolve("postgres-migrations/dist/migrations/0_create-migrations-table.sql"), join(staging, "migrations", "0_create-migrations-table.sql"));
   await fs.copyFile(join(src, "LICENSE"), join(staging, "LICENSE"));
   const notices = await bundledNotices(src, result.metafile);
@@ -473,7 +417,6 @@ if (process.env.MONEO_PARENT_PID && require("worker_threads").isMainThread) {
   console.log(`Storage API: ${mb(await size(dest))} (${notices.count} bundled packages)`);
 }
 
-// The fs-xattr N-API addon for macOS/Linux, loaded by the shim through MONEO_FS_XATTR_ADDON.
 async function xattrAddon(platform, target) {
   const p = PLATFORMS[platform];
   if (p.os === "win32") return;

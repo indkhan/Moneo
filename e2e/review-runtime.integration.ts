@@ -235,7 +235,6 @@ test("Stop aborts the actual AI SDK/OpenAI HTTP transport in an installed Workfl
     expect(after.provider_aborted_at - stoppedAt).toBeLessThan(3000);
     expect(after.attempts.provider).toBe(1); expect(after.saves).toBe(0);
     await expect.poll(async () => (await (await request.get(`/api/reviews?run=${before.workflow_run_id}`)).json()).status, { timeout: 5000 }).toBe("cancelled");
-    // A fresh request is the reload source of truth, independent of in-memory UI state.
     expect(await (await request.get(fixture)).json()).toMatchObject({ status: "canceled", cancel_requested: true, saves: 0 });
   } finally { await request.delete(fixture); }
 });

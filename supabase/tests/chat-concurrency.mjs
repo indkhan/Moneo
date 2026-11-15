@@ -1,4 +1,3 @@
-// Real concurrent database connections; synthetic workspace, targeted cleanup.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -35,12 +34,10 @@ try {
   const unlock = new Promise(resolve => { release = resolve; });
   const holder = db.begin(async tx => {
     await authenticated(tx);
-    // A duplicate authenticated claim takes the same execution lock without direct UPDATE privilege.
     await tx`select public.start_chat_request(${request},${conversation},${command},'{}'::jsonb)`;
     acquired();
     await unlock;
   });
-  // Observe an early lock-holder failure so cleanup still runs instead of an unhandled rejection.
   holder.catch(error => acquired(error));
   const lockError = await locked;
   if (lockError) throw lockError;

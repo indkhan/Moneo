@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountBounds, bulkInput, directedAmount, parseManualAmount, shownBounds, splitInput } from "./input";
+import { amountBounds, bulkInput, directedAmount, parseManualAmount, shownBounds, splitInput } from "./transaction-input";
 
 describe("plain amounts with a direction", () => {
   it("signs a positive amount by direction and refuses a minus sign", () => {

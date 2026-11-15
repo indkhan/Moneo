@@ -13,7 +13,6 @@ vi.mock("./manual-balance-form", () => ({ ManualBalanceForm: () => null }));
 vi.mock("./home-notices", () => ({ HomeNotices: () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/components/intent-link", () => ({ IntentLink: "a" }));
-// The grid is a client component; here it only lays its widgets out in order so their server content can be resolved.
 vi.mock("./home-grid", () => ({ HomeGrid: ({ items, widgets }: { items: string[]; widgets: Record<string, ReactNode> }) => items.map(key => React.createElement("div", { key }, widgets[key])) }));
 vi.mock("@/lib/finance/tools", async original => ({ ...await original<typeof import("@/lib/finance/tools")>(), cashflow: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), unavailable: "Synthetic period" }) }));
 vi.mock("@/lib/finance/wealth", () => ({ loadWealthItems: async () => [], wealthEvidence: () => ({ included: [], missingInputs: [], outdated: [], sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07", recordBasis: "manual_wealth" }, []) }) }));
@@ -62,7 +61,6 @@ it("Home preserves unavailable evidence rather than displaying pooled spending",
 it("chosen-account spending respects a separately owned workspace buffer", async () => {
   input.workspaceBufferMinor = 10000n;
   try {
-    // Re-evaluate mocked loader after changing the input.
     vi.mocked(evaluatePlanForWorkspace).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlanForWorkspace>>);
     const html = await render("savings");
     expect(html).toContain("Workspace buffer: EUR 100.00");

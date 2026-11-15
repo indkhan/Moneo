@@ -17,7 +17,6 @@ export function Chips({ label, items }: { label: string; items: { href: string; 
 }
 
 type Option = { id: string; name: string };
-/** A plain select of existing categories or merchants; an empty choice means none. */
 export function Pick({ name, label, options, empty, value }: { name: string; label: string; options: Option[]; empty: string; value?: string | null }) {
   return <select name={name} aria-label={label} defaultValue={value ?? ""} className={field}>
     <option value="">{empty}</option>
@@ -25,7 +24,6 @@ export function Pick({ name, label, options, empty, value }: { name: string; lab
   </select>;
 }
 
-/** One button in its own form, so any row can carry several actions. */
 export function Action({ action, fields, label, name, tone = "quiet" }: { action: (state: SafeState, form: FormData) => Promise<SafeState>; fields: [string, string][]; label: string; name: string; tone?: "quiet" | "primary" }) {
   return <SafeForm action={action} className="inline-flex flex-wrap items-center gap-2">
     {fields.map(([key, value], index) => <input key={`${key}${index}`} type="hidden" name={key} value={value} />)}

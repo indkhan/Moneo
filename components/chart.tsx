@@ -3,10 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 
-// Loaded on the client only, so echarts never ships in the server render or blocks first paint.
-// A trimmed echarts (see echarts-lean) serves app and chat charts alike.
 export const ReactECharts = dynamic(() => import("./echarts-lean"), { ssr: false });
-// Pages that import this module eagerly (Plan) start the echarts download before their chart renders.
 if (typeof window !== "undefined") void import("./echarts-lean");
 
 function subscribeTheme(onChange: () => void) {
@@ -15,7 +12,6 @@ function subscribeTheme(onChange: () => void) {
   return () => observer.disconnect();
 }
 
-/** Resolves a color token to a concrete color; tokens are light-dark() pairs, which ECharts cannot parse. */
 function token(name: string, fallback: string) {
   if (typeof document === "undefined") return fallback;
   const probe = document.createElement("span");
@@ -26,7 +22,6 @@ function token(name: string, fallback: string) {
   return color || fallback;
 }
 
-// Chart colors follow the app's CSS tokens, including the dark theme.
 export function useThemeColors() {
   const theme = useSyncExternalStore(subscribeTheme, () => document.documentElement.dataset.theme ?? "light", () => "light");
   return useMemo(() => {
@@ -35,23 +30,19 @@ export function useThemeColors() {
   }, [theme]);
 }
 
-/** Money in vs money out per month; `flow` shows one side only. Bars are major units for pixel scale only. */
 export function CashFlowChart({ labels, income, spending, flow, selected, picked, height = 240, formatValue, onSelect }: {
   labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; picked?: "in" | "out"; height?: number;
   formatValue?: (value: number) => string; onSelect?: (index: number, flow: "in" | "out") => void;
 }) {
   const colors = useThemeColors();
   const bar = { type: "bar", barMaxWidth: 28, barGap: "20%", itemStyle: { borderRadius: [4, 4, 0, 0] } };
-  // With a month picked, the other months fade so the breakdown below clearly belongs to it.
   const points = (values: number[]) => values.map((value, index) => selected === undefined || index === selected ? value : { value, itemStyle: { opacity: 0.35 } });
-  // The dashed line marks the picked month on the side (in or out) that was clicked.
   const marker = (side: "in" | "out") => selected !== undefined && picked === side
     ? { markLine: { symbol: "none", silent: true, label: { show: false }, lineStyle: { type: "dashed", color: colors.muted, width: 1.5 }, data: [{ xAxis: labels[selected] }] } } : {};
   const series = [
     ...(flow !== "out" ? [{ ...bar, name: "In", data: points(income), itemStyle: { ...bar.itemStyle, color: colors.brand }, ...marker("in") }] : []),
     ...(flow !== "in" ? [{ ...bar, name: "Out", data: points(spending), itemStyle: { ...bar.itemStyle, color: colors.out }, ...marker("out") }] : []),
   ];
-  // The box keeps its height while echarts loads, so the card around it does not collapse and grow back.
   return <div role="img" aria-label="Money in and out for each of the last six months" style={{ height }}>
     <ReactECharts
       notMerge
@@ -71,10 +62,8 @@ export function CashFlowChart({ labels, income, spending, flow, selected, picked
 type ForecastChartDay ={ date: string; expected: number; conservative: number; optimistic: number };
 type ForecastChartObligation = { date: string; name: string; amount: string };
 
-// Approximate chart coordinates (major units as numbers); exact amounts are rendered by the caller.
 export function ForecastChart({ days, obligations, currency, label, compare }: {
   days: ForecastChartDay[]; obligations: ForecastChartObligation[]; currency: string; label: string;
-  /** Optional second expected line, e.g. the real plan while a what-if scenario is shown. */
   compare?: { name: string; values: number[] };
 }) {
   const brand = token("--color-brand", "#cbf26b"), muted = token("--color-muted-foreground", "#a3a39e"), border = token("--color-border", "#24262a");

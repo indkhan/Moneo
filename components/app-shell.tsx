@@ -13,12 +13,9 @@ import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/compon
 import { IntentLink } from "@/components/intent-link";
 import { cn } from "@/lib/utils";
 
-/** Streamed from the root layout; null when signed out or the lookup failed. */
 export type ShellData = { accounts: { id: string; name: string }[]; counts: Partial<Record<string, number>> } | null;
 
-/** `about` says what a page is for where its name alone leaves people guessing. */
 type NavItem = { label: string; href: string; icon: LucideIcon; go?: string; about?: string };
-/** A rail entry; one with `items` is a section whose pages show as tabs under the header. */
 type RailItem = NavItem & { items?: NavItem[] };
 const money: RailItem[] = [
   { label: "Overview", href: "/", icon: LayoutGrid, go: "h" },
@@ -48,20 +45,16 @@ const rail = [...money, ai];
 const noChanges = () => () => {};
 const isApple = () => /mac|iphone|ipad/i.test(navigator.userAgent);
 const settingsItem: NavItem = { label: "Settings", href: "/settings", icon: SlidersHorizontal, go: "s" };
-// The attention view of the activity feed, linked directly: /notifications only redirects there.
 const notificationsItem: NavItem = { label: "Needs attention", href: "/ai/activity?filter=attention", icon: Bell, go: "n" };
 const allItems: NavItem[] = [...rail.flatMap(item => item.items ?? [item]), settingsItem, notificationsItem];
-// Phones: Ask sits in the middle of the tab bar and opens the full-screen chat; everything else is under More.
 const askTab: NavItem = { label: "Ask", href: "/ai", icon: Sparkles };
 const [homeTab, transactionsTab, planTab] = ["/", "/money/transactions", "/plan"].map(href => rail.find(item => item.href === href)!);
 const mobileTabs: NavItem[] = [{ ...homeTab, label: "Home" }, transactionsTab, askTab, planTab];
 const menuGroups = [{ label: "Money", items: money.filter(item => !item.items) }, ...rail.filter(item => item.items).map(item => ({ label: item.label, items: item.items! })),
   { label: "Workspace", items: [notificationsItem, settingsItem] }];
 const subscribeScroll = (onChange: () => void) => { window.addEventListener("scroll", onChange, { passive: true }); return () => window.removeEventListener("scroll", onChange); };
-// The phone header shows the page's own title once its large title has scrolled away, as iOS does; empty before that.
 const pastTitle = () => window.scrollY > 48 ? document.querySelector("main h1")?.textContent?.trim() || " " : "";
 
-/** The nav item whose href is the longest prefix of the path ("/" only matches itself). */
 export function activeItem(pathname: string) {
   return allItems.filter(item => pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`)))
     .sort((a, b) => b.href.length - a.href.length)[0];
@@ -107,7 +100,6 @@ function MenuLink({ item, current, shell, onNavigate }: { item: NavItem; current
   </IntentLink>;
 }
 
-// Accounts arrive with the streamed shell data; until then the palette lists pages and actions.
 function AccountCommands({ shell, base, ...props }: { shell: Promise<ShellData>; base: Command[]; open: boolean; onClose: () => void; onAsk: (question: string) => void; onSearch: (text: string) => void }) {
   const router = useRouter();
   const accounts: Command[] = (use(shell)?.accounts ?? []).map(account => ({ id: `account:${account.id}`, label: account.name, group: "Accounts", keywords: "account transactions",
@@ -160,7 +152,6 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     onSearch: (text: string) => router.push(`/money/transactions?q=${encodeURIComponent(text)}`) };
 
   const artifactEditor = /^\/ai\/artifacts\/[^/]+$/.test(pathname);
-  // These pages fill the window and scroll inside their own panes; the page itself stays put.
   const chat = pathname === "/ai";
   const fullHeight = artifactEditor || chat;
   const tabFor = (item: NavItem) => item === askTab ? chat : railFor(item === mobileTabs[0] ? homeTab : item) === section;

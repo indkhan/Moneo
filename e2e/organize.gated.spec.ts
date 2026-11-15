@@ -7,8 +7,6 @@ if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state || !process.env.SUPABASE_DB_URL || !process.env.E2E_USER_EMAIL, gatedSkipReason());
 test.setTimeout(120_000);
 
-// The organizer left rows blank with an open question, and labelled one row itself. The owner answers the question,
-// the payee's rows are labelled, and the AI's own label is taken back from AI decided.
 test("an organizer question is answered, labels the payee's rows, and an AI label is undone", async ({ page }) => {
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   const [{ id: workspace }] = await db`select w.id from public.workspaces w join auth.users u on u.id=w.owner_id where u.email=${process.env.E2E_USER_EMAIL!}`;
@@ -37,7 +35,6 @@ test("an organizer question is answered, labels the payee's rows, and an AI labe
     expect(await labelled()).toEqual(Array(3).fill({ category_id: coffee.id, organized_by: "memory" }));
     expect((await db`select status from public.organize_questions where identity_id=${identity.id}`)[0].status).toBe("answered");
 
-    // The AI's own label is listed with who made it and why, and Undo restores the blank row.
     await page.getByRole("link", { name: "AI decided" }).click();
     const decision = page.getByRole("article", { name: aiRow });
     await expect(decision).toContainText("Looked like a snack");

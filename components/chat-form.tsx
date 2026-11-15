@@ -20,11 +20,8 @@ export type ChatFormEvents = {
   onDone?: (conversationId: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[]) => void;
 };
 
-// The composer keeps its key when a new chat is first saved, so a draft typed during the answer stays put.
-// autoSend sends one message as soon as the form mounts (a new artifact's first request).
 export function ChatForm({ conversationId, selectionKey, empty = false, scope, placeholder = "Ask anything about your money", autoSend, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode; placeholder?: string; autoSend?: string } & ChatFormEvents) {
   const [message, setMessage] = useState("");
-  // An unsent question survives switching chats; it stays in this tab and leaves when sent.
   const draftKey = `moneo-chat-draft:${conversationId}`;
   const draftLoaded = useRef(false);
   useEffect(() => {
@@ -32,10 +29,9 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
       if (draftLoaded.current) { if (message) sessionStorage.setItem(draftKey, message); else sessionStorage.removeItem(draftKey); return; }
       draftLoaded.current = true;
       const saved = sessionStorage.getItem(draftKey);
-      // Storage is only readable after hydration, so the restore has to happen here.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved) setMessage(current => current || saved);
-    } catch { /* storage can be blocked; drafts are a convenience */ }
+    } catch {}
   }, [message, draftKey]);
   const chat = useChatRequest();
   const files = useChatAttachments();
@@ -49,12 +45,10 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!message.trim() && !files.ready.length) return;
-    // Files go with the next message the user sends themselves, never with a queued one.
     if (busy) { if (files.items.length) return; enqueue(message); setMessage(""); return; }
     void sendMessage(message, false, files.ready);
   }
 
-  // Spoken words go with what is typed and any ready files, queue like typed words while a reply runs, and wait in the box while files are unsettled.
   function sendSpoken(text: string) {
     const typed = withSpoken(message, text);
     if (files.uploading || files.items.some(item => item.error) || (busy && files.items.length)) { setMessage(typed); document.getElementById("question")?.focus(); return; }
@@ -74,7 +68,6 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     onDone?.(conversationId, message, result, attachments);
   }
 
-  // A queued message that fails goes back to the queue, so the composer keeps what the user is typing.
   function startQueued(next: string) {
     if (busy) return false;
     void sendMessage(next, true);
@@ -94,7 +87,6 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
-  // Phones: prompts in the middle, the composer pinned to the bottom like a messaging app.
   if (empty) return <div className="flex flex-1 flex-col justify-center py-10 max-lg:pt-6 max-lg:pb-0">
     <h2 className="text-center font-display text-3xl font-semibold tracking-tight max-lg:mt-auto max-lg:text-2xl sm:text-4xl">How can I help with your money today?</h2>
     <div className="mt-8 max-lg:sticky max-lg:bottom-0 max-lg:order-last max-lg:mt-6 max-lg:bg-background max-lg:pt-2 max-lg:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">{composer}{notices}</div>

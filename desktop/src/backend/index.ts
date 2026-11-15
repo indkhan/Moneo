@@ -1,6 +1,3 @@
-// Moneo Desktop's native backend: PostgreSQL, GoTrue, PostgREST and the Storage API running on
-// 127.0.0.1 behind one gateway, in place of docker-compose.yml. See README.md for the layout and
-// for where this differs from the Docker backend.
 import type { ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -21,10 +18,7 @@ export type RunningBackend = {
   onExit(cb: (service: string, code: number | null) => void): void;
 };
 export type StartOptions = {
-  // Starts the Storage API (a Node app); the default uses Electron's utilityProcess when in Electron.
   fork?: ForkFn;
-  // The app's address, for GoTrue's redirect allow-list. Moneo signs in with a password, so it is
-  // only used for links GoTrue would send.
   appUrl?: string;
   appVersion?: string;
 };
@@ -66,8 +60,6 @@ function bundledServices(l: Layout): Record<string, string> {
   return Object.fromEntries(["postgres", "postgrest", "gotrue", "storage"].map(name => [name, manifest[name]?.version ?? "unknown"]));
 }
 
-// Only what the services need from the parent environment, so Electron's own variables
-// (NODE_OPTIONS, ELECTRON_*) never reach them.
 function baseEnv(): Record<string, string> {
   const keep = ["PATH", "Path", "SystemRoot", "SYSTEMROOT", "windir", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "LANG"];
   return Object.fromEntries(keep.filter(key => process.env[key] !== undefined).map(key => [key, process.env[key] as string]));
@@ -183,7 +175,6 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     const state = await migrationState(owner, bundled);
     if (state.newer.length)
       throw new Error(`This data was last used by a newer Moneo (database version ${state.newer.at(-1)}; this app knows up to ${bundled.at(-1)?.version}). Install the newer Moneo, or restore a backup made with this version.`);
-    // A crash during migrations could leave postgres with the owner roles; take them back.
     await revokeMigrationOwners(admin);
     const versions = bundledServices(l);
     const servicesChanged = config.services !== undefined && JSON.stringify(config.services) !== JSON.stringify(versions);
@@ -193,7 +184,6 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
       }));
     }
 
-    // Older desktop homes need the guard before PostgREST opens its sessions too.
     await admin.unsafe("ALTER ROLE authenticator SET session_preload_libraries TO 'safeupdate'");
 
     const apiUrl = `http://127.0.0.1:${config.ports.api}`;
@@ -214,8 +204,6 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
         GOTRUE_DB_DRIVER: "postgres",
         GOTRUE_DB_DATABASE_URL: dbUrl("supabase_auth_admin"),
         GOTRUE_DB_MIGRATIONS_PATH: l.gotrueMigrations,
-        // GoTrue keeps no idle connections by default. A new Postgres connection costs 100+ ms on
-        // Windows (a process per connection), which made every page's sign-in check take ~0.5 s.
         GOTRUE_DB_MAX_POOL_SIZE: "10",
         GOTRUE_DB_MAX_IDLE_POOL_SIZE: "5",
         GOTRUE_SITE_URL: appUrl,
@@ -236,7 +224,6 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
       const service = track("auth", child, await openLog(l.logs, "auth"), () => stopping, emitExit);
       services.push(service);
       await recordPids();
-      // GoTrue applies its own migrations before it answers /health.
       await waitFor("GoTrue", () => httpOk(`http://127.0.0.1:${authPort}/health`), 180_000, () => service.exited);
     });
 
@@ -259,9 +246,7 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
         GLOBAL_S3_BUCKET: "stub",
         STORAGE_S3_REGION: "local",
         ENABLE_IMAGE_TRANSFORMATION: "false",
-        // No Swagger docs: Moneo does not use them, and the bundled server has no package.json for them.
         EXPOSE_DOCS: "false",
-        // The bundled server exits by itself once this process is gone (see fetch-backend.mjs).
         MONEO_PARENT_PID: String(process.pid),
       };
       if (process.platform !== "win32") env.MONEO_FS_XATTR_ADDON = l.xattrAddon;
@@ -285,8 +270,6 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
         PGRST_SERVER_PORT: String(restPort),
         PGRST_ADMIN_SERVER_PORT: String(restAdminPort),
       };
-      // PostgREST links libpq dynamically: LIBPQ.dll on Windows is found through PATH; on macOS
-      // fetch-backend.mjs relinks it to postgres/lib (the fallback path only helps unsigned dev builds).
       if (process.platform === "win32") env = withPath(env, l.pgBin);
       if (process.platform === "darwin") env.DYLD_FALLBACK_LIBRARY_PATH = l.pgLib;
       const child = spawnService(l.postgrest, [], env, path.dirname(l.postgrest));
@@ -300,7 +283,6 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
 
     const applied = await step("migrate", "Updating the database", () => applyMigrations(admin, owner, l.migrations, state.pending, note));
     if (applied) {
-      // PostgREST reloads its schema cache asynchronously after the notify.
       await waitFor("PostgREST schema reload", () => httpOk(`http://127.0.0.1:${restAdminPort}/ready`), 60_000);
     }
     await step("owner", "Preparing your account", () => createOwner(apiUrl, secrets.SUPABASE_SERVICE_ROLE_KEY, secrets.MONEO_OWNER_EMAIL, secrets.MONEO_OWNER_PASSWORD));
@@ -336,15 +318,12 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
 async function withCluster<T>(l: Layout, config: Config, work: (cluster: Cluster) => Promise<T>) {
   const cluster: Cluster = { bin: l.pgBin, data: l.data, logs: path.join(l.logs, "postgres"), port: config.ports.db, password: config.secrets.POSTGRES_PASSWORD };
   if (await runningPid(l.data)) return work(cluster);
-  // Not running: start it just for this, on a free port, and stop it again.
   await recoverStalePid(cluster, () => {});
   cluster.port = await preferredPort(config.ports.db);
   await startCluster(cluster, () => {});
   try { return await work(cluster); } finally { await stopCluster(cluster); }
 }
 
-// Works while the backend runs (consistent pg_dump; Storage files are copied as they are) or
-// while it is stopped (the database is started just for the dump).
 export async function backup(paths: BackendPaths, reason: string, options: { automatic?: boolean } = {}): Promise<string> {
   const l = layout(paths);
   const config = await readConfig(l.configFile);
@@ -354,8 +333,6 @@ export async function backup(paths: BackendPaths, reason: string, options: { aut
   }));
 }
 
-// Replaces this home's database and files with a backup. The backend must be stopped. The current
-// data is backed up first ("before-restore"), so a restore can itself be undone.
 export async function restore(paths: BackendPaths, folder: string): Promise<void> {
   const l = layout(paths);
   checkResources(l);
@@ -374,7 +351,6 @@ export async function restore(paths: BackendPaths, folder: string): Promise<void
   try {
     const admin = connect(cluster.port, "supabase_admin", config.secrets.POSTGRES_PASSWORD);
     try {
-      // Roles live outside the dump; schemas, extensions, data and grants come from pg_restore.
       await bootstrap(admin, l.bootstrap, ["00-roles.sql"], config.secrets.POSTGRES_PASSWORD, config.secrets.JWT_SECRET);
     } finally { await admin.end({ timeout: 5 }); }
     await restoreDump(cluster, path.join(folder, manifest.files.database));

@@ -5,18 +5,16 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { reviewedLocalTimestamp } from "@/lib/finance/calendar";
 import { recurringCadences } from "@/lib/finance/cadences";
-import { parseManualAmount } from "@/app/money/transactions/input";
-import { decideProposals, readableError } from "@/lib/ai/agent-apply";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
+import { decideProposals } from "@/lib/ai/agent-apply";
+import { readableError } from "@/lib/readable-error";
 import { decideCurrentSeries, recurringCardDetails } from "@/lib/ai/recurring-proposals";
-import { createSchedule, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "./schedules";
+import { createSchedule, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "@/lib/recurring/schedules";
 
-/** What a recurring form shows after submitting: an error to fix, or done. Failures never reach the error page. */
 export type ActionState = { error?: string; done?: number };
 
 const uuid = z.uuid();
 const currency = z.string().regex(/^[A-Z]{3}$/);
-// Compact expected versions keep 1000-source forms well below Next's default
-// 1MB body limit. Owned full receipts are read and validated under RPC locks.
 const receipt = z.object({id: uuid, version: z.number().int().min(0).max(2147483647)}).strict();
 const receiptPayload = z.string().max(128000).refine(value => Buffer.byteLength(value,"utf8") <= 128000,"Evidence payload too large");
 
@@ -43,7 +41,6 @@ function seriesFrom(form: FormData) {
     currencyCode: currency.parse(form.get("currencyCode")), evidence, runAnchorId: anchor, evidenceLimited };
 }
 
-/** The editable fields of the dialog: a positive amount plus a direction, so "coming in" never needs a minus sign. */
 function fieldsFrom(form: FormData, currencyCode: string): ScheduleFields {
   const amount = parseManualAmount(String(form.get("amount") ?? "").replace(",", "."), currencyCode);
   if (amount <= 0n) throw new Error("Enter an amount above zero");
@@ -52,7 +49,6 @@ function fieldsFrom(form: FormData, currencyCode: string): ScheduleFields {
     startsOn: form.get("startsOn"), category: String(form.get("category") ?? "").trim() || null });
 }
 
-/** Only what the person changed: an untouched prefilled date keeps the schedule's own calendar. */
 function changesFrom(form: FormData, currencyCode: string): Partial<ScheduleFields> {
   const { startsOn, ...rest } = fieldsFrom(form, currencyCode);
   return startsOn === form.get("shownStartsOn") ? rest : { ...rest, startsOn };
@@ -68,7 +64,6 @@ export async function declineSeries(_: ActionState, form: FormData) {
   return run(async () => { await decideCurrentSeries(await requireWorkspace(), seriesFrom(form), "dismissed"); });
 }
 
-/** The payments behind each detected recurring card and what its confirm dialog starts from, in one detection pass. */
 export async function loadRecurringCards(ids: string[]) {
   const parsed = z.array(uuid).min(1).max(100).parse(ids);
   const context = await requireWorkspace();
@@ -81,7 +76,6 @@ export async function loadRecurringCards(ids: string[]) {
   return { details: await recurringCardDetails(context, proposals.data ?? []), categories: (categories.data ?? []).map(row => row.name as string), locale: workspace.locale as string | undefined };
 }
 
-/** Confirms a recurring card with what the person set in its dialog (amount, date, category), in one step. */
 export async function confirmRecurringCard(_: ActionState, form: FormData) {
   return run(async () => {
     const [outcome] = await decideProposals(await requireWorkspace(), [uuid.parse(form.get("proposalId"))], "accept", { recurring: changesFrom(form, currency.parse(form.get("currencyCode"))) });

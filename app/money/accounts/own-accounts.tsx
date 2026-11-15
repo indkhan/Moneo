@@ -14,7 +14,6 @@ function resultText(transfers?: string) {
   return `${found ? `Found ${linked} transfer ${linked === 1 ? "pair" : "pairs"}${marked ? ` and ${marked} ${marked === 1 ? "payment" : "payments"} to your untracked accounts` : ""}. They no longer count as money in or out; undo any of them from the transaction.` : "No new transfers between your accounts found."}${skipped ? ` ${skipped} need a manual link (for example because of a fee).` : ""}`;
 }
 
-// The IBANs that are the owner's own, so money moved between them is a transfer, not income or spending.
 export function OwnAccounts({ identifiers, banked, accounts, transfers }: {
   identifiers: Identifier[]; banked: { iban: string; name: string }[]; accounts: { id: string; name: string }[]; transfers?: string;
 }) {

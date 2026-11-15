@@ -17,12 +17,6 @@ const field = "mt-1 block w-full rounded-lg border border-border bg-card px-3 py
 
 function escapeLike(value: string) { return value.replace(/[%_]/g, "\\$&"); }
 
-/**
- * Transaction drawer: quick edit (category, merchant, note), splits,
- * transfer/refund links, correction history with Undo and the original
- * source evidence. Every query that only needs the id runs in one parallel
- * wave; the dependent ones run in a second wave.
- */
 export async function TransactionDrawer({ id, query, linkSearch, accountNames, categories, merchants }: {
   id: string; query: string; linkSearch: string; accountNames: Record<string, string>; categories: Named[]; merchants: Named[];
 }) {
@@ -92,7 +86,6 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
         {(selected.tags?.length || selected.event_name) ? <p className="mt-1 text-sm text-muted-foreground">{selected.tags?.length ? `Tags: ${selected.tags.join(", ")}` : ""}{selected.tags?.length && selected.event_name ? " · " : ""}{selected.event_name ? `Group: ${selected.event_name}` : ""}</p> : null}
       </header>
 
-      {/* A manual entry can be taken back while nothing else has touched it; the evidence stays and Restore brings back the same ID. */}
       {manualSource.data && !manualSource.data.undone_at && selected.version === 0 && !selected.transfer_id && !selected.refund_of_id && <SafeForm action={undoManualTransactionSafely} className="flex flex-wrap items-center gap-3 text-sm">
         {hidden("entryId", manualSource.data.id)}{hidden("entryVersion", manualSource.data.version)}{hidden("version", 0)}
         <span className="text-muted-foreground">Added by hand.</span><button className="min-h-10 rounded-lg border border-input px-3 hover:bg-muted">Undo manual entry</button>

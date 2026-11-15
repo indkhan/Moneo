@@ -1,14 +1,6 @@
-// Shared deterministic fixtures for Moneo Playwright e2e.
-//
-// Mocked journeys reuse these fixtures; authenticated specs also exercise real
-// Supabase workflows and configured free-provider calls. See e2e/README.md
-// for each check's limits and required authentication.
 import * as fs from "node:fs";
 import type { Sql } from "postgres";
 
-// Removes a spec's disposable user. reset_workspace() (Settings "Reset all data") empties every
-// workspace table in dependency order, so cleanup cannot drift behind the schema; the rest removes
-// the user itself. The caller removes storage objects first.
 export async function deleteDisposableUser(db: Sql, user: string) {
   await db.begin(async tx => {
     await tx`select set_config('request.jwt.claim.sub', ${user}, true)`;
@@ -20,8 +12,6 @@ export async function deleteDisposableUser(db: Sql, user: string) {
   });
 }
 
-// Minimal two-row statement. Amounts are exact decimal strings; the app owns
-// minor-unit conversion, so fixtures never pre-convert.
 export const AUGUST_CSV = [
   "date,description,amount",
   "2026-08-01,Salary Acme,2500.00",
@@ -29,9 +19,6 @@ export const AUGUST_CSV = [
   "",
 ].join("\n");
 
-// Deterministic stand-in for the AI-proposed column mapping
-// (POST /api/imports/inspect without a `mapping` field calls OpenAI in
-// production; tests fulfil that request with this payload instead).
 const MOCK_MAPPING = {
   accountName: "Checking",
   currencyCode: "EUR",
@@ -43,8 +30,6 @@ const MOCK_MAPPING = {
   numericConvention: "decimal-dot",
 } as const;
 
-// Canned inspect response shaped exactly like app/api/imports/inspect.
-// amountMinor is serialized as a string by the real route.
 export function mockInspectResponse(accountName = "Checking") {
   return {
     headers: ["date", "description", "amount"],
@@ -101,9 +86,6 @@ export function hasSupabaseEnv(): boolean {
   );
 }
 
-// Full-journey auth uses a pre-authenticated Playwright storageState file
-// (there is no sign-in page to drive). The gated spec
-// skips unless this file exists; see e2e/README.md §2 for creation steps.
 export function e2eStorageStatePath(): string | null {
   const candidate = process.env.E2E_STORAGE_STATE;
   if (candidate && fs.existsSync(candidate)) return candidate;

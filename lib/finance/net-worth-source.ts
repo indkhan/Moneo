@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages } from "@/lib/all-pages";
-import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, type NetWorthPoint } from "@/app/money/wealth/net-worth";
+import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, type NetWorthPoint } from "@/lib/finance/net-worth";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
 import { calendarDate } from "./calendar";
 import { z } from "zod";
@@ -10,8 +10,6 @@ import { parseIouName } from "./iou";
 import { loadTransferLegs } from "./own-transfers";
 import { brokerShownOn, matchTransfers, transitOn, type BrokerTransfer } from "./transit";
 import { loadWealthItems, wealthEvidence } from "./wealth";
-
-// One source for net worth: every screen, the chat and the voice call read totals from here, so they can't disagree.
 
 type Workspace = { id: string; timezone: string };
 
@@ -24,7 +22,6 @@ export async function loadScalableTransfers(db: SupabaseClient, workspaceId: str
   return { rows, complete: (connections.data ?? []).length > 0 };
 }
 
-/** Everything the calculation needs. A page that already holds some of it passes it in. */
 export async function loadNetWorthEvidence(db: SupabaseClient, workspace: Workspace, given: { balances?: PromiseLike<Awaited<ReturnType<typeof loadBalanceEvidence>>>; items?: PromiseLike<Awaited<ReturnType<typeof loadWealthItems>>>; events?: PromiseLike<Awaited<ReturnType<typeof loadWealthEvents>>> } = {}) {
   const [balances, items, events, scalable, transfers, legs] = await Promise.all([
     given.balances ?? loadBalanceEvidence(db, workspace.id), given.items ?? loadWealthItems(db, workspace.id, true), given.events ?? loadWealthEvents(db, workspace.id),
@@ -34,15 +31,12 @@ export async function loadNetWorthEvidence(db: SupabaseClient, workspace: Worksp
 }
 export type NetWorthEvidence = Awaited<ReturnType<typeof loadNetWorthEvidence>>;
 
-/** Which money counts today and on past days, worked out once from the evidence. */
 export function netWorthModel(evidence: NetWorthEvidence) {
   const { balances, items, events, scalable, transfers, legs, timeZone } = evidence;
   const today = calendarDate(balances.asOf, timeZone);
   const valuations = valuationHistory(events, items, timeZone);
   const firstReal = firstSyncedOn(valuations, scalable.knownIds);
-  // Real reads of Scalable only: the current row isn't a read, its events are.
   const reads = valuations.filter(row => scalable.knownIds.has(row.item_id) && row.created_at < "9999");
-  // Before every account has data, a broker transfer's other side can't be on record, so it isn't called unresolved.
   const firstPosted = new Map<string, string>();
   for (const row of balances.ledger) if (row.status === "posted" && (!firstPosted.has(row.account_id) || row.posted_on < firstPosted.get(row.account_id)!)) firstPosted.set(row.account_id, row.posted_on);
   const coveredFrom = [...firstPosted.values()].reduce<string | null>((latest, date) => latest === null || date > latest ? date : latest, null);
@@ -52,18 +46,11 @@ export function netWorthModel(evidence: NetWorthEvidence) {
   const kinds = new Map(items.map(item => [item.id, item.kind]));
   const dated = wealthEvidence(active, today);
   const calculated = { rows: scalable.rows, before: firstReal };
-  /** Past days and today from the same inputs. Today's point is the headline's own, so the graph ends on the number above it. */
   const points = (dates: string[]): NetWorthPoint[] => netWorthSeries({ dates: dates.filter(date => date !== today), timeZone, accountIds: new Set(balances.accounts.map(account => account.id)), archivedOn: archiveDates(balances.accounts, timeZone),
     snapshots: balances.snapshots, ledger: balances.ledger, valuations, calculated, transit: windows }).concat(dates.includes(today) ? [now] : []).sort((a, b) => a.date.localeCompare(b.date));
-  // Every side of a window has landed by today, except a broker side no read has seen yet: that money is still the owner's.
   const now = currentNetWorth(today, accounts, dated.included.map(valuation => ({ ...valuation, debt: kinds.get(valuation.id) === "debt" })), transitOn(windows, today));
-  // Money moved on the first real day is already in that value, so the comparison with the day before allows for it.
   const movedOnBoundaryMinor = transfers.rows.filter(row => row.on_date === firstReal && row.status === "SETTLED" && !row.is_cancellation).reduce((sum, row) => sum + BigInt(row.amount_minor), 0n);
 
-  /**
-   * This month's change, split so spending and markets stay apart and something newly added isn't a gain.
-   * `changeMinor` excludes what's newly added; the total still counts it. Moving your own money is neither.
-   */
   const monthSplit = (currency: string, base = monthEnds(today, 1)[0]) => {
     const [basePoint] = points([base]);
     if (!basePoint?.known) return null;
@@ -71,7 +58,6 @@ export function netWorthModel(evidence: NetWorthEvidence) {
     const isLoan = (name: string) => parseIouName(name) !== null;
     const portfolioBefore = !!firstReal && firstReal > base && calculated.rows.some(row => row.on_date === base);
     const newCovered = (id: string) => portfolioBefore && scalable.knownIds.has(id);
-    // Loans move with the bank money that paid them, so they're never "new" and belong with money in and out.
     const named = new Map(items.map(item => [item.id, item.name]));
     const states = valuations.filter(row => row.currency_code === currency && !row.removed && !isLoan(String((row as { name?: string }).name ?? named.get(row.item_id) ?? "")));
     const valueOn = (date: string, rows: typeof valuations) => {
@@ -99,7 +85,6 @@ export function netWorthModel(evidence: NetWorthEvidence) {
       if (first) newlyAddedMinor += first.accountValues!.get(account.id)!;
       else if (account.archived_at === null || account.archived_at === undefined) { const live = accounts.find(item => item.id === account.id)?.balance.amount_minor; if (live) newlyAddedMinor += BigInt(live); }
     }
-    // Only money the broker's value already shows: a portfolio that is newly added this month, or a transfer no read has seen, isn't in it.
     const brokerCounted = !!firstReal && (firstReal <= base || portfolioBefore);
     const movedIntoBroker = !brokerCounted ? 0n : transfers.rows.filter(row => {
       const shown = brokerShownOn(row, firstReal, reads);
@@ -113,7 +98,6 @@ export function netWorthModel(evidence: NetWorthEvidence) {
 }
 export type NetWorthModel = ReturnType<typeof netWorthModel>;
 
-/** This month's split in words, the same on every screen. Nothing when the month hasn't changed anything. */
 export function describeMonthSplit(split: NonNullable<ReturnType<NetWorthModel["monthSplit"]>> | null, money: (minor: bigint) => string) {
   if (!split || (split.changeMinor === 0n && split.newlyAddedMinor === 0n)) return null;
   const signed = (minor: bigint) => `${minor > 0n ? "+" : ""}${money(minor)}`;
@@ -128,7 +112,6 @@ export async function loadFxRates(db: SupabaseClient, workspaceId: string, displ
   return (data ?? []) as Rate[];
 }
 
-/** Today's total in one currency: dated balances and values, each converted with the latest rate on or before its date. An input that can't be converted is left out and named. */
 export function convertedNetWorth(model: NetWorthModel, rates: Rate[], displayCurrency: string) {
   const missingInputs: string[] = [];
   const parts = { cash: 0n, assets: 0n, debts: 0n, transit: 0n };
@@ -159,10 +142,6 @@ export const netWorthInput = z.object({
 
 type Reader = { supabase: SupabaseClient; workspace: { id: string; timezone: string; display_currency: string; locale: string } };
 
-/**
- * Net worth as chat, the voice call and artifacts read it: the same calculation as Home and Wealth, for today or a past date, with what was
- * left out and how fresh each input is. Past days are in each currency as recorded, without conversion (issue #158).
- */
 export async function readNetWorth({ supabase, workspace }: Reader, input: unknown) {
   const { date, days } = netWorthInput.parse(input);
   const [evidence, rates] = await Promise.all([loadNetWorthEvidence(supabase, workspace), loadFxRates(supabase, workspace.id, workspace.display_currency)]);

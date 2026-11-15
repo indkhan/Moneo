@@ -8,7 +8,6 @@ import { Minimize2, Pencil } from "lucide-react";
 import { SafeForm } from "@/components/safe-form";
 import { renameArtifactSafely } from "../actions";
 
-/** Leaves full screen by the link or by Escape, keeping the version in view. */
 export function ExitFullScreen({ href }: { href: string }) {
   const router = useRouter();
   useEffect(() => {
@@ -19,7 +18,6 @@ export function ExitFullScreen({ href }: { href: string }) {
   return <Link href={href} autoFocus aria-label="Exit full screen" className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-3 hover:bg-muted"><Minimize2 className="size-3.5" aria-hidden="true" />Exit</Link>;
 }
 
-/** A submit button for a server-action form that shows it is working and takes one press at a time. */
 export function PendingSubmit({ className, children, ...props }: ComponentProps<"button">) {
   const { pending } = useFormStatus();
   return <button {...props} type="submit" disabled={pending} aria-busy={pending} className={`${className ?? ""} disabled:opacity-50`}>{children}</button>;

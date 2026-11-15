@@ -9,7 +9,6 @@ import { removeServiceKeys, saveServiceKeys } from "@/lib/service-keys";
 export type AiKeyState = { error?: string; saved?: boolean };
 const keySchema = z.string().trim().min(8, "Paste the whole key").max(500, "That key is too long").regex(/^\S+$/, "A key has no spaces");
 
-// Saves an OpenAI or OpenRouter key after the provider accepts it, or removes the saved one.
 export async function saveAiKey(_: AiKeyState, form: FormData): Promise<AiKeyState> {
   await requireWorkspace();
   const name = form.get("name");

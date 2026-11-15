@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
-// Only called with this issue's freshly replayed disposable schema, never public.
 export async function reviewRuntimeRaces(db, schema) {
   assert.match(schema, /^mne020_[a-f0-9]{32}$/);
   const actor = randomUUID(), election = randomUUID(), cancelFirst = randomUUID(), finishFirst = randomUUID(), deadlineFirst = randomUUID(), registerFirst = randomUUID(), publishBeforeDeadline = randomUUID();

@@ -1,4 +1,3 @@
-// Walkthroughs 1 of 2. Row: [area, route, type, priority, action, expected, uxToJudge]
 export const personas = {
   P01: "Nina, 27, first-time user, not technical. Has never used a finance app. EUR, Germany. Wants 'where does my money go'.",
   P02: "Marco, 38, everyday budgeter. Exports CSVs from Revolut and his bank every month. Cares about categories and limits.",

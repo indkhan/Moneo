@@ -72,7 +72,6 @@ describe("enableBankingClient", () => {
     expect(expired.expired).toBe(true);
     const limited = await (await enableBankingClient(vi.fn().mockResolvedValue(new Response("<html>", { status: 429, headers: { "retry-after": "120" } })))).balances("u1").catch(error => error);
     expect(limited).toMatchObject({ rateLimited: true, retryAfter: 120 });
-    // A wrong App ID, key or clock also answers 401: without a session code it is not an ended consent.
     const unauthorized = await (await enableBankingClient(vi.fn().mockResolvedValue(reply({ error: "UNAUTHORIZED" }, 401)))).balances("u1").catch(error => error);
     expect(unauthorized).toMatchObject({ status: 401, expired: false });
   });

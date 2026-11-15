@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 
-/** A new artifact with its own chat; the first request is sent from its page, so the build streams there. */
 export async function createArtifact(form: FormData) {
   const prompt = z.string().trim().min(1).max(4000).parse(form.get("prompt"));
   const { supabase, workspace } = await requireWorkspace();
@@ -18,7 +17,6 @@ export async function createArtifact(form: FormData) {
   redirect(`/ai/artifacts/${artifact.data.id}`);
 }
 
-/** Hands over the creation request once, whoever asks first; everyone after gets nothing. */
 export async function claimFirstPrompt(id: string) {
   const artifactId = z.uuid().parse(id);
   const { supabase, workspace } = await requireWorkspace();
@@ -28,7 +26,6 @@ export async function claimFirstPrompt(id: string) {
   return (data?.first_prompt as string | undefined) ?? null;
 }
 
-/** Soft delete: the artifact leaves the gallery and its cards leave Home; its versions are kept. */
 export async function deleteArtifact(id: string) {
   const artifactId = z.uuid().parse(id);
   const { supabase, workspace } = await requireWorkspace();
@@ -39,7 +36,6 @@ export async function deleteArtifact(id: string) {
   redirect("/ai/artifacts");
 }
 
-/** Your own name for an artifact; the first name is just the start of the request. */
 export async function renameArtifact(form: FormData) {
   const { id, title } = z.object({ id: z.uuid(), title: z.string().trim().min(1, "Enter a name").max(120) }).parse({ id: form.get("id"), title: form.get("title") });
   const { supabase, workspace } = await requireWorkspace();

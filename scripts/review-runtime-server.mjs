@@ -1,4 +1,3 @@
-// Synthetic boundary server + isolated Next app, managed by Playwright. No .env is loaded.
 import { createServer } from "node:http";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -89,7 +88,6 @@ const server = createServer(async (request, response) => {
     item.attempts[stage]++;
     if (stage === "provider" && item.mode === "provider-stop") {
       response.on("close", () => { item.provider_aborted = true; item.provider_aborted_at = Date.now(); });
-      // Keep the real OpenRouter/AI SDK transport open until application abort.
       return;
     }
     if (stage === "provider" && item.mode === "provider-permanent") return send({error: "Synthetic permanent provider failure"}, 401);
@@ -158,7 +156,7 @@ const server = createServer(async (request, response) => {
   if (url.pathname === "/rest/v1/workspaces") return send({id: url.searchParams.get("id")?.slice(3), display_currency: "EUR"});
   if (url.pathname === "/rest/v1/imports") return send({ id: byWorkspace(url.searchParams.get("workspace_id")?.slice(3)).import });
   if (url.pathname === "/rest/v1/background_jobs") {
-    if (request.method === "POST") return send(null, 201); // Retained first-review claim; ignoreDuplicates.
+    if (request.method === "POST") return send(null, 201);
     if (!url.searchParams.has("id")) {
       const active = [...fixtures.values()].filter(item => ["queued", "running"].includes(item.status));
       response.setHeader("Content-Range", `0-${Math.max(0, active.length - 1)}/${active.length}`);
@@ -199,7 +197,7 @@ return current;
 let child = launch();
 const stop = () => {
   if (child && process.platform === "win32") {
-    try { execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {windowsHide: true, stdio: "ignore"}); } catch { /* Already exited. */ }
+    try { execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {windowsHide: true, stdio: "ignore"}); } catch {}
   } else child?.kill();
   server.close();
 };

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { SafeForm } from "@/components/safe-form";
 import { splitTransactionSafely } from "./actions";
-import { parseManualAmount, splitInput } from "./input";
+import { parseManualAmount, splitInput } from "@/lib/finance/transaction-input";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 
 export function SplitEditor({ id, version, amountMinor, currency, categories, query, requestId, locale }: {
@@ -14,7 +14,6 @@ export function SplitEditor({ id, version, amountMinor, currency, categories, qu
   const [preview, setPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const parent = BigInt(amountMinor), total = parent < 0n ? -parent : parent;
-  // Typed as plain amounts; each takes the source's direction.
   const signed = (amount: string) => { const plain = amount.trim().replace(/^-/, ""); return plain && parent < 0n ? `-${plain}` : plain; };
   const input = rows.map(row => ({ ...row, amount: signed(row.amount), categoryId: row.categoryId || null }));
   let allocated: bigint | null = 0n;

@@ -35,10 +35,10 @@ import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems } from "@/lib/finance/wealth";
 import { checksNotice, loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
-import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth } from "./money/wealth/net-worth";
+import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth } from "@/lib/finance/net-worth";
 import { convertedNetWorth, describeMonthSplit, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
 import { TRANSIT_MATCH_DAYS } from "@/lib/finance/transit";
-import { NetWorthChart } from "./net-worth-chart";
+import { NetWorthChart } from "@/components/net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
 import { Phone } from "lucide-react";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
@@ -65,14 +65,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
   const wealthEventsPromise = loadWealthEvents(supabase, workspace.id);
-  // Secondary widgets start inside their Suspense boundaries after the core reads finish.
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version, sizes").eq("workspace_id", workspace.id).maybeSingle());
-  // Include published cards hidden from Home so Add widget can restore them without rendering their bodies.
   const pinnedPromise = supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id)
     .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null);
   const waitingPromise = loadWaitingForYou(supabase, workspace);
   const reviewPromise = loadReview(supabase, workspace);
-  // First steps and the agent team point to Settings until some AI is set up; a failed check hides nothing.
   const aiPromise = aiConfigured().catch(() => true);
   const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, netWorthEvidence, bankAccounts, priceChanges, syncProblems, imports, portfolios, repayments] = await Promise.all([
     balanceEvidencePromise,
@@ -87,7 +84,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     sourceMetadataPromise,
     loadNetWorthEvidence(supabase, workspace, { balances: balanceEvidencePromise, items: allWealthPromise, events: wealthEventsPromise }),
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
-    // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
     loadSyncProblems(supabase, workspace.id),
     loadImportStates(supabase, workspace.id),
@@ -96,14 +92,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   const ai = await aiPromise;
-  // A bank sync imports into the account with the bank's name and currency, as on the Accounts page.
   const synced = new Set((bankAccounts.data ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata).filter(account => !account.archived_at);
   const accountNames = new Map(accounts.map(account => [account.id, account.name]));
   const conflicted = accounts.filter(account => account.balance.conflicts.length > 0);
   const fxRates = rates.data ?? [];
 
-  // The same calculation as Wealth and chat: the headline's inputs, past days, and own money between its two sides.
   const worth = netWorthModel(netWorthEvidence);
   const calculatedHistory = netWorthEvidence.scalable, allValuations = worth.valuations;
   const valuations = worth.dated;
@@ -111,13 +105,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
   const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
 
-  // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (issue #158).
-  // Days before Scalable's first sync use its calculated value, so a portfolio connected this month is not a gain.
   const series = worth.points(dayRange(monthEnds(today, 12)[0], today));
   const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n, uncertain: point.uncertain.join(". ") || undefined }));
-  // A side still on its way changes today's total, so the card says so; the full list stays on Wealth.
   const landing = worth.unresolved.filter(item => item.side === "broker" && item.currencyCode === displayCurrency && Date.parse(`${today}T00:00:00Z`) - Date.parse(`${item.date}T00:00:00Z`) <= TRANSIT_MATCH_DAYS * 86400000);
-  // The change needs last month's end on record; without it there is nothing to compare with. Newly added money counts in the total, not as a gain.
   const split = worth.monthSplit(displayCurrency);
   const monthBase = split?.baseMinor ?? null, monthChange = split?.changeMinor ?? 0n;
   const monthWords = describeMonthSplit(split, minor => money(minor, displayCurrency));
@@ -126,7 +116,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports, repayments,
     lastCalculated: calculatedHistory.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, worth.firstReal, portfolio?.currency ?? displayCurrency), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
   const checkNotice = checksNotice(findings);
-  // The chart can't reach back as far as it should; a quiet line, as nothing about today's number is wrong.
   const historyNote = portfolios.data?.history_status !== "failed" ? null : calculatedHistory.rows.length ? "Scalable's calculated history failed its latest check, so older days show the last good run." : "Scalable's earlier days could not be worked out, so its part of the chart starts at your first sync.";
   const { date: fullDate, monthYear: monthLabel } = display;
   const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
@@ -137,11 +126,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const saved = homeLayout(layout.data);
   if (!saved) throw new Error("Dashboard preferences are invalid; try again");
   const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row as unknown as HomeCardRow & { artifact_id: string }]));
-  // A deleted artifact simply drops off Home; its key is cleaned up the next time the layout is saved.
   const ordered = saved.items.filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
-  // Cards on one Home share their reads: the same query runs once however many cards ask for it.
   const shared: QueryShared = {};
-  // Every built-in widget can be added back from the grid, so each gets a label and width; cards only once on Home.
   const keys = [...new Set([...ordered, ...[...cards.keys()].map(id => `card:${id}`), ...Object.keys(BUILTIN_WIDGETS)])];
   const sizes: Record<string, CardSize> = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetSize(key, saved.sizes) : cardSize(cards.get(cardIdFromKey(key)!)!.size)]));
   const labels = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetLabel(key) : cards.get(cardIdFromKey(key)!)!.title]));
@@ -161,7 +147,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
             {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{signedMoney(monthChange)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
-        {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
         {monthWords && <p className="font-mono text-xs text-muted-foreground">{monthWords}</p>}
         {historyNote && <p className="text-xs text-muted-foreground">{historyNote}</p>}
@@ -222,10 +207,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       <HomeNotices notices={[...(valuations.outdated.length ? [{ text: describeOutdated(valuations.outdated, fullDate), href: "/money/wealth", action: "See Wealth" }] : []), ...syncProblems.map(text => ({ text, href: "/settings", action: "Open Settings" })), ...(checkNotice ? [{ text: checkNotice, href: "/money/wealth", action: "See Wealth" }] : [])]} />
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{display.weekday(today)} · {display.longDate(today)}</p><h1 className="page-title">Overview</h1></div>
-        {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
         <IntentLink href="/ai?conversation=new&call=1" aria-label="Call Moneo: starts a voice call using your microphone" title="Starts a voice call in a new chat using your microphone. You can stop it at any time, or type in Ask instead." className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
       </header>
-      {/* Review summaries and recurring detection stream independently; detection reloads only when a card changes. */}
       <Suspense fallback={null}><HomeOrganize db={supabase} workspace={workspace} /></Suspense>
       <Suspense fallback={null}><HomeAttention waiting={waitingPromise} review={reviewPromise} locale={locale} /></Suspense>
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
@@ -235,7 +218,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   );
 }
 
-// Review summaries stream independently of the account balances and dashboard layout.
 async function HomeAttention({ waiting, review, locale }: { waiting: ReturnType<typeof loadWaitingForYou>; review: ReturnType<typeof loadReview>; locale: string }) {
   const [proposals, summary] = await Promise.all([waiting, review]);
   return <WaitingForYou proposals={proposals} review={summary} locale={locale} />;

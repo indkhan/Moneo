@@ -1,4 +1,3 @@
-// Actual cron HTTP dispatch and durable review; only a disposable synthetic workspace is cleaned up.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";

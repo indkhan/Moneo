@@ -1,4 +1,3 @@
-// Fresh schema and synthetic source-publication fixtures; one transaction always rolls back.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";

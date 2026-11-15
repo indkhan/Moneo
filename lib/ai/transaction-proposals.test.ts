@@ -52,7 +52,6 @@ it("proposing an expense stores exact minor units and writes no transaction", as
 it("accepting records a negative manual transaction keyed by the proposal and creates Cash when missing", async () => {
   const { inserts, calls, context } = fakeDb({ accounts: [] });
   const payload = { direction: "spent", amountMinor: "1000", currencyCode: "EUR", date: "2026-10-01", description: "Lunch", accountId: null, categoryId: null, paidInCash: true };
-  // The empty account list makes the currency check fail after creating Cash, proving the account is re-read before writing.
   await expect(applyTransactionProposal(context, "p", payload)).rejects.toThrow("Account not found");
   expect(inserts[0]).toMatchObject({ table: "accounts", row: { name: "Cash", type: "cash", currency_code: "EUR" } });
   const ready = fakeDb({ accounts: [cash] });

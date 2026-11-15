@@ -1,4 +1,3 @@
-// Synthetic authenticated acceptance in a disposable application schema; always rolled back.
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";

@@ -18,7 +18,6 @@ export async function saveWealthItem(form: FormData) {
   const quantity = kind === "holding" ? z.string().trim().max(43).parse(form.get("quantity")) : null;
   const price = kind === "holding" ? z.string().trim().max(43).parse(form.get("unitPrice")) : null;
   const entered = kind === "holding" ? holdingValue(quantity!, price!, currency) : wealthAmount(z.string().parse(form.get("amount")), currency);
-  // The form asks what is still owed as a plain amount; a debt is stored negative.
   const amount = kind === "debt" && entered > 0n ? -entered : entered;
   if (kind !== "debt" && amount < 0n) throw new Error("Values cannot be negative. Add money you owe as a debt.");
   const rate = kind === "debt" ? z.string().trim().max(43).parse(form.get("annualRate")) : null;

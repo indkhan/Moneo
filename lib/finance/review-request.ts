@@ -34,7 +34,6 @@ function previousMonth(first:string){
   const to=shifted(first,-1);return {from:`${to.slice(0,7)}-01`,to};
 }
 
-/** Resolve dates once at creation; dispatch and retry replay this exact specification. */
 export function resolveReviewRequest(input:unknown,today:string){
   const request=reviewRequestSchema.parse(input);z.iso.date().parse(today);
   if (request.planningViews) request.includePlanning = true;
@@ -43,7 +42,6 @@ export function resolveReviewRequest(input:unknown,today:string){
   return {...request,query:request.query??investigationSchema.parse({version:1,period:{from,to:today},comparison:{from:prior.from,to:comparisonTo},groupBy:["category","merchant"]})};
 }
 
-/** A cadence receipt names the next period; investigate the preceding completed period. */
 export function scheduledReviewRequest(cadence:"weekly"|"monthly",periodStart:string):ReviewRequest{
   z.iso.date().parse(periodStart);
   if(cadence==="weekly"&&new Date(`${periodStart}T00:00:00Z`).getUTCDay()!==1)throw new Error("Weekly review anchor must be Monday");

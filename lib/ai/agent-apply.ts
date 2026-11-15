@@ -1,4 +1,5 @@
 import type { requireWorkspace } from "@/lib/auth";
+import { readableError } from "@/lib/readable-error";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { payloadSchemas, type ProposalKind } from "@/lib/ai/agent-team";
 import { iouCreateSchema, iouRecord, iouSettleSchema } from "@/lib/finance/iou";
@@ -7,16 +8,13 @@ import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
 import { applyOrganizeAnswer } from "@/lib/ai/organize-proposals";
 import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recurring-proposals";
-import type { ScheduleFields } from "@/app/money/recurring/schedules";
+import type { ScheduleFields } from "@/lib/recurring/schedules";
 import { applyScalableProposal, OrderOutcomeUnknown, TRADE_KINDS } from "@/lib/scalable/orders";
 import { withScalable } from "@/lib/scalable/server";
 import { ownTransferPayloadSchema } from "@/lib/finance/own-transfers";
 
-// Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
-// the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel" | "own_transfer" | "cash_withdrawal" | "organize_answer"; payload: unknown };
-/** Choices made on the card itself: the account a chat expense is paid from, or what the person set when confirming a recurring payment. */
 export type DecideOptions = { accountId?: string; recurring?: Partial<ScheduleFields> };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
 
@@ -25,7 +23,6 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
   switch (proposal.kind) {
     case "categorize": {
       const payload = payloadSchemas.categorize.parse(proposal.payload);
-      // Same guard as a manual organization review: corrections and complete rows take precedence.
       const current = await loadOrganizationSuggestions(supabase, workspace.id, payload.rows);
       if (current.proposals.length !== payload.rows.length) throw new Error("Some rows were corrected or organized since the agent ran");
       const evidence = [...new Map(current.proposals.flatMap(item => item.evidence).map(row => [row.id, row])).values()];
@@ -48,7 +45,6 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       const payload = payloadSchemas.budget.parse(proposal.payload);
       const category = await supabase.from("categories").select("id").eq("workspace_id", workspace.id).eq("id", payload.categoryId).maybeSingle();
       if (category.error || !category.data) throw new Error("Category not found");
-      // Same insert as Plan → Spending limits; a target only, never touches balances or goals.
       const { error } = await supabase.from("spending_plans").insert({ workspace_id: workspace.id, category_id: payload.categoryId, currency_code: payload.currencyCode,
         limit_minor: payload.limitMinor, enabled: true, updated_at: new Date().toISOString() });
       if (error?.code === "23505") throw new Error("A limit already exists for this category and currency");
@@ -56,7 +52,6 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       return { href: "/plan/spending", undo: "Turn the limit off in Plan → Spending" };
     }
     case "iou_create": {
-      // The proposal id is both the new item's id and the request id, so accepting twice cannot duplicate it.
       const record = iouRecord(iouCreateSchema.parse(proposal.payload));
       const { error } = await supabase.rpc("edit_wealth_item", { p_id: proposal.id, p_expected_version: 0, p_record: record, p_remove: false, p_request_id: proposal.id });
       if (error) throw new Error(error.message);
@@ -64,7 +59,6 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
     }
     case "iou_settle": {
       const payload = iouSettleSchema.parse(proposal.payload);
-      // Links the payment to the loan in one audited step: posted money only, never more than the receipt, dated by the bank.
       const { error } = await supabase.rpc("apply_iou_repayment", { p_item_id: payload.itemId, p_transaction_id: payload.transactionId, p_applied_minor: payload.appliedMinor, p_request_id: proposal.id });
       if (error) throw new Error(error.message);
       return { href: "/money/wealth", undo: "Undo from the Wealth history" };
@@ -79,14 +73,12 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       return applyBalanceProposal(context, proposal.id, proposal.payload);
     case "recurring_edit":
       return applyRecurringProposal(context, proposal.id, proposal.payload, options.recurring);
-    // The only path that places or cancels a Scalable order: the owner tapped the card.
     case "scalable_order":
     case "scalable_cancel":
       return applyScalableProposal(proposal.kind, proposal.payload, connectionId => work => withScalable(connectionId, workspace.id, work));
     case "own_transfer": {
       const payload = ownTransferPayloadSchema.parse(proposal.payload);
       if ("pairWith" in payload) {
-        // The owner says both legs are theirs: one verified transfer link, undone from either transaction.
         const rows = await supabase.from("transactions").select("id, version").eq("workspace_id", workspace.id).in("id", [payload.transactionId, payload.pairWith]);
         const version = (id: string) => rows.data?.find(row => row.id === id)?.version;
         if (rows.error || version(payload.transactionId) === undefined || version(payload.pairWith) === undefined) throw new Error("This transaction was removed");
@@ -107,24 +99,12 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
   }
 }
 
-/**
- * A message a person can act on. When the database or its proxy is unreachable the client hands back an HTML error page
- * (a Cloudflare 5xx screen), which is no use on a card.
- */
-export function readableError(cause: unknown) {
-  const message = cause instanceof Error || (typeof cause === "object" && cause && "message" in cause) ? String((cause as { message: unknown }).message) : String(cause);
-  return /<(!doctype|html|head|body)\b/i.test(message) || /cloudflare/i.test(message) ? "The database did not answer. Nothing was saved; try again in a moment." : message.slice(0, 500);
-}
-
-/** Claims each proposal once, applies it, and records the outcome. Rejecting only changes a dismissed recurring pattern's review state. */
 export async function decideProposals(context: Context, ids: string[], decision: "accept" | "reject", options: DecideOptions = {}) {
   const { supabase, workspace } = context;
   const outcomes: { id: string; status: string; error?: string }[] = [];
   for (const id of ids) {
     const now = new Date().toISOString();
     if (decision === "reject") {
-      // A dismissed recurring pattern is remembered on the series first; if that fails the card stays open to try again.
-      // Dismissing a price change only keeps the old amount.
       const open = await supabase.from("agent_proposals").select("conflict_key, payload").eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).maybeSingle();
       const dismissed = open.data && String(open.data.conflict_key).startsWith("recurring_new:")
         ? await dismissRecurringProposal(context, id, open.data.payload).then(() => undefined, (cause: unknown) => readableError(cause)) : undefined;
@@ -135,7 +115,6 @@ export async function decideProposals(context: Context, ids: string[], decision:
       continue;
     }
     let claiming = supabase.from("agent_proposals").update({ status: "applying", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]);
-    // Each Scalable order is confirmed on its own card, never by an "accept all".
     if (ids.length > 1) claiming = claiming.not("kind", "in", `(${TRADE_KINDS.join(",")})`);
     const claim = await claiming.select("id, kind, payload").maybeSingle();
     if (claim.error || !claim.data) { outcomes.push({ id, status: "unchanged", ...(claim.error ? { error: claim.error.message } : {}) }); continue; }
@@ -143,7 +122,6 @@ export async function decideProposals(context: Context, ids: string[], decision:
     try { result = await applyProposal(context, claim.data as StoredProposal, options); }
     catch (cause) {
       const message = readableError(cause);
-      // A trade Scalable may have carried out stays "applying", so the card can never send it twice.
       if (cause instanceof OrderOutcomeUnknown) {
         await supabase.from("agent_proposals").update({ result: { error: message, unknown: true } }).eq("id", id).eq("workspace_id", workspace.id).eq("status", "applying");
         outcomes.push({ id, status: "unknown", error: message });

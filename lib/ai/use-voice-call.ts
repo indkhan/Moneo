@@ -15,7 +15,6 @@ function failure(cause: unknown) {
   return cause instanceof Error && cause.message ? cause.message : "Could not connect the call. Check your connection and try again.";
 }
 
-/** Average loudness (0-1) of an analyser's current frame. */
 function level(analyser: AnalyserNode | null, buffer: Uint8Array<ArrayBuffer>) {
   if (!analyser) return 0;
   analyser.getByteTimeDomainData(buffer);
@@ -24,27 +23,20 @@ function level(analyser: AnalyserNode | null, buffer: Uint8Array<ArrayBuffer>) {
   return Math.min(1, Math.sqrt(sum / buffer.length) * 4);
 }
 
-/** In development, a timed trace of the call (events, who is audible, what the controller decided) in the console and the dev server log. */
 const trace = process.env.NODE_ENV === "production" ? undefined : (message: string) => console.info(`[call ${new Date().toISOString().slice(11, 23)}] ${message}`);
 
-/** Connection handles live outside React state; the controller, effect and orb share them. */
 class Connection {
   channel: RTCDataChannel | null = null;
   mic: MediaStream | null = null;
   micLevel: AnalyserNode | null = null;
   moneoLevel: AnalyserNode | null = null;
   readonly aborts = new Map<string, AbortController>();
-  /** The call's id and when it went live, for the record saved at hang-up. */
   readonly callId = crypto.randomUUID();
   startedAt: number | null = null;
   constructor(public onAnswer?: (question: string, answer: ChatAnswer) => void, public onEnded?: () => void) {}
   set(patch: Partial<Pick<Connection, "channel" | "mic" | "micLevel" | "moneoLevel" | "onAnswer" | "onEnded">>) { Object.assign(this, patch); }
 }
 
-/**
- * A live GPT-Live call over WebRTC. GPT-Live only talks; every question it hands off runs through /api/chat
- * in this conversation (see VoiceCallController), and the answer is sent back for it to speak.
- */
 export function useVoiceCall(conversationId: string, onAnswer?: (question: string, answer: ChatAnswer) => void, onEnded?: () => void) {
   const [status, setStatus] = useState<CallStatus>("connecting");
   const [error, setError] = useState("");
@@ -80,7 +72,6 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     const lock = () => { if (document.visibilityState === "visible") navigator.wakeLock?.request("screen").then(sentinel => { if (closed) void sentinel.release(); else wakeLock = sentinel; }, () => {}); };
     async function connect() {
       if (!pc || !navigator.mediaDevices?.getUserMedia) throw new Error("This browser cannot make voice calls. Try a recent Chrome, Safari or Firefox.");
-      // The offer needs only an audio slot, not the mic, so the session starts while the browser asks for the mic.
       const slot = pc.addTransceiver("audio", { direction: "sendrecv" });
       pc.ontrack = event => { audio.srcObject = event.streams[0]; live.set({ moneoLevel: analyser(event.streams[0]) }); };
       const dc = pc.createDataChannel("oai-events");
@@ -109,13 +100,11 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       if (!closed) await pc.setRemoteDescription({ type: "answer", sdp });
     }
     const analyser = (source: MediaStream) => { const node = context!.createAnalyser(); node.fftSize = 512; context!.createMediaStreamSource(source).connect(node); return node; };
-    /** Hanging up saves the call in the chat; keepalive lets it finish even if the tab is closing. */
     function saveRecord() {
       const transcript = boundTranscript(controller.captions);
       if (live.startedAt === null || !transcript.length) return;
       const seconds = Math.min(86_400, Math.round((Date.now() - live.startedAt) / 1000));
       live.startedAt = null;
-      // Answers that land after hang-up are saved by the server and shown inside the call.
       const finished = live.onEnded;
       live.set({ onAnswer: undefined });
       void fetch("/api/voice/calls", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
@@ -124,7 +113,6 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
         .then(response => { if (response.ok) finished?.(); }, () => {});
     }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
-    // Both voices, metered: what the user actually hears, and whether they talked over it, decide when a result has been said.
     const buffer = new Uint8Array(512);
     let moneoOn = false, micOn = false, talking = false;
     const meter = setInterval(() => {
@@ -135,7 +123,6 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       if (trace && moneo !== moneoOn) trace(moneo ? "Moneo audible" : "Moneo quiet");
       if (trace && mic !== micOn) trace(mic ? "mic loud" : "mic quiet");
       moneoOn = moneo; micOn = mic;
-      // The call screen shows when Moneo is talking; it re-renders only when that changes.
       if (controller.answering !== talking) { talking = !talking; render(); }
     }, 100);
     document.addEventListener("visibilitychange", lock);
@@ -144,7 +131,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       clearInterval(meter);
       saveRecord();
       document.removeEventListener("visibilitychange", lock);
-      try { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify({ type: "session.close" })); } catch { /* already closed */ }
+      try { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify({ type: "session.close" })); } catch {}
       live.set({ channel: null, micLevel: null, moneoLevel: null });
       live.mic?.getTracks().forEach(track => track.stop());
       pc?.close();
@@ -163,9 +150,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
   async function cancel(requestId: string) {
     const running = controller.running.some(task => task.requestId === requestId);
     controller.cancel(requestId);
-    // An answered request has nothing left to stop on the server.
     if (!running) return;
-    // Cancellation can arrive before the server has claimed the request.
     for (let attempt = 0; attempt < 10; attempt++) {
       const response = await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }) }).catch(() => null);
       if (response?.status !== 404) break;
@@ -174,7 +159,6 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     live.aborts.get(requestId)?.abort();
   }
 
-  /** Current loudness of the user's mic and of Moneo's voice, for the orb; read every frame without re-rendering. */
   const [levels] = useState(() => {
     const buffer = new Uint8Array(512);
     return () => ({ mic: level(live.micLevel, buffer), moneo: level(live.moneoLevel, buffer) });
@@ -184,9 +168,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     status, error: error || controller.error, muted, toggleMute, cancel, levels,
     captions: controller.captions, tasks: controller.tasks, cards: controller.cards, unsaid: controller.unsaid,
     typed: (text: string) => controller.typed(text),
-    /** Moneo is answering or working; used for the orb's thinking state. */
     thinking: controller.running.length > 0,
-    /** Moneo is talking, or about to go on with its next result. */
     talking: controller.answering,
   };
 }

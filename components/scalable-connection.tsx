@@ -20,7 +20,6 @@ async function fetchStatus(): Promise<Data> {
   return response.json();
 }
 
-/** Connect a Scalable Capital broker account through Scalable's official MCP (read-only access is enough). */
 export function ScalableConnection() {
   const [data, setData] = useState<Data | null>(null);
   const [message, setMessage] = useState<string | null>(null);

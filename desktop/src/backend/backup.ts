@@ -1,6 +1,3 @@
-// Backups: a pg_dump custom-format dump of the whole postgres database plus copies of the Storage
-// files and config.json (the secrets the data needs: JWT secret, bank token key, owner login).
-//   <home>/backups/<timestamp>-<reason>/{database.dump, storage/, config.json, manifest.json}
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -54,7 +51,6 @@ export async function writeBackup(options: { backups: string; storage: string; c
   return folder;
 }
 
-// Keeps the newest `keep` automatic backups; backups the owner made are never removed.
 async function pruneAutomatic(backups: string, keep: number) {
   const automatic: string[] = [];
   for (const entry of (await fs.readdir(backups)).sort().reverse()) {
@@ -73,7 +69,6 @@ export async function readManifest(folder: string): Promise<BackupManifest> {
 }
 
 export async function restoreDump(cluster: Cluster, dump: string) {
-  // One transaction: a failed restore leaves the fresh cluster empty instead of half-filled.
   await mustRun(pgProgram(cluster, "pg_restore"), ["-h", "127.0.0.1", "-p", String(cluster.port), "-U", "supabase_admin", "-d", "postgres",
     "--exit-on-error", "--single-transaction", dump], { env: { ...process.env, PGPASSWORD: cluster.password }, timeoutMs: 60 * 60_000 });
 }

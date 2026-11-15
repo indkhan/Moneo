@@ -6,17 +6,15 @@ import { IouCard } from "@/components/iou-card";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
 import type { HomeReview } from "@/lib/ai/home-review";
 import { useBusy } from "@/components/use-busy";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { FindingsSheet, RecurringSheet, SummaryCard, UncategorizedSheet } from "./home-review";
 
 const FILTERS = [["loans", "Loans"], ["transactions", "Transactions"], ["balances", "Balances"], ["organize", "Labels"]] as const;
 type Filter = (typeof FILTERS)[number][0];
 const filterOf = (kind: string): Filter => kind.startsWith("iou_") ? "loans" : kind === "transaction_create" ? "transactions" : kind === "organize_answer" ? "organize" : "balances";
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-// Home answers where you stand first; the rest of the queue is a press away and stays mounted.
 const VISIBLE = 3;
 
-/** Identical expense proposals together, in first-seen order: adding each by habit would record one purchase many times. */
 export function groupRepeats(proposals: OpenProposal[]) {
   const groups = new Map<string, OpenProposal[]>();
   for (const proposal of proposals) {
@@ -48,10 +46,6 @@ function RepeatGroup({ proposals, locale }: { proposals: OpenProposal[]; locale?
   </details>;
 }
 
-/**
- * What waits for a decision: loans, expenses and balances as single cards; recurring, uncategorized and flagged items as one
- * summary card each that opens them in a sheet. Filtered-out cards stay mounted (hidden), so a card decided here keeps its outcome.
- */
 export function WaitingForYouList({ proposals: all, review = { uncategorized: 0, findings: [] }, locale }: { proposals: OpenProposal[]; review?: HomeReview; locale?: string }) {
   const [filter, setFilter] = useState<Filter>();
   const [expanded, setExpanded] = useState(false);

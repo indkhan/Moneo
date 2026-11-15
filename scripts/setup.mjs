@@ -1,9 +1,3 @@
-// Sets up (or upgrades) a self-hosted Moneo: fills .env with fresh secrets, starts the Docker
-// backend, applies pending migrations and creates the single owner account. Safe to rerun
-// after every `git pull`; existing secrets and data are kept.
-//   npm run setup
-// `npm run setup -- --qa` sets up the separate test backend instead: Docker project moneo-qa with its
-// own volumes and ports, secrets in .env.qa, no background jobs. Tests use only that one.
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createHmac, randomBytes } from "node:crypto";
@@ -14,8 +8,6 @@ import postgres from "postgres";
 
 const qa = process.argv.includes("--qa");
 const ENV = qa ? ".env.qa" : ".env";
-// Every checkout shares one test backend, so its secrets live once in the home folder too; a new
-// worktree picks them up instead of making new ones that no longer match the Docker volumes.
 const SHARED_QA = join(homedir(), ".moneo", "qa.env");
 if (qa && !existsSync(ENV) && existsSync(SHARED_QA)) copyFileSync(SHARED_QA, ENV);
 if (!existsSync(ENV)) copyFileSync(".env.example", ENV);
@@ -41,7 +33,6 @@ const generated = [];
 const ensure = (key, make) => { if (!read(key)) { write(key, make()); generated.push(key); } };
 ensure("POSTGRES_PASSWORD", () => secret(24));
 ensure("JWT_SECRET", () => secret(48));
-// The API keys are signed with JWT_SECRET, so they are remade whenever it is new.
 if (generated.includes("JWT_SECRET") || !read("SUPABASE_SERVICE_ROLE_KEY")) {
   write("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", jwt("anon", read("JWT_SECRET")));
   write("SUPABASE_SERVICE_ROLE_KEY", jwt("service_role", read("JWT_SECRET")));
@@ -71,7 +62,6 @@ try {
 console.log("Starting the database and services (the first run downloads a few GB and takes several minutes)…");
 execFileSync("docker", ["compose", ...(qa ? ["-p", "moneo-qa", "--env-file", ENV] : []), "up", "--detach", "--wait"], { stdio: "inherit" });
 
-// Same history table as the Supabase CLI, so `supabase migration` commands keep working.
 const db = postgres(read("SUPABASE_DB_URL"), { max: 1, onnotice: () => {} });
 try {
   await db`create schema if not exists supabase_migrations`;
@@ -86,13 +76,11 @@ try {
     });
   }
   console.log(pending.length ? `Applied ${pending.length} migration(s).` : "Database is up to date.");
-  // PostgREST caches the schema; reload it after migrations.
   if (pending.length) await db`notify pgrst, 'reload schema'`;
 } finally {
   await db.end();
 }
 
-// The owner signs in automatically (see proxy.ts); the password only lives in .env.
 const response = await fetch(`${read("NEXT_PUBLIC_SUPABASE_URL")}/auth/v1/admin/users`, {
   method: "POST",
   headers: { authorization: `Bearer ${read("SUPABASE_SERVICE_ROLE_KEY")}`, apikey: read("SUPABASE_SERVICE_ROLE_KEY"), "content-type": "application/json" },
@@ -101,15 +89,11 @@ const response = await fetch(`${read("NEXT_PUBLIC_SUPABASE_URL")}/auth/v1/admin/
 const body = await response.json().catch(() => ({}));
 if (!response.ok && body.error_code !== "email_exists") throw new Error(`Could not create the owner account: ${response.status} ${JSON.stringify(body)}`);
 console.log(response.ok ? "Created the owner account." : "Owner account exists.");
-// Enable Banking only accepts https:// return addresses, so the bank sends you back to
-// https://localhost:3443. mkcert (the tool Next.js uses for local HTTPS) makes a certificate that
-// only this computer trusts; the first run may ask you to allow it.
 if (qa) {
   console.log("The test backend is ready (.env.qa). Next: npm run qa:auth, then npm run test:e2e or npm run test:db.");
   process.exit(0);
 }
 try {
-  // Browsers only: skip the Java keystore, which needs admin rights and which Moneo does not use.
   process.env.TRUST_STORES = "system,nss";
   const { createSelfSignedCertificate } = createRequire(import.meta.url)("next/dist/lib/mkcert.js");
   if (!(await createSelfSignedCertificate("localhost", ".data"))) throw new Error("mkcert did not create a certificate");

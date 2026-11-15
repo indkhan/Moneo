@@ -1,4 +1,3 @@
-/** What chat tells people about Moneo itself. Keep in step with the navigation in components/app-shell.tsx. */
 export const APP_GUIDE = `Moneo is a personal-finance workspace. Pages (link with these paths):
 - Overview (/): net worth chart, account balances, cash flow by month, coming payments, goals, budgets and the agent briefing.
 - Transactions (/money/transactions): every transaction. Open one to edit its category, merchant, note or tags, split it, link a transfer or refund, or Undo a change. "Add transaction" records cash or other manual entries.

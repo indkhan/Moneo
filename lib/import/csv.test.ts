@@ -214,7 +214,7 @@ describe("financial import parsing", () => {
     const confirmed = { ...mapping, dateFormat: "iso", timestampTimezone: "UTC", timestampTimezoneConfirmed: true };
     expect(mapRows(rows, confirmed)[0]).toMatchObject({ postedOn: "2026-10-01", postedAt: "2026-09-30T22:30:00.000Z", sourceRow: rows[0] });
     expect(() => validateImportConfirmation(rows, { ...confirmed, timestampTimezoneConfirmed: false })).toThrow("timezone");
-    expect(validateImportConfirmation(rows, confirmed)).toBeDefined();
+    expect(validateImportConfirmation(rows, confirmed)).toMatchObject({ timestampTimezone: "UTC", timestampTimezoneConfirmed: true });
   });
   it("does not guess repeated or nonexistent Berlin local DST timestamps", () => {
     for (const date of ["2026-10-25 02:30:00", "2026-03-29 02:30:00"]) {

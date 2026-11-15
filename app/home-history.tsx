@@ -6,10 +6,8 @@ import { formatMoney } from "@/lib/finance/format";
 
 type Change = { key: string; at: string; title: string; source: string; href: string };
 
-// A recurring card asks a question ("X: €9.99 monthly, confirm as recurring?"); once accepted, History says what was done.
 const decidedTitle = (title: string) => /, confirm as recurring\?$/.test(title) ? `Confirmed ${title.slice(0, title.lastIndexOf(": ")) || title} as recurring` : title;
 
-// Memoized per request so Home can start these reads before its own data resolves.
 export const loadHomeHistory = cache(async (db: SupabaseClient, workspaceId: string) => Promise.all([
   db.from("imports").select("id, filename, new_rows, created_at").eq("workspace_id", workspaceId).eq("status", "completed").order("created_at", { ascending: false }).limit(4),
   db.from("balance_snapshots").select("id, account_id, amount_minor::text, currency_code, created_at").eq("workspace_id", workspaceId).not("actor_id", "is", null).is("undone_at", null).order("created_at", { ascending: false }).limit(4),
@@ -17,10 +15,6 @@ export const loadHomeHistory = cache(async (db: SupabaseClient, workspaceId: str
   db.from("agent_proposals").select("id, run_id, title, result, decided_at").eq("workspace_id", workspaceId).eq("status", "accepted").order("decided_at", { ascending: false }).limit(4),
 ]));
 
-/**
- * Home's History strip: the latest changes from imports, manual balances, wealth edits and accepted agent proposals.
- * Undo opens the page that owns each change, so its existing preview and version checks still apply.
- */
 export async function HomeHistory({ db, workspaceId, locale, timeZone, names }: { db: SupabaseClient; workspaceId: string; locale: string; timeZone: string; names: Map<string, string> }) {
   const [imports, balances, wealth, agents] = await loadHomeHistory(db, workspaceId);
   const changes: Change[] = [

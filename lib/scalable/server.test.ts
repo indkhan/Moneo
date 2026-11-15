@@ -9,7 +9,6 @@ vi.mock("./client", async original => ({ ...await original<typeof import("./clie
 afterEach(() => vi.resetAllMocks());
 
 const MINUTE = 60_000;
-/** One connection row with the trigger's behaviour: saving tokens moves token_version and ends the claim. */
 let row: { client_id: string; tokens_encrypted: string | null; token_version: number; status: string; claimed: boolean };
 function connectedWithTokenLasting(ms: number) {
   row = { client_id: "client", status: "active", token_version: 3, claimed: false, tokens_encrypted: JSON.stringify({ accessToken: "old", refreshToken: "refresh", expiresAt: Date.now() + ms }) };

@@ -9,8 +9,6 @@ import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-covera
 type Context = { supabase: SupabaseClient; workspace: { id: string } };
 const MAX_ROWS = 100_000;
 
-/** A resource bound is an explicit error, never a silently incomplete result. */
-// `query` builds a fresh ordered query for each page; `count` goes to its select.
 async function allRows<T>(query: (count?: "exact") => { range(from: number, to: number): PromiseLike<{ data: unknown[] | null; error: unknown; count?: number | null }> }): Promise<T[]> {
   const result = await allPages<T>((from, to, count) => query(count).range(from, to));
   if (result.length > MAX_ROWS) throw new Error("Investigation exceeds 100,000 records; narrow its dates or filters");
@@ -30,7 +28,6 @@ type LedgerRow = {
   posted_on: string; amount_minor: string; currency_code: string; status: InvestigationRow["status"]; kind: InvestigationRow["kind"];
   tags: string[]; event_name: string | null; review_reasons: string[]; version: number; description: string; refund_of_id: string | null;
 };
-// Investigations in one request (an artifact's saved queries) share these whole-workspace reads.
 const sourcesFor = perClient((supabase: SupabaseClient, workspaceId: string) =>
   allRows<Source>(count => supabase.from("source_transactions").select("id, import_id, status, review_reasons, normalized_row, fee_evidence, imports(run_version, status, undone_at), transaction_sources(transaction_id)", counted(count)).eq("workspace_id", workspaceId).order("id")));
 const ratesFor = perClient((supabase: SupabaseClient, workspaceId: string) =>
@@ -63,7 +60,6 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
     categoryId: r.category_id, merchantId: r.merchant_id, date: r.posted_on, amountMinor: r.amount_minor, currency: r.currency_code,
     status: r.status, kind: r.kind, tags: r.tags ?? [], event: r.event_name, reviewReasons: r.review_reasons ?? [], version: r.version,
     description: r.description, refundOfId: r.refund_of_id, sourceVersions: byParent.get(r.parent_transaction_id) ?? [] }));
-  // Refunds inherit the verified original category when their own category is unset.
   const refundIds = [...new Set(rows.filter(r => r.kind === "refund" && !r.categoryId && r.refundOfId).map(r => r.refundOfId!))];
   for (let offset = 0; offset < refundIds.length; offset += 100) {
     const original = await supabase.from("transactions").select("id, category_id, version").eq("workspace_id", workspace.id).in("id", refundIds.slice(offset, offset + 100));
@@ -76,11 +72,6 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
   return rows;
 }
 
-/**
- * Internal dataset is retained in full for evidence receipts; outward supporting access is paginated.
- * `entities` lets a caller that already reads them (the Investigations page) share that read.
- * `sourceVersions: false` skips each record's import sources, for readers that never show them (chat, artifacts).
- */
 export async function loadInvestigationDataset(input: unknown, context?: Context, options: { canReadImports?: boolean; includeAll?: boolean; entities?: Promise<InvestigationEntities>; sourceVersions?: boolean } = {}) {
   const ctx = context ?? await requireWorkspace();
   const entities = await (options.entities ?? loadInvestigationEntities(ctx));

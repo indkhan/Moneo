@@ -27,7 +27,6 @@ export const metadata = { title: "Plan" };
 const pill = "inline-flex h-11 items-center max-lg:h-9 max-lg:rounded-full gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
 
 type Plan = Awaited<ReturnType<typeof evaluatePlan>>;
-/** The forecast from the accounts it can use, with the ones left out named on the page. */
 function fromUsableAccounts(plan: Plan): Plan {
   const { input, excluded } = usableForecastInput(plan.input);
   return excluded.length ? { ...plan, input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input) } : plan;
@@ -40,7 +39,6 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const { removed, ...params } = await searchParams;
   const requestedHorizon = z.coerce.number().int().min(1).max(365).safeParse(params.horizon ?? 30);
   const horizon = requestedHorizon.success ? requestedHorizon.data : 30;
-  // The real-plan forecast loads alongside the page's own rows; only a selected scenario waits for them.
   const [realPlan, { data: goals, error: goalsError }, { data: allocations, error: allocationsError }, { data: accounts, error: accountsError }, { data: assumptions, error: assumptionsError }, { data: scenarios, error: scenariosError }] = await Promise.all([
     evaluatePlan(horizon),
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date, priority, status, notes, version, planned_monthly_minor::text, contribution_starts_on, recorded_saved_minor::text, saved_as_of")
@@ -51,7 +49,6 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       .eq("workspace_id", workspace.id).is("removed_at", null).order("created_at", { ascending: false }),
     supabase.from("scenarios").select("id, name, description, version").eq("workspace_id", workspace.id).is("removed_at", null).order("created_at", { ascending: false }),
   ]);
-  // A failed read must not look like having no goals or accounts: the error page offers a retry instead.
   const planError = goalsError ?? allocationsError ?? accountsError ?? scenariosError;
   if (planError) throw new Error("Plan data could not be loaded");
   const accountNames = new Map((accounts ?? []).map(account => [account.id, account.name]));

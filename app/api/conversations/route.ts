@@ -10,7 +10,6 @@ export async function GET(request: Request) {
   const key = `moneo-conversation-${context.workspace.id}`;
   const headers = { "Cache-Control": "no-store" };
   try {
-    // The sidebar pages and searches threads without reloading the open conversation.
     if (params.get("view") === "threads")
       return NextResponse.json(await loadThreads(context.supabase, context.workspace.id, params.get("threadsBefore") ?? undefined, params.get("q") ?? undefined), { headers });
     const requested = params.get("conversation") ?? (await cookies()).get(key)?.value;

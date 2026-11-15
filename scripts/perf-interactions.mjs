@@ -1,12 +1,3 @@
-// Interaction measurements against a running production build (see scripts/perf-pages.mjs for setup).
-//   node --env-file=.env.qa scripts/perf-interactions.mjs <baseUrl> <label> [runs=3]
-// Costs a few real chat answers (default OpenAI chat model) and, on builds with voice, one realtime transcription session.
-//   panel      click on Ask Moneo until the panel dialog is open
-//   chat       POST /api/chat with a simple question: response headers, first stream event, full answer
-//   history    GET /api/conversations/:id (what loadConversation costs, and what a poll costs)
-//   mic        tap on the mic until the recording view is ready (fake microphone; branches with voice only)
-//   recording  long tasks (over 50 ms) and layout shift while 5 s of live transcription runs
-//   polling    requests per 12 s with a request running in the background, a hidden tab, and nothing running
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import postgres from "postgres";
@@ -16,8 +7,6 @@ if (!base || !label) throw new Error("usage: node scripts/perf-interactions.mjs 
 const runs = Number(runsArg ?? 3);
 const db = postgres(process.env.SUPABASE_DB_URL, { max: 1, onnotice: () => {} });
 const [{ workspace_id: workspace }] = await db`select w.id as workspace_id from public.workspaces w join auth.users u on u.id=w.owner_id where u.email=${process.env.E2E_USER_EMAIL}`;
-// The QA user's chat model may be an OpenRouter id without credits; the default OpenAI model works.
-// The saved choice is put back when the script ends, even after a failure.
 const [{ ai_models: savedModels } = {}] = await db`select ai_models from public.workspace_settings where workspace_id=${workspace}`;
 await db`update public.workspace_settings set ai_models = ai_models - 'chat' where workspace_id=${workspace}`;
 const restoreModels = () => savedModels && db`update public.workspace_settings set ai_models = ${db.json(savedModels)} where workspace_id=${workspace}`;
@@ -31,7 +20,6 @@ const open = async (viewport = { width: 1440, height: 900 }) => {
   return { context, page: await context.newPage() };
 };
 
-// Ask Moneo panel.
 {
   const times = [];
   for (let run = -1; run < runs; run++) {
@@ -46,7 +34,6 @@ const open = async (viewport = { width: 1440, height: 900 }) => {
   out.panelOpenMs = median(times);
 }
 
-// Chat answer, from the page so cookies and headers are the app's own.
 let conversationId;
 {
   const headers = [], first = [], full = [];
@@ -76,7 +63,6 @@ let conversationId;
   out.chatHeadersMs = median(headers); out.chatFirstEventMs = median(first); out.chatFullMs = median(full);
 }
 
-// loadConversation: the API a chat open and each poll go through.
 {
   const { context, page } = await open();
   await page.goto("/ai"); await page.waitForLoadState("load");
@@ -89,7 +75,6 @@ let conversationId;
   await context.close();
 }
 
-// Mic tap to recording view.
 {
   const times = [], longTasks = [], shifts = [];
   for (let run = -1; run < runs; run++) {
@@ -112,7 +97,6 @@ let conversationId;
   if (times.length) { out.micToRecordingMs = median(times); out.recordingLongTasks = median(longTasks); out.recordingCls = median(shifts); }
 }
 
-// Background polling: requests during 12 s on a chat, with and without a running request.
 async function count(page, path, match, hidden = false) {
   let requests = 0;
   page.on("request", request => { if (match(request.url())) requests++; });

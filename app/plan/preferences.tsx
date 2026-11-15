@@ -12,7 +12,6 @@ function preferenceSummary(preferences: ForecastPreferences, locale?: string) {
   return `Buffer ${money(preferences.safety_buffer_minor)} · ±${bpsToPercent(preferences.uncertainty_bps)}% · ${preferences.daily_spending_minor === "0" ? "no extra daily spending" : `extra spending ${money(preferences.daily_spending_minor)} daily`}`;
 }
 
-// A compact drawer: closed it is one summary line; open it holds the editor and its undo history.
 export async function ForecastPreferenceEditor({ preferences, version, accounts, today }: { preferences: ForecastPreferences; version: number; accounts: { id: string; name: string; type: string }[]; today: string }) {
   const { supabase, workspace } = await requireWorkspace();
   const { data: events, error } = await supabase.from("forecast_preference_events").select("id, after, undo_of, undone_at, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50);

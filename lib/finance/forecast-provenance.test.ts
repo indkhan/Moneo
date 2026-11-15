@@ -60,7 +60,6 @@ it.each([false, true])("keeps source-only balance revisions stale in saved summa
   const { supabase, workspace } = await requireWorkspace();
   const settings = settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", ...(planning ? ["planning"] : [])] });
   const first = await loadFinancialReviewEvidence(supabase, workspace, settings);
-  // The durable workflow saves this summary while immutable receipts retain originals.
   const saved = Object.fromEntries(Object.entries(first).filter(([key]) => key !== "calculationEvidence"));
   vi.setSystemTime(new Date("2026-10-01T13:00:00Z"));
   const later = await loadFinancialReviewEvidence(supabase, workspace, settings);

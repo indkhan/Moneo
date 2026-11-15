@@ -10,14 +10,8 @@ import { investigationCode } from "./investigation-code";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 
-/** The user asked to trade in this message or the two before it ("buy 2 shares", then "ok do it"). */
 export const TRADE_INTENT = /\b(buy|sell|kauf\w*|verkauf\w*|orders?|purchase|invest|trade|cancel\w*|storn\w*)\b/i;
 
-/**
- * Scalable tools for chat and calls. Reads go to Scalable live. The order tools only make cards: they ask Scalable
- * for a preview and store it; the model never gets a tool that submits. They exist only when the user asked to trade,
- * so a news article or other tool text cannot start one on its own, and never on a read-only connection.
- */
 export function investmentTools({ connectionId, tradingAccess, message, priorUserText, evidence, context, onCard }: {
   connectionId: string; tradingAccess: "full" | "read" | null; message: string; priorUserText: string[];
   evidence: <T>(read: (latest: Context) => Promise<T>) => Promise<T>;
@@ -35,7 +29,6 @@ export function investmentTools({ connectionId, tradingAccess, message, priorUse
     return { datasetId, ...(retainOnly ? { retained: true } : { data: value }) };
   });
   const run = <T>(workspaceId: string) => (work: (mcp: ScalableMcp) => Promise<T>) => withScalable(connectionId, workspaceId, work);
-  // Unknown access (not synced since it was recorded) keeps the tools; they check Scalable live before a card.
   const trading = tradingAccess !== "read" && [message, ...priorUserText].some(text => TRADE_INTENT.test(text));
   const cardNote = "A card is shown below your answer with Scalable's preview, a countdown and a button the user taps to send it. It is not placed until they tap. Say it is waiting for them; do not repeat every figure.";
   return {

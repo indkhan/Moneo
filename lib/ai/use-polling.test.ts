@@ -12,7 +12,6 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 const toggle = (next: boolean) => { hidden = next; listeners.forEach(fn => fn()); };
-/** Runs the hook's effects like React would on mount; returns the cleanup of the polling one. */
 function mount(tick: () => void, active = true) {
   host.effects = []; poll(tick, 3000, active);
   return host.effects.map(effect => effect()).filter(Boolean).at(-1) as (() => void) | undefined;

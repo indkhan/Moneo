@@ -71,7 +71,6 @@ export function createEvidenceReceipt(raw: unknown): EvidenceReceipt {
   if (new Set(input.sources.map(source => source.id)).size !== input.sources.length || new Set(input.metrics.map(metric => metric.id)).size !== input.metrics.length) throw new Error("Duplicate evidence identity");
   const sourceIds = new Set(input.sources.map(source => source.id));
   for (const metric of input.metrics) if (new Set(metric.sourceIds).size !== metric.sourceIds.length || metric.sourceIds.some(id => !sourceIds.has(id))) throw new Error("Metric supporting record unavailable");
-  // The clock does not change immutable evidence identity; the first stored receipt retains its capture time.
   const hash = evidenceFingerprint({ ...input, fetchedAt: undefined });
   const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
   return { ...input, id, sources: input.sources.map(source => ({ ...source, href: sourceHref(source) })) };
@@ -102,7 +101,6 @@ export async function loadEvidenceReceipt(db: SupabaseClient, workspaceId: strin
   if (receipt.workspaceId !== workspaceId || receipt.id !== id) throw new Error("Evidence ownership mismatch");
   return receipt;
 }
-// Only pass a trusted service client after an owned deterministic query. Authenticated clients cannot insert receipts.
 export async function persistEvidenceReceipt(db: SupabaseClient, receipt: EvidenceReceipt): Promise<EvidenceReceipt> {
   const validated = parseStoredReceipt(receipt);
   const result = await db.from("financial_evidence_receipts").insert({ id: validated.id, workspace_id: validated.workspaceId, scopes: validated.scopes, receipt: validated });

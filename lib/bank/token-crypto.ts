@@ -1,7 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-// AES-256-GCM for Enable Banking session ids at rest. The connection id is bound as
-// associated data, so a ciphertext copied onto another connection row fails to decrypt.
 function key(): Buffer {
   const raw = process.env.BANK_TOKEN_ENCRYPTION_KEY;
   const decoded = raw ? Buffer.from(raw, "base64") : Buffer.alloc(0);

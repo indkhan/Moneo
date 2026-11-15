@@ -1,6 +1,6 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {z} from 'zod';
-import {versionedRows} from '@/app/money/transactions/input';
+import {versionedRows} from '@/lib/finance/transaction-input';
 
 export const organizationPreviewSchema=z.object({rows:versionedRows,categoryId:z.uuid().nullable().optional(),merchantId:z.uuid().nullable().optional()}).strict()
   .refine(value=>'categoryId' in value || 'merchantId' in value,'Choose a category or merchant change');

@@ -14,7 +14,6 @@ import { CitationChip } from "./citation-chip";
 import { CITATION_PATTERN, parseCitation, type Citation } from "@/lib/ai/citations";
 import { attachmentId, type ChatAttachment } from "@/lib/ai/chat-attachments";
 
-// Only link known application paths in text nodes, never inside SQL/code blocks.
 const appLinks: Plugin<[], Root> = () => tree => {
   function visit(parent: { children?: unknown[] }) {
     if (!parent.children) return;
@@ -45,14 +44,9 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
 }
 
 type Cited = { file: ChatAttachment; citation: Citation };
-/** The citations of the reply being drawn, which its links point into by index. */
 const Citations = createContext<Cited[]>([]);
 const CITE_HREF = /^#moneo-cite-(\d+)$/;
 
-/**
- * Citation markers become links to `#moneo-cite-n`, drawn as chips. Only markers naming a file attached in
- * this conversation become chips; any other marker is dropped, and so is one still being written.
- */
 export function withCitations(content: string, files: ChatAttachment[], streaming = false) {
   const cited: Cited[] = [];
   const text = (streaming ? content.replace(/\{\{[^}]*\}?$/, "") : content).split(/(```[\s\S]*?(?:```|$))/).map((part, index) => index % 2 ? part
@@ -71,11 +65,8 @@ function CitationLink({ href, children }: { href: string; children?: React.React
   return cited ? <CitationChip file={cited.file} citation={cited.citation} /> : <span>{children}</span>;
 }
 
-// Outside the component: new functions on each render would make React remount everything in a reply,
-// so a tapped card would flash "Loading…" and lose its place whenever the page refreshes.
 const remarkPlugins = [remarkGfm, appLinks];
 const components: Components = {
-  // A reply sits inside a page that already has its h1.
   h1: ({ children }) => <h2>{children}</h2>,
   img: () => null,
   pre: ({ children }) => {
@@ -91,17 +82,13 @@ const components: Components = {
   a: ({ href, children }) => {
     if (!href) return <span>{children}</span>;
     if (CITE_HREF.test(href)) return <CitationLink href={href}>{children}</CitationLink>;
-    // App paths navigate client-side; anything else opens in a new tab.
     if (href.startsWith("/") && !href.startsWith("//")) return <Link href={href}>{children}</Link>;
-    // External links are shown as text only; answers never link off the app.
     return <span>{children}</span>;
   },
 };
 
-/** A link the model is still writing would show as raw text and a long URL until its last character arrives. */
 const withoutUnfinishedLink = (text: string) => text.replace(/\[[^\]\n]*(\]\([^)\n]*)?$/, "");
 
-/** `files` are the conversation's attachments, which the reply's citation chips may point to. */
 export function AiMessage({ content, streaming = false, files = NO_FILES }: { content: string; streaming?: boolean; files?: ChatAttachment[] }) {
   const { text, cited } = useMemo(() => withCitations(content, files, streaming), [content, files, streaming]);
   return <Citations.Provider value={cited}><div className="ai-markdown"><Markdown remarkPlugins={remarkPlugins} skipHtml components={components}>{streaming ? withoutUnfinishedLink(text) : text}</Markdown></div></Citations.Provider>;

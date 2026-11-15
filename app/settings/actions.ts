@@ -41,8 +41,6 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
   }
 }
 
-// Storage RLS is keyed to the current workspace folder, so files go first while it is still ours.
-// ponytail: a failure after this leaves rows pointing at removed files; retrying clears them.
 async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>) {
   for (const bucket of ["imports", "chat"]) {
     for (;;) {
@@ -51,7 +49,7 @@ async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<
       if (!listed.data.length) break;
       const removed = await supabase.storage.from(bucket).remove(listed.data.map(file => `${workspace.id}/${file.name}`));
       if (removed.error) throw removed.error;
-      if (!removed.data.length) break; // RLS-denied removes return nothing; never spin
+      if (!removed.data.length) break;
     }
   }
 }

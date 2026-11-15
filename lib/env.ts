@@ -1,11 +1,15 @@
 import { z } from "zod";
 
-// Validates server env. Call lazily so the homepage renders even before keys are set.
+const DEFAULT_PORT = 3000;
+export const appPort = (env: NodeJS.ProcessEnv = process.env) => Number(env.PORT) || DEFAULT_PORT;
+export const loopbackUrl = (env: NodeJS.ProcessEnv = process.env) => `http://127.0.0.1:${appPort(env)}`;
+export const appUrl = () => process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${appPort()}`;
+
 const serverSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
-  NEXT_PUBLIC_APP_URL: z.string().default("http://localhost:3000"),
+  NEXT_PUBLIC_APP_URL: z.string().default(appUrl),
 });
 
 export type Env = z.infer<typeof serverSchema>;
@@ -27,8 +31,6 @@ export interface SupabaseConfig {
   detail: string;
 }
 
-// Shared runtime check for the public Supabase configuration. Reads only the
-// public variable names/presence and never logs secret values.
 export function getSupabaseConfig(): SupabaseConfig {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -45,8 +47,6 @@ export function getSupabaseConfig(): SupabaseConfig {
       detail: `Supabase configuration is incomplete. Missing ${missing}; set both NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.`,
     };
   }
-  // WHATWG URL parsing normalizes a missing scheme delimiter that the
-  // Supabase SDK rejects, so require its absolute scheme prefix first.
   if (!/^https?:\/\//i.test(url)) {
     return {
       status: "invalid",

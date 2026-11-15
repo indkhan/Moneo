@@ -17,11 +17,9 @@ function NextStep({ state }: { state: PhoneAccessState }) {
   return null;
 }
 
-/** Optional: reach this Moneo from the owner's own phone and tablet through Tailscale. */
 export function PhoneAccessCard({ initial, desktop }: { initial: PhoneAccessState; desktop: boolean }) {
   const [state, change, pending] = useActionState<PhoneAccessState>(async previous => {
     try { return await (previous.state === "on" ? turnOff(previous) : turnOn(previous)); }
-    // Turning off from a phone removes the connection the answer would come back on.
     catch { return { ...previous, error: "The connection to Moneo was lost. If you just turned this off from this device, that's expected: turn it back on from the computer." }; }
   }, initial);
   return <section aria-labelledby="phone-access" className="rounded-xl border border-border bg-card p-6">

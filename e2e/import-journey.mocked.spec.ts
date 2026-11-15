@@ -1,28 +1,8 @@
-// Most useful deterministic Playwright test for Moneo's core journey
-// that can run WITHOUT Supabase credentials or OpenAI.
-//
-// Why this slice: CSV/XLSX import with AI-proposed mapping → Preview →
-// Continue / Correct / Cancel (§4–§5) is the highest-priority, highest-risk
-// step of the whole loop. Everything downstream (Home, transactions, goals,
-// forecasts, re-import) depends on it, and the finance unit tests
-// already cover minor-unit math but not the browser flow.
-//
-// Strategy: fully mock the AI/backend boundary with page.route fulfilments
-// shaped exactly like the real routes, using synthetic fixtures from
-// e2e/fixtures.ts. No request ever reaches Supabase or api.openai.com — the
-// test fails if one tries to. This exercises the real client component
-// (app/import/page.tsx): file input → inspect → preview → Correct → Preview
-// correction → Continue → import history → Cancel.
-//
-// Out of scope here (covered by the gated spec when creds exist): real auth,
-// real row persistence, duplicate-detection against Postgres, background
-// workflow polling.
 import { test, expect } from "@playwright/test";
 import { AUGUST_CSV,
   mockCompletedImport,
   mockInspectResponse, e2eStorageStatePath } from "./fixtures";
 
-// Pages need a session; the data behind them stays mocked.
 const signedIn = e2eStorageStatePath();
 if (signedIn) test.use({ storageState: signedIn });
 
@@ -87,11 +67,8 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
       if (request.url().includes("api.openai.com"))
         openAiCalls.push(request.url());
     });
-    // Never let the test accidentally depend on a real backend: fail fast on
-    // any unmocked imports API call.
     const unmocked: string[] = [];
 
-    // GET /api/imports: empty before confirm, one completed row after.
     let confirmed = false;
     await page.route("**/api/imports", async (route) => {
       if (route.request().method() !== "GET") {
@@ -106,9 +83,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
       });
     });
 
-    // POST /api/imports/inspect: first call returns the canned "AI" mapping;
-    // calls after the user edits (Preview correction) return a corrected
-    // account name, proving the Correct round-trip reached the (mocked) API.
     let inspectCalls = 0;
     await page.route("**/api/imports/inspect", async (route) => {
       inspectCalls += 1;
@@ -123,7 +97,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
       });
     });
 
-    // POST /api/imports/confirm: accept the file+mapping, flip history state.
     await page.route("**/api/imports/confirm", async (route) => {
       confirmed = true;
       await route.fulfill({
@@ -139,7 +112,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     ).toBeVisible();
     await expect(page.getByText("No imports yet.")).toBeVisible();
 
-    // 1. Upload — the file input inspects automatically.
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page
       .getByLabel("Financial statement files")
@@ -149,8 +121,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
         buffer: Buffer.from(AUGUST_CSV, "utf-8"),
       });
 
-    // 2. AI-proposed interpretation is shown as an understandable preview,
-    //    not raw column names.
     await expect(page.getByText("august.csv (1 of 1)")).toBeVisible();
     await expect(page.getByText("Checking").first()).toBeVisible();
     await expect(
@@ -169,7 +139,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     ).toBeVisible();
     expect(inspectCalls).toBe(1);
 
-    // 3. Correct — open the manual mapping editor and re-preview.
     await page
       .getByRole("button", { name: "Correct", exact: true })
       .click();
@@ -182,8 +151,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByText("Checking (corrected)", { exact: true })).toBeVisible();
     expect(inspectCalls).toBe(2);
 
-    // 4. Continue — confirm the import; history shows exact row counts and
-    //    the preview section clears.
     await page
       .getByRole("button", { name: "Start import", exact: true })
       .click();
@@ -290,7 +257,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByRole("combobox", { name: "Description", exact: true })).toHaveValue("Description");
     await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveValue("Amount");
     await expect(page.getByRole("button", { name: "Start import" })).toHaveCount(0);
-    // Advanced columns start folded, and the amount layouts cannot both be filled.
     await expect(page.getByRole("combobox", { name: "Transaction ID", exact: true })).toHaveCount(0);
     await page.getByRole("radio", { name: "Two columns, money out and money in" }).check();
     await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveCount(0);

@@ -2,9 +2,6 @@ import { createPrivateKey, sign } from "node:crypto";
 import { z } from "zod";
 import { serviceKey } from "@/lib/service-keys";
 
-// Enable Banking REST client (https://enablebanking.com/docs/api/reference/).
-// Auth is a short-lived RS256 JWT signed with the app's private key; there are no refresh tokens.
-
 const amountSchema = z.object({ currency: z.string().regex(/^[A-Z]{3}$/), amount: z.string().regex(/^-?\d+(?:\.\d+)?$/) });
 
 const aspspSchema = z.object({
@@ -60,15 +57,11 @@ export const bankTransactionSchema = z.object({
 export type BankTransaction = z.infer<typeof bankTransactionSchema>;
 
 export class EnableBankingError extends Error {
-  /** retryAfter: seconds from the response's Retry-After header, when it sent one. */
   constructor(readonly status: number, readonly code: string | undefined, message: string, readonly retryAfter?: number) { super(message); }
-  // Consent ended at the bank or Enable Banking: the user must reconnect. A 401 without one of these codes
-  // can also be a wrong App ID, key or clock, so it isn't taken as an ended consent on its own.
   get expired() { return /EXPIRED|REVOKED|CLOSED|INVALID_SESSION/i.test(this.code ?? ""); }
   get rateLimited() { return this.status === 429; }
 }
 
-// Retry-After is seconds or an HTTP date; anything past a day is capped, since the bank limits reset daily.
 function retryAfterSeconds(value: string | null, now = Date.now()) {
   if (!value) return undefined;
   const seconds = /^\d+$/.test(value.trim()) ? Number(value) : (Date.parse(value) - now) / 1000;
@@ -78,7 +71,6 @@ function retryAfterSeconds(value: string | null, now = Date.now()) {
 export type EnableBankingCredentials = { appId: string; privateKey: string };
 const apiUrl = () => z.string().url().default("https://api.enablebanking.com").parse(process.env.ENABLE_BANKING_API_URL || undefined);
 
-// The App ID and key the owner saved under Import → Connected banks, else the legacy .env pair.
 async function credentials(): Promise<EnableBankingCredentials | null> {
   const [appId, privateKey] = await Promise.all([serviceKey("enable_banking_app_id"), serviceKey("enable_banking_private_key")]);
   return appId && privateKey ? { appId, privateKey } : null;
@@ -88,16 +80,13 @@ export async function enableBankingConfigured() {
   return !!process.env.BANK_TOKEN_ENCRYPTION_KEY && !!(await credentials());
 }
 
-// RS256 JWT with the app id as kid. Enable Banking accepts at most 24h; one hour is plenty per request.
 export function signJwt(appId: string, privateKeyPem: string, now = Math.floor(Date.now() / 1000)): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const body = `${encode({ typ: "JWT", alg: "RS256", kid: appId })}.${encode({ iss: "enablebanking.com", aud: "api.enablebanking.com", iat: now, exp: now + 3600 })}`;
-  // Env files often carry the PEM on one line with literal \n.
   const key = createPrivateKey(privateKeyPem.replace(/\\n/g, "\n"));
   return `${body}.${sign("RSA-SHA256", Buffer.from(body), key).toString("base64url")}`;
 }
 
-// PSU headers mark a request as user-present, so it doesn't count against the ~4/day background limit.
 export type PsuContext = { ip: string; userAgent: string };
 
 export async function enableBankingClient(fetcher: typeof fetch = fetch) {
@@ -106,7 +95,6 @@ export async function enableBankingClient(fetcher: typeof fetch = fetch) {
   return clientFor(saved, fetcher);
 }
 
-/** Checks a pasted App ID and key before they are saved: a bad PEM fails locally, a wrong pair at Enable Banking. */
 export async function checkEnableBankingCredentials(input: EnableBankingCredentials, fetcher: typeof fetch = fetch) {
   try { signJwt(input.appId, input.privateKey); } catch { throw new EnableBankingError(0, "INVALID_PRIVATE_KEY", "That private key could not be read"); }
   await clientFor(input, fetcher).application();
@@ -150,7 +138,6 @@ function clientFor({ appId, privateKey }: EnableBankingCredentials, fetcher: typ
     deleteSession: (sessionId: string, psu?: PsuContext) => call(z.unknown(), "DELETE", `/sessions/${encodeURIComponent(sessionId)}`, { psu }),
     balances: async (accountUid: string, psu?: PsuContext) =>
       (await call(z.object({ balances: z.array(balanceSchema) }), "GET", `/accounts/${encodeURIComponent(accountUid)}/balances`, { psu })).balances,
-    // Booked only: pending rows have unstable ids (issue #82). Follows continuation_key to the end.
     bookedTransactions: async (accountUid: string, dateFrom: string, psu?: PsuContext) => {
       const page = z.object({ transactions: z.array(bankTransactionSchema), continuation_key: z.string().optional().nullable() });
       const all: BankTransaction[] = [];

@@ -11,7 +11,6 @@ export const organizeReviewSchema = z.object({
   source: z.enum(SOURCES).optional().describe("decisions only: who labelled the rows"),
 }).strict();
 
-/** The organizer's work as the owner sees it on the Organize page, with the ids a card needs. Read-only. */
 export async function organizeReview({ supabase, workspace }: Context, input: z.infer<typeof organizeReviewSchema>) {
   const names = await loadNames(supabase, workspace.id);
   if (input.view === "questions") {
@@ -29,7 +28,6 @@ export async function organizeReview({ supabase, workspace }: Context, input: z.
     category: row.category_id && names.categories.get(row.category_id), merchant: row.merchant_id && names.merchants.get(row.merchant_id), decidedBy: SOURCE_LABEL[row.source], confidence: row.ai_confidence, reason: row.ai_reason })) };
 }
 
-/** What the model asks for: an open question or a payee, and an existing category or merchant by name. */
 export const organizeInputSchema = z.object({
   questionId: z.uuid().optional().describe("An open question's id from organize_review"),
   identityId: z.uuid().optional().describe("The payee's id from organize_review; needed only without a questionId"),
@@ -46,7 +44,6 @@ const named = <T extends { id: string; name: string }>(list: T[], text: string |
   return match;
 };
 
-/** Stores a pending "label this payee's rows" proposal. Nothing is labelled until the owner accepts. */
 export async function proposeOrganizeAnswer({ supabase, workspace, chatRequestId }: Context, input: z.infer<typeof organizeInputSchema>) {
   const [names, open] = await Promise.all([loadNames(supabase, workspace.id), input.questionId
     ? supabase.from("organize_questions").select("id, identity_id, transaction_ids").eq("workspace_id", workspace.id).eq("status", "open").eq("id", input.questionId)
@@ -69,7 +66,6 @@ export async function proposeOrganizeAnswer({ supabase, workspace, chatRequestId
   return { proposalId: data.id as string, title };
 }
 
-/** Accepting is the owner pressing the card: the same audited calls as the Organize page, so the labels can be undone there. */
 export async function applyOrganizeAnswer({ supabase }: Context, payload: unknown) {
   const parsed = organizeAnswerSchema.parse(payload);
   if (parsed.questionId) await answerQuestion(supabase, { questionId: parsed.questionId, identityId: parsed.identityId, categoryId: parsed.categoryId, merchantId: parsed.merchantId });

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChatForm } from "@/app/ai/chat-form";
+import { ChatForm } from "@/components/chat-form";
 import { claimFirstPrompt } from "../actions";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "@/components/chat-messages";
 import { usePolling } from "@/lib/ai/use-polling";
@@ -12,7 +12,6 @@ import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 type Loaded = { messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
 const SEND_EVENT = "moneo-artifact-send";
 
-/** A paid request that takes a press: an empty Home cards tab, or a first request that failed. */
 export function SendButton({ prompt, idle, label, sending }: { prompt: string; idle: string; label: string; sending: string }) {
   const [sent, setSent] = useState(false);
   return <span className="block space-y-3 text-sm text-muted-foreground">
@@ -22,11 +21,6 @@ export function SendButton({ prompt, idle, label, sending }: { prompt: string; i
   </span>;
 }
 
-/**
- * The artifact's own chat. It is a normal chat request (all chat tools, steering, cancel, the mic), so a build
- * keeps going when the tab closes and shows as working when the user comes back. A finished answer refreshes
- * the Page and Home card tabs beside it.
- */
 export function ArtifactChat({ conversationId, initial, messagesCursor, running: initialRunning, artifactId }: { conversationId: string; initial: ChatItem[]; messagesCursor: string | null; running: string | null; artifactId?: string }) {
   const router = useRouter();
   const [messages, setMessages] = useState(initial);
@@ -47,14 +41,11 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     window.addEventListener(SEND_EVENT, listener);
     return () => window.removeEventListener(SEND_EVENT, listener);
   }, []);
-  // The creation request, if this page is the first to claim it.
   useEffect(() => {
     if (!artifactId) return;
-    // Nothing to claim means another page or a lost response took it; the refreshed page then offers Send it again.
     claimFirstPrompt(artifactId).then(prompt => { setClaimFailed(false); if (prompt) setRequest(prompt); else router.refresh(); }, () => setClaimFailed(true));
   }, [artifactId, claimAttempt, router]);
 
-  // A build that kept running while the user was away: check until its answer is saved.
   const resuming = running && !pending;
   const [unreachable, setUnreachable] = useState(false);
   usePolling(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => { if (!response.ok) throw new Error(); return response.json() as Promise<Loaded>; }).then(data => {
@@ -83,7 +74,6 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     const before = live.current;
     live.current = applyChatEvent(before, event);
     setPending(live.current);
-    // A page or card just saved: show it without waiting for the whole answer.
     if (event.type === "tool" && event.state === "done" && ["write_page", "card_preset", "write_card", "remove_card"].includes(event.name ?? "")) router.refresh();
   }
   function onDone(_id: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[]) {

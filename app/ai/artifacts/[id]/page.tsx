@@ -15,7 +15,6 @@ import { DeleteArtifactButton } from "../delete-artifact-button";
 import { ArtifactChat, SendButton } from "./artifact-chat";
 import { ExitFullScreen, PendingSubmit, RenameArtifact } from "./artifact-controls";
 
-// The neighbouring widgets show only when at least 160px is left beside the card (its width plus the gap).
 const NEIGHBOURS_FIT: Record<CardSize, string> = { S: "@min-[524px]:grid", M: "@min-[704px]:grid", L: "@min-[884px]:grid", XL: "" };
 
 const cardControl = "flex flex-wrap items-center gap-2";
@@ -40,7 +39,6 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   ]);
   for (const result of [artifact, versions, cards, layout, chat]) if (result.error) throw result.error;
   if (!artifact.data) notFound();
-  // Every artifact has its own chat; one made before chats existed gets it now.
   let conversationId = chat.data?.id as string | undefined;
   if (!conversationId) {
     const created = await supabase.from("conversations").insert({ workspace_id: workspace.id, title: artifact.data.title, artifact_id: id }).select("id").single();
@@ -48,7 +46,6 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
     conversationId = created.data.id as string;
   }
   const history = await loadConversation(supabase, workspace.id, conversationId);
-  // Sent once, by whichever page claims it first. After that a request takes a press, so no reload or link can spend money.
   const waiting = !history.messages.length && !history.running && !!artifact.data.first_prompt;
   const start = waiting && !artifact.data.first_prompt_claimed_at;
   const retry = waiting && !start ? artifact.data.first_prompt : null;
@@ -58,7 +55,6 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const latest = pages.at(-1)?.version ?? 0;
   const tab = search.tab === "cards" ? "cards" : "page";
   const at = (query: Partial<Search>) => `/ai/artifacts/${id}?${new URLSearchParams(Object.entries({ tab, ...(current ? { v: String(current.version) } : {}), ...query }).filter((entry): entry is [string, string] => !!entry[1]))}`;
-  // The frame reruns the saved queries on every open, so even an older design shows today's data. Say both, separately.
   const dataAsOf = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone }).format(new Date());
   const older = !!current && current.version < latest;
   const dataLabel = `${older ? "Older design, current data" : "Data"} as of ${dataAsOf}`;
@@ -74,7 +70,6 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   </div>;
 
   const homeItems = homeLayout(layout.data)?.items ?? [];
-  // Neighbours in the preview are the user's own Home widgets, so the card is seen where it will sit.
   const neighbours = homeItems.filter(isBuiltinWidget).filter(key => key !== "overview").map(widgetLabel);
   const buildCard = "Create a Home card from this artifact, keeping its purpose, design and live data. Use the existing page and conversation as context. Save it as a draft for me to preview before adding it to Home.";
   const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name })} aria-current={tab === name ? "page" : undefined}
@@ -136,7 +131,6 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
                   {onHome && <SafeForm action={unpublishCardSafely} className={cardControl}><input type="hidden" name="id" value={card.id} /><PendingSubmit className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</PendingSubmit></SafeForm>}
                 </div>
               </div>
-              {/* The card at the width it is designed for (the panel is narrower than Home), between the user's own widgets when they fit, with live data. */}
               <div className="@container flex gap-3 rounded-2xl border border-dashed border-border p-3">
                 <div className="min-w-0 shrink-0" style={{ width: `min(100%, ${CARD_SIZES[size].width}px)` }}>
                   <Suspense fallback={<CardSkeleton title={card.title} />}><HomeCard key={`${shown}-${size}`} card={card} context={context} version={shown} /></Suspense>

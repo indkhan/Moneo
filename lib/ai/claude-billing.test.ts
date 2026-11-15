@@ -3,8 +3,6 @@ import { claudeModel } from "./claude";
 
 afterEach(() => { vi.unstubAllEnvs(); });
 
-// Runs the real adapter and Agent SDK up to the point Claude Code would be started, where its final
-// environment is known. The adapter merges its own copy of ANTHROPIC_* variables underneath ours.
 it("starts Claude Code without any variable that would bill an API key or cloud account", async () => {
   vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
   vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "token");

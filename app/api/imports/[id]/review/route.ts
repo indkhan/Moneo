@@ -1,6 +1,6 @@
 import { requireWorkspace } from "@/lib/auth";
 import { createHash } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import { serviceDb } from "@/lib/service-db";
 import { z } from "zod";
 import { mapRows, parseCsv, parseExcel } from "@/lib/import/csv";
 import { importRowPayload } from "@/lib/import/row";
@@ -39,8 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (importError) throw importError;
       if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Import service is not configured");
       if (!imported.storage_path.startsWith(`${workspace.id}/`)) throw new Error("Import file is outside the workspace");
-      const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY,
-        { auth: { persistSession: false, autoRefreshToken: false } });
+      const service = serviceDb();
       const file = await service.storage.from("imports").download(imported.storage_path);
       if (file.error) throw file.error;
       if (!file.data || file.data.size > 10_000_000) throw new Error("Stored import file unavailable");

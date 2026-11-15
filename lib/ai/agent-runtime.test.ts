@@ -64,7 +64,6 @@ it("respects Settings scopes, stops when canceled and never reruns finished agen
   expect(await runAgent(id(9), id(1), "anomaly")).toBe("canceled");
 });
 
-// The desktop gateway dropped one request ("rest is not reachable") and the agent was marked failed for good.
 it("a dropped database call leaves the agent for its step to retry, and the retry finishes the work", async () => {
   db.tasks = [{ agent: "anomaly", status: "pending", events: [] }];
   db.dropOnce = { table: "agent_proposals", op: "upsert" };
@@ -72,7 +71,6 @@ it("a dropped database call leaves the agent for its step to retry, and the retr
   expect(db.tasks[0].status).toBe("running");
   expect(await runAgent(id(9), id(1), "anomaly", true)).toBe("done");
   expect(db.writes.filter(write => write.op === "upsert")).toHaveLength(1);
-  // On the last attempt the failure stays inside the task so the rest of the team continues.
   db.tasks = [{ agent: "anomaly", status: "pending", events: [] }];
   db.dropOnce = { table: "agent_proposals", op: "upsert" };
   expect(await runAgent(id(9), id(1), "anomaly", false)).toBe("failed");
@@ -106,7 +104,6 @@ it("returns proposals stuck in applying: landed changes are accepted, the rest w
   expect(proposals[1]).toMatchObject({ status: "proposed", decided_at: null });
 });
 
-// The old auto-apply wrote every Categorizer proposal as the owner's correction and saved it as an owner rule.
 it("auto-applies only high and medium confidence as AI labels and leaves low confidence for the owner", async () => {
   const payload = (n: number) => ({ rows: [{ id: id(n), version: 2 }], patch: { category_id: id(60) }, merchantName: n === 11 ? "Cafe Luna" : null, ruleKey: "cafe luna", evidence: [], identityKey: "cafe luna", ...(n === 10 ? { source: "rule" } : {}) });
   const evidence = { facts: [{ label: "Basis", value: "Consistent history" }], transactions: [], links: [] };

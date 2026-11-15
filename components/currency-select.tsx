@@ -8,14 +8,12 @@ const field = "min-h-10 w-full rounded-[10px] border border-input bg-card px-3 p
 
 export type CurrencyOption = { code: string; name: string; label: string };
 
-/** Every currency the server accepts, the usual ones first, named in the viewer's language. */
 export function currencyOptions(locale = "en"): CurrencyOption[] {
   const names = new Intl.DisplayNames([locale], { type: "currency" });
   const codes = [...COMMON, ...supportedCurrencies().filter(code => !COMMON.includes(code))];
   return codes.map(code => { const name = names.of(code) ?? code; return { code, name, label: name === code ? code : `${code} · ${name}` }; });
 }
 
-/** Finds by code or by any part of the name; codes that start with the text come first. */
 export function matchCurrencies(options: CurrencyOption[], text: string) {
   const query = text.trim().toLowerCase();
   if (!query) return options;
@@ -23,12 +21,10 @@ export function matchCurrencies(options: CurrencyOption[], text: string) {
   return [...byCode, ...options.filter(option => !byCode.includes(option) && option.label.toLowerCase().includes(query))];
 }
 
-/** The code a form submits for what is typed: a chosen option's code, or the text itself so the server can refuse it. */
 export function currencyCode(options: CurrencyOption[], text: string) {
   return options.find(option => option.label === text)?.code ?? text.trim().toUpperCase();
 }
 
-/** A searchable currency picker that shows code and name and submits the three-letter code under `name`. */
 export function CurrencySelect({ name, label, defaultValue = "", locale, onChange, className = "" }: {
   name: string; label: string; defaultValue?: string; locale?: string; onChange?: (code: string) => void; className?: string;
 }) {
@@ -36,13 +32,11 @@ export function CurrencySelect({ name, label, defaultValue = "", locale, onChang
   const [options] = useState(() => currencyOptions(locale));
   const known = (code: string) => options.find(option => option.code === code);
   const [text, setText] = useState(known(defaultValue)?.label ?? defaultValue);
-  // Undo elsewhere can change the saved currency while this stays mounted; never submit the stale one.
   const [saved, setSaved] = useState(defaultValue);
   if (defaultValue !== saved) { setSaved(defaultValue); setText(known(defaultValue)?.label ?? defaultValue); }
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const code = currencyCode(options, text);
-  // A chosen option lists everything again, so changing your mind does not start with clearing the field.
   const shown = open ? (options.some(option => option.label === text) ? options : matchCurrencies(options, text)) : [];
   useEffect(() => { if (active >= 0) document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: "nearest" }); }, [active, id]);
   const type = (next: string) => { setText(next); setOpen(true); setActive(-1); onChange?.(currencyCode(options, next)); };

@@ -1,5 +1,4 @@
 import { applicationMigrationSql } from "./migration-replay.mjs";
-// MNE014 disposable-schema cadence regression. Requires explicit shared-slot release.
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {spawnSync} from "node:child_process";
@@ -60,7 +59,6 @@ try {
     });
     await replayMigrations(tx, replay, "MNE014 private replay");
     if (upgrade) {
-      // Seed and exercise old-schema histories first; then apply only reserved 017 privately.
       await tx.unsafe(isolated(readFileSync("supabase/tests/planning-history.sql", "utf8")));
       await tx.unsafe(isolated(readFileSync("supabase/tests/fixtures/coverage-recurring-upgrade-seed.sql", "utf8")));
       await replayMigrations(tx, [{file: candidate, sql: isolated(readFileSync(`supabase/migrations/${candidate}`, "utf8"))}], "MNE014 private upgrade");

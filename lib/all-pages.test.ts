@@ -7,7 +7,6 @@ function table(total: number, grow = 0) {
   const page = async (from: number, to: number, count?: "exact") => {
     calls.push({ from, to, count });
     const result = { data: rows.slice(from, to + 1), error: null, count: count ? rows.length : null };
-    // Rows added after the count was taken.
     if (grow) { rows = [...rows, ...Array.from({ length: grow }, (_, index) => total + index)]; grow = 0; }
     return result;
   };
@@ -49,7 +48,6 @@ describe("allPages", () => {
   it("pages at a server limit lower than the requested size without dropping rows", async () => {
     const rows = Array.from({ length: 23 }, (_, index) => index);
     const calls: number[] = [];
-    // Like PostgREST max-rows: never more than 4 rows per response.
     const page = async (from: number, to: number, count?: "exact") => {
       calls.push(from);
       return { data: rows.slice(from, Math.min(to + 1, from + 4)), error: null, count: count ? rows.length : null };

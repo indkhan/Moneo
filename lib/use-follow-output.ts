@@ -11,10 +11,6 @@ function scrollParent(node: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-/**
- * Keeps new output in view while the reader is at the end. Scrolling up to read leaves them there until they return to
- * the end, send something (call the returned function) or open another chat (`resetKey`).
- */
 export function useFollowOutput(end: RefObject<HTMLElement | null>, changes: DependencyList, resetKey?: unknown) {
   const following = useRef(true);
   useEffect(() => {
@@ -26,7 +22,6 @@ export function useFollowOutput(end: RefObject<HTMLElement | null>, changes: Dep
     };
     const target = scroller ?? window;
     target.addEventListener("scroll", measure, { passive: true });
-    // Cards and charts in a reply finish loading after it renders; growing content is new output too.
     const content = end.current?.parentElement;
     const growth = new ResizeObserver(() => { if (following.current) end.current?.scrollIntoView({ block: "end" }); });
     if (content) growth.observe(content);

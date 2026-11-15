@@ -42,7 +42,6 @@ it("gives Claude only Moneo's tools, its instructions as the system prompt and t
   expect(settings).toMatchObject({ tools: [], settingSources: [], strictMcpConfig: true, persistSession: false, allowedTools: ["mcp__moneo__accounts_balance"],
     mcpServers: { moneo: { name: "moneo", tools: ["accounts_balance"] } }, systemPrompt: "You are Moneo.", effort: "low" });
   expect(result.options.prompt).toEqual([prompt[1]]);
-  // Object-level rules still hold although the bridge checks fields one by one.
   const run = (settings.mcpServers as { moneo: { run: Record<string, { execute: (input: unknown, options: object) => unknown }> } }).moneo.run;
   expect(() => run.accounts_balance.execute({ account: "a", other: "a" }, {})).toThrow("Pick two accounts");
 });
@@ -50,7 +49,6 @@ it("gives Claude only Moneo's tools, its instructions as the system prompt and t
 function fakeLogin() {
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), kill: vi.fn() });
   const spawn = vi.fn<(command: string, args: string[]) => ChildProcess>(() => {
-    // Buffered until Moneo starts reading, like a real process's output.
     child.stdout.write("Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=abc\nPaste code here if prompted > ");
     return child as unknown as ChildProcess;
   });

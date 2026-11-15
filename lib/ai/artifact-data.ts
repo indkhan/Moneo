@@ -14,13 +14,9 @@ import { scalableActivity, scalablePortfolio, scalableSecurity, scalableWatchlis
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 const empty = z.object({}).strict();
-/** Reads shared by every saved query in one render (a page, or all cards on Home). */
 export type QueryShared = { entities?: Promise<InvestigationEntities>; results?: Map<string, Promise<unknown>> };
 const imports = (context: Context) => context.settings.ai_data_scopes.includes("imports");
 
-// The only data a page or card can see: the read-only finance queries chat uses, run by the app itself. Each
-// one is persistable: validated input, the scopes it needs (checked again on every view), and output made
-// readable (formatted money, names for ids, no internal evidence).
 export const ARTIFACT_SOURCES = {
   investigate: { description: "Spending/income totals, groupings and rankings over exact dates, accounts, categories and merchants.", input: investigationSchema, scopes: ["accounts", "transactions"],
     run: (input: unknown, context: Context, shared: QueryShared) => runInvestigation(input, context, { canReadImports: imports(context), sourceVersions: false, entities: shared.entities ??= loadInvestigationEntities(context) }) },
@@ -61,18 +57,12 @@ export const ARTIFACT_SOURCES = {
 export type ArtifactSource = keyof typeof ARTIFACT_SOURCES;
 const SOURCE_KEYS = Object.keys(ARTIFACT_SOURCES) as [ArtifactSource, ...ArtifactSource[]];
 
-/** How artifacts read Scalable now: null when it is not connected, else the Settings choice. */
 export type ScalableArtifactAccess = "snapshot" | "live" | null;
 
-/**
- * The sources the builder is offered. Scalable ones only with a connection, and its live-only security source only
- * when Settings allows live data, so the model never sees a source it cannot use.
- */
 export function offeredSources(scalable: ScalableArtifactAccess) {
   return SOURCE_KEYS.filter(key => !key.startsWith("scalable_") || (scalable && (key !== "scalable_security" || scalable === "live"))) as [ArtifactSource, ...ArtifactSource[]];
 }
 
-/** The sources and their inputs, for the designer's instructions. */
 export const sourceGuide = (sources: ArtifactSource[]) => sources.map(key => `- ${key}: ${ARTIFACT_SOURCES[key].description}`).join("\n");
 
 const queriesSchema = (sources: [ArtifactSource, ...ArtifactSource[]]) => z.array(z.object({
@@ -80,9 +70,7 @@ const queriesSchema = (sources: [ArtifactSource, ...ArtifactSource[]]) => z.arra
   source: z.enum(sources),
   input: z.record(z.string(), z.unknown()).default({}),
 }).strict()).max(12).refine(queries => new Set(queries.map(query => query.name)).size === queries.length, "Query names must be unique");
-/** Saved queries, any source; a view still fails a Scalable one when Scalable is gone. */
 export const artifactQueriesSchema = queriesSchema(SOURCE_KEYS);
-/** What the builder may save now. */
 export const offeredQueriesSchema = (scalable: ScalableArtifactAccess) => queriesSchema(offeredSources(scalable));
 export type ArtifactQuery = z.infer<typeof artifactQueriesSchema>[number];
 
@@ -96,15 +84,8 @@ const monthEnd = (date: string, offset = 0) => shift(monthStart(date, offset + 1
 const yearStart = (date: string, offset = 0) => `${Number(date.slice(0, 4)) + offset}-01-01`;
 const weekStart = (date: string) => shift(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
 
-/** Ranges and values of a card's params, resolved for this view. */
 export type ResolvedParams = { values: Record<string, string>; ranges: Record<string, { from: string; to: string }> };
 
-/**
- * Saved inputs keep their meaning over time: a date written as a token resolves against today in the
- * workspace's timezone, so "this month" stays the calendar month. Literal dates stay fixed.
- *   @today  @days_ago:N  @week_start  @month_start[:±N]  @month_end[:±N]  @year_start[:±N]  @year_end[:±N]
- *   @param:name (a choice param's value)  @param:name.from  @param:name.to (a month or period param's range)
- */
 export function resolveToken(value: string, today: string, params: ResolvedParams = { values: {}, ranges: {} }): string {
   const param = /^@param:([a-zA-Z_][a-zA-Z0-9_]{0,39})(?:\.(from|to))?$/.exec(value);
   if (param) {
@@ -127,7 +108,6 @@ export function resolveToken(value: string, today: string, params: ResolvedParam
   }
 }
 
-/** A saved input with every token resolved; page cursors are dropped, since they pin an old evidence set. */
 export function resolveQueryInput(input: unknown, today: string, params?: ResolvedParams): unknown {
   if (typeof input === "string") return input.startsWith("@") ? resolveToken(input, today, params) : input;
   if (Array.isArray(input)) return input.map(item => resolveQueryInput(item, today, params));
@@ -135,7 +115,6 @@ export function resolveQueryInput(input: unknown, today: string, params?: Resolv
   return Object.fromEntries(Object.entries(input).filter(([key]) => key !== "cursor").map(([key, value]) => [key, resolveQueryInput(value, today, params)]));
 }
 
-/** Checks saved queries before they are kept: each input, once resolved, must be valid for its source. */
 export function checkQueries(queries: ArtifactQuery[], today: string, params?: ResolvedParams) {
   return queries.flatMap(query => {
     try {
@@ -145,12 +124,10 @@ export function checkQueries(queries: ArtifactQuery[], today: string, params?: R
   });
 }
 
-/** One source's result as a page, card or the builder reads it. Scopes are checked on every run. */
 export async function runArtifactSource(source: ArtifactSource, input: unknown, context: Context, shared: QueryShared = {}) {
   const definition = ARTIFACT_SOURCES[source];
   requireAiScope(context.settings, ...definition.scopes);
   const parsed = definition.input.parse(input);
-  // Cards on one Home often ask the same thing; one render runs each distinct query once.
   const key = `${source}:${JSON.stringify(parsed)}`;
   const results = shared.results ??= new Map();
   let result = results.get(key);
@@ -161,7 +138,6 @@ export async function runArtifactSource(source: ArtifactSource, input: unknown, 
   return result;
 }
 
-/** Owned names for the ids in a result (as chat gets them), limited to the scopes AI may read. */
 async function entityNames(context: Context, shared: QueryShared): Promise<EntityNames> {
   const scopes = context.settings.ai_data_scopes;
   if (!scopes.includes("accounts") && !scopes.includes("transactions")) return {};
@@ -170,7 +146,6 @@ async function entityNames(context: Context, shared: QueryShared): Promise<Entit
   return { ...(scopes.includes("accounts") ? { account: byId(entities.accounts) } : {}), ...(scopes.includes("transactions") ? { category: byId(entities.categories), merchant: byId(entities.merchants) } : {}) };
 }
 
-/** Runs saved queries fresh for today; one failing query reports its error instead of hiding the rest. */
 export async function runArtifactQueries(queries: ArtifactQuery[], context: Context, today: string, { params, shared = {} }: { params?: ResolvedParams; shared?: QueryShared } = {}): Promise<Record<string, unknown>> {
   return Object.fromEntries(await Promise.all(queries.map(async query => {
     try { return [query.name, await runArtifactSource(query.source, resolveQueryInput(query.input, today, params), context, shared)]; }
@@ -178,35 +153,21 @@ export async function runArtifactQueries(queries: ArtifactQuery[], context: Cont
   })));
 }
 
-/** Script libraries a page may load, served by Moneo itself (app/artifact-lib), so pages need no internet. */
 export const ARTIFACT_LIBRARIES = { "echarts.min.js": "ECharts 6" } as const;
-// Pages written before the libraries were local loaded ECharts from jsdelivr; they get the local copy instead.
 const CDN_ECHARTS = /https:\/\/cdn\.jsdelivr\.net\/npm\/echarts@[\w.-]+\/dist\/echarts(?:\.min)?\.js/g;
 
-/**
- * The page's own policy: inline code and Moneo's libraries only, no requests of any kind, so nothing in it can send
- * the data it holds anywhere. `origin` is Moneo's (the page itself runs in an opaque, sandboxed origin).
- */
 const pageCsp = (origin: string) => `default-src 'none'; script-src 'unsafe-inline' ${origin}/artifact-lib/; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'`;
 
-/**
- * The frame route's header. The page runs inside a second, sandboxed frame of this document, and frame-src 'none'
- * here blocks every navigation of that inner frame: a script, link, form or meta refresh can't load another URL
- * with data in it. Popups and navigating the app itself are blocked by the sandbox (no allow-popups or top navigation).
- */
 export const artifactFrameCsp = (origin: string) => `${pageCsp(origin)}; frame-src 'none'; sandbox allow-scripts; frame-ancestors 'self'`;
 
 export type ArtifactTheme = "light" | "dark";
 
-// The app's palette, so a page matches Moneo. Each variable holds a plain colour for the page's theme (not light-dark()),
-// so a chart library that reads it with getComputedStyle gets a colour it understands.
 const PALETTE: Record<string, [light: string, dark: string]> = { bg: ["#f4f3ee", "#0f1011"], card: ["#fff", "#16171a"], fg: ["#141413", "#eeece6"], muted: ["#5c5d58", "#a3a39e"],
   border: ["#e2e0d8", "#24262a"], accent: ["#4a6400", "#cbf26b"], positive: ["#3f6b00", "#cbf26b"], negative: ["#b42318", "#ff7a6b"],
   "chart-1": ["#4a6400", "#cbf26b"], "chart-2": ["#6d5bd0", "#a99bff"], "chart-3": ["#0e7490", "#67d4e8"], "chart-4": ["#b45309", "#fbbf6b"], "chart-5": ["#9d174d", "#f9a8c9"] };
 const palette = (side: 0 | 1) => Object.entries(PALETTE).map(([name, colours]) => `--moneo-${name}:${colours[side]}`).join(";");
 const tokens = (theme?: ArtifactTheme) => `:root{--moneo-font:ui-sans-serif,system-ui,sans-serif;--moneo-mono:ui-monospace,Consolas,monospace;${palette(theme === "dark" ? 1 : 0)}}`
   + (theme ? "" : `@media (prefers-color-scheme:dark){:root{${palette(1)}}}`);
-// The Moneo kit: a page built from these classes looks like the app without any design work.
 const KIT = "*{box-sizing:border-box}body{margin:0;background:var(--moneo-bg);color:var(--moneo-fg);font:15px/1.5 var(--moneo-font)}"
   + ".m-page{max-width:1100px;margin:0 auto;padding:32px 24px;display:grid;gap:20px}.m-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}"
   + ".m-card{background:var(--moneo-card);border:1px solid var(--moneo-border);border-radius:16px;padding:20px}.m-eyebrow{font:500 11px/1.4 var(--moneo-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--moneo-muted)}"
@@ -216,18 +177,11 @@ const KIT = "*{box-sizing:border-box}body{margin:0;background:var(--moneo-bg);co
   + ".m-pill{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--moneo-border);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}.m-pill[aria-pressed=true]{background:var(--moneo-fg);color:var(--moneo-bg)}"
   + "input[type=range]{accent-color:var(--moneo-accent);width:100%}";
 
-/**
- * The frame document: an empty outer page whose only content is the generated page in a sandboxed inner frame. The
- * inner page gets a strict CSP, the fresh data, the app theme and the kit before any generated markup.
- */
 export function artifactDocument(html: string, data: Record<string, unknown>, { theme, origin }: { theme?: ArtifactTheme; origin: string }) {
-  // Escaping "<" keeps data like "</script>" inside the JSON literal.
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
   const scheme = theme ?? "light dark";
-  // A link the designer left in can't go anywhere (navigation is blocked, which would leave an error page), so clicks on links do nothing.
   const head = `<meta http-equiv="Content-Security-Policy" content="${pageCsp(origin)}"><script>window.MONEO_DATA=${json};`
     + `addEventListener("click",e=>{if(e.target instanceof Element&&e.target.closest("a[href]"))e.preventDefault()},true);`
-    // A broken script would leave empty boxes that look like missing data; say so on the page instead.
     + `addEventListener("error",e=>{if(document.getElementById("moneo-page-error"))return;const show=()=>{const n=document.createElement("p");n.id="moneo-page-error";n.setAttribute("role","alert");`
     + `n.style.cssText="margin:16px;padding:12px 16px;border:1px solid var(--moneo-negative);border-radius:12px;color:var(--moneo-negative);font:14px/1.5 var(--moneo-font)";`
     + `n.textContent="Part of this page failed to run, so some values are missing. Ask Moneo in the chat to fix it. ("+(e.message||"script error")+")";document.body.prepend(n)};`

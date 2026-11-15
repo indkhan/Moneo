@@ -21,7 +21,7 @@ beforeEach(() => {
     const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), kill: vi.fn() });
     const answer = answers[args.join(" ")] ?? {};
     queueMicrotask(() => {
-      if (answer.missing) return child.emit("error", Object.assign(new Error("not found"), { code: "ENOENT" }));
+      if (answer.missing) { child.emit("error", Object.assign(new Error("not found"), { code: "ENOENT" })); return; }
       if (answer.out) child.stdout.emit("data", Buffer.from(answer.out));
       child.emit("close", answer.code ?? 0);
     });

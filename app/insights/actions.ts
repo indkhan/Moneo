@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { INSIGHT_TYPES, settingsSchema } from "@/lib/settings";
 import { insightPreferencesSchema } from "@/lib/finance/insights";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 
 export async function dismissInsight(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
@@ -24,7 +24,6 @@ export async function dismissInsights(form: FormData) {
   revalidatePath("/", "layout");
 }
 
-/** Adds one insight type to the muted list in Settings; the rest of the preferences are saved unchanged. */
 export async function muteInsightType(form: FormData) {
   const { supabase, workspace, settings } = await requireWorkspace();
   const type = z.enum(INSIGHT_TYPES).parse(form.get("type"));

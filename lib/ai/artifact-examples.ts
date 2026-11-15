@@ -1,4 +1,3 @@
-/** Mercury-inspired look shared by every example, so the gallery reads as one family. */
 const design = `Design (Mercury style): canvas #fbfcfd, cards #ffffff or lavender #edecfb with 12px radius, 32px padding and no shadows. Text ink #28253b, secondary #554e7b, 1px rules #c3c3cc. One accent, indigo #5266eb; data colours only indigo, periwinkle #9cb4e8 and lavender, plus a soft coral #f0806c for overspend. Inter at light weights (body 360–400, headings 480, never bold); big numbers 48–60px; small uppercase eyebrows with 0.28px tracking. Buttons and filters are 40px pills: the main action solid indigo, others indigo at 10%. Centred, generous whitespace, responsive (cards stack on mobile). Show money with currency, and a friendly empty state when there is no data.`;
 
 export const artifactExamples = [

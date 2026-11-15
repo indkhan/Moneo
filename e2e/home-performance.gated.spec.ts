@@ -1,6 +1,3 @@
-// Runtime budgets for Home, where #124 (voice) shipped 68 background requests in 12 s, polling in
-// a hidden tab and layout shift. The page's clock is fake, so a minute of timers runs instantly
-// and the counts don't depend on the machine.
 import { expect, test, type Page } from "@playwright/test";
 import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
 

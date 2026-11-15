@@ -8,12 +8,10 @@ describe("artifact data", () => {
     expect(scalable("snapshot")).toEqual(["scalable_portfolio", "scalable_activity", "scalable_watchlist"]);
     expect(scalable("live")).toEqual(["scalable_portfolio", "scalable_activity", "scalable_watchlist", "scalable_security"]);
     expect(offeredQueriesSchema(null).safeParse([{ name: "p", source: "scalable_portfolio" }]).success).toBe(false);
-    // A saved card keeps loading after Scalable is disconnected; its query then reports an error.
     expect(artifactQueriesSchema.safeParse([{ name: "p", source: "scalable_portfolio" }]).success).toBe(true);
   });
 
   const origin = "http://localhost:3000";
-  // The generated page is the inner frame's srcdoc; this reads it back as the browser would.
   const inner = (doc: string) => /srcdoc="([^"]*)"/.exec(doc)![1].replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 
   it("puts the CSP and escaped data before the generated page, inside a sandboxed inner frame", () => {
@@ -37,7 +35,6 @@ describe("artifact data", () => {
   it("loads the app theme and the Moneo kit, defaulting to a page that follows the OS", () => {
     const dark = inner(artifactDocument("<p>hi</p>", {}, { theme: "dark", origin }));
     expect(dark).toContain("color-scheme:dark");
-    // Plain colours, so chart libraries can read them.
     expect(dark).toContain("--moneo-accent:#cbf26b");
     expect(dark).not.toContain("light-dark(");
     expect(dark).toContain(".m-card{");

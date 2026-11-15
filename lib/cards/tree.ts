@@ -2,12 +2,6 @@ import postcss from "postcss";
 import { z } from "zod";
 import type { CardNode } from "./sandbox";
 
-/**
- * Checks a card's element tree before anything renders it. The card's code ran in the sandbox, but its
- * output is still untrusted: only known HTML/SVG elements and attributes pass, no URL can reach outside the
- * card, ids are namespaced, CSS is scoped to the card, and Kit props must match their schema exactly.
- */
-
 const HTML = ["div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "strong", "em", "b", "i", "small", "br", "hr",
   "table", "thead", "tbody", "tfoot", "tr", "th", "td", "section", "header", "footer", "article", "figure", "figcaption", "time", "abbr",
   "sup", "sub", "mark", "s", "u", "blockquote", "dl", "dt", "dd", "progress", "meter"];
@@ -22,10 +16,7 @@ const ATTRIBUTES = new Set(["className", "style", "title", "role", "id", "colSpa
   "spreadMethod", "textAnchor", "dominantBaseline", "alignmentBaseline", "fontSize", "fontWeight", "fontFamily", "letterSpacing", "dx", "dy",
   "preserveAspectRatio", "clipPath", "clipPathUnits", "filter", "filterUnits", "stdDeviation", "in", "in2", "result", "mode", "values", "type",
   "floodColor", "floodOpacity", "operator", "k1", "k2", "k3", "k4", "vectorEffect", "overflow", "display", "visibility"]);
-// Only url(#local-id) may appear in a value; anything else that can load or run something is refused.
 const LOCAL_URL = /^url\(#([A-Za-z][\w-]{0,60})\)$/;
-// No element here takes a link (no href, src or <use>), so CSS functions that load something are the only ways out.
-// A backslash is refused outright: CSS escapes (u\72l(...)) would spell those functions past any pattern.
 const UNSAFE_VALUE = /\\|\b(?:-webkit-)?(?:url|src|image|image-set|cross-fade|element|expression)\s*\(|@import/i;
 const ID = /^[A-Za-z][\w-]{0,60}$/;
 
@@ -42,7 +33,6 @@ export const linkTarget = z.object({
 }).strict();
 const color = z.string().regex(/^(var\(--[a-z0-9-]{1,40}\)|#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color-mix)\([^;{}<>]{1,120}\)|[a-z]{3,20})$/);
 
-/** The props each Kit component accepts; unknown props are refused, so nothing unexpected reaches our components. */
 const KIT = {
   Money: z.object({ minor: z.union([z.string().regex(/^-?\d{1,30}$/), z.number().int()]), currency: z.string().regex(/^[A-Z]{3}$/), signed: z.boolean().optional(), compact: z.boolean().optional(), ...look }).strict(),
   Chart: z.object({
@@ -90,7 +80,6 @@ function sanitizeStyle(raw: unknown) {
   return parsed.data;
 }
 
-/** Card CSS applies only inside the card: every selector is prefixed, keyframes are renamed, and nothing can load. */
 export function scopeCss(css: string, scope: string) {
   const root = postcss.parse(css);
   const keyframes = new Map<string, string>();
@@ -107,11 +96,9 @@ export function scopeCss(css: string, scope: string) {
     if (UNSAFE_VALUE.test(decl.value) || UNSAFE_VALUE.test(decl.prop) || /^(behavior|-moz-binding)$/i.test(decl.prop)) { decl.remove(); return; }
     if (/^animation(-name)?$/i.test(decl.prop)) decl.value = decl.value.replace(/[\w-]+/g, word => keyframes.get(word) ?? word);
   });
-  // "<" can never close the <style> element the CSS is rendered in.
   return root.toString().replace(/</g, "\\3c ");
 }
 
-/** A checked copy of the tree; throws CardTreeError with the reason for the designer to fix. */
 export function sanitizeTree(node: unknown, context: TreeContext): CardNode {
   if (typeof node === "string") return node;
   if (typeof node === "number") return String(node);

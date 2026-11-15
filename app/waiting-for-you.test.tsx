@@ -7,8 +7,8 @@ import { RecurringDetection, WaitingForYou, loadWaitingForYou } from "./waiting-
 import { groupRepeats } from "./waiting-for-you-list";
 
 vi.mock("next/link", () => ({ default: "a" }));
-vi.mock("@/app/ai/agents/actions", () => ({ decideAgentProposals: vi.fn() }));
-vi.mock("@/app/ai/iou-actions", () => ({ loadIouProposal: vi.fn() }));
+vi.mock("@/lib/ai/agent-actions", () => ({ decideAgentProposals: vi.fn() }));
+vi.mock("@/lib/ai/iou-actions", () => ({ loadIouProposal: vi.fn() }));
 vi.mock("./home-review-actions", () => ({ loadUncategorizedGroups: vi.fn(), categorizeGroups: vi.fn() }));
 vi.mock("@/lib/ai/recurring-proposals", () => ({ syncRecurringProposals: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));

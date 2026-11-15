@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** GPT-Live only talks; every question or change is handed to the chat agent through a client delegation. */
 export const VOICE_MODEL = "gpt-live-1";
 
 export const VOICE_INSTRUCTIONS = `You are Moneo, the user's personal-finance assistant, on a live voice call. Talk like a casual friend: short, warm and relaxed ("Yo, Netto's 42 this month"). Reply in the language the user speaks, or types during the call (English, German or a mix). Before they have said anything, use the language of what they typed; never switch on your own.
@@ -30,7 +29,6 @@ You cannot see their money yourself. A Moneo assistant does the real work and se
 - Questions about progress ("what are you waiting for?", "is it done?") are answered from the progress notes, and requests to repeat or explain a result you already gave are answered from that result; neither needs a new delegation.
 - Small talk needs no delegation; keep it brief.`;
 
-/** Added to the chat agent's instructions for a turn that comes from a voice call. */
 export const CALL_MODE_PROMPT = `This turn comes from a live voice call; your answer is read aloud. Reply in short spoken sentences of plain text: no Markdown, tables, lists or links, and no chart unless the user asked for one. Quote amounts with the formatted strings the tools return. If you made a card, say it is on screen to tap; never say anything was added or saved. Reply in the user's language.
 Answer only the request in this message. The voice on the call handles greetings and small talk, so skip them ("hey, how are you" needs no reply from you).
 The UI context describes the call:
@@ -38,7 +36,6 @@ The UI context describes the call:
 - recentTurns: the call so far, to resolve words like "that", "also" or "the same for last month".
 - answered: what this call has already answered; build on it and don't repeat it.`;
 
-/** A request that adds to the running ones ("also", "as well") never replaces one of them. */
 export const ADDS_TO_RUNNING = /\b(also|as well|too|at the same time|additionally|auch|außerdem)\b/i;
 
 export const callContextSchema = z.object({
@@ -47,12 +44,10 @@ export const callContextSchema = z.object({
   recentTurns: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(300) })).max(6).optional(),
   answered: z.array(z.object({ requestId: z.uuid().optional(), text: z.string().max(150), answer: z.string().max(300) })).max(4).optional(),
 });
-/** A call turn's brief is only for that turn; replayed as history, the turn keeps just what marks it as from a call. */
 export function withoutCallBrief(context: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(context).filter(([key]) => !["runningTasks", "recentTurns", "answered"].includes(key)));
 }
 
-/** Prior turns seeded into the voice session, so a call can continue a chat. Cards and charts are stripped and the text is bounded. */
 export function seedInput(history: { role: string; content: string }[], limits = { messages: 10, chars: 1000 }) {
   return history.slice(-limits.messages).flatMap(item => {
     const text = item.content.replace(/```moneo-[\w-]+\n[\s\S]*?```/g, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, limits.chars);
@@ -72,10 +67,6 @@ async function dismissCards(supabase: SupabaseClient, workspaceId: string, reque
   return (data ?? []).length;
 }
 
-/**
- * A spoken correction replaces a still-running call request. One that has made no card yet is stopped; one that has
- * made cards finishes first and its open cards are then dismissed as replaced, so nothing is half-done or duplicated.
- */
 export async function replaceCallTask(supabase: SupabaseClient, { workspaceId, conversationId, requestId }: { workspaceId: string; conversationId: string; requestId: string },
   { pollMs = 1000, maxWaitMs = 80_000, sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const status = async () => {
@@ -90,7 +81,6 @@ export async function replaceCallTask(supabase: SupabaseClient, { workspaceId, c
   if (first === "running" && !cards.count) {
     const canceled = await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
     if (canceled.error) throw new Error(canceled.error.message);
-    // It may have made a card between the check and the cancel.
     const dismissed = await dismissCards(supabase, workspaceId, requestId);
     return { outcome: "stopped" as const, dismissed, note: "The earlier request was stopped. Answer the corrected request now." };
   }

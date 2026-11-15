@@ -19,7 +19,6 @@ export type Move = { fromAccountId: string; toAccountId: string; amountMinor: st
 export type Insight = { key: string; type: typeof INSIGHT_TYPES[number]; priority: "important" | "context"; title: string; detail: string; href: string; asOf: string; sourceCoverage: SourceCoverage; move?: Move };
 export type AccountShortfall = { accountId: string; name: string; shortfallMinor: string; date: string; donor: { accountId: string; name: string; spareMinor: string } | null };
 
-/** Accounts the forecast sees running below their protections, each with the account that has the most to spare after its own protections. */
 export function accountShortfalls(accounts: { accountId: string; amountMinor: bigint; shortfallMinor: bigint; firstShortfallDate: string | null }[], names: Map<string, string>): AccountShortfall[] {
   return accounts.filter(account => account.shortfallMinor > 0n && account.firstShortfallDate).map(account => {
     const donor = accounts.filter(other => other.accountId !== account.accountId && other.amountMinor >= account.shortfallMinor)
@@ -95,7 +94,6 @@ export function buildInsights(input: InsightInput, preferences: InsightPreferenc
   for (const goal of input.goals) if (goal.savedMinor !== null && goal.savedAsOf !== null && goal.savedAsOf <= input.today && BigInt(goal.targetMinor) > 0n && BigInt(goal.savedMinor) * 10n >= BigInt(goal.targetMinor) * 9n) add("goal_progress", goal.id, [goal.savedMinor, goal.targetMinor, goal.savedAsOf], `${goal.name} recorded savings milestone`, `Recorded savings cover at least 90% of the target as of ${goal.savedAsOf}. Virtual reservations are separate and do not prove actual savings.`, "/plan", "context");
   for (const item of input.wealth.filter(item => item.asOf === input.today)) add("asset_debt", item.id, [item.amountMinor, item.currency, item.asOf], `${item.name} dated ${item.kind} context`, `${money(item.amountMinor, item.currency)} recorded on ${item.asOf}. Manual valuation evidence does not prove a trend or increase spendable cash.`, "/money/wealth", "context");
   for (const missing of [...new Set(input.missingInputs)].sort()) add("data_quality", missing, missing, "Financial evidence needs attention", missing, "/plan");
-  // Most actionable first, so max_items never drops a shortfall behind lower-stakes items.
   const severity = (type: Insight["type"]) => SEVERITY.indexOf(type);
   return results.sort((a, b) => (a.priority === "important" ? 0 : 1) - (b.priority === "important" ? 0 : 1) || severity(a.type) - severity(b.type) || a.key.localeCompare(b.key)).slice(0, preferences.max_items);
 }

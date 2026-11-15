@@ -1,7 +1,6 @@
 import { CornerDownRight, X } from "lucide-react";
 import type { QueuedMessage } from "@/lib/ai/use-chat-queue";
 
-/** Messages waiting above the composer: each can steer the running reply or be removed. */
 export function ChatQueue({ items, canSteer, onSteer, onRemove }: { items: QueuedMessage[]; canSteer: boolean; onSteer: (item: QueuedMessage) => void; onRemove: (id: string) => void }) {
   if (!items.length) return null;
   return <ul aria-label="Queued messages" className="mb-2 space-y-1">

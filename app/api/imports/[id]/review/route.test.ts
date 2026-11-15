@@ -21,6 +21,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
 } }) }));
 afterEach(() => { fixture.calls = []; vi.unstubAllEnvs(); });
 vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-test-key");
+vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
 
 const mapping = { accountName: "Synthetic", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed", numericConvention: "decimal-dot" };
 const request = () => new Request("http://localhost/api/imports/import/review", { method: "POST", body: JSON.stringify({ sourceId: "source", action: "accept" }) });
@@ -33,6 +34,7 @@ it("accepts the exact corrected overlap row despite decisions for other original
     { rowNumber: 4, action: "exclude", reason: "Footer" },
   ] };
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-test-key");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
   const response = await POST(request(), { params: Promise.resolve({ id: "import" }) });
   expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
   expect(fixture.calls[0].p_row).toMatchObject({ postedOn: "2026-09-02", description: "Reviewed", amountMinor: "200", currencyCode: "EUR", rowNumber: 3, status: "pending" });
@@ -45,6 +47,7 @@ it("never applies a saved row-two correction to an unrelated overlap observation
   fixture.source = { id: "source", row_number: 4, status: "review", original_row: { Date: "2026-09-02", Description: "Actual row four", Amount: "2" } };
   fixture.mapping = { ...mapping, rowDecisions: [{ rowNumber: 2, action: "correct", values: { Description: "Wrong observation" } }] };
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-test-key");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
   const response = await POST(request(), { params: Promise.resolve({ id: "import" }) });
   expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
   expect(fixture.calls[0].p_row).toMatchObject({ description: "Actual row four", rowNumber: 4 });

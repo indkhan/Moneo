@@ -42,7 +42,6 @@ export async function checkSerialization(db, connection, schema, run, record) {
       }
       assert.fail('Expected owned concurrent lock was not observed');
     }
-    // Different source rows, same account: account lock serializes active-overlap checks.
     let ready;
     const readyPromise=new Promise(resolve=>{ready=resolve;});
     const hold=new Promise(resolve=>{release=resolve;});
@@ -51,14 +50,12 @@ export async function checkSerialization(db, connection, schema, run, record) {
     await Promise.race([readyPromise,first.then(()=>assert.fail('Writer finished before readiness'))]);
     const second=b.begin(async tx=>{await asActor(tx,1);await review(tx,receipts.slice(3));});
     tasks.push(second);
-    // Attach rejection handling immediately; the blocker is bounded by SQL timeouts.
     const settled=Promise.allSettled(tasks);
     await observeBlocked(); release();
     const result=await settled;
     assert.equal(result[0].status,'fulfilled');assert.equal(result[1].status,'rejected');assert.equal(result[1].reason.code,'22023');
     const [counts]=await db.unsafe(`select (select count(*)::int from ${schema}.financial_assumptions where account_id=$1 and enabled and confirmed and removed_at is null) as active,(select count(*)::int from ${schema}.recurring_series where account_id=$1) as series`,[account]);
     assert.deepEqual(counts,{active:1,series:1});
-    // A concurrent source-version change must be rechecked AFTER its posting lock.
     let changed;
     const changedPromise=new Promise(resolve=>{changed=resolve;});
     const sourceHold=new Promise(resolve=>{release=resolve;});

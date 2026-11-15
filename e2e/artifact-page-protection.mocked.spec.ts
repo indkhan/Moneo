@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { artifactDocument, artifactFrameCsp } from "../lib/ai/artifact-data";
 
-// A page written to leak: it holds the data, runs scripts and tries every way out it could find.
 const HOSTILE = `<!doctype html><html><head><meta http-equiv="refresh" content="1;url=http://receiver.test/meta"></head><body>
 <p id="status">waiting</p>
 <script src="/artifact-lib/echarts.min.js"></script>
@@ -32,7 +31,6 @@ async function serve(page: import("@playwright/test").Page, html: string) {
   const echarts = readFileSync(require.resolve("echarts/dist/echarts.min.js"));
   await page.route("http://artifact.test/**", async route => {
     const path = new URL(route.request().url()).pathname;
-    // The app embeds the frame route as ArtifactFrame does.
     if (path === "/") return route.fulfill({ contentType: "text/html", body: '<iframe sandbox="allow-scripts" src="/frame" style="width:600px;height:400px"></iframe>' });
     if (path === "/artifact-lib/echarts.min.js") return route.fulfill({ contentType: "text/javascript", body: echarts });
     await route.fulfill({ contentType: "text/html", headers: { "Content-Security-Policy": artifactFrameCsp("http://artifact.test") },
@@ -45,7 +43,6 @@ async function serve(page: import("@playwright/test").Page, html: string) {
 test("a generated page runs its scripts and charts but can't send its data anywhere", async ({ page }) => {
   const { leaked, inner } = await serve(page, HOSTILE);
   await expect(inner.getByText("charts ready")).toBeVisible();
-  // Proving that nothing was sent needs time for the delayed attempts (the 200 ms navigation, the 1 s meta refresh).
   // eslint-disable-next-line no-restricted-syntax -- proving that nothing is sent can only be observed over time
   await page.waitForTimeout(1500);
   expect(leaked).toEqual([]);

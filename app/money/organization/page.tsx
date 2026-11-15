@@ -5,7 +5,7 @@ import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {MAX_ORGANIZATION_RULES,organizationDisplayName} from '@/lib/import/organization';
 import {loadLoanPayoutIds} from '@/lib/finance/iou';
 import {formatMoney} from '@/lib/finance/format';
-import {versionedRows} from '../transactions/input';
+import {versionedRows} from '@/lib/finance/transaction-input';
 import {SafeForm} from '@/components/safe-form';
 import {dismissReviewSafely,toggleRuleSafely} from './actions';
 import {OrganizationQueue,ApprovalForm,UndoReviewForm} from './review-form';
@@ -26,7 +26,6 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on',{count:'exact'}).eq('workspace_id',workspace.id).neq('status','voided').neq('kind','transfer');
  query=query.or(cursor?`and(or(merchant_id.is.null,category_id.is.null),or(posted_on.lt.${cursor.date},and(posted_on.eq.${cursor.date},id.lt.${cursor.id})))`:'merchant_id.is.null,category_id.is.null');
  if(importId)query=query.eq('transaction_sources.source_transactions.import_id',importId);
- // A loan's payout is recorded in Wealth; it is not spending to organize.
  const loans=await loadLoanPayoutIds(supabase,workspace.id).catch(()=>new Set<string>());
  if(loans.size)query=query.not('id','in',`(${[...loans].join(',')})`);
  const [queue,merchants,categories,rules,reviews,selectedReview]=await Promise.all([
@@ -59,7 +58,6 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  const patchMerchant=review?(review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?merchantName(review.patch.merchant_id)??'no merchant':undefined)):undefined;
  const patchCategory=review&&Object.hasOwn(review.patch,'category_id')?categoryName(review.patch.category_id)??'uncategorized':undefined;
  const card='rounded-xl border border-border bg-card p-6';
- // A rule shows the payee's cleaned name, not the bank text it matches; the full key stays in the tooltip.
  const ruleItem=(rule:typeof rules.data[number])=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium" title={rule.description_key}>{merchantName(rule.merchant_id)??organizationDisplayName(rule.description_key)}</span> → {categoryName(rule.category_id)??'no category'}</span><SafeForm action={toggleRuleSafely}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button aria-label={(rule.enabled?'Disable':'Enable')+' rule for '+(merchantName(rule.merchant_id)??organizationDisplayName(rule.description_key))} className="min-h-6 text-xs underline">{rule.enabled?'Disable':'Enable'}</button></SafeForm></li>;
  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
   {invalidLink&&<p role="alert" className="text-sm">That link is out of date, so this is the start of your queue.</p>}

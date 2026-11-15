@@ -6,7 +6,6 @@ export function modelIsConnected(id: string, connections: ModelConnections) {
   return id.includes("/") ? connections.openrouter : id.startsWith("claude-") ? connections.claude : connections.openai;
 }
 
-// A short offline catalog; custom IDs keep new releases usable without updating Moneo.
 export function modelOptions(connections: ModelConnections) {
   return [
     ...(connections.openai ? ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna"] : []),

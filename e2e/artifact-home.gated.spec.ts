@@ -8,7 +8,6 @@ const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state || !process.env.SUPABASE_DB_URL || !process.env.E2E_USER_EMAIL, gatedSkipReason());
 
-// The page and card are saved directly, as the artifact's chat would save them, so no AI provider is called.
 const HTML = `<!doctype html><html><head></head><body><p>Accounts: <b id="count">…</b></p>
 <script>count.textContent = String((window.MONEO_DATA.accounts || []).length);</script></body></html>`;
 const CARD = `export default function Card({ data, params, size }) {
@@ -35,14 +34,11 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await db`insert into public.artifact_card_versions (workspace_id, card_id, version, title, kind, source, compiled, queries, params, prompt)
       values (${workspaceId}, ${cardId}, 1, ${`${title} card`}, 'code', ${CARD}, ${compileCard(CARD)}, ${queries}, ${db.json(PARAMS)}, 'Count my accounts on Home')`;
 
-    // Gallery: a live preview of the page and the original request.
     await page.goto("/ai/artifacts");
     const tile = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: title, exact: true }) });
     await expect(tile).toContainText("Count my accounts");
-    // The page runs inside the frame's own sandboxed inner frame; a count means its script ran with the data.
     await expect(tile.frameLocator("iframe").frameLocator("iframe").getByText(/Accounts: \d+/)).toBeVisible({ timeout: 30_000 });
 
-    // The Home cards tab renders the card in the page itself (no frame), at the chosen size.
     await page.goto(`/ai/artifacts/${id}?tab=cards`);
     const preview = page.getByRole("region", { name: `${title} card`, exact: true });
     await expect(preview.getByText("Picked a at M")).toBeVisible({ timeout: 30_000 });
@@ -52,7 +48,6 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await page.getByRole("button", { name: "Add to Home" }).click();
     await expect(page.getByRole("button", { name: "Remove from Home" })).toBeVisible({ timeout: 30_000 });
 
-    // Home shows the published card; its control re-renders it with the other value.
     await page.goto("/");
     const card = page.getByRole("region", { name: `${title} card`, exact: true });
     await expect(card.getByText("Picked a at S")).toBeVisible({ timeout: 30_000 });
@@ -61,8 +56,6 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
     await expect(card.getByRole("button", { name: "Beta" })).toHaveAttribute("aria-pressed", "true");
 
-    // An older resize response arriving last must not replace the latest body.
-    // Size M responses are held until the test releases them, so they always arrive after the newer one.
     const held: { release: () => void; done: Promise<void> }[] = [];
     await page.route(`**/api/cards/${cardId}?*`, async route => {
       const response = await route.fetch();
@@ -70,7 +63,6 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
       const gate = new Promise<void>(resolve => { release = resolve; });
       const done = new Promise<void>(resolve => { finish = resolve; });
       if (new URL(route.request().url()).searchParams.get("size") === "M") { held.push({ release, done }); await gate; }
-      // The page may have cancelled this older request while it was held back.
       await route.fulfill({ response }).catch(() => {});
       finish();
     });
@@ -78,7 +70,6 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
       const late = held.splice(0);
       for (const { release } of late) release();
       await Promise.all(late.map(({ done }) => done));
-      // Let the page handle the late responses before checking what it shows.
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     };
     const resize = page.getByRole("button", { name: new RegExp(`^Resize ${title} card`) });
@@ -90,7 +81,6 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(card.getByText("Picked b at L")).toBeVisible({ timeout: 30_000 });
     await deliverHeld();
     await expect(card.getByText("Picked b at L")).toBeVisible();
-    // Returning to the already displayed width must also invalidate the pending request.
     await resize.focus();
     const returning = page.waitForRequest(request => request.url().includes(`/api/cards/${cardId}?`) && new URL(request.url()).searchParams.get("size") === "M");
     await page.keyboard.press("ArrowLeft");
@@ -100,13 +90,11 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await deliverHeld();
     await expect(card.getByText("Picked b at L")).toBeVisible();
     await page.unroute(`**/api/cards/${cardId}?*`);
-    // Return to S for the existing publish/restore checks below.
     await resize.focus();
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowLeft");
     await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
 
-    // Hide, reload past Undo, then restore the published card directly from Home.
     const widget = page.locator(`[data-widget="card:${cardId}"]`);
     await widget.hover();
     await widget.getByRole("button", { name: `Hide ${title} card` }).click();
@@ -117,14 +105,12 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await page.getByRole("list", { name: "Hidden widgets" }).getByRole("button", { name: `${title} card`, exact: true }).click();
     await expect(card.getByText("Picked a at S")).toBeVisible({ timeout: 30_000 });
 
-    // A draft (here, renamed) doesn't change Home until it is published.
     await db`insert into public.artifact_card_versions (workspace_id, card_id, version, title, kind, source, compiled, queries, params, prompt)
       values (${workspaceId}, ${cardId}, 2, ${`${title} renamed`}, 'code', ${CARD}, ${compileCard(CARD)}, ${queries}, ${db.json(PARAMS)}, 'Rename it')`;
     await page.reload();
     await expect(page.getByRole("region", { name: `${title} card`, exact: true }).getByText("Picked a at S")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("region", { name: `${title} renamed`, exact: true })).toHaveCount(0);
 
-    // Deleting the artifact takes its card off Home.
     await page.goto("/ai/artifacts");
     page.once("dialog", dialog => dialog.accept());
     await page.getByRole("button", { name: `Delete ${title}` }).click();
@@ -134,7 +120,6 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
     await expect(page.getByRole("region", { name: `${title} card`, exact: true })).toHaveCount(0);
   } finally {
-    // Restore the QA workspace: its previous Home layout and no test artifact.
     if (layout) await db`update public.dashboard_layouts set items = ${layout.items}, version = version + 1 where workspace_id = ${workspaceId}`;
     else await db`delete from public.dashboard_layouts where workspace_id = ${workspaceId}`;
     await db`delete from public.artifacts where id = ${id}`;
@@ -155,7 +140,6 @@ test("an empty Home cards tab sends the build request only after a press", async
     await route.fulfill({ json: { answer: "Build test complete", conversationId: route.request().postDataJSON().conversationId } });
   });
   try {
-    // A link alone never sends anything, whatever it carries.
     await page.goto(`/ai/artifacts/${id}?tab=cards&start=${encodeURIComponent("Sent by a link")}`);
     await expect(page.getByRole("button", { name: "Create a Home card", exact: true })).toBeVisible();
     // eslint-disable-next-line no-restricted-syntax -- proving that nothing is sent can only be observed over time

@@ -1,12 +1,8 @@
-// Fails when a page's first-load JavaScript (gzip) grows past its budget in bundle-budget.json.
-// Reads the production build in .next, so run `npm run build` first. Prints every page's size.
-// After an intended change, `node scripts/check-bundle-size.mjs --update` rewrites the budgets.
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { gzipSync } from "node:zlib";
 
 const next = ".next", budgetFile = "scripts/bundle-budget.json";
-// Room for normal churn; a real regression (a library pulled into a page) is far bigger.
 const allowedGrowth = 1.1, minimumKb = 5;
 const root = JSON.parse(readFileSync(join(next, "build-manifest.json"), "utf8")).rootMainFiles;
 const gzipKb = new Map();

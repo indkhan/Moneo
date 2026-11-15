@@ -8,7 +8,6 @@ type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: st
 
 export const cashWithdrawalSchema = z.object({ transactionId: z.uuid(), amountMinor: z.string().regex(/^[1-9]\d{0,17}$/), currencyCode: z.string().regex(/^[A-Z]{3}$/), date: z.iso.date() }).strict();
 
-/** What the card offers: the cash accounts in that currency, the only one already chosen; with none, accepting creates one. */
 export async function cashAccountOptions(supabase: SupabaseClient, workspaceId: string, payload: unknown) {
   const parsed = cashWithdrawalSchema.parse(payload);
   const cash = (await liveAccounts(supabase, workspaceId, parsed.currencyCode)).filter(account => account.type === "cash");
@@ -17,10 +16,6 @@ export async function cashAccountOptions(supabase: SupabaseClient, workspaceId: 
 
 const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
 
-/**
- * Adds the withdrawn cash to a Cash account as an own transfer, so what left the bank counts as still yours. The proposal id
- * is the request id, so accepting twice can't add it twice. Spending it later is the owner's own balance update.
- */
 export async function applyCashWithdrawal({ supabase, workspace }: Context, proposalId: string, payload: unknown, accountOverride?: string) {
   const parsed = cashWithdrawalSchema.parse(payload);
   const bank = await supabase.from("transactions").select("status, amount_minor::text, currency_code").eq("workspace_id", workspace.id).eq("id", parsed.transactionId).maybeSingle();
@@ -56,10 +51,8 @@ export async function applyCashWithdrawal({ supabase, workspace }: Context, prop
       p_expected_snapshot_id: latest.data?.id ?? null, p_expected_version: latest.data?.version ?? 0, p_request_id: crypto.randomUUID() });
     if (saved.error) throw new Error(saved.error.message);
   };
-  // A Cash account with no balance yet starts from nothing the day before, so the withdrawal itself is the money in it.
   if (before?.amount_minor == null) await record("0", dayBefore(parsed.date));
   else {
-    // A balance typed in after the withdrawal hides a row dated before it, so that balance moves instead.
     const after = await balance(), expected = BigInt(before.amount_minor) + BigInt(parsed.amountMinor);
     if (after?.amount_minor !== expected.toString()) await record(expected.toString(), calendarDate(new Date(), workspace.timezone));
   }

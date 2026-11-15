@@ -36,7 +36,6 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("enforces owned sc
       await tx.unsafe("set local role authenticated");
       expect(await tx.unsafe(`select id from ${disposable}.financial_evidence_receipts`)).toHaveLength(0);
       await tx.unsafe("reset role");
-      // Even a privileged server cannot edit retained evidence.
       await expect(tx.savepoint(async sp => sp.unsafe(`update ${disposable}.financial_evidence_receipts set receipt=receipt where id=$1`, [receipt.id]))).rejects.toMatchObject({ code: "55000" });
       throw rolledBack;
     }); } catch (error) { if (error !== rolledBack) throw error; }
@@ -73,7 +72,6 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("concurrent captur
   } finally {
     try {
       await db.unsafe(`drop schema if exists ${disposable} cascade`);
-      // Remove only this disposable user and the default workspace seeded by signup.
       await db.begin(async tx => { await tx`select set_config('request.jwt.claim.sub',${owner},true)`; await tx`select public.reset_workspace()`; await tx`delete from public.workspace_settings where workspace_id in (select id from public.workspaces where owner_id=${owner})`; await tx`delete from public.categories where workspace_id in (select id from public.workspaces where owner_id=${owner})`; await tx`delete from public.workspaces where owner_id=${owner}`; await tx`delete from auth.users where id=${owner}`; });
       expect(await db`select id from auth.users where id=${owner}`).toHaveLength(0);
       expect(await db`select schema_name from information_schema.schemata where schema_name=${disposable}`).toHaveLength(0);

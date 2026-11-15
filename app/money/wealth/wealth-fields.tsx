@@ -9,7 +9,6 @@ import { formatInputAmount } from "@/lib/finance/format";
 
 export function WealthFields({ itemId, requestId, kind, item, accounts, assumptions, pending, today, currency, locale }: { itemId: string; requestId: string; kind: WealthItem["kind"]; item?: WealthItem;
   accounts: { id: string; name: string; type: string; currency_code: string; archived_at?:string|null }[]; assumptions: { id: string; label: string; currency_code: string }[]; pending: { id: string; label: string; currency_code: string }[]; today: string; currency: string; locale?: string }) {
-  // Which accounts and repayments can match this value follows the currency as it is chosen.
   const [code, setCode] = useState(item?.currency_code ?? currency);
   const field = "mt-1 block min-h-10 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground";
   return <SafeForm action={saveWealthItemSafely} className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2 [&_label]:text-muted-foreground [&>*]:min-w-0">

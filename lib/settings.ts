@@ -5,8 +5,6 @@ export const AI_DATA_SCOPES = ["accounts", "transactions", "planning", "imports"
 export const INSIGHT_TYPES = ["spending_changes", "budget_pressure", "unusual_activity", "recurring_changes", "upcoming_obligations",
   "cash_shortfall", "goal_progress", "asset_debt", "data_quality"] as const;
 export type AiDataScope = typeof AI_DATA_SCOPES[number];
-// Each AI agent and its default OpenAI model; Settings lets the user type a different one per agent.
-// `model` is the default on ChatGPT or an API key, `claude` the default on a Claude plan.
 export const AI_AGENTS = {
   chat: { label: "Chat assistant", model: "gpt-6-luna", claude: "claude-opus-5-5" },
   review: { label: "Financial review", model: "gpt-6-luna", claude: "claude-opus-5-5" },
@@ -15,12 +13,10 @@ export const AI_AGENTS = {
   organize: { label: "Organization suggestions", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
   artifacts: { label: "Artifact builder", model: "gpt-6-luna", claude: "claude-opus-5-5" },
   titles: { label: "Chat titles", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
-  // Typed as a model like the others, but a blank one follows the chat model (see modelIdFor).
   voice_call: { label: "Voice call", model: "gpt-6-luna", claude: "claude-opus-5-5" },
 } as const;
 export type AiAgent = keyof typeof AI_AGENTS;
 export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];
-// Voices GPT-Live (gpt-live-1) accepts; each also exists for gpt-4o-mini-tts, which plays the Settings sample.
 export const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] as const;
 export const DEFAULT_VOICE = VOICES[0];
 
@@ -34,16 +30,27 @@ export const settingsSchema = z.object({
   muted_insight_types: z.array(z.enum(INSIGHT_TYPES)).max(INSIGHT_TYPES.length).default([]),
   summary_cadence: z.enum(["none", "weekly", "monthly"]).default("none"),
   summary_time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).default("09:00"),
-  // Artifacts read Scalable from the last sync unless the owner turns on live data.
   artifact_scalable_data: z.enum(["snapshot", "live"]).default("snapshot"),
 });
 export type WorkspaceSettings = z.infer<typeof settingsSchema>;
 export const DEFAULT_SETTINGS = settingsSchema.parse({});
 
+export function readSettings(stored: unknown): WorkspaceSettings {
+  const whole = settingsSchema.safeParse(stored ?? {});
+  if (whole.success) return whole.data;
+  console.warn("[workspace-access] settings-invalid");
+  const row = stored && typeof stored === "object" ? stored as Record<string, unknown> : {};
+  const fields = Object.entries(settingsSchema.shape).map(([name, field]) => {
+    const read = field.safeParse(row[name]);
+    return [name, read.success ? read.data : DEFAULT_SETTINGS[name as keyof WorkspaceSettings]];
+  });
+  return Object.fromEntries(fields) as WorkspaceSettings;
+}
+
 export async function loadWorkspaceSettings(supabase: SupabaseClient, workspaceId: string): Promise<WorkspaceSettings> {
   const { data, error } = await supabase.from("workspace_settings").select("*").eq("workspace_id", workspaceId).maybeSingle();
   if (error) throw new Error("Workspace preferences unavailable");
-  return settingsSchema.parse(data ?? {});
+  return readSettings(data);
 }
 
 export function requireAiScope(settings: WorkspaceSettings | undefined, ...scopes: AiDataScope[]) {

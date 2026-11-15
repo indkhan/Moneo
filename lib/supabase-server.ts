@@ -20,7 +20,6 @@ export async function createClient() {
               cookieStore.set(name, value, options),
             );
           } catch (error) {
-            // Server Components are read-only; proxy.ts persists refreshed sessions.
             if (!(error instanceof Error) || !error.message.startsWith("Cookies can only be modified in a Server Action or Route Handler.")) throw error;
           }
         },

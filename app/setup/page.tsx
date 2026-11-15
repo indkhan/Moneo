@@ -3,12 +3,10 @@ import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 
-// Pages land here when the owner could not be signed in automatically (see proxy.ts).
 export default async function Login() {
-  // Read at request time: the desktop app and a source checkout share one build of this page.
   await connection();
   let recovered = false;
-  try { await requireWorkspace(); recovered = true; } catch { /* keep recovery instructions while the workspace is unavailable */ }
+  try { await requireWorkspace(); recovered = true; } catch { }
   if (recovered) redirect("/");
   const desktop = process.env.MONEO_DESKTOP === "1";
   return <main className="mx-auto grid min-h-screen w-full max-w-md place-items-center px-4">

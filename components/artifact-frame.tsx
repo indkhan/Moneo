@@ -11,18 +11,12 @@ function subscribeTheme(notify: () => void) {
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   return () => observer.disconnect();
 }
-// A "system" frame gets no theme and follows the OS itself, like the app does.
 function readTheme(): Theme {
   const theme = document.documentElement.dataset.theme;
   return theme === "light" || theme === "dark" ? theme : "system";
 }
 
-/**
- * A sandboxed artifact page from its frame route, in the app's current theme. It starts loading once mounted, so it
- * loads once; a later theme change reloads it. A skeleton covers it until it has loaded.
- */
 export function ArtifactFrame({ src, title, loading, className, style }: { src: string; title: string; loading?: "lazy"; className?: string; style?: CSSProperties }) {
-  // Null in the server HTML: a streamed page moves its markup into place, and moving a loading iframe restarts it.
   const theme = useSyncExternalStore(subscribeTheme, readTheme, () => null);
   const url = theme && (theme === "system" ? src : `${src}${src.includes("?") ? "&" : "?"}theme=${theme}`);
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -41,7 +35,6 @@ export function ArtifactFrame({ src, title, loading, className, style }: { src: 
 
 const THUMB_WIDTH = 800, THUMB_HEIGHT = 500;
 
-/** A scaled-down, non-interactive live preview; it only loads once scrolled near the viewport. */
 export function ArtifactThumbnail({ src, title }: { src: string; title: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);

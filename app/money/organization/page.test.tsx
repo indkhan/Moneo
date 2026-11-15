@@ -37,9 +37,10 @@ it('paginates older unorganized history with a validated date/id cursor and reta
 it('gives changed group evidence a fresh draft identity',async()=>{
  vi.mocked(requireWorkspace).mockResolvedValue({supabase:client(),workspace:{id:id(10),locale:'en-US',timezone:'UTC'}} as never);
  function draftKey(node:ReactNode):string|null|undefined{
-  if(!isValidElement<{children?:ReactNode;requestId?:string}>(node))return;
+  if(!isValidElement<{children?:ReactNode;requestId?:string}>(node))return undefined;
   if(node.props.requestId)return node.key;
   for(const child of Children.toArray(node.props.children)){const key=draftKey(child);if(key!==undefined)return key;}
+  return undefined;
  }
  const first=draftKey(await Page({searchParams:Promise.resolve({})}));
  vi.mocked(loadOrganizationSuggestions).mockResolvedValue({rows:[{...snapshots[0],version:1}],proposals:[{transactionId:id(1),version:1,descriptionKey:'northstar market',merchantName:'Northstar Market',merchantId:null,categoryId:null,basis:'review-required',financialReviewRequired:false,evidence:[]}],historyLimit:2000,historyCount:1} as never);

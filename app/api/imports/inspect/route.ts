@@ -61,7 +61,6 @@ export async function POST(request: Request) {
         mapping = undefined;
       }
     }
-    // A CSV whose amounts only one number format can read needs no choice (spreadsheet cells carry their own numbers).
     if (mapping && !workbook && typeof supplied !== "string" && !mapping.numericConvention) mapping = { ...mapping, numericConvention: provenNumericConvention(rows, mapping) };
     if (mapping && workbookScope) mapping = { ...mapping, workbookScope };
     if (mapping) {

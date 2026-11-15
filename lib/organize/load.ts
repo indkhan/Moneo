@@ -5,7 +5,6 @@ import { MAX_ORGANIZATION_RULES, organizationRuleSchema } from "@/lib/import/org
 import { judgeLabel, type AiLabel, type LabelledRow } from "./calibration";
 import type { HistoryRow, Identity, Memory, OrganizeInput, OrganizeRow } from "./organizer";
 
-// Reads what the organizer needs through the service role, fenced by workspace_id.
 type Result<T> = { data: T | null; error: { message: string } | null };
 const checked = <T,>(result: Result<T>): T => { if (result.error) throw new Error(result.error.message); return result.data as T; };
 async function pages<T>(page: (offset: number) => PromiseLike<Result<T[]>>) {
@@ -14,7 +13,6 @@ async function pages<T>(page: (offset: number) => PromiseLike<Result<T[]>>) {
 }
 const chunks = <T,>(items: T[], size = 200) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
 
-// AI labels are never evidence for more guesses; rows from before provenance existed (null) are.
 const NOT_AI = "organized_by.is.null,organized_by.neq.ai";
 const COLUMNS = "id, version, description, amount_minor::text, currency_code, posted_on, account_id, identity_id, category_id, merchant_id, kind, review_reasons, organized_by";
 type Row = { id: string; version: number; description: string; amount_minor: string; currency_code: string; posted_on: string; account_id: string; identity_id: string | null;
@@ -22,10 +20,6 @@ type Row = { id: string; version: number; description: string; amount_minor: str
 const toHistory = (row: Row): HistoryRow => ({ id: row.id, version: row.version, description: row.description, amountMinor: BigInt(row.amount_minor), currency: row.currency_code,
   date: row.posted_on, identityId: row.identity_id, categoryId: row.category_id, merchantId: row.merchant_id, kind: row.kind, reviewReasons: row.review_reasons ?? [] });
 
-/**
- * Rows the organizer may label: posted, not organized by anyone yet, missing a category or merchant, not a transfer or a row
- * waiting for a financial review, not corrected by the owner, not a loan payout, and not already in an open or dismissed question.
- */
 export async function loadOrganizeInput(db: SupabaseClient, workspaceId: string): Promise<OrganizeInput> {
   const [targets, recent, corrections, rules, memory, categories, merchants, accounts, suppressedOps, questions, loans] = await Promise.all([
     pages<Row>(offset => db.from("transactions").select(COLUMNS).eq("workspace_id", workspaceId).eq("status", "posted").is("organized_by", null)
@@ -81,7 +75,6 @@ export async function loadOrganizeInput(db: SupabaseClient, workspaceId: string)
   };
 }
 
-/** The owner's verdicts on recent AI labels, newest first, for the calibration kill switch. */
 export async function loadJudgedLabels(db: SupabaseClient, workspaceId: string, now = new Date()) {
   const ops = checked(await db.from("organizer_ops").select("id, created_at, undone_at, category_id, merchant_id, transactions(category_id, merchant_id, organized_by, organize_op_id)")
     .eq("workspace_id", workspaceId).eq("after->>organized_by", "ai").order("created_at", { ascending: false }).limit(1000)) as unknown as

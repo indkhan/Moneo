@@ -2,7 +2,6 @@ import { expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { replaceCallTask } from "./voice-call";
 
-/** A fake client: chat request statuses advance per read; cards are counted and dismissed by request id. */
 function fake(statuses: string[], cards: { id: string; status: string }[], onCancel?: () => void) {
   const updates: { values: Record<string, unknown>; filters: unknown[][] }[] = [];
   const rpc = vi.fn(async () => { onCancel?.(); return { data: "canceled", error: null }; });
@@ -34,7 +33,6 @@ it("stops a running request that has made no card yet", async () => {
   const { client, rpc, updates } = fake(["running"], cards, () => cards.push({ id: "raced", status: "proposed" }));
   const result = await replaceCallTask(client, ids, { sleep: async () => {} });
   expect(rpc).toHaveBeenCalledWith("cancel_chat_request", { p_request_id: "old" });
-  // A card it made while being canceled is dismissed too.
   expect(result).toMatchObject({ outcome: "stopped", dismissed: 1 });
   expect(updates[0].filters).toEqual(expect.arrayContaining([["eq", "workspace_id", "workspace"], ["eq", "chat_request_id", "old"], ["in", "status", ["proposed", "failed"]]]));
 });

@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-/** Beside any total that leaves accounts out, at reading size: a partial figure must never pass for the whole. */
 export function CoverageNote({ counted, total }: { counted: number; total: number }) {
   const left = total - counted;
   if (left <= 0) return null;

@@ -8,9 +8,7 @@ import { financialMetricHref, financialQualificationText } from "@/lib/finance/e
 
 export const metadata = { title: "Evidence" };
 
-// Date-only financial periods are calendar days, so they are shown in UTC to keep their boundaries.
 const day = (value: string, locale?: string) => { const date = new Date(`${value.slice(0, 10)}T00:00:00Z`); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(locale, { timeZone: "UTC", dateStyle: "medium" }); };
-/** The recognisable part of a retained record; never guesses at what is not there. */
 function recordSummary(record: unknown, locale?: string) {
   if (!record || typeof record !== "object") return "";
   const fields = record as Record<string, unknown>;
@@ -29,7 +27,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!parsed.success) notFound();
   const { locale, timezone } = context.workspace;
   const back = parsed.data.from ? { href: parsed.data.from, label: "← Back to the review" } : { href: "/ai/activity?filter=analyses", label: "← AI review history" };
-  // A receipt that is missing, foreign or asks for an unknown measure stays a plain 404, so it reveals nothing.
   const failed = await readEvidenceView(context, id, parsed.data.metric).then(view => ({ view, failure: null }), (cause: unknown) => {
     const message = cause instanceof Error ? cause.message : "";
     return { view: null, failure: /mismatch|Metric unavailable/.test(message) ? null : /^AI access to /.test(message) ? "scope" as const : "service" as const };
@@ -46,7 +43,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const visible = supportingRecords.slice(sourceOffset, sourceOffset + 25);
   const raw = (value: unknown) => JSON.stringify(value, null, 2);
   const amount = (item: typeof receipt.metrics[number]) => item.valueMinor === null ? "Unavailable" : item.unit === "count" ? `${item.valueMinor} records (${item.currency} scope)` : formatMoney(item.valueMinor, item.currency);
-  // Each list keeps the other's place, and the way back.
   const href = (extra: Record<string, string>) => `/ai/evidence/${id}?${new URLSearchParams({ ...(metric ? { metric: metric.id } : {}), ...(parsed.data.q ? { q: parsed.data.q } : {}), ...(parsed.data.from ? { from: parsed.data.from } : {}), sourcePage: String(parsed.data.sourcePage), metricPage: String(parsed.data.metricPage), ...extra })}`;
   const metricCount = receipt.metrics.length;
   return <main className="mx-auto max-w-5xl space-y-6 px-5 py-8 lg:px-8">

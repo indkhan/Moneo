@@ -1,6 +1,3 @@
-// Scalable in chat against the local stand-in (e2e/mocks/scalable-mcp.mjs), with the real AI model, so it costs a
-// little: run it only when you mean to. Start the app with SCALABLE_MCP_ORIGIN=http://127.0.0.1:3043 and run with the
-// same variable set. Proves an order is sent only by tapping its card, exactly once, and that read-only access says so.
 import { spawn, type ChildProcess } from "node:child_process";
 import { expect, test } from "@playwright/test";
 import postgres from "postgres";
@@ -26,7 +23,6 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   await db`delete from public.agent_proposals where kind in ('scalable_order','scalable_cancel') and workspace_id = (select workspace_id from public.scalable_connections where id = ${connection})`;
-  // The synced positions are the QA workspace's own wealth items; reset with scripts/e2e-auth.mjs --reset clears them.
   await db`delete from public.scalable_connections where id = ${connection}`;
   await db.end();
   mock.kill();
@@ -61,7 +57,6 @@ test("a buy is previewed on a card and sent only when the card is tapped, once",
   await expect(card).toBeVisible({ timeout: 90_000 });
   await expect(card.getByRole("timer")).toContainText("Valid for");
   await expect(card).toContainText("Test Tech ETF (Acc)");
-  // Previewed, never submitted, before the tap.
   expect((await calls()).map(call => call.name)).toContain("preview_buy_order");
   expect((await calls()).some(call => call.name.startsWith("submit_"))).toBe(false);
   await card.getByText("Scalable's full review").click();

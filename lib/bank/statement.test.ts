@@ -48,10 +48,7 @@ describe("bank statement mapping", () => {
     const first = bankStatement([tx({}), tx({ entry_reference: "ref-2" })], account)!;
     const again = bankStatement([tx({ entry_reference: "ref-2" }), tx({})], account)!;
     const hash = (csv: string) => createHash("sha256").update(csv).digest("hex");
-    // Same bytes → same file_hash → the imports unique index returns the existing import.
     expect(hash(again.csv)).toBe(hash(first.csv));
-    // A later, overlapping window carries the same external ids, so the import pipeline matches
-    // every already-imported row instead of inserting it again.
     const decisions = batchDecisions([
       { rowNumber: 2, hasExternalId: true, status: "posted", candidates: [{ id: "t1", stableExternalMatch: true, status: "posted", version: 1 }] },
       { rowNumber: 3, hasExternalId: true, status: "posted", candidates: [] },
@@ -63,11 +60,9 @@ describe("bank statement mapping", () => {
     const now = new Date("2026-10-05T09:30:00Z");
     const closing = { balance_type: "CLBD", reference_date: "2026-10-02", balance_amount: { currency: "EUR", amount: "-40.50" } };
     expect(bankObservation([closing], "EUR", now, "Europe/Berlin")).toEqual({ amountMinor: "-4050", balanceType: "CLBD", asOf: "2026-10-01T22:00:00.000Z" });
-    // Today's booked balance, and one with no date, describe the moment of the fetch.
     expect(bankObservation([{ ...closing, balance_type: "ITBD", reference_date: "2026-10-05" }], "EUR", now, "Europe/Berlin")).toMatchObject({ balanceType: "ITBD", asOf: now.toISOString() });
     expect(bankObservation([{ ...closing, reference_date: null }], "EUR", now, "Europe/Berlin")).toMatchObject({ asOf: now.toISOString() });
     expect(bankObservation([], "EUR", now, "Europe/Berlin")).toBeNull();
-    // The statement itself no longer carries it, so its bytes only change when rows do.
     const statement = bankStatement([tx({ booking_date: "2026-10-05" })], account)!;
     expect(inspectRows(parseCsv(statement.csv), statement.mapping).mapped[0].balanceMinor).toBeUndefined();
   });
@@ -75,7 +70,6 @@ describe("bank statement mapping", () => {
   it("never dates an available balance as an earlier closing balance, so a hold can't count twice", () => {
     const available = (amount: string) => ({ balance_type: "CLAV", reference_date: "2026-10-04", balance_amount: { currency: "EUR", amount } });
     const account = { id: "bank", name: "Bank", currency_code: "EUR" };
-    // Monday: 100.00 booked with a 30.00 card hold, so 70.00 available. Tuesday: the hold books, 70.00 is still available.
     const monday = bankObservation([available("70.00")], "EUR", new Date("2026-10-05T09:00:00Z"), "UTC")!;
     const tuesday = bankObservation([available("70.00")], "EUR", new Date("2026-10-06T09:00:00Z"), "UTC")!;
     const snapshot = (row: typeof monday, id: string) => ({ id, account_id: "bank", amount_minor: row.amountMinor, currency_code: "EUR", as_of: row.asOf, provenance: `bank:${row.balanceType}`, balance_type: row.balanceType });
@@ -93,9 +87,6 @@ describe("bank statement mapping", () => {
   });
 });
 
-// Changing the CSV bytes would re-import every window as new rows and orphan rules keyed on the description (the dedupe hash
-// is the CSV's). The raw-data sidecar must never touch it: this is the exact output for an invented three-page response
-// with every extra Enable Banking field, taken before the sidecar existed.
 describe("statement bytes are frozen", () => {
   const extra = { bank_transaction_code: { code: "CARD_PAYMENT", sub_code: "POS" }, merchant_category_code: "5411", note: "n", exchange_rate: { exchange_rate: "1.1" },
     creditor_agent: { bic_fi: "ABNANL2A" }, debtor_account_additional_identification: [{ identification: "card-1" }], reference_number: "R1" };
@@ -126,7 +117,6 @@ describe("statement bytes are frozen", () => {
   it("names the bank transaction behind every CSV row, in order", () => {
     const statement = bankStatement(pages.flat(), account)!;
     expect(statement.sources).toHaveLength(statement.rowCount);
-    // CSV row number i + 2 (the header is row 1) is sources[i]: identified rows by their bank id.
     const ids = parseCsv(statement.csv).map(row => row.id);
     statement.sources.forEach((source, index) => expect(source.entry_reference ?? source.transaction_id ?? "").toBe(ids[index]));
   });

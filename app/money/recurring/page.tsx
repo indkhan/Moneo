@@ -6,7 +6,7 @@ import { cadenceWords, recurringCadences } from "@/lib/finance/cadences";
 import { calendarDate } from "@/lib/finance/calendar";
 import { expandSchedule } from "@/lib/finance/model";
 import { formatInputAmount } from "@/lib/finance/format";
-import { formatMoney, monthlyEquivalent } from "./series";
+import { formatMoney, monthlyEquivalent } from "@/lib/recurring/series";
 import { addSchedule, deleteSchedule, updateSchedule } from "./actions";
 import { ScheduleDialog } from "./forms";
 import { DetectedPatterns } from "./detected";
@@ -35,7 +35,6 @@ export default async function RecurringPage() {
   const liveAccounts = (accounts ?? []).filter(account => !account.archived_at).map(account => ({ id: account.id as string, name: account.name as string, currencyCode: account.currency_code as string }));
   const names: Record<string, string> = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
 
-  // Same expansion as the forecast, so "next" here matches Plan. Account-less schedules still get a date.
   const schedules = ((scheduleData ?? []) as unknown as Schedule[]).map(item => {
     const dated = { ...item, account_id: item.account_id ?? "unassigned" };
     const upcoming = expandSchedule(dated, today, UPCOMING_DAYS);

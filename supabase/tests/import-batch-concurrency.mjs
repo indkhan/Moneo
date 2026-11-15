@@ -62,8 +62,6 @@ try {
   await assert.rejects(ingest(db, first), error => error.code === "57014");
   await Promise.all([ingest(holder, first, "new", resumed.runVersion), ingest(waiter, first, "new", resumed.runVersion)]);
   assert.equal((await db`select id from public.transactions where workspace_id=${workspace}`).length, 1);
-  // Both workers may prefetch before another batch commits. The row core must
-  // reject the stale new decision; a fresh overlap decision is review.
   await assert.rejects(ingest(db, second), error => error.code === "PT409");
   const [{ result: candidates }] = await db.unsafe(`select ${schema}.import_batch_candidates($1::uuid,$2::uuid,1,0) result`, [second, workspace]);
   assert.equal(candidates[0].candidates.length, 1); assert.equal(candidates[0].candidates[0].version, 0);

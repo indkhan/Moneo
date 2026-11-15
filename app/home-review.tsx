@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
 import { RecurringCards } from "@/app/money/recurring/cards";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { displayFormat } from "@/lib/display-format";
 import { categorizeGroups, loadUncategorizedGroups, type UncategorizedGroup } from "./home-review-actions";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
@@ -16,10 +16,8 @@ import type { HomeFinding } from "@/lib/ai/home-review";
 const primary = "min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50";
 const secondary = "min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50";
 
-/** A sheet tells its summary card when nothing is left, so the card goes away without waiting for Home to reload. */
 const Cleared = createContext<(cleared: boolean) => void>(() => {});
 
-/** One line on Home for a whole kind of decision; Review opens the items in a sheet over the page. */
 export function SummaryCard({ title, detail, children }: { title: string; detail: string; children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
@@ -30,7 +28,6 @@ export function SummaryCard({ title, detail, children }: { title: string; detail
   return <Cleared.Provider value={setCleared}><section aria-label={title} className="my-3 flex flex-wrap items-center gap-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <div className="min-w-0 flex-1"><p className="font-medium">{title}</p><p className="mt-0.5 text-sm text-muted-foreground">{detail}</p></div>
     <button type="button" aria-label={`Review: ${title}`} onClick={() => setOpen(true)} className={`${primary} inline-flex items-center gap-1`}>Review<ChevronRight className="size-4" aria-hidden="true" /></button>
-    {/* Closing refreshes Home so the counts match what was decided. */}
     {open && <dialog ref={dialog} aria-label={title} onClose={() => { setOpen(false); router.refresh(); }}
       className="m-auto mb-0 max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-border bg-background p-5 text-foreground backdrop:bg-black/40 sm:mb-auto sm:rounded-2xl">
       <div className="flex items-center gap-2"><h2 className="mr-auto font-display text-lg font-semibold">{title}</h2>
@@ -40,7 +37,6 @@ export function SummaryCard({ title, detail, children }: { title: string; detail
   </section></Cleared.Provider>;
 }
 
-/** Reports to the summary card whether every item in its sheet is decided. */
 function useReportCleared(cleared: boolean) {
   const report = useContext(Cleared);
   useEffect(() => { report(cleared); }, [report, cleared]);
@@ -56,7 +52,6 @@ function useDecide() {
   return { pending, error, run };
 }
 
-/** Detected and chat-made recurring changes, one decision each: confirming opens the dialog to check amount, date and category. */
 export function RecurringSheet({ proposals }: { proposals: OpenProposal[] }) {
   const [decided, setDecided] = useState<Set<string>>(new Set());
   const onDecided = (id: string, undone?: boolean) => setDecided(current => { const next = new Set(current); if (undone) next.delete(id); else next.add(id); return next; });
@@ -69,12 +64,10 @@ export function RecurringSheet({ proposals }: { proposals: OpenProposal[] }) {
   </div>;
 }
 
-/** Things the checks flagged; “It's fine” closes one for good, Open shows the transaction behind it. */
 export function FindingsSheet({ findings, locale = "en-GB" }: { findings: HomeFinding[]; locale?: string }) {
   const { date, money } = displayFormat(locale);
   const { pending, error, run } = useDecide();
   const [cleared, setCleared] = useState<Set<string>>(new Set());
-  // Cleared at once; any that fail to save come back with the error.
   const dismiss = (items: HomeFinding[]) => run(async () => {
     const keys = items.map(item => item.ids[0]);
     const restore = (failed: string[]) => setCleared(current => new Set([...current].filter(key => !failed.includes(key))));
@@ -106,7 +99,6 @@ export function FindingsSheet({ findings, locale = "en-GB" }: { findings: HomeFi
   </div>;
 }
 
-/** Uncategorized spending grouped by description: pick a category per group (the suggestion is preselected) or skip it. */
 export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number; locale?: string }) {
   const { date, money } = displayFormat(locale);
   const [data, setData] = useState<Awaited<ReturnType<typeof loadUncategorizedGroups>>>();
@@ -114,7 +106,6 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
   const [done, setDone] = useState<Record<string, string>>({});
   const [remember, setRemember] = useState(false);
   const { pending, error, run } = useDecide();
-  // A failed load says so; treating it as empty would report everything as reviewed.
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => { loadUncategorizedGroups().then(setData, () => setFailed(true)); }, [attempt]);
@@ -122,10 +113,8 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
   useReportCleared(!!data && data.total <= shown && data.groups.every(group => done[group.key] && done[group.key] !== "Skipped"));
   if (failed) return <p role="alert" className="mt-3 text-sm text-danger">Could not load these {total} transactions. <button type="button" onClick={() => { setFailed(false); setAttempt(count => count + 1); }} className="underline">Try again</button></p>;
   if (!data) return <p role="status" className="mt-3 text-sm text-muted-foreground">Grouping {total} transactions…</p>;
-  // What is typed per group: the suggestion's name until the person changes it.
   const typed = (group: UncategorizedGroup) => chosen[group.key] ?? data.categories.find(category => category.id === group.suggested)?.name ?? "";
   const pick = (group: UncategorizedGroup) => resolveCategory(data.categories, typed(group), true);
-  // Marked done at once; groups that fail to save are put back with the error.
   const apply = (groups: UncategorizedGroup[]) => run(async () => {
     const keys = groups.map(group => group.key);
     const restore = (failed: string[]) => setDone(current => Object.fromEntries(Object.entries(current).filter(([key]) => !failed.includes(key))));

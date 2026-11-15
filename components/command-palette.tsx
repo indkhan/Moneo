@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 
 export type Command = { id: string; label: string; group: string; keywords?: string; hint?: string; run: () => void };
 
-// Every word must appear in the label, group or keywords; order of results is the order given.
 export function filterCommands(commands: Command[], query: string) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return commands.filter(command => {
@@ -19,7 +18,6 @@ export function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd className="inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted px-1 font-sans text-[11px] font-medium text-muted-foreground">{children}</kbd>;
 }
 
-/** Native modal dialog: focus trap, Escape and backdrop come from the platform. */
 export function Modal({ open, onClose, label, className, children }: { open: boolean; onClose: () => void; label: string; className?: string; children: React.ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -40,13 +38,11 @@ export function CommandPalette({ open, onClose, commands, onAsk, onSearch }: { o
   </Modal>;
 }
 
-// Mounted only while open, so the query and selection reset each time.
 function PaletteBody({ commands, onClose, onAsk, onSearch }: { commands: Command[]; onClose: () => void; onAsk?: (question: string) => void; onSearch?: (text: string) => void }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listId = useId();
   const question = query.trim();
-  // Free text can always look through the ledger, which costs nothing, and only then be sent to the assistant.
   const searching: Command[] = onSearch && question ? [{ id: "search-ledger", label: `Search transactions for “${question}”`, group: "Transactions", run: () => onSearch(question) }] : [];
   const asking: Command[] = onAsk && question ? [{ id: "ask-moneo", label: `Ask Moneo “${question}”`, group: "Ask Moneo", run: () => onAsk(question) }] : [];
   const results = [...filterCommands(commands, query), ...searching, ...asking];

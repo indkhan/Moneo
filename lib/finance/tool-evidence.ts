@@ -51,7 +51,6 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         : dated ? { from: dated, to: dated } : inherited.period;
     const qualifiers = [...inherited.qualifiers];
     if ((row.status === "ambiguous" || row.balanceStatus === "ambiguous") && !qualifiers.includes("ambiguous_evidence")) qualifiers.push("ambiguous_evidence");
-    // Coverage is flagged only when the recorded sources actually show gaps.
     const sources = object(row.sourceCoverage);
     if (Object.keys(sources).length && sourceCoverageNeedsReview(sources as SourceCoverage) && !qualifiers.includes("partial_coverage")) qualifiers.push("partial_coverage");
     const coverage = object(row.evidence);

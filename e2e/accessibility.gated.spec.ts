@@ -27,7 +27,6 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   await page.getByRole("button", { name: "Save preferences", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
   try {
-  // Regression: titles model overrides previously failed the atomic preferences save.
   await page.getByRole("combobox", { name: "Default model", exact: true }).fill("luna");
   await page.getByRole("combobox", { name: "Default model", exact: true }).press("ArrowDown");
   await page.getByRole("combobox", { name: "Default model", exact: true }).press("Enter");
@@ -55,7 +54,6 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
     await expect(page.locator("h1").first()).toBeVisible();
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
   }
-  // Phones open the assistant from search: the Ask tab goes to the full-screen chat instead.
   await page.goto("/");
   await page.getByRole("button", { name: "Search or ask Moneo" }).first().click();
   await page.getByRole("combobox", { name: "Search commands" }).fill("What changed this month?");
@@ -65,7 +63,6 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   await expect(page.getByRole("button", { name: "Close AI assistant" })).toBeFocused();
   for (let i = 0; i < 6; i++) {
     await page.keyboard.press("Tab");
-    // Native dialogs may cycle through browser chrome (body is the reported active element).
     expect(await dialog.evaluate(element => element.contains(document.activeElement) || document.activeElement === document.body)).toBe(true);
   }
   await page.getByRole("button", { name: "Close AI assistant" }).focus();

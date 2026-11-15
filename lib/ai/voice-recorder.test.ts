@@ -28,7 +28,6 @@ const track = { stop: vi.fn() };
 const getUserMedia = vi.fn();
 const fetchMock = vi.fn();
 const handlers = () => ({ onText: vi.fn(), onLevel: vi.fn(), onError: vi.fn() });
-/** The socket opens after the session request, a moment after recording starts. */
 const connected = () => vi.waitFor(() => { if (!FakeSocket.last) throw new Error("not connected yet"); return FakeSocket.last; });
 const speak = (value = 0.5) => audio.processor!.onaudioprocess!({ inputBuffer: { getChannelData: () => new Float32Array(480).fill(value) } });
 
@@ -59,7 +58,6 @@ it("streams audio with the short-lived secret and shows words as they arrive", a
   expect(fetchMock).toHaveBeenCalledWith("/api/voice/session", expect.objectContaining({ method: "POST" }));
   expect(socket.protocols).toEqual(["realtime", "openai-insecure-api-key.ek_test"]);
   expect(events.onLevel).toHaveBeenCalledWith(1);
-  // Audio from before the connection opened goes first, so the first words are not lost.
   socket.open();
   speak();
   expect(socket.sent.map(message => message.type)).toEqual(["input_audio_buffer.append", "input_audio_buffer.append"]);

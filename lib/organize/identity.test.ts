@@ -26,7 +26,6 @@ describe("identityCandidate", () => {
     expect(music?.kind).toBe("processor");
     expect(music?.aliases).toEqual([{ type: "description_key", value: "paypal:ihr einkauf bei synthetic music" }]);
     expect(games?.aliases[0].value).not.toBe(music?.aliases[0].value);
-    // Nothing but the processor and references: no identity at all.
     expect(identityCandidate("PayPal Europe S.a.r.l. et Cie S.C.A 1040565 PP.9286.PP", paypal)).toBeNull();
     expect(identityCandidate("PAYPAL *SYNTHETICSHOP", undefined)?.aliases).toEqual([{ type: "description_key", value: "paypal:syntheticshop" }]);
   });
@@ -37,7 +36,6 @@ describe("identityCandidate", () => {
     for (const [name, person] of cases) expect([name, looksLikePerson(name)]).toEqual([name, person]);
     expect(identityCandidate("Dinner", raw({ counterparty_name: "Erika Mustermann", counterparty_iban: "DE75512108001245126199" }))).toEqual(
       { kind: "person", displayName: "Erika Mustermann", aliases: [{ type: "iban", value: "DE75512108001245126199" }, { type: "counterparty_name", value: "erika mustermann" }] });
-    // A card payment under a person-like name is a shop, and so is a transfer with the card's id on it.
     expect(identityCandidate("Coffee", raw({ payment_type: "card", counterparty_name: "Erika Mustermann" }))?.kind).toBe("merchant");
     expect(identityCandidate("Coffee", raw({ counterparty_name: "Erika Mustermann", own_side_ids: [{ identification: "card-1" }] }))?.kind).toBe("merchant");
   });

@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ChevronLeft, Menu, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, SquarePen, Trash2, X } from "lucide-react";
-import { ChatForm } from "@/app/ai/chat-form";
+import { ChatForm } from "@/components/chat-form";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { usePolling } from "@/lib/ai/use-polling";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
@@ -17,14 +17,11 @@ import type { HistoryThread } from "@/lib/ai/conversation-history";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
-// Only fetched once someone opens the deep review popover.
-const AnalysisPanel = dynamic(() => import("@/app/ai/analysis-panel").then(module => module.AnalysisPanel), {
+const AnalysisPanel = dynamic(() => import("@/components/analysis-panel").then(module => module.AnalysisPanel), {
   ssr: false, loading: () => <p role="status" className="p-6 text-sm text-muted-foreground">Loading review options…</p>,
 });
-// The call (WebRTC, audio meters) is only loaded when someone starts one.
 const VoiceCall = dynamic(() => import("./voice-call").then(module => module.VoiceCall), { ssr: false });
 
-// running: a request in this chat still working in the background.
 type Entry = { conversation: HistoryThread; messages: ChatItem[]; cursor: string | null; running?: string | null };
 type Loaded = { selected: HistoryThread; messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
 type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
@@ -41,14 +38,12 @@ function omit<T>(record: Record<string, T>, key: string) { const next = { ...rec
 const href = (id: string) => `/ai?conversation=${id}`;
 const fetchEntry = (id: string) => json<Loaded>(`/api/conversations/${id}`);
 
-/** Client-side chat workspace: switching, paging, search, rename and delete never re-render the server page. */
 export function ChatWorkspace({ initial, newConversationId, selectionKey, locale, timezone, scope }: { initial: ChatWorkspaceInitial; newConversationId: string; selectionKey: string; locale: string; timezone: string; scope: React.ReactNode }) {
   const router = useRouter();
   const [seen, setSeen] = useState(initial);
   const [threads, setThreads] = useState(initial.threads);
   const [threadsCursor, setThreadsCursor] = useState(initial.threadsCursor);
   const [entries, setEntries] = useState(() => seed(initial));
-  // A server re-render (for example after the panel starts a chat) refreshes the cached view.
   if (seen !== initial) { setSeen(initial); setThreads(initial.threads); setThreadsCursor(initial.threadsCursor); setEntries(current => ({ ...current, ...seed(initial) })); }
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Record<string, PendingExchange>>({});
@@ -67,11 +62,9 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   const params = useSearchParams();
   const param = params.get("conversation");
-  // Overview's Call opens chat already calling; the flag is dropped once read, so a reload does not call again.
   const autoCall = params.get("call") === "1";
   const [calling, setCalling] = useState(autoCall);
   const access = useAiAccess();
-  // Without an OpenAI API key a call can't start: the chat stays and says why, without opening the microphone.
   const callBlocked = calling && access?.voice === false;
   useEffect(() => {
     if (!autoCall) return;
@@ -91,20 +84,17 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
       .finally(() => loading.current.delete(id));
   }
   const latest = useRef({ selectedId, draftId });
-  useEffect(() => { latest.current = { selectedId, draftId }; if (selectedId) load(selectedId); }); // load() skips cached and in-flight chats
+  useEffect(() => { latest.current = { selectedId, draftId }; if (selectedId) load(selectedId); });
   const followOutput = useFollowOutput(end, [entry?.messages.length, active], activeId);
-  // A run that kept going while the user was away shows as working until its answer is saved.
   const resuming = entry?.running && !active ? activeId : null;
   usePolling(() => void json<Loaded>(`/api/conversations/${resuming}`)
     .then(data => { if (!data.running) { setEntries(current => ({ ...current, [resuming!]: loaded(data) })); retitle(resuming!, data.selected.title); } }).catch(() => {}), 3000, !!resuming);
 
-  // A finished call is saved after hang-up: its summary and any request still running arrive a little later.
   const waitingOnCall = entry?.messages.some(item => item.call && (item.call.summaryStatus === "pending" || item.call.unfinished.some(task => task.status === "running"))) ? activeId : null;
   const tries = useRef(0);
   useEffect(() => { tries.current = 0; }, [waitingOnCall]);
   usePolling(() => { if (++tries.current <= 60) fetchEntry(waitingOnCall!).then(data => { setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) })); retitle(waitingOnCall!, data.selected.title); }).catch(() => {}); }, 3000, !!waitingOnCall);
 
-  // Debounced search over titles and message text.
   useEffect(() => {
     const q = query.trim();
     if (!q) return;
@@ -172,10 +162,8 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     } catch (cause) { setNotice((cause as Error).message); }
   }
 
-  // Mirrors each pending exchange so the finished answer can keep its plan and tool calls.
   const live = useRef<Record<string, PendingExchange>>({});
   function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { followOutput(); live.current[id] = { question, attachments, tools: [], spoken }; setPending(current => ({ ...current, [id]: live.current[id] })); }
-  // A new chat's title can arrive before the chat is in the list.
   const written = useRef<Record<string, string>>({});
   function onEvent(id: string, event: ChatStreamEvent) {
     if (event.type === "title") { written.current[id] = event.title; retitle(id, event.title); return; }
@@ -197,11 +185,9 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     ];
     setEntries(current => ({ ...current, [id]: current[id] ? { ...current[id], messages: [...current[id].messages, ...exchange] } : { conversation, messages: exchange, cursor: null } }));
     setThreads(current => current.some(thread => thread.id === id) ? current : [conversation, ...current]);
-    // The first answer saves a new chat: give it its own URL without remounting the composer.
     if (latest.current.selectedId === null && latest.current.draftId === id) window.history.replaceState(null, "", href(id));
   }
 
-  /** Reloads a chat after a call, so its messages move into the call card. */
   async function callEnded(id: string) {
     try {
       const data = await fetchEntry(id);
@@ -254,16 +240,13 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <ConversationSelection selectionKey={selectionKey} id={selectedId ?? "new"} />
     <aside className="scroll-fade hidden h-full w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
       {calling && !callBlocked ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [], VOICE_CALL_TITLE)} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
-      {/* Phones get a native chat bar (back, title, icon buttons); the app's own header and tab bar step aside on this page. */}
       <div className="relative flex items-center gap-0.5 border-b border-border px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1 lg:flex-wrap lg:gap-2 lg:px-8 lg:py-4">
         <button type="button" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} aria-label="Back" className={`${summary} lg:hidden`}><ChevronLeft className="size-7" strokeWidth={1.8} aria-hidden="true" /></button>
         <h1 title={title} className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight lg:font-display lg:text-2xl">{title}</h1>
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className={icon} aria-hidden="true" /></summary><div className="absolute inset-x-2 top-full z-20 mt-1 max-h-[75dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         <Link href={href("new")} onClick={event => open(event, null)} aria-label="New chat" className={`${summary} lg:hidden`}><SquarePen className={icon} aria-hidden="true" /></Link>
         <button type="button" aria-haspopup="dialog" aria-label="Run a deep review" onClick={() => { if (menu.current) menu.current.open = false; setReviewOpen(true); reviewDialog.current?.showModal(); }} className={summary}><Sparkles className={icon} aria-hidden="true" /><span className="max-lg:hidden">Run a deep review</span></button>
-        {/* A modal dialog: the browser moves focus in, keeps it there, closes on Escape and returns focus to the button. It stays mounted, so a running review keeps its place when closed. */}
         <dialog ref={reviewDialog} aria-label="Deep review" className="m-auto max-h-[85dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card text-foreground shadow-lg backdrop:bg-black/50">
           <div className="sticky top-0 z-10 flex justify-end bg-card p-2"><button type="button" onClick={() => reviewDialog.current?.close()} className="flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" />Close</button></div>
           {reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}

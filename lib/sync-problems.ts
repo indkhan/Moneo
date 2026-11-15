@@ -1,9 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// historyMissing: a bank account failed before its first transactions ever arrived.
 type Connection = { name: string; status: string; last_error: string | null; historyMissing?: boolean };
 
-/** Sentences for connections that need the owner. An old ended login doesn't count once the same service is connected again. */
 export function syncProblems(connections: Connection[]) {
   const active = new Set(connections.filter(row => row.status === "active").map(row => row.name));
   return [...new Set(connections.flatMap(({ name, status, last_error, historyMissing }) => {
@@ -13,7 +11,6 @@ export function syncProblems(connections: Connection[]) {
   }))];
 }
 
-/** What Home must say about syncing. A failed check says nothing: the numbers still show. */
 export async function loadSyncProblems(db: SupabaseClient, workspaceId: string) {
   const live = ["active", "expired", "error"];
   const [banks, scalable] = await Promise.all([

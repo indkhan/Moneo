@@ -52,7 +52,6 @@ describe("Scalable order cards", () => {
     expect(calls.map(call => call.name).sort()).toEqual(["get_security_quote", "preview_buy_order"]);
     expect(calls.find(call => call.name === "preview_buy_order")?.args).toEqual({ isin: ISIN, quantity: { mode: "amount", amount: "10" }, order: { type: "market" } });
     expect(result).toMatchObject({ shown: true, title: "Buy 1 × Test Tech ETF", expiresAt: "2026-11-07T16:00:54.000Z" });
-    // The confirmation proof stays in the stored payload; nothing the model reads contains it.
     expect(JSON.stringify(result)).not.toContain("c1.abc");
     expect(inserted[0]).toMatchObject({ kind: "scalable_order", agent: "chat", payload: { connectionId: CONNECTION, side: "buy", submission },
       evidence: { trade: { action: "buy", shares: "1", estimatedTotalMinor: "753", entryCostMinor: "99", venue: "European Investor Exchange (EIX)" } } });

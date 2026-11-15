@@ -13,7 +13,6 @@ type Review = { id: string; created_at?: string; status: string; stage: string; 
 
 const label = (value: string) => { const text = value.replaceAll("_", " "); return text[0].toUpperCase() + text.slice(1); };
 
-/** The first thing wrong with the dates: a half-filled or reversed range. Blank ranges are fine. */
 export function datesProblem(value: (name: string) => string) {
   for (const [from, to, label] of [["from", "to", "Review period"], ["comparisonFrom", "comparisonTo", "Compare with"]] as const) {
     if (!value(from) && !value(to)) continue;
@@ -43,7 +42,6 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
     if (!jobId) return;
     let active = true;
     async function refresh() {
-      // A failed check keeps the last known status and tries again on the next tick.
       try {
         const response = await fetch(`/api/analysis/${jobId}`);
         if (!response.ok) throw new Error();

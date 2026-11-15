@@ -3,10 +3,6 @@
 import { startTransition, useActionState, useEffect, useRef, type ReactNode } from "react";
 import type { SafeState } from "@/lib/safe-action";
 
-/**
- * A form whose failure shows beside it and keeps what was typed; React's own form action would clear the fields either way.
- * Fields clear only after a save that went through.
- */
 export function SafeForm({ action, className, children }: { action: (state: SafeState, form: FormData) => Promise<SafeState>; className?: string; children: ReactNode }) {
   const [state, submit, pending] = useActionState(action, {});
   const form = useRef<HTMLFormElement>(null);
@@ -15,10 +11,8 @@ export function SafeForm({ action, className, children }: { action: (state: Safe
     if (wasPending.current && !pending && !state.error) form.current?.reset();
     wasPending.current = pending;
   }, [pending, state.error]);
-  // action covers a press before hydration (React posts it to the server action); afterwards onSubmit handles it.
   return <form ref={form} className={className} action={submit} onSubmit={event => {
     event.preventDefault();
-    // The pressed button's name and value count, so one form can hold several choices.
     const data = new FormData(event.currentTarget, (event.nativeEvent as SubmitEvent).submitter);
     startTransition(() => submit(data));
   }}>

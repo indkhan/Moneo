@@ -8,7 +8,6 @@ type Schedule = { value: string; label: string; accountId: string | null; curren
 type Transaction = { value: string; label: string; accountId: string; currency: string; amountMinor: string };
 const inputClass = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm";
 
-/** Pick a schedule first; only transactions it could match are offered, and the form says what stays due before saving. */
 export function OccurrenceForm({ schedules, transactions }: { schedules: Schedule[]; transactions: Transaction[] }) {
   const [scheduleValue, setScheduleValue] = useState("");
   const [transactionValue, setTransactionValue] = useState("");

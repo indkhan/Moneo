@@ -15,7 +15,6 @@ describe("lead plan", () => {
     expect(plan.find(task => task.agent === "anomaly")).toMatchObject({ status: "pending", wave: 1 });
     expect(plan.find(task => task.agent === "writer")).toMatchObject({ status: "pending", wave: 3 });
   });
-  // The budget coach ran beside the categorizer and proposed limits from rows that were still uncategorized.
   it("categorizes alone before anyone reads categories, and coaches budgets only for owners who set limits", () => {
     const profile = { transactions: 400, unorganized: 417, months: 12, scopes: ["accounts", "transactions", "planning"] as const };
     const plan = planRun({ ...profile, scopes: [...profile.scopes], spendingLimits: 0 });
@@ -30,7 +29,6 @@ describe("lead plan", () => {
   });
 });
 
-// 417 bank rows stayed uncategorized after a failed run: later syncs added nothing, so no run started again.
 describe("backlog rerun", () => {
   const now = Date.parse("2026-11-14T12:00:00Z");
   const base = { transactionsAllowed: true, unorganized: 417, recentRuns: ["completed"], unorganizedSinceLatestRun: false, retryAt: null, now };
@@ -45,7 +43,6 @@ describe("backlog rerun", () => {
     ["AI may not read transactions", { transactionsAllowed: false, recentRuns: ["failed"] }, false],
     ["three runs in a row failed", { recentRuns: ["failed", "failed", "failed"] }, false],
     ["three failures, then new rows", { recentRuns: ["failed", "failed", "failed"], unorganizedSinceLatestRun: true }, true],
-    // A ChatGPT plan limit left rows blank in a completed run; nothing retried them until new rows arrived.
     ["a plan limit left rows and has reset", { retryAt: "2026-11-14T11:00:00Z" }, true],
     ["a plan limit left rows and holds, even for new rows", { retryAt: "2026-11-14T14:00:00Z", unorganizedSinceLatestRun: true }, false],
   ])("%s", (_case, change, expected) => {

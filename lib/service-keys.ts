@@ -1,8 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 
-// The owner's own service keys, entered in the app and sealed in the database. A key still in
-// .env keeps working while nothing is stored (older installs); a stored key wins over .env.
 export const SERVICE_KEYS = {
   openai_api_key: "OPENAI_API_KEY",
   openrouter_api_key: "OPENROUTER_API_KEY",
@@ -13,7 +11,6 @@ export type ServiceKey = keyof typeof SERVICE_KEYS;
 export type ServiceKeyStatus = { source: "app" | "env" | null; hint: string | null };
 
 const aad = (name: ServiceKey) => `moneo:service-key:${name}`;
-// Every AI call and bank request reads keys; a short cache saves the round trips, and writes clear it.
 const TTL = 5_000;
 let cache: { at: number; values: Partial<Record<ServiceKey, string>> } | null = null;
 let warned = false;
@@ -36,19 +33,16 @@ async function stored(): Promise<Partial<Record<ServiceKey, string>>> {
     cache = { at: Date.now(), values };
     return values;
   } catch (error) {
-    // Without the table (migration not applied yet) or the database, .env still works.
     if (!warned) console.warn("Stored service keys are unavailable", error instanceof Error ? error.message : error);
     warned = true;
     return {};
   }
 }
 
-/** The key to use: the one saved in the app, else the .env value, else undefined. */
 export async function serviceKey(name: ServiceKey): Promise<string | undefined> {
   return (await stored())[name] || process.env[SERVICE_KEYS[name]]?.trim() || undefined;
 }
 
-/** Where each key comes from and its last four characters, for Settings. Never the key itself. */
 export async function serviceKeyStatus(): Promise<Record<ServiceKey, ServiceKeyStatus>> {
   const values = await stored();
   return Object.fromEntries(Object.entries(SERVICE_KEYS).map(([name, env]) => {
