@@ -1,0 +1,70 @@
+This is a video of Lauren that I saw and this is the summary transcription of that video. I honestly personally really agree with it.
+
+I want you to find out all the things that she has done that you think I can do to my codebase so that I don't need to review or anything and I can let AI directly do it. As for her teaching what all things do you think I should do in my codebase, either remove, add, or all of those things?
+
+Another thing I want you to do is add to agents.md: never write a comment and call the high-Q subagent to remove all the comments from the codebase.
+
+Other than that tell me: what else from this video do you think I can add to my codebase, support, add to agents.md, add to any other file, or add as more skills? I already have a few skills but if you suggest a few to me from that video, I'm open to that as well. Let me know. 
+
+
+
+In All Code Is Slop (Except Mine) — Lauren Tan, SpaceXSI, Lauren Tan ("Potato") explains how she scaled from shipping 3,000 personal pull requests a month [00:42] to her team shipping 11,000 PRs a month without sacrificing software quality [13:34]. Her core thesis is that AI coding agents allow any developer to operate like an elite "coding machine," shifting the software engineer's primary job toward designing deterministic guardrails and verification systems so agents produce reliable code by default [01:04].
+
+1. Core Thesis: Trust Through Environment Design
+Productivity without quality loss: With coding agents, raw code volume is no longer the bottleneck; the real challenge is maintaining or improving code quality while scaling output [01:04].
+
+Engineered trust over blind trust: Running a "software factory" relies on investing upfront in the agent's environment—a process that took Tan about six months to refine—so you can trust agents to do the right thing automatically [01:25].
+
+2. The Inverse Pyramid of Agent Guardrails
+Tan organizes environment investments into four layers, prioritizing deterministic code constraints at the bottom and minimizing natural-language instructions at the top [01:57]:
+
+The codebase itself (Deterministic): Strong API design, clear architecture, and proactive refactoring form the primary foundation [02:04].
+
+Static analysis and testing (Deterministic): Lint rules, type systems, compilers, and automated test suites constrain what agents can write and force good patterns by default [02:13].
+
+Verification (Runtime and formal): Runtime checks and formal proofs uncover subtle bugs, enforce system invariants, and confirm the agent understood your actual intent [02:28].
+
+Prose (Minimal top layer): Markdown rules, skills, and agents.md files should be kept small and reserved only for areas requiring genuine human judgment [02:42].
+
+3. Codebase as a Garden & Concrete Engineering Rules
+Inputs dictate outputs: Because the existing codebase is an agent's largest input, every agent correction should be converted into a deterministic code check rather than another line in a prompt or agents.md file [02:59].
+
+Tending the garden: As PR velocity jumps from a handful per day to hundreds, code arrives like a continuous living stream [03:33]. Architectural constraints act as concrete foundations [04:03], whereas tech debt, workarounds, and anti-patterns act like weeds that agents immediately copy and spread—requiring engineers to keep the codebase pristine [04:25].
+
+Banning high-nuance APIs: Tools that require deep nuance to use safely inevitably lead to agent "slop" [05:24]. In Dune (a Next.js-like client framework built for Electron apps), Tan's team banned React's useEffect in product code—allowing it only inside controlled framework APIs—which categorically eliminated a whole class of code review issues [04:58].
+
+Enforcing architecture via directory structure: To stop agents from importing Electron main-thread code into the renderer thread (which causes UI jank) [06:15], they split code into explicit electron-renderer and electron-main top-level directories and blocked cross-imports with lint rules and a dependency graph analyzer [06:30].
+
+Banning 99% of code comments: Agents frequently use markdown files and inline comments to rationalize hacks or over-rotate on minor feedback [07:00]. For example, an architectural mismatch between VS Code's imperative style and React's declarative style previously led agents to spam timers (setTimeout, requestAnimationFrame, requestIdleCallback), triggering heavy garbage collection lag while writing comments defending the workarounds [07:28]. Tan's team banned 99% of comments—because they go stale and cannot be enforced—and replaced them with descriptive lint errors that instruct agents to fix the root cause [08:17].
+
+Shrinking human code review: Systematically converting review feedback into lint rules and cleaner APIs steadily removes manual review bottlenecks until agents can safely merge most of their own pull requests [09:08].
+
+4. Verification & The Golden Age of Testing
+Reviewing artifacts instead of diffs: Code review shifts toward inspecting verification artifacts such as videos, screenshots, diagrams, and formal proofs [09:44].
+
+Runtime verification with feature maps and CLIs: Agents run and debug the app directly using tools like the Chrome DevTools Protocol [10:06]. A user-facing feature map (acting like a UI sitemap) gives agents shared vocabulary for interface components, while reusable custom CLIs inside agent skills reduce token consumption and improve reliability [10:06].
+
+Formal verification and property-based UI testing:
+
+TLA+: Used for model checking complex user flows, such as multi-device notifications [10:52].
+
+Lean: Used to mathematically prove critical algorithms, such as ensuring a custom virtualization library has zero flickering or jitter [11:05].
+
+Bombadil: Used for property-based UI testing to catch subtle interface bugs [11:40].
+
+The economics of verification: Echoing industry observations that roughly 70% of daily tokens now go toward verification [11:51], Tan notes that agents make historically expensive testing and formal methods cheap enough to use routinely—sparking a "golden age of software testing and verification" [12:23].
+
+Visualizing state machines: Tan built a state-chart skill (in her psac / potato stack plugin) to generate user-facing state machine diagrams that can be reviewed alongside videos and screenshots [12:59].
+
+5. Production Results & Outer-Loop Automation
+Real-world throughput and stability: Using these practices, the Graphbot team shipped 11,000 pull requests in one month, cuts daily stable releases, and onboarded 227 contributors in October—including casual contributors with minimal prior context [13:26]. Meanwhile, the PR revert rate dropped to roughly 0.5% [14:15], and core Electron app metrics (startup, typing, and chat switching) grew faster than at launch [14:31].
+
+Fix the inner loop before automating the outer loop: Automating a sloppy coding loop only generates faster, more expensive slop [15:12]. Once static checks and verification foundations are solid, teams can orchestrate outer-loop automation—such as automatically spinning up Cursor cloud agents on every new release to fuzz the build like a real user, open fix PRs, and automerge them [16:07].
+
+---
+
+we also really reallly need to update the agents.md as the applcaition thing which uses electron is not mentioned check it and update it as well
+
+---
+
+Continue where you left off.
