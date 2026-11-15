@@ -34,10 +34,11 @@ async function platform() {
 const size = bytes => `${(bytes / 1048576).toFixed(0)} MB`;
 
 async function latestRelease() {
-  const response = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { accept: "application/vnd.github+json" } });
+  const response = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`, { headers: { accept: "application/vnd.github+json" } });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
-  return response.json();
+  const releases = await response.json();
+  return releases.find(release => !release.draft && !release.prerelease && Object.values(ASSETS).every(matches => release.assets.some(asset => matches(asset.name)))) ?? null;
 }
 
 async function setUpDownloads() {
