@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChatForm } from "@/app/ai/chat-form";
+import { ChatForm } from "@/components/chat-form";
 import { claimFirstPrompt } from "../actions";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "@/components/chat-messages";
 import { usePolling } from "@/lib/ai/use-polling";

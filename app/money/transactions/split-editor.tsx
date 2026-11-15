@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { SafeForm } from "@/components/safe-form";
 import { splitTransactionSafely } from "./actions";
-import { parseManualAmount, splitInput } from "./input";
+import { parseManualAmount, splitInput } from "@/lib/finance/transaction-input";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 
 export function SplitEditor({ id, version, amountMinor, currency, categories, query, requestId, locale }: {

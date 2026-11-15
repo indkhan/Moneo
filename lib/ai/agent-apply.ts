@@ -7,7 +7,7 @@ import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
 import { applyOrganizeAnswer } from "@/lib/ai/organize-proposals";
 import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recurring-proposals";
-import type { ScheduleFields } from "@/app/money/recurring/schedules";
+import type { ScheduleFields } from "@/lib/recurring/schedules";
 import { applyScalableProposal, OrderOutcomeUnknown, TRADE_KINDS } from "@/lib/scalable/orders";
 import { withScalable } from "@/lib/scalable/server";
 import { ownTransferPayloadSchema } from "@/lib/finance/own-transfers";

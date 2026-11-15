@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { serviceDb } from "@/lib/bank/server";
-import { loadWealthEvents } from "@/app/money/wealth/net-worth";
+import { loadWealthEvents } from "@/lib/finance/net-worth";
 import { loadWealthItems } from "@/lib/finance/wealth";
 import { rebuildScalableHistory } from "./history-job";
 import { calculateHistory, readHistoryInput } from "./history";
@@ -8,7 +8,7 @@ import { withScalable } from "./server";
 
 vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
 vi.mock("@/lib/finance/wealth", async original => ({ ...await original<typeof import("@/lib/finance/wealth")>(), loadWealthItems: vi.fn() }));
-vi.mock("@/app/money/wealth/net-worth", async original => ({ ...await original<typeof import("@/app/money/wealth/net-worth")>(), loadWealthEvents: vi.fn() }));
+vi.mock("@/lib/finance/net-worth", async original => ({ ...await original<typeof import("@/lib/finance/net-worth")>(), loadWealthEvents: vi.fn() }));
 vi.mock("./server", () => ({ withScalable: vi.fn(), scalableConfigured: () => true }));
 vi.mock("./history", () => ({ readHistoryInput: vi.fn(), calculateHistory: vi.fn() }));
 afterEach(() => vi.resetAllMocks());

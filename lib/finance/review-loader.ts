@@ -1,4 +1,4 @@
-import { netWorth } from "@/app/money/wealth/net-worth";
+import { netWorth } from "@/lib/finance/net-worth";
 import { loadNetWorthEvidence, netWorthModel } from "./net-worth-source";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";

@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 import { reviewedCoverage } from "@/app/balance-input";
 import { accountTypes } from "./naming";
 import { minorDigits } from "@/lib/finance/fx";

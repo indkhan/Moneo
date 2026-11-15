@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useBusy } from "@/components/use-busy";
 import Link from "next/link";
 import { IouCard } from "@/components/iou-card";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { formatMoney } from "@/lib/finance/format";
 import { confirmRecurringCard, loadRecurringCards } from "./actions";
 import { ScheduleDialog } from "./forms";

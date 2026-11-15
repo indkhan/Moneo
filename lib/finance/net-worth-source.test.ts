@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { netWorth } from "@/app/money/wealth/net-worth";
+import { netWorth } from "@/lib/finance/net-worth";
 import { buildReviewEvidence } from "./review";
 import { resolveBalances } from "./balances";
 import { convertedNetWorth, describeMonthSplit, loadNetWorthEvidence, netWorthModel, readNetWorth } from "./net-worth-source";

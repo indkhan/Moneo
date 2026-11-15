@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 
 async function editPlan(form: FormData, patch: Record<string, unknown>) {
   const { supabase } = await requireWorkspace();

@@ -10,12 +10,12 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { carriedDebtPayments, currentOn, loadWealthItems, type WealthItem } from "@/lib/finance/wealth";
 import { loadBalanceEvidence } from "@/lib/finance/balances";
 import { describeOutdated, formatMoney as formatCurrency } from "@/lib/finance/format";
-import { NetWorthChart } from "@/app/net-worth-chart";
+import { NetWorthChart } from "@/components/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
 import { NetWorthProblems } from "./net-worth-problems";
 import { loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
-import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth, netWorthSeries } from "./net-worth";
+import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth, netWorthSeries } from "@/lib/finance/net-worth";
 import { describeMonthSplit, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
 import { transitOn } from "@/lib/finance/transit";
 

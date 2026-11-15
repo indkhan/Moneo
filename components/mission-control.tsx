@@ -7,7 +7,7 @@ import { Check, ChevronRight, CircleDashed, CircleSlash, Info, LoaderCircle, Pla
 import { AGENTS, WAVES, type AgentId, type ProposalKind } from "@/lib/ai/agent-team";
 import type { AgentProposalView, AgentRunView, AgentTaskView } from "@/lib/ai/agent-state";
 import { formatMoney } from "@/lib/finance/format";
-import { decideAgentProposals, undoAutoOrganization } from "@/app/ai/agents/actions";
+import { decideAgentProposals, undoAutoOrganization } from "@/lib/ai/agent-actions";
 import { AskAbout } from "./ask-about";
 import { TeamFlow } from "./team-flow";
 import { PhoneCollapse } from "./phone-collapse";

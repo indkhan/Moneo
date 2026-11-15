@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { formatInputAmount } from "@/lib/finance/format";
-import { amountBounds, shownBounds } from "./input";
+import { amountBounds, shownBounds } from "@/lib/finance/transaction-input";
 import { compileFilterQuery } from "./nl-filter";
 import { calendarDate } from "@/lib/finance/calendar";
 import { CategoryCombobox, resolveCategory } from "@/components/category-combobox";

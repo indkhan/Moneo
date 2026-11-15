@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { decideAgentProposals, loadAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals, loadAgentProposals } from "@/lib/ai/agent-actions";
 import { agentDecisionSchema } from "@/lib/ai/agent-findings";
 
 type Row = Awaited<ReturnType<typeof loadAgentProposals>>[number];

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { bulkInput, directedAmount, splitInput, versionedRows } from "./input";
+import { bulkInput, directedAmount, splitInput, versionedRows } from "@/lib/finance/transaction-input";
 import { similarRows } from "./similar";
 
 const uuidPattern = /^[0-9a-f-]{36}$/i;

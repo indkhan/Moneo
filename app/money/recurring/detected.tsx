@@ -5,8 +5,8 @@ import { expandSchedule } from "@/lib/finance/model";
 import { formatInputAmount } from "@/lib/finance/format";
 import { confirmSeries, declineSeries } from "./actions";
 import { ActionForm, ScheduleDialog } from "./forms";
-import { formatMoney as formatCurrency, seriesKey } from "./series";
-import { loadSuggestions, MAX_TRANSACTIONS, rankSuggestions, seriesDecision, type Suggestion } from "./suggestions";
+import { formatMoney as formatCurrency, seriesKey } from "@/lib/recurring/series";
+import { loadSuggestions, MAX_TRANSACTIONS, rankSuggestions, seriesDecision, type Suggestion } from "@/lib/recurring/suggestions";
 
 const FIRST_BATCH = 10;
 

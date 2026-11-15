@@ -5,7 +5,7 @@ import { scheduleCadences } from "@/lib/finance/cadences";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 
 const version = z.coerce.number().int().min(1).max(2147483646);
 async function edit(form: FormData, type: "scenario" | "override", patch: Record<string, unknown>) {

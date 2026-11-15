@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
-import type { ChatProposal } from "@/app/ai/iou-actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
+import type { ChatProposal } from "@/lib/ai/iou-actions";
 import { useBusy } from "@/components/use-busy";
 import { displayFormat } from "@/lib/display-format";
 import type { TradeReview } from "@/lib/scalable/orders";

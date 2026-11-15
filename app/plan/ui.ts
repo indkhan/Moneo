@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 import { formatMoney } from "@/lib/finance/format";
 import type { scheduleCadences } from "@/lib/finance/cadences";
 

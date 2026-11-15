@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { expandSchedule } from "@/lib/finance/model";
 import { undoOccurrence } from "./actions";
 import { OccurrenceForm } from "./occurrence-form";
-import { formatMoney } from "./series";
+import { formatMoney } from "@/lib/recurring/series";
 import { ActionForm } from "./forms";
 
 export async function OccurrenceReview({ supabase, workspace, accountNames }: { supabase: SupabaseClient; workspace: { id: string; locale: string }; accountNames: Record<string, string> }) {

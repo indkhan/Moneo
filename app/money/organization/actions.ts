@@ -4,7 +4,7 @@ import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
-import {versionedRows} from '../transactions/input';
+import {versionedRows} from '@/lib/finance/transaction-input';
 import {safely,type SafeState} from '@/lib/safe-action';
 import {readableError} from '@/lib/ai/agent-apply';
 

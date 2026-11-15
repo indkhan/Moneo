@@ -1,5 +1,5 @@
 import { formatMoney } from "@/lib/finance/format";
-import { parseManualAmount } from "./input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 import type { FilterValues } from "./filter-bar";
 
 type Named = { id: string; name: string };

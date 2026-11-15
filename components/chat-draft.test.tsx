@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { isValidElement, type ReactNode } from "react";
-import { ChatForm } from "@/app/ai/chat-form";
+import { ChatForm } from "@/components/chat-form";
 import { AiPanelDialog } from "./ai-panel-dialog";
 import { ChatComposer } from "./chat-composer";
 

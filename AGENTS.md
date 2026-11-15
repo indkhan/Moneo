@@ -88,6 +88,7 @@ The Desktop workflow builds and smoke-tests every platform on pull requests that
 ## Project map
 
 - `app/` — App Router pages, route handlers, server actions
+- `components/` — shared UI
 - `lib/finance/` — deterministic financial logic
 - `lib/ai/` — models, chat tools, ChatGPT sign-in (`chatgpt.ts`), voice
 - `lib/bank/`, `lib/scalable/` — Enable Banking and Scalable Capital
@@ -97,6 +98,8 @@ The Desktop workflow builds and smoke-tests every platform on pull requests that
 - `e2e/` — Playwright flows; `supabase/tests/` — SQL regressions
 - `desktop/` — the Electron app (`src/` main process, `src/backend/` native backend, `setup/` status window, `bootstrap/` first-run SQL); `scripts/desktop/` builds, packages and smoke-tests it; `.github/workflows/desktop.yml` runs that and drafts releases
 - `docs/` — the GitHub Pages landing page (https://indkhan.github.io/Moneo/); its download button reads the latest published release
+
+Imports go one way: `app/` → `components/` → `lib/` and `workflows/`. `lib/finance/` never imports `lib/ai/`, and Electron stays in `desktop/src`. Lint enforces all of it; code that two layers need lives in the lower one.
 
 ## Sign-in callbacks and addresses
 

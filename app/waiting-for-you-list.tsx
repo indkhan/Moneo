@@ -6,7 +6,7 @@ import { IouCard } from "@/components/iou-card";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
 import type { HomeReview } from "@/lib/ai/home-review";
 import { useBusy } from "@/components/use-busy";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { FindingsSheet, RecurringSheet, SummaryCard, UncategorizedSheet } from "./home-review";
 
 const FILTERS = [["loans", "Loans"], ["transactions", "Transactions"], ["balances", "Balances"], ["organize", "Labels"]] as const;

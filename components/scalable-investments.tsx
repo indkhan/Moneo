@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { NetWorthChart } from "@/app/net-worth-chart";
+import { NetWorthChart } from "@/components/net-worth-chart";
 import { displayFormat } from "@/lib/display-format";
 import { calendarDate } from "@/lib/finance/calendar";
 import type { WealthItem } from "@/lib/finance/wealth";

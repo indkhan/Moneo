@@ -5,7 +5,7 @@ import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {MAX_ORGANIZATION_RULES,organizationDisplayName} from '@/lib/import/organization';
 import {loadLoanPayoutIds} from '@/lib/finance/iou';
 import {formatMoney} from '@/lib/finance/format';
-import {versionedRows} from '../transactions/input';
+import {versionedRows} from '@/lib/finance/transaction-input';
 import {SafeForm} from '@/components/safe-form';
 import {dismissReviewSafely,toggleRuleSafely} from './actions';
 import {OrganizationQueue,ApprovalForm,UndoReviewForm} from './review-form';

@@ -5,10 +5,10 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { reviewedLocalTimestamp } from "@/lib/finance/calendar";
 import { recurringCadences } from "@/lib/finance/cadences";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 import { decideProposals, readableError } from "@/lib/ai/agent-apply";
 import { decideCurrentSeries, recurringCardDetails } from "@/lib/ai/recurring-proposals";
-import { createSchedule, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "./schedules";
+import { createSchedule, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "@/lib/recurring/schedules";
 
 export type ActionState = { error?: string; done?: number };
 

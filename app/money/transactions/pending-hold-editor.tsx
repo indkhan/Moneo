@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { pendingSettlementSchema, type PendingResolution } from "@/lib/finance/pending-holds";
-import { parseManualAmount } from "./input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 
 export type PendingPosting = { id: string; version: number; description: string; posted_on: string; amount_minor: string };
 export function PendingHoldEditor({ pending, currency, releasedMinor, postings = [], resolutions = [], importId, sourceId }: {

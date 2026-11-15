@@ -6,7 +6,7 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")
 vi.mock("@/lib/import/organization-loader", () => ({ loadOrganizationSuggestions: vi.fn() }));
 vi.mock("@/lib/scalable/orders", async importOriginal => { const original = await importOriginal<typeof import("@/lib/scalable/orders")>();
   return { ...original, applyScalableProposal: vi.fn(async () => { throw new original.OrderOutcomeUnknown("Scalable didn't confirm this."); }) }; });
-vi.mock("@/app/money/recurring/suggestions", async importOriginal => ({ ...await importOriginal<object>(), loadSuggestions: async () => ({ candidates: [], superseded: [] }) }));
+vi.mock("@/lib/recurring/suggestions", async importOriginal => ({ ...await importOriginal<object>(), loadSuggestions: async () => ({ candidates: [], superseded: [] }) }));
 
 type Call = { kind: "rpc" | "update" | "insert"; name: string; args: unknown; filters: unknown[][] };
 function fakeContext(options: { rpc?: Record<string, { data?: unknown; error?: { message: string; code?: string } | null }>; claim?: unknown; rejected?: unknown; insertError?: { message: string; code?: string } } = {}) {

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useBusy } from "@/components/use-busy";
 import Link from "next/link";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
-import { loadIouProposal, type ChatProposal } from "@/app/ai/iou-actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
+import { loadIouProposal, type ChatProposal } from "@/lib/ai/iou-actions";
 import { displayFormat } from "@/lib/display-format";
 import { TradeCard } from "@/components/trade-card";
 

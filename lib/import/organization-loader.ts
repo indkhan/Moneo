@@ -1,6 +1,6 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {z} from 'zod';
-import {versionedRows} from '@/app/money/transactions/input';
+import {versionedRows} from '@/lib/finance/transaction-input';
 import {MAX_ORGANIZATION_RULES,organizationProposals,organizationRuleSchema,type OrganizationRow} from '@/lib/import/organization';
 
 const columns='id,version,description,merchant_id,category_id,kind,review_reasons,posted_on,amount_minor::text,currency_code,status,organized_by';

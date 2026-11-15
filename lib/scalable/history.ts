@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dayRange } from "@/app/money/wealth/net-worth";
+import { dayRange } from "@/lib/finance/net-worth";
 import { calendarDate } from "@/lib/finance/calendar";
 import { decimalRatio, holdingValue } from "@/lib/finance/wealth";
 import type { ScalableMcp } from "./client";

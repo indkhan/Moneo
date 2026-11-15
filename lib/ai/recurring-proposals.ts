@@ -6,8 +6,8 @@ import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { expandSchedule } from "@/lib/finance/model";
 import { wealthAmount } from "@/lib/finance/wealth";
 import { liveAccounts } from "@/lib/ai/transaction-proposals";
-import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields, type SeriesDecision } from "@/app/money/recurring/schedules";
-import { loadSuggestions, olderRuns, priceChanges, seriesDecision } from "@/app/money/recurring/suggestions";
+import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields, type SeriesDecision } from "@/lib/recurring/schedules";
+import { loadSuggestions, olderRuns, priceChanges, seriesDecision } from "@/lib/recurring/suggestions";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 

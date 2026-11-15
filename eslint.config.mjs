@@ -83,12 +83,60 @@ const noComments = {
   },
 };
 
+const aboveLib = {
+  group: ["@/app/**", "@/components/**", "**/app/**", "**/components/**"],
+  message: "lib/ and workflows/ sit below app/ and components/. Move the shared code into lib/ and import it from there (AGENTS.md Project map).",
+};
+
+const aboveComponents = {
+  group: ["@/app/**", "**/app/**"],
+  message: "components/ sits below app/. Move the shared component to components/, or the shared logic or server action to lib/ (AGENTS.md Project map).",
+};
+
+const aiFromFinance = {
+  group: ["@/lib/ai/**", "**/ai/**"],
+  message: "Financial truth comes from code and data, never from AI. lib/finance must not import lib/ai; pass plain data in instead (AGENTS.md Non-negotiables).",
+};
+
+const electronOutsideDesktop = {
+  group: ["electron", "electron/**", "electron-updater", "@/desktop/**", "**/desktop/src/**"],
+  message: "The Next.js server also runs without Electron. Keep Electron code in desktop/src and reach it through lib/desktop-bridge.ts (AGENTS.md Desktop app).",
+};
+
+const appFromDesktop = {
+  group: ["@/**", "**/app/**", "**/lib/**", "**/components/**", "**/workflows/**"],
+  message: "The Electron main process is built apart from the Next.js server. Talk to the server over its loopback address instead of importing its code (AGENTS.md Desktop app).",
+};
+
 export default defineConfig([
   ...nextVitals,
   ...nextTypescript,
   {
     plugins: { moneo: { rules: { "no-comments": noComments } } },
     rules: { "moneo/no-comments": "error" },
+  },
+  {
+    files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
+    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop] }] },
+  },
+  {
+    files: ["components/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop, aboveComponents] }] },
+  },
+  {
+    files: ["lib/**", "workflows/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop, aboveLib] }] },
+  },
+  {
+    files: ["lib/finance/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: { "no-restricted-imports": ["error", { patterns: [electronOutsideDesktop, aboveLib, aiFromFinance] }] },
+  },
+  {
+    files: ["desktop/src/**"],
+    rules: { "no-restricted-imports": ["error", { patterns: [appFromDesktop] }] },
   },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],

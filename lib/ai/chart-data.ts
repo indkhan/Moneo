@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { archiveDates, dayRange, netWorthSeries } from "@/app/money/wealth/net-worth";
+import { archiveDates, dayRange, netWorthSeries } from "@/lib/finance/net-worth";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";

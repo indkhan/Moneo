@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { INSIGHT_TYPES, settingsSchema } from "@/lib/settings";
 import { insightPreferencesSchema } from "@/lib/finance/insights";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 
 export async function dismissInsight(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();

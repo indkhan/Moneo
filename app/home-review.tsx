@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
 import { RecurringCards } from "@/app/money/recurring/cards";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { displayFormat } from "@/lib/display-format";
 import { categorizeGroups, loadUncategorizedGroups, type UncategorizedGroup } from "./home-review-actions";
 import type { OpenProposal } from "@/lib/ai/open-proposals";

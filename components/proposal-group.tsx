@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { z } from "zod";
-import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { IouCard } from "./iou-card";
 
 const idsSchema = z.array(z.uuid()).min(2).max(50);

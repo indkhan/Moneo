@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { listRecurring } from "@/lib/ai/recurring-proposals";
 
-vi.mock("@/app/money/recurring/suggestions", async importOriginal => ({ ...await importOriginal<object>(), loadSuggestions: async () => ({ superseded: [], pending: [{ related: [],
+vi.mock("@/lib/recurring/suggestions", async importOriginal => ({ ...await importOriginal<object>(), loadSuggestions: async () => ({ superseded: [], pending: [{ related: [],
   series: { runAnchorId: "s1", label: "Uni sport", cadence: "monthly", amountMinMinor: -2000n, amountMaxMinor: -1500n, currencyCode: "EUR", occurrences: 3 } }] }) }));
 
 it("gives pending suggestions the same exact fields as schedules, so pages never parse formatted money", async () => {

@@ -6,7 +6,7 @@ import { cadenceWords, recurringCadences } from "@/lib/finance/cadences";
 import { calendarDate } from "@/lib/finance/calendar";
 import { expandSchedule } from "@/lib/finance/model";
 import { formatInputAmount } from "@/lib/finance/format";
-import { formatMoney, monthlyEquivalent } from "./series";
+import { formatMoney, monthlyEquivalent } from "@/lib/recurring/series";
 import { addSchedule, deleteSchedule, updateSchedule } from "./actions";
 import { ScheduleDialog } from "./forms";
 import { DetectedPatterns } from "./detected";

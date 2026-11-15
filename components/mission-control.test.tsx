@@ -4,7 +4,7 @@ import { MissionControl } from "./mission-control";
 import type { AgentRunView } from "@/lib/ai/agent-state";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
-vi.mock("@/app/ai/agents/actions", () => ({ decideAgentProposals: vi.fn() }));
+vi.mock("@/lib/ai/agent-actions", () => ({ decideAgentProposals: vi.fn() }));
 
 const task = (agent: string, status: string, extra = {}) => ({ agent, position: 0, status, step: null, summary: null, events: [], started_at: null, finished_at: null, ...extra });
 const run = (status: string): AgentRunView => ({ id: "00000000-0000-4000-8000-000000000001", status, trigger: "import", import_id: null, briefing: status === "completed" ? "You paid EUR 5.00 in fees.\n\nThree changes are ready." : null,

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { scheduleCadences } from "@/lib/finance/cadences";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
-import { parseManualAmount } from "@/app/money/transactions/input";
+import { parseManualAmount } from "@/lib/finance/transaction-input";
 import { calendarDate } from "@/lib/finance/calendar";
 
 const date = z.iso.date();

@@ -1,4 +1,4 @@
-import { firstSyncedOn, loadWealthEvents, scalableKnownIds, valuationHistory } from "@/app/money/wealth/net-worth";
+import { firstSyncedOn, loadWealthEvents, scalableKnownIds, valuationHistory } from "@/lib/finance/net-worth";
 import { serviceDb } from "@/lib/bank/server";
 import { loadWealthItems } from "@/lib/finance/wealth";
 import { calculateHistory, readHistoryInput, type TradeDetails } from "./history";

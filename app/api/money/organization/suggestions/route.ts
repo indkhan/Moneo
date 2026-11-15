@@ -4,7 +4,7 @@ import {requireWorkspace} from '@/lib/auth';
 import {requireAiScope} from '@/lib/settings';
 import {modelForSettings} from '@/lib/ai/provider';
 import {aiConfigured} from '@/lib/ai/configured';
-import {versionedRows} from '@/app/money/transactions/input';
+import {versionedRows} from '@/lib/finance/transaction-input';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {mergeOrganizationSuggestions,organizationSuggestionsSchema,type OrganizationRow} from '@/lib/import/organization';
 
