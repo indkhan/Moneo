@@ -45,3 +45,17 @@ jobs:
           EOF
       - run: npm run build
       - run: npm run check:bundle
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start the test backend
+        run: npm run setup -- --qa
+      - run: npm run test:db

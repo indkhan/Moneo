@@ -1,4 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import * as schema from "@/lib/schema";
@@ -7,23 +6,6 @@ const tables = Object.values(schema).map((table) => getTableConfig(table as PgTa
 const table = (name: string) => tables.find((item) => item.name === name)!;
 
 describe("Drizzle migration contract", () => {
-  it("represents every migrated public table and original column", () => {
-    const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort()
-      .map((file) => readFileSync(`supabase/migrations/${file}`, "utf8")).join("\n");
-    const dropped = new Set([...migrations.matchAll(/drop table ([^;]+);/g)].flatMap(match => [...match[1].matchAll(/public\.(\w+)/g)].map(name => name[1])));
-    for (const match of migrations.matchAll(/create table public\.(\w+)\s*\(([\s\S]*?)\n\);/g)) {
-      if (dropped.has(match[1])) continue;
-      expect(table(match[1]), match[1]).toBeDefined();
-      const columns = [...match[2].matchAll(/^\s{2}(\w+) (?:uuid|text|bigint|integer|boolean|jsonb|date|timestamptz)\b/gm)]
-        .map((column) => column[1]).filter((column) => !migrations.includes(`alter table public.${match[1]} drop column ${column};`));
-      expect(table(match[1]).columns.map((column) => column.name)).toEqual(expect.arrayContaining(columns));
-    }
-    for (const match of migrations.matchAll(/alter table public\.(\w+)\s+add column (\w+)/g)) {
-      if (dropped.has(match[1])) continue;
-      expect(table(match[1]).columns.map((column) => column.name)).toContain(match[2]);
-    }
-  });
-
   it("preserves deletion behavior for nullable links and recurring evidence", () => {
     for (const [name, column, action] of [
       ["transactions", "merchant_id", "set null"],
