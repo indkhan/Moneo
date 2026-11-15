@@ -105,6 +105,11 @@ const hardCodedAddress = [
   },
 ];
 
+const unexplainedIgnoredFailure = {
+  selector: ":matches(CatchClause > BlockStatement[body.length=0], CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement[body.length=0])",
+  message: "A workflow that ignores a failure must say what handles it instead. Call a function named for that reason, as workflows/bank-sync.ts does (catch { hourlyBacklogCheckPicksUpTheRows(); }), or record the failure (AGENTS.md How to work, \"Fix the class\").",
+};
+
 const isTest = file => /\.(test|spec)\.tsx?$/.test(file);
 const under = (file, folder) => file === folder || file.startsWith(`${folder}/`);
 
@@ -199,6 +204,11 @@ export default defineConfig([
     files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts"],
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress] },
+  },
+  {
+    files: ["workflows/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, unexplainedIgnoredFailure] },
   },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],

@@ -20,9 +20,11 @@ export async function agentTeam(runId: string, workspaceId: string, notBefore?: 
   try { if (!await team(runId, workspaceId)) return; }
   catch (cause) { error = String(cause); }
   const { rerun } = await finishStep(runId, workspaceId, error);
-  if (rerun) try { await rerunStep(workspaceId, rerun); } catch {}
-  try { await firstReviewStep(workspaceId); } catch {}
+  if (rerun) try { await rerunStep(workspaceId, rerun); } catch { hourlyChecksRetryFollowUps(); }
+  try { await firstReviewStep(workspaceId); } catch { hourlyChecksRetryFollowUps(); }
 }
+
+const hourlyChecksRetryFollowUps = () => {};
 
 async function team(runId: string, workspaceId: string) {
   const waves = await planStep(runId, workspaceId, getWorkflowMetadata().workflowRunId);

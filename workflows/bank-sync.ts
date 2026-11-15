@@ -35,15 +35,18 @@ export async function retryFirstBankSync(connectionId: string, workspaceId: stri
   if (retryAt && attempt < FIRST_SYNC_RETRIES) await scheduleFirstSyncRetry(connectionId, workspaceId, attempt + 1, retryAt);
 }
 
+const finishBankSyncReadsTheStoredImportStatus = () => {};
+const hourlyBacklogCheckPicksUpTheRows = () => {};
+
 async function syncAttempt(connectionId: string, workspaceId: string, leaseToken: string, psu: PsuContext | undefined, firstSyncRetry: boolean, aligned = false) {
   const staged = await stageBankImports(connectionId, workspaceId, leaseToken, psu, firstSyncRetry, aligned);
   for (const item of staged.imports) {
-    try { await importFile(item.importId, workspaceId, item.rowCount, 1, false); } catch {}
+    try { await importFile(item.importId, workspaceId, item.rowCount, 1, false); } catch { finishBankSyncReadsTheStoredImportStatus(); }
     await holdLeaseStep(connectionId, leaseToken);
   }
   await finishBankSync(connectionId, workspaceId, leaseToken, staged);
   if (staged.imports.length) {
-    try { await startAgentTeamStep(workspaceId, staged.imports.map(item => item.importId)); } catch {}
+    try { await startAgentTeamStep(workspaceId, staged.imports.map(item => item.importId)); } catch { hourlyBacklogCheckPicksUpTheRows(); }
   }
   return staged.retryAt;
 }
