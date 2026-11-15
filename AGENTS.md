@@ -66,6 +66,7 @@ Everything that needs a database or a running app is tested against `moneo-qa`, 
 
 - **Backend:** Docker project `moneo-qa` (ports 54521/54522), secrets in the git-ignored `.env.qa` (one shared copy in `~/.moneo/qa.env`, so every worktree uses the same stack). Create, upgrade or copy it into a new worktree with `npm run setup -- --qa`; then `npm run qa:auth` creates the QA user and saves `e2e/.auth.json`.
 - **App:** `npm run qa:server` runs this checkout on http://localhost:3100 against `.env.qa`, building into `.next-qa`, with bank access off and a placeholder AI key that every provider rejects, so nothing costs money. `npm run test:e2e` starts it on its own and refuses to run against any server that would sign tests in as the owner.
+- **Screenshots:** `npm run qa:shots -- <label> home money/transactions` saves each page in light, dark and mobile to `.qa/shots/<label>/` and fails on a console error or a failed request (skill `verify-ui`).
 - **Reset:** `npm run qa:reset` empties the QA workspace. Each spec should still set up the state it needs rather than rely on what earlier runs left behind.
 - `npm run test:db` and the `supabase/tests/*.mjs` scripts read `.env.qa` only.
 - A nightly run (`npm run qa:nightly`, see `e2e/README.md`) runs every spec twice and keeps the issue "Nightly browser suite is failing" up to date; fix what it lists before adding new specs.
@@ -99,7 +100,7 @@ The Desktop workflow builds and smoke-tests every platform on pull requests that
 - `desktop/` — the Electron app (`src/` main process, `src/backend/` native backend, `setup/` status window, `bootstrap/` first-run SQL); `scripts/desktop/` builds, packages and smoke-tests it; `.github/workflows/desktop.yml` runs that and drafts releases
 - `docs/` — the GitHub Pages landing page (https://indkhan.github.io/Moneo/); its download button reads the latest published release
 
-Imports go one way: `app/` → `components/` → `lib/` and `workflows/`. `lib/finance/` never imports `lib/ai/`, and Electron stays in `desktop/src`. Lint enforces all of it; code that two layers need lives in the lower one.
+Imports go one way: `app/` → `components/` → `lib/` and `workflows/`. `lib/finance/` never imports `lib/ai/`, and Electron stays in `desktop/src`. Lint enforces all of it (`moneo/import-boundaries`); code that two layers need lives in the lower one.
 
 ## Sign-in callbacks and addresses
 
