@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { redirect } from "next/navigation";
+import { requireWorkspace } from "@/lib/auth";
 
 export default async function Login() {
   await connection();
+  let recovered = false;
+  try { await requireWorkspace(); recovered = true; } catch { }
+  if (recovered) redirect("/");
   const desktop = process.env.MONEO_DESKTOP === "1";
   return <main className="mx-auto grid min-h-screen w-full max-w-md place-items-center px-4">
     <div className="rounded-xl border border-border bg-card p-6">

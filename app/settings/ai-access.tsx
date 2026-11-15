@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
 import { chatgptStatus, setAiSource, signOut, startSignIn, type AiSource } from "@/lib/ai/chatgpt";
-import { cancelClaudeSignIn, claudeAccount, claudeSignInState, ClaudeError, forgetClaudeAccount, startClaudeSignIn, submitClaudeCode } from "@/lib/ai/claude";
+import { availableClaudeAccount, cancelClaudeSignIn, claudeAccount, claudeSignInState, ClaudeError, forgetClaudeAccount, setClaudeConnected, startClaudeSignIn, submitClaudeCode } from "@/lib/ai/claude";
 import { appPort } from "@/lib/env";
 import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 import { serviceKeyStatus } from "@/lib/service-keys";
@@ -37,6 +37,7 @@ async function signInWithClaude() {
   "use server";
   await requireWorkspace();
   if (fromRemoteDevice(await headers())) claudeBack(connectOnComputer("Claude sign-in"));
+  if ((await availableClaudeAccount()).signedIn) claudeBack(await claudeSignedInMessage());
   const started = await startClaudeSignIn().catch(error => ({ error: error instanceof ClaudeError ? error.message : "Claude sign-in could not start. Try again." }));
   if (started.error) claudeBack(started.error);
   revalidatePath("/settings");
@@ -60,9 +61,10 @@ async function checkClaude() {
 
 async function claudeSignedInMessage() {
   const failed = claudeSignInState().error;
-  const account = await claudeAccount();
+  const account = await availableClaudeAccount();
   if (!account.signedIn) return failed ?? account.problem ?? "Claude sign-in isn't finished yet. Finish it in the browser, or paste the code it shows.";
   cancelClaudeSignIn();
+  await setClaudeConnected(true);
   await setAiSource("claude");
   return "connected";
 }
@@ -77,7 +79,9 @@ async function cancelClaude() {
 async function stopUsingClaude() {
   "use server";
   await requireWorkspace();
-  await setAiSource((await chatgptStatus()).signedIn ? "chatgpt" : "api_key");
+  await setClaudeConnected(false);
+  const status = await chatgptStatus();
+  if (status.source === "claude") await setAiSource(status.signedIn ? "chatgpt" : "api_key");
   revalidatePath("/settings");
 }
 
@@ -125,8 +129,10 @@ export async function AiAccess({ message, claudeMessage }: { message?: string; c
           </div>
         </div> : <div className="mt-3 flex flex-wrap gap-2">
           {claude.signedIn
-            ? active === "claude" ? <form action={stopUsingClaude}><button className={button}>Stop using Claude</button></form>
-              : <form action={chooseSource}><input type="hidden" name="source" value="claude" /><button className={button}>Use Claude plan</button></form>
+            ? <>
+              {active !== "claude" && <form action={chooseSource}><input type="hidden" name="source" value="claude" /><button className={button}>Use Claude plan</button></form>}
+              <form action={stopUsingClaude}><button className={button}>Disconnect Claude</button></form>
+            </>
             : claude.installed && <form action={signInWithClaude}><button className={button}>Sign in with Claude</button></form>}
         </div>}
         {signingIn.error && !signingIn.running && <p role="alert" className="mt-2 text-sm text-danger">{signingIn.error}</p>}

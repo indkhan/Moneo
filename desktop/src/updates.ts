@@ -1,5 +1,6 @@
 import { app } from "electron";
 import { autoUpdater } from "electron-updater";
+import { z } from "zod";
 
 export type UpdateStatus = {
   current: string;
@@ -43,6 +44,22 @@ export function createUpdater(options: {
     checking ??= (async () => {
       set({ state: "checking", error: undefined });
       try {
+        if (!options.feed) {
+          const response = await fetch("https://api.github.com/repos/indkhan/Moneo/releases?per_page=100", {
+            headers: { Accept: "application/vnd.github+json" },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
+          const releases = z.array(z.object({
+            draft: z.boolean(), prerelease: z.boolean(),
+            assets: z.array(z.object({ name: z.string(), browser_download_url: z.url() })),
+          })).parse(await response.json());
+          const metadata = process.platform === "win32" ? "latest.yml" : process.platform === "darwin" ? "latest-mac.yml" : "latest-linux.yml";
+          const asset = releases.filter(release => !release.draft && !release.prerelease)
+            .flatMap(release => release.assets.filter(item => item.name === metadata))[0];
+          if (!asset) return set({ state: "current", latest: undefined });
+          autoUpdater.setFeedURL({ provider: "generic", url: asset.browser_download_url.slice(0, asset.browser_download_url.lastIndexOf("/") + 1) });
+        }
         const result = await autoUpdater.checkForUpdates();
         if (!result) return set({ state: "error", error: "Updates work in the installed Moneo app." });
         const latest = result.updateInfo.version;

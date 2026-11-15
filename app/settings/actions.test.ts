@@ -2,8 +2,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { resetAllData, saveSettings } from "./actions";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { modelForSettings } from "@/lib/ai/provider";
-import { APICallError, generateText } from "ai";
+import { getModel } from "@/lib/ai/provider";
+import { generateText } from "ai";
 import { settingsSchema } from "@/lib/settings";
 
 vi.mock("next/headers", () => ({ cookies: async () => ({ set: vi.fn() }) }));
@@ -11,7 +11,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/supabase-server", () => ({ createClient: vi.fn() }));
-vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn() }));
+vi.mock("@/lib/ai/provider", () => ({ getModel: vi.fn() }));
 vi.mock("ai", async importOriginal => ({ ...await importOriginal<typeof import("ai")>(), generateText: vi.fn() }));
 
 function form() {
@@ -30,7 +30,7 @@ function workspaceWith(previousChat: string | null, rpc: ReturnType<typeof vi.fn
 }
 
 beforeEach(() => {
-  vi.mocked(modelForSettings).mockReset();
+  vi.mocked(getModel).mockReset();
   vi.mocked(generateText).mockReset();
   vi.mocked(requireWorkspace).mockReset();
   vi.mocked(generateText).mockResolvedValue({ text: "OK" } as unknown as Awaited<ReturnType<typeof generateText>>);
@@ -71,34 +71,16 @@ it("saves an unchanged model during a provider outage without a completion", asy
   }));
 });
 
-it("live-checks only the changed agent and saves it", async () => {
-  const rpc = vi.fn(async () => ({ error: null }));
-  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith("gpt-old", rpc));
-  const data = form(); data.set("model:chat", "gpt-old"); data.set("model:imports", "gpt-new");
-  expect(await saveSettings({}, data)).toEqual({ saved: true });
-  expect(modelForSettings).toHaveBeenCalledExactlyOnceWith(expect.anything(), "imports");
-  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ ai_models: { chat: "gpt-old", imports: "gpt-new" } }) }));
-});
-
-it("refuses a changed model that fails or replies empty, preserving the previous settings", async () => {
-  const rpc = vi.fn();
-  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith("gpt-old", rpc));
-  for (const reply of [Promise.reject(new Error("404 model not found")), Promise.resolve({ text: "  " })]) {
-    reply.catch(() => {});
-    vi.mocked(generateText).mockReturnValueOnce(reply as ReturnType<typeof generateText>);
-    const data = form(); data.set("model:chat", "gpt-typo");
-    expect(await saveSettings({}, data)).toMatchObject({ error: expect.stringContaining('"gpt-typo" did not respond') });
-  }
-  expect(rpc).not.toHaveBeenCalled();
-});
-
-it("saves a changed model that is rate-limited upstream", async () => {
+it("saves a shared model and titles override without calling a provider", async () => {
   const rpc = vi.fn(async () => ({ error: null }));
   vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
-  vi.mocked(generateText).mockRejectedValue(new APICallError({ message: "rate-limited", url: "", requestBodyValues: {}, statusCode: 429 }));
-  const data = form(); data.set("model:chat", "busy-free");
+  const data = form(); data.set("model:default", "  gpt-6-luna  "); data.set("model:titles", "gpt-title");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
-  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ ai_models: { chat: "busy-free" } }) }));
+  expect(getModel).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({
+    p_preferences: expect.objectContaining({ ai_models: { default: "gpt-6-luna", titles: "gpt-title" } }),
+  }));
 });
 
 function resetForm(confirmation: string) {

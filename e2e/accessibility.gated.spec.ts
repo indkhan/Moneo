@@ -10,7 +10,7 @@ if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state || !process.env.SUPABASE_SERVICE_ROLE_KEY, gatedSkipReason());
 
 test("core screens fit mobile and the contextual assistant supports keyboard dismissal", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const cookies = JSON.parse(readFileSync(state!, "utf8")).cookies;
   const db = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => cookies, setAll: () => {} } });
   const cleanup = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -27,6 +27,21 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   await page.getByRole("button", { name: "Save preferences", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
   try {
+  await page.getByRole("combobox", { name: "Default model", exact: true }).fill("luna");
+  await page.getByRole("combobox", { name: "Default model", exact: true }).press("ArrowDown");
+  await page.getByRole("combobox", { name: "Default model", exact: true }).press("Enter");
+  await page.getByLabel("Customize by task", { exact: true }).check();
+  await page.getByRole("combobox", { name: "Chat titles model", exact: true }).fill("gpt-custom-title");
+  await page.getByRole("button", { name: "Save preferences", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Default model", exact: true })).toHaveValue("gpt-6-luna");
+  await expect(page.getByRole("combobox", { name: "Chat titles model", exact: true })).toHaveValue("gpt-custom-title");
+  await page.getByLabel("Customize by task", { exact: true }).uncheck();
+  await page.getByRole("button", { name: "Save preferences", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Customize by task", { exact: true })).not.toBeChecked();
   expect((await db.from("accounts").insert({ id: accountId, workspace_id: workspace!.id, name: accountName, currency_code: "EUR", type: "checking" })).error).toBeNull();
   for (const route of ["/", "/money/transactions", "/money/accounts", "/money/wealth", "/plan", "/plan?horizon=365", "/import", "/settings", "/ai"]) {
     await page.goto(route);

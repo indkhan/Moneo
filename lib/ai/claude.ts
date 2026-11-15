@@ -1,5 +1,7 @@
 import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { createRequire } from "node:module";
 import type { ToolSet } from "ai";
 import { claudeCode, createAiSdkMcpServer, type ClaudeCodeSettings, type MessageInjector } from "ai-sdk-provider-claude-code";
@@ -38,7 +40,26 @@ export function accountFrom(output: string): ClaudeAccount {
 }
 
 const cache = globalThis as typeof globalThis & { moneoClaudeAccount?: { at: number; value: Promise<ClaudeAccount> } };
-export function claudeAccount(): Promise<ClaudeAccount> {
+const connectionFile = () => path.join(process.env.MONEO_DATA_DIR ?? path.join(process.cwd(), ".data"), "claude-connected");
+
+export async function setClaudeConnected(connected: boolean) {
+  await mkdir(path.dirname(connectionFile()), { recursive: true });
+  await writeFile(connectionFile(), connected ? "true" : "false", { mode: 0o600 });
+}
+
+export async function claudeAccount(): Promise<ClaudeAccount> {
+  const connected = await readFile(connectionFile(), "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return "false";
+    throw error;
+  });
+  if (connected !== "true") {
+    const installed = Boolean(claudeExecutable());
+    return { installed, signedIn: false, email: null, plan: null, problem: installed ? null : "Claude Code is missing from this install. Run npm ci, then restart Moneo." };
+  }
+  return availableClaudeAccount();
+}
+
+export function availableClaudeAccount(): Promise<ClaudeAccount> {
   if (cache.moneoClaudeAccount && Date.now() - cache.moneoClaudeAccount.at < 30_000) return cache.moneoClaudeAccount.value;
   const executable = claudeExecutable();
   const value = executable ? new Promise<ClaudeAccount>(resolve => execFile(/*turbopackIgnore: true*/ executable, ["auth", "status", "--json"], { env: claudeEnv(), timeout: 20_000, windowsHide: true },

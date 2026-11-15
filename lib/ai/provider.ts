@@ -5,6 +5,12 @@ import { chatgptFetch, chatgptStatus, usesChatGPT, type AiSource } from "./chatg
 import { claudeAccount, claudeModel, type ClaudeSteering } from "./claude";
 import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
+import { connectedDefault } from "./model-options";
+
+export async function modelConnections() {
+  const [chatgpt, claude, openai, openrouter] = await Promise.all([chatgptStatus(), claudeAccount(), serviceKey("openai_api_key"), serviceKey("openrouter_api_key")]);
+  return { openai: chatgpt.signedIn || Boolean(openai), claude: claude.signedIn, openrouter: Boolean(openrouter) };
+}
 
 export async function getModel(modelId: string) {
   if (modelId.includes("/")) {
@@ -30,11 +36,15 @@ export async function getModel(modelId: string) {
 
 export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent, source?: AiSource): string {
   if (agent === "voice_call") return settings?.ai_models.voice_call ?? modelIdFor(settings, "chat", source);
-  return settings?.ai_models[agent] ?? (source === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model);
+  return settings?.ai_models[agent] ?? settings?.ai_models.default ?? (source === "claude" ? AI_AGENTS[agent].claude : AI_AGENTS[agent].model);
 }
 
-export async function currentModelId(settings: WorkspaceSettings | undefined, agent: AiAgent) {
-  return modelIdFor(settings, agent, (await chatgptStatus()).source);
+export async function currentModelId(settings: WorkspaceSettings | undefined, agent: AiAgent): Promise<string> {
+  if (agent === "voice_call" && !settings?.ai_models.voice_call) return currentModelId(settings, "chat");
+  const selected = settings?.ai_models[agent] ?? settings?.ai_models.default;
+  if (selected) return selected;
+  const [connections, status] = await Promise.all([modelConnections(), chatgptStatus()]);
+  return connectedDefault(agent, connections, status.source === "claude");
 }
 
 export async function modelForSettings(settings: WorkspaceSettings | undefined, agent: AiAgent) {

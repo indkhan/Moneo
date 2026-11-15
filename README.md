@@ -68,6 +68,8 @@ Go to **Settings → Keys and connections → AI access** and choose one:
 - **Sign in with Claude** to use your Claude Pro, Max, Team or Enterprise plan (see [Use your Claude plan](#use-your-claude-plan-optional)), or
 - **Paste an OpenAI API key** ([create one here](https://platform.openai.com/api-keys)) and click **Save key**. Usage is billed to that key.
 
+In Settings ? AI and your data, type or choose one default model for all AI tasks (GPT-6 Luna by default with OpenAI). Turn on ?Customize by task? for individual overrides; turning it off clears those overrides when you save. Model IDs are saved without a provider call, so unavailable models report an error when used. Claude-only installs use a Claude default.
+
 Voice calls and dictation need the OpenAI API key. An OpenRouter key is optional (for other models).
 
 #### 6. Add your money
@@ -106,7 +108,7 @@ Every key and outside service is set up in the app under **Settings → Keys and
 Moneo can run on your Claude subscription instead of an API key. It uses Claude Code, which comes with Moneo, signed in with your own Claude account on this computer. Moneo never sees or stores your Claude login; Claude Code keeps it, the same one the Claude Code app uses.
 
 1. In **Settings → AI access**, click **Sign in with Claude** on this computer. A Claude sign-in page opens in your browser.
-2. Sign in. If the page shows a code, paste it into Moneo and click **Continue**. If you're already signed in to Claude Code, Moneo shows your account straight away; click **Use Claude plan**.
+2. Sign in. If the page shows a code, paste it into Moneo and click **Continue**. If you're already signed in to Claude Code, clicking **Sign in with Claude** connects that account. Moneo never connects it automatically.
 
 Chat, artifacts, briefings, imports and the agents then run on Claude (Opus 5.5 for the chat, Haiku 5.5 for lighter tasks; change them under **Settings → AI and your data → Advanced**). Requests count toward your plan's usage limits, shown at [claude.ai/settings/usage](https://claude.ai/settings/usage).
 

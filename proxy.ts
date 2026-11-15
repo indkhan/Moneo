@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasSupabase } from "@/lib/env";
+import { supabaseFetch } from "@/lib/supabase-fetch";
 
 export async function proxy(request: NextRequest) {
   if (request.headers.has("tailscale-funnel-request")) return new NextResponse("Moneo is private to your own devices.", { status: 403 });
@@ -11,6 +12,7 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      global: { fetch: supabaseFetch },
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookies, headers) => {
