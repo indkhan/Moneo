@@ -24,7 +24,10 @@ describe("data_query results", () => {
   it("says when rows were cut", () => {
     const output = dataQueryOutput({ columns: ["g"], rows: Array.from({ length: 500 }, (_, index) => ({ g: String(index) })), truncated: "rows" });
     expect(output.rowCount).toBe(500);
-    expect(output.truncated).toBeDefined();
+    expect(output.truncated).toContain("500");
+    const cutBySize = dataQueryOutput({ columns: ["g"], rows: [{ g: "a" }, { g: "b" }], truncated: "size" });
+    expect(cutBySize.truncated).toContain("2 rows");
+    expect(cutBySize.truncated).not.toBe(output.truncated);
     expect(dataQueryOutput({ columns: [], rows: [], truncated: null })).not.toHaveProperty("truncated");
   });
 

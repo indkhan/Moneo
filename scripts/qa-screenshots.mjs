@@ -44,6 +44,7 @@ try {
       const slug = page === "/" ? "home" : page.replace(/^\//, "").replace(/[^a-z0-9]+/gi, "-");
       const file = path.join(folder, `${slug}-${view.name}.png`);
       if (response) await tab.screenshot({ path: file, fullPage: true, animations: "disabled", style: "*, *::before, *::after { transition: none !important; }" });
+      if (page !== "/setup" && new URL(tab.url()).pathname === "/setup") problems.push("The QA session was not accepted. Run `npm run qa:auth`; if a fresh session still lands here, run `npm run qa:reset` (skill verify-ui, Doctor).");
       const status = response?.status() ?? 0;
       if (!response || status >= 400 || problems.length) failed = true;
       console.log(`${status || "ERR"}  ${file}${problems.length ? `\n     ${[...new Set(problems)].join("\n     ")}` : ""}`);

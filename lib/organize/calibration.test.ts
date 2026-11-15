@@ -19,7 +19,8 @@ it("stops auto-applying medium labels when fewer than 90% of the last 200 judged
   expect(calibration(verdicts(20, 20))).toMatchObject({ mediumAllowed: true, accuracy: null });
   expect(calibration(verdicts(180, 20))).toMatchObject({ mediumAllowed: true, accuracy: 0.9 });
   const tripped = calibration(verdicts(179, 21));
-  expect(tripped).toMatchObject({ mediumAllowed: false, judged: 200 });
-  expect(tripped.reason).toBeTruthy();
+  expect(tripped).toMatchObject({ mediumAllowed: false, judged: 200, accuracy: 0.895 });
+  expect(tripped.reason).toContain("89%");
+  expect(tripped.reason).toContain("200");
   expect(calibration([...verdicts(200, 0), ...verdicts(0, 100)]).mediumAllowed).toBe(true);
 });

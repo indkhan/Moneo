@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { getModel, modelIdFor } from "./provider";
+import { getModel, modelIdFor, SYSTEM_PROMPT } from "./provider";
 import { claudeAccount } from "./claude";
 import { AI_AGENTS, settingsSchema } from "@/lib/settings";
 
@@ -53,4 +53,9 @@ test("with only an OpenRouter key, OpenAI model IDs run through OpenRouter", asy
   const model = await getModel(AI_AGENTS.chat.model);
   expect(model.provider).toContain("openrouter");
   expect(model.modelId).toBe(`openai/${AI_AGENTS.chat.model}`);
+});
+
+test("the system prompt stays within its budget", () => {
+  const budget = 8000;
+  expect(SYSTEM_PROMPT.length, `The system prompt is ${SYSTEM_PROMPT.length} characters; its budget is ${budget}. Do not add a sentence to make one request work: give the assistant the tool, data or scope it lacks (AGENTS.md How to work, "Fix the class"). For guidance that applies to every request, shorten something else first. Raise the budget only when the owner asks.`).toBeLessThanOrEqual(budget);
 });

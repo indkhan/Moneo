@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -34,7 +35,8 @@ it("registers dynamically on a 127.0.0.1 callback, then exchanges the code with 
   expect(authorize.searchParams.get("scope")).toContain("chatgpt.tokens.use.direct");
   const body = new URLSearchParams(String(fetcher.mock.calls[0][1]?.body));
   expect(body.get("client_id")).toBe("oaiapp_1");
-  expect(body.get("code_verifier")).toBeTruthy();
+  expect(authorize.searchParams.get("code_challenge_method")).toBe("S256");
+  expect(createHash("sha256").update(body.get("code_verifier")!).digest("base64url")).toBe(authorize.searchParams.get("code_challenge"));
   expect(body.get("redirect_uri")).toBe("http://127.0.0.1:3000/api/ai/chatgpt/callback");
   expect(await chatgptStatus()).toEqual({ signedIn: true, email: "owner@example.com", source: "chatgpt" });
   expect(await usesChatGPT()).toBe(true);

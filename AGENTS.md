@@ -24,7 +24,8 @@ These are defaults. The developer's instructions override them; if a rule confli
 3. **Surgical changes.** Touch only what the task needs and match the nearby style. Remove what your own change made unused; mention unrelated dead code instead of deleting it.
 4. **Never write a comment.** Put the meaning in a name, a type, a test or a lint rule; if a comment would defend a workaround, fix the cause instead. `npm run lint` rejects comments (`moneo/no-comments` in `eslint.config.mjs`) except tool directives such as `eslint-disable-next-line <rule> -- reason`.
 5. **Corrections become checks.** When a review correction could recur, enforce it with a lint rule, a type or a test whose error message says what to do instead. Add a line here only when it needs human judgment.
-6. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts by reproducing the failure; see Tests for when that becomes a kept test. Purely visual changes get a before/after screenshot instead.
+6. **Fix the class, not the case.** Trace a failure to the first place the system went wrong and fix it there, so every similar case is fixed with it. A guard, a retry, a swallowed error or a special case at the place it showed up hides the fault. When the assistant in the app cannot do something, give it the tool, data or scope it lacks; never add a sentence to its system prompt (`lib/ai/provider.ts`, `lib/ai/voice-*`) that names one request, keyword or example.
+7. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts by reproducing the failure; see Tests for when that becomes a kept test. Purely visual changes get a before/after screenshot instead.
 
 ## Safety
 
@@ -102,6 +103,25 @@ The Desktop workflow builds and smoke-tests every platform on pull requests that
 
 Imports go one way: `app/` → `components/` → `lib/` and `workflows/`. `lib/finance/` never imports `lib/ai/`, and Electron stays in `desktop/src`. Lint enforces all of it (`moneo/import-boundaries`); code that two layers need lives in the lower one.
 
+## Rules and what enforces them
+
+When a correction could recur, enforce it (skill `review-to-rule`) and add a row here. A rule with nothing in the right-hand column is only a hope.
+
+| Rule | Enforced by |
+| --- | --- |
+| No comments, except exact tool directives | `moneo/no-comments` (lint, autofix) |
+| `app/` → `components/` → `lib/`, `workflows/`; `lib/finance` never imports `lib/ai`; Electron only in `desktop/`; no app code in `desktop/src` | `moneo/import-boundaries` (lint) |
+| The modules every page loads (`lib/auth`, `lib/settings`, `lib/safe-action`, `lib/env`) never import `lib/ai` | `moneo/import-boundaries` (lint) |
+| No hard-coded port 3000 or app address outside `lib/env.ts` | `no-restricted-syntax` (lint) |
+| Tests never wait on a real timer, skip from inside a test, read migration text, or touch port 3000 | `no-restricted-syntax` (lint) |
+| No `eslint-disable` that suppresses nothing | `reportUnusedDisableDirectives` (lint) |
+| Every code path returns; overrides are marked; no switch fall-through | `tsconfig.json` |
+| A stored preference this version cannot read never blocks sign-in | `lib/settings.test.ts` |
+| The assistant's system prompt does not grow by special cases | budget in `lib/ai/provider.test.ts` |
+| No secrets, statements or personal data in the repo | `npm run check:privacy` (runs before test and lint) |
+| A page's JavaScript stays within its size budget | `npm run check:bundle` |
+| A test file runs in 10 seconds or less | CI, "Slowest test files" |
+
 ## Sign-in callbacks and addresses
 
 Each outside service sends the browser back to a different address. Keep these in mind before changing ports, hosts or remote access:
@@ -124,6 +144,7 @@ A test earns its place by failing when real behaviour breaks. Before writing one
 
 - **Write tests for** money math, imports and undo, auth, RLS and AI scopes, concurrency, and bugs that actually happened (name the PR or issue).
 - **Don't write tests that** assert UI copy or labels, grep source or migration files, mirror the implementation, or need more than about three `vi.mock`s to run. Test the `lib/` function instead.
+- Check each test against two imagined edits. Break the behaviour (a wrong value, a skipped or doubled effect): the test must fail. Restructure the internals without changing any result: the test must still pass. Rewrite or delete a test that misses either. Take the expected value from the requirement, never from a run of the code, and never assert on data the test built itself.
 - One test per behaviour. Don't add a test per requirement or per audit finding; if an existing test covers the failure, extend it.
 - `npm test` must pass with no `.env`, no Docker and no network. Anything that needs the database is a `*.live.test.ts`.
 - Use fake timers or controlled promises, never real waits. Mock AI, bank and Scalable; real calls are opt-in only.
