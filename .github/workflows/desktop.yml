@@ -44,6 +44,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./desktop/package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match desktop/package.json version $version."
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -159,7 +170,8 @@ jobs:
         run: |
           version=$(node -p "require('./desktop/package.json').version")
           if [ "$TAG" != "v$version" ]; then
-            echo "::warning::Tag $TAG does not match desktop/package.json version $version; installer file names carry $version."
+            echo "::error::Tag $TAG does not match desktop/package.json version $version."
+            exit 1
           fi
           cd installers
           ls -la
