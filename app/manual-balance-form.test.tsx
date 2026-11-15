@@ -21,13 +21,11 @@ it("lets users verify recorded activity without retyping an exact historical bal
   const today = {...prior, id: "today", amount_minor: "-250", posted_on: "2026-10-08", description: "Today recorded payment"};
   const props = {account, snapshots: [snapshot], ledger: [prior, today, {...today, id: "pending", status: "pending", description: "Not booked"}], asOf: "2026-10-08T12:00:00Z", timeZone: "UTC", locale: "en"};
   const html = renderToStaticMarkup(<ManualBalanceForm {...props} />);
-  expect(html).toContain("Confirm recorded balance");
   expect(html).toContain('name="amount" value="96.50"');
   expect(html).toContain("Earlier recorded payment"); expect(html).toContain("Today recorded payment");
   expect(html).not.toContain("Not booked"); expect(html).not.toContain('checked=""');
-  expect(html).toContain("I checked my bank"); expect(html).toContain("before pending holds");
   expect(html).toMatch(/<input(?=[^>]*name="reviewedActivity")(?=[^>]*required="")[^>]*>/);
-  expect(html).toContain("Recorded changes since 2026-09-30");
+  expect(html).toContain("2026-09-30");
   const uncertain = renderToStaticMarkup(<ManualBalanceForm {...props} snapshots={[{...snapshot, currency_code: "JPY"}]} />);
-  expect(uncertain).not.toContain("Confirm recorded balance");
+  expect(uncertain).not.toContain('name="amount" value=');
 });

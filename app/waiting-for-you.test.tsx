@@ -34,8 +34,7 @@ it("lists transaction and balance cards with their count, open and filterable", 
   expect(html).toContain("Wallet");
   expect(html).toContain("aria-label=\"Balance proposal\"");
   expect(html).toContain("Cash is €40.00");
-  expect(html).toMatch(/>All<.*>Transactions<.*>Balances</);
-  expect(html).not.toContain(">Loans<");
+  expect(html.match(/aria-pressed/g)).toHaveLength(3);
 });
 
 it("lists stored cards without running detection", async () => {

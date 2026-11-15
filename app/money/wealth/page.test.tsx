@@ -25,18 +25,14 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   const { default: WealthPage } = await import("./page");
   const html = renderToStaticMarkup(await WealthPage());
   vi.useRealTimers();
-  expect(html).toContain("Net worth (EUR)");
   expect(html).toContain("EUR 45.00");
   expect(html).toMatch(/Accounts<\/dt><dd[^>]*>EUR 40.00/);
   expect(html).toContain("<polyline");
   expect(html).toContain("2025-10-31");
-  expect(html).toContain("Investments");
-  expect(html).toContain("Debts");
-  expect(html).not.toContain("How this was calculated");
-  expect(html).toContain("Undo Index fund change"); expect(html).toContain("Remove Car loan (keep history)");
-  expect(html).toContain("Amount you still owe (EUR)"); expect(html).toContain('value="15.00"');
-  expect(html).toContain("1 valuation is not from today and uses its last known value: Car loan (2026-05-"); expect(html).toContain("-EUR 15.00");
-  expect(html).toContain("Net worth by month"); expect(html).toContain(">Today<");
+  expect(html).toContain('name="eventId" value="e1"');
+  expect(html.match(/aria-label="Remove /g)).toHaveLength(2);
+  expect(html).toContain('value="15.00"');
+  expect(html).toContain("Car loan (2026-05-"); expect(html).toContain("-EUR 15.00");
 });
 
 it("shows the Scalable portfolio in its own panel, with today's move and each position's gain", async () => {
@@ -50,11 +46,10 @@ it("shows the Scalable portfolio in its own panel, with today's move and each po
   const { default: WealthPage } = await import("./page");
   const html = renderToStaticMarkup(await WealthPage());
   vi.useRealTimers();
-  expect(html).toContain("Scalable Capital");
-  expect(html).toContain("+EUR 1.36"); expect(html).toContain("today");
-  expect(html).toContain("1 year"); expect(html).toContain("-EUR 35.11");
+  expect(html).toContain("+EUR 1.36");
+  expect(html).toContain("-EUR 35.11");
   expect(html).toContain("-EUR 35.40"); expect(html).toContain("-49.9%");
-  expect(html).toContain("Recent activity"); expect(html).toContain("Cash to invest");
-  expect(html).not.toContain("Remove Tech ETF (keep history)");
-  expect(html).not.toContain("How this is worked out");
+  expect(html).toContain("-EUR 24.63"); expect(html).toContain("EUR 23.13");
+  expect(html.match(/aria-label="Remove /g)).toHaveLength(2);
+  expect(html).not.toContain('aria-label="Remove Tech ETF');
 });

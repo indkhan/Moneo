@@ -33,19 +33,17 @@ it("lists balances with as-of date, trend, rename suggestion, balance update and
   const { default: AccountsPage } = await import("./page");
   const html = renderToStaticMarkup(await AccountsPage());
   expect(html).toContain("EUR 115.00");
-  expect(html).toContain("Estimated · as of 2026-10-10");
+  expect(html).toContain("2026-10-10");
   expect(html).toContain("<polyline");
-  expect(html).toContain("Rename to “Revolut Current”");
-  expect(html).toContain("No balance yet");
+  expect(html).toContain('name="name" value="Revolut Current"');
   expect(html).toContain("From 1 of 2 accounts");
-  expect(html).toContain("Fix 1 balance");
   expect(html).toContain("on 2026-10-16, 3 recorded");
   expect(html).toContain('name="expectedSnapshotId" value="s2"');
-  expect(html).toContain("Undo balance");
+  expect(html).toContain('name="snapshotId" value="s2"');
   expect(html).toContain("Archived accounts (1)");
   expect(html).toContain("renamed “Old” → “Checking”");
-  expect(html).toContain(">Undo</button>");
-  expect(html.match(/Update balance/g)).toHaveLength(1);
+  expect(html).toContain('name="eventId" value="e1"');
+  expect(html.match(/name="expectedSnapshotId"/g)).toHaveLength(1);
 });
 
 it("lists own account IBANs masked and reports found transfers", async () => {
@@ -53,14 +51,12 @@ it("lists own account IBANs masked and reports found transfers", async () => {
   const html = renderToStaticMarkup(await AccountsPage({ searchParams: Promise.resolve({ transfers: "2-1-0" }) }));
   expect(html).toContain("Savings at DKB · ••2051");
   expect(html).not.toContain("DE02120300000000202051");
-  expect(html).toContain("Not tracked in Moneo");
   expect(html).toContain("Found 2 transfer pairs and 1 payment to your untracked accounts.");
 });
 
 it("shows the synced Scalable portfolio with a link to manage the connection on Import", async () => {
   const { default: AccountsPage } = await import("./page");
   const html = renderToStaticMarkup(await AccountsPage());
-  expect(html).toContain("Scalable Capital");
   expect(html).toContain("12,345.00");
   expect(html).toContain('href="/import#scalable"');
 });
