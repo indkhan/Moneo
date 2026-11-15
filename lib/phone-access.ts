@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { renderSVG } from "uqr";
 import { z } from "zod";
+import { loopbackUrl } from "@/lib/env";
 
 export type PhoneAccess =
   | { state: "off" | "not_installed" | "busy" }
@@ -21,7 +22,7 @@ const serveSchema = z.object({
 type Result = { ok: boolean; stdout: string; output: string; missing?: boolean };
 
 const cli = () => INSTALLED.find(path => existsSync(path)) ?? "tailscale";
-const target = () => `http://127.0.0.1:${Number(process.env.PORT ?? 3000)}`;
+const target = () => loopbackUrl();
 const linkIn = (output: string) => output.match(LOGIN_LINK)?.[0].trim() ?? null;
 const reason = (output: string) => new TailscaleError(output.trim().split("\n")[0] || "Tailscale did not respond");
 

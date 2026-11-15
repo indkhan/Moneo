@@ -6,7 +6,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { reviewedLocalTimestamp } from "@/lib/finance/calendar";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { parseManualAmount } from "@/lib/finance/transaction-input";
-import { decideProposals, readableError } from "@/lib/ai/agent-apply";
+import { decideProposals } from "@/lib/ai/agent-apply";
+import { readableError } from "@/lib/readable-error";
 import { decideCurrentSeries, recurringCardDetails } from "@/lib/ai/recurring-proposals";
 import { createSchedule, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "@/lib/recurring/schedules";
 

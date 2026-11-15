@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { safely } from "./safe-action";
 
-vi.mock("@/lib/ai/agent-apply", () => ({ readableError: (cause: unknown) => cause instanceof Error ? cause.message : "Could not save" }));
+vi.mock("@/lib/readable-error", () => ({ readableError: (cause: unknown) => cause instanceof Error ? cause.message : "Could not save" }));
 
 const form = new FormData();
 

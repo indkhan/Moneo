@@ -1,6 +1,6 @@
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
-import { readableError } from "@/lib/ai/agent-apply";
+import { readableError } from "@/lib/readable-error";
 
 export type SafeState = { error?: string };
 

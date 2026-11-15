@@ -94,6 +94,17 @@ const noComments = {
   },
 };
 
+const hardCodedAddress = [
+  {
+    selector: ":matches(Literal[value=/(localhost|127\.0\.0\.1):3000/], TemplateElement[value.raw=/(localhost|127\.0\.0\.1):3000/])",
+    message: "The desktop app and the QA app do not run on port 3000. Use appUrl(), loopbackUrl() or appPort() from lib/env.ts (AGENTS.md Desktop app).",
+  },
+  {
+    selector: ":matches(LogicalExpression[operator='??'], LogicalExpression[operator='||'])[right.value=3000]",
+    message: "The desktop app and the QA app do not run on port 3000. Use appPort() from lib/env.ts (AGENTS.md Desktop app).",
+  },
+];
+
 const isTest = file => /\.(test|spec)\.tsx?$/.test(file);
 const under = (file, folder) => file === folder || file.startsWith(`${folder}/`);
 
@@ -117,6 +128,11 @@ const layers = [
     applies: file => under(file, "components") && !isTest(file),
     bans: (target, local) => local && under(target, "app"),
     message: "components/ sits below app/. Move the shared component to components/, or the shared logic or server action to lib/ (AGENTS.md Project map).",
+  },
+  {
+    applies: file => ["lib/auth.ts", "lib/settings.ts", "lib/safe-action.ts", "lib/env.ts", "lib/readable-error.ts"].includes(file),
+    bans: (target, local) => local && under(target, "lib/ai"),
+    message: "Every page and action loads this module, so it must not pull in the AI code. Move what it needs out of lib/ai into lib/ (AGENTS.md Project map).",
   },
   {
     applies: file => under(file, "lib/finance") && !isTest(file),
@@ -155,6 +171,12 @@ export default defineConfig([
   {
     plugins: { moneo: { rules: { "no-comments": noComments, "import-boundaries": importBoundaries } } },
     rules: { "moneo/no-comments": "error", "moneo/import-boundaries": "error" },
+  },
+  { linterOptions: { reportUnusedDisableDirectives: "error" } },
+  {
+    files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts"],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress] },
   },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],

@@ -126,7 +126,7 @@ export async function proposeScalableCancel(context: Context, connectionId: stri
   return { shown: true as const, proposalId: id, title };
 }
 
-export class OrderOutcomeUnknown extends Error { name = "OrderOutcomeUnknown"; }
+export class OrderOutcomeUnknown extends Error { override name = "OrderOutcomeUnknown"; }
 
 const submitSchema = z.object({ orderId: z.string().optional(), transactionReference: z.string().nullable().optional(), accepted: z.boolean().optional(),
   error: z.object({ code: z.string().optional(), message: z.string().optional() }).nullable().optional() }).passthrough();

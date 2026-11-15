@@ -1,4 +1,5 @@
 import type { requireWorkspace } from "@/lib/auth";
+import { readableError } from "@/lib/readable-error";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { payloadSchemas, type ProposalKind } from "@/lib/ai/agent-team";
 import { iouCreateSchema, iouRecord, iouSettleSchema } from "@/lib/finance/iou";
@@ -96,11 +97,6 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       payloadSchemas.finding.parse(proposal.payload);
       return { href: "/money/transactions", acknowledged: true };
   }
-}
-
-export function readableError(cause: unknown) {
-  const message = cause instanceof Error || (typeof cause === "object" && cause && "message" in cause) ? String((cause as { message: unknown }).message) : String(cause);
-  return /<(!doctype|html|head|body)\b/i.test(message) || /cloudflare/i.test(message) ? "The database did not answer. Nothing was saved; try again in a moment." : message.slice(0, 500);
 }
 
 export async function decideProposals(context: Context, ids: string[], decision: "accept" | "reject", options: DecideOptions = {}) {

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase-server";
-import { settingsSchema } from "@/lib/settings";
+import { readSettings } from "@/lib/settings";
 
 const CONFIRMED_MS = 60_000;
 const confirmed = new Map<string, { user: User; until: number }>();
@@ -34,6 +34,6 @@ export const requireWorkspace = cache(async () => {
   ]);
   if (error || !data) throw new Error("Workspace unavailable");
   const { workspace_settings: stored, ...workspace } = data as typeof data & { workspace_settings: unknown };
-  const settings = settingsSchema.parse(stored ?? {});
+  const settings = readSettings(stored);
   return { supabase, user, settings, workspace: { ...workspace, timezone: settings.timezone, locale: settings.locale, settings } };
 });

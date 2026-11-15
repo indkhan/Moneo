@@ -77,7 +77,7 @@ The Electron app (`desktop/README.md`, `desktop/src/backend/README.md`) runs the
 
 - **Settings the owner needs go in the app**, not in `.env`. `desktop:build` unsets every `NEXT_PUBLIC_*` and fails if a local address is baked in; desktop-only behaviour reads `MONEO_DESKTOP_*` at runtime.
 - **Migrations run on the owner's existing database** at the next start, after an automatic `pre-upgrade` backup (`desktop/src/backend/migrations.ts`). They must work without the extensions the bundle lacks: supautils, pg_graphql, pg_net, pg_cron, pgsodium/vault, pg_stat_statements, realtime, and uuid-ossp on Windows.
-- **The app lives on `http://localhost:47300`** (or the port saved in `shell.json`), not 3000. Derive addresses from the request or `NEXT_PUBLIC_APP_URL`; never hard-code a port.
+- **The app lives on `http://localhost:47300`** (or the port saved in `shell.json`), not 3000. Get addresses from the request or from `appUrl()`, `loopbackUrl()` and `appPort()` in `lib/env.ts`; lint rejects a hard-coded 3000.
 - **Sign-ins open in the system browser** and return through the loopback callbacks; the result reaches the window through `lib/desktop-bridge.ts` and `desktop/src/bridge.ts`. The window opens only Moneo's own pages and allows only the microphone and copying.
 - **Files the server reads at runtime** by a dynamic path need `/*turbopackIgnore: true*/`, or the standalone build traces source files and `desktop:build` fails.
 - **A new backend service, native module or data folder** must be added to `fetch-backend.mjs`, the start order, backup and restore, and the packaged files in `electron-builder.config.cjs`.

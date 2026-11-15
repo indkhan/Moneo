@@ -1,10 +1,15 @@
 import { z } from "zod";
 
+const DEFAULT_PORT = 3000;
+export const appPort = (env: NodeJS.ProcessEnv = process.env) => Number(env.PORT) || DEFAULT_PORT;
+export const loopbackUrl = (env: NodeJS.ProcessEnv = process.env) => `http://127.0.0.1:${appPort(env)}`;
+export const appUrl = () => process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${appPort()}`;
+
 const serverSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
-  NEXT_PUBLIC_APP_URL: z.string().default("http://localhost:3000"),
+  NEXT_PUBLIC_APP_URL: z.string().default(appUrl),
 });
 
 export type Env = z.infer<typeof serverSchema>;

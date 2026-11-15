@@ -35,10 +35,21 @@ export const settingsSchema = z.object({
 export type WorkspaceSettings = z.infer<typeof settingsSchema>;
 export const DEFAULT_SETTINGS = settingsSchema.parse({});
 
+export function readSettings(stored: unknown): WorkspaceSettings {
+  const whole = settingsSchema.safeParse(stored ?? {});
+  if (whole.success) return whole.data;
+  const row = stored && typeof stored === "object" ? stored as Record<string, unknown> : {};
+  const fields = Object.entries(settingsSchema.shape).map(([name, field]) => {
+    const read = field.safeParse(row[name]);
+    return [name, read.success ? read.data : DEFAULT_SETTINGS[name as keyof WorkspaceSettings]];
+  });
+  return Object.fromEntries(fields) as WorkspaceSettings;
+}
+
 export async function loadWorkspaceSettings(supabase: SupabaseClient, workspaceId: string): Promise<WorkspaceSettings> {
   const { data, error } = await supabase.from("workspace_settings").select("*").eq("workspace_id", workspaceId).maybeSingle();
   if (error) throw new Error("Workspace preferences unavailable");
-  return settingsSchema.parse(data ?? {});
+  return readSettings(data);
 }
 
 export function requireAiScope(settings: WorkspaceSettings | undefined, ...scopes: AiDataScope[]) {

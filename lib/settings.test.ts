@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settingsSchema, requireAiScope } from "./settings";
+import { DEFAULT_SETTINGS, readSettings, settingsSchema, requireAiScope } from "./settings";
 
 describe("workspace preferences", () => {
   it("defaults to EUR-era Germany calendar and explicitly scoped AI data", () => {
@@ -24,5 +24,16 @@ describe("workspace preferences", () => {
     const settings = settingsSchema.parse({ ai_data_scopes: ["accounts"] });
     expect(() => requireAiScope(settings, "accounts")).not.toThrow();
     expect(() => requireAiScope(settings, "transactions")).toThrow("AI access to transactions is disabled");
+  });
+});
+
+describe("stored preferences from another version (issue #224)", () => {
+  it("keeps every readable preference and defaults the one it cannot read", () => {
+    const stored = { theme: "dark", locale: "de-DE", ai_models: { default: "gpt-6-luna" }, voice: "retired-voice", workspace_id: "w" };
+    expect(readSettings(stored)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark", locale: "de-DE" });
+  });
+
+  it("reads a missing row as the defaults", () => {
+    expect(readSettings(null)).toEqual(DEFAULT_SETTINGS);
   });
 });

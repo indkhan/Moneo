@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
 import { chatgptStatus, setAiSource, signOut, startSignIn, type AiSource } from "@/lib/ai/chatgpt";
 import { cancelClaudeSignIn, claudeAccount, claudeSignInState, ClaudeError, forgetClaudeAccount, startClaudeSignIn, submitClaudeCode } from "@/lib/ai/claude";
+import { appPort } from "@/lib/env";
 import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 import { serviceKeyStatus } from "@/lib/service-keys";
 import { AiKeyForm } from "./ai-key-form";
@@ -12,7 +13,7 @@ async function signInWithChatGPT() {
   "use server";
   await requireWorkspace();
   if (fromRemoteDevice(await headers())) redirect(`/settings?chatgpt=${encodeURIComponent(connectOnComputer("ChatGPT sign-in"))}#ai-access`);
-  redirect(await startSignIn(Number(process.env.PORT ?? 3000)));
+  redirect(await startSignIn(appPort()));
 }
 
 async function signOutOfChatGPT() {

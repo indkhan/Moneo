@@ -6,7 +6,7 @@ import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {versionedRows} from '@/lib/finance/transaction-input';
 import {safely,type SafeState} from '@/lib/safe-action';
-import {readableError} from '@/lib/ai/agent-apply';
+import {readableError} from '@/lib/readable-error';
 
 type ReviewState={error?:string;reviewId?:string};
 const target=z.union([z.uuid(),z.literal('keep'),z.literal('')]);

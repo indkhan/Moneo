@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:https";
 import path from "node:path";
+import { appUrl as defaultAppUrl } from "@/lib/env";
 
 export const BANK_RETURN_PORT = 3443;
 export const BANK_REDIRECT_URL = `https://localhost:${BANK_RETURN_PORT}/api/bank/callback`;
@@ -15,7 +16,7 @@ export function forwardTarget(requestUrl: string, appUrl: string) {
   return url.pathname === CALLBACK ? new URL(`${CALLBACK}${url.search}`, appUrl).toString() : null;
 }
 
-export function startBankReturnListener(appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000") {
+export function startBankReturnListener(appUrl = defaultAppUrl()) {
   const files = certificatePaths();
   if (!existsSync(/*turbopackIgnore: true*/ files.key) || !existsSync(/*turbopackIgnore: true*/ files.cert)) return null;
   const tls = { key: readFileSync(/*turbopackIgnore: true*/ files.key), cert: readFileSync(/*turbopackIgnore: true*/ files.cert) };
