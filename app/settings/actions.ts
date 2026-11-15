@@ -4,10 +4,8 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { APICallError, generateText } from "ai";
 import { requireWorkspace } from "@/lib/auth";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
-import { getModel } from "@/lib/ai/provider";
 import { minorDigits } from "@/lib/finance/fx";
 import { revokeBankSessions } from "@/lib/bank/server";
 
@@ -16,10 +14,10 @@ export type SaveSettingsState = { error?: string; field?: string; saved?: boolea
 export async function saveSettings(_previous: SaveSettingsState, form: FormData): Promise<SaveSettingsState> {
   let field: string | undefined;
   try {
-    const { supabase, workspace, settings: previous } = await requireWorkspace();
+    const { supabase, workspace } = await requireWorkspace();
     const settings = settingsSchema.parse({
       timezone: form.get("timezone"), locale: form.get("locale"), theme: form.get("theme"), voice: form.get("voice"),
-      ai_models: Object.fromEntries(AI_AGENT_KEYS.map(agent => [agent, String(form.get(`model:${agent}`) ?? "").trim()]).filter(([, model]) => model)),
+      ai_models: Object.fromEntries(["default", ...AI_AGENT_KEYS].map(agent => [agent, String(form.get(`model:${agent}`) ?? "").trim()]).filter(([, model]) => model)),
       ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
       artifact_scalable_data: form.get("artifact_scalable_data") === "live" ? "live" : "snapshot",
@@ -27,20 +25,12 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
     field = "display_currency";
     const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Use a three-letter currency code, such as EUR").parse(form.get("display_currency"));
     minorDigits(currency);
-    // Typed models are free text, so each newly changed one must answer before it is saved.
-    for (const agent of AI_AGENT_KEYS) {
-      if (!settings.ai_models[agent] || settings.ai_models[agent] === previous?.ai_models[agent]) continue;
-      field = `model:${agent}`;
-      const check = await generateText({ model: await getModel(settings.ai_models[agent]!), prompt: "Reply with the single word OK.",
-        maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(30000) })
-        .catch(error => APICallError.isInstance(error) && error.statusCode === 429 ? "rate-limited" as const : null);
-      // A rate-limited model exists and answers later; only a missing or silent one blocks saving.
-      if (check === "rate-limited") continue;
-      if (!check?.text.trim()) throw new Error(`Model "${settings.ai_models[agent]}" did not respond; check the name and its API key`);
-    }
     field = undefined;
     const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
-    if (result.error) throw new Error("Preferences could not be saved; your previous settings are preserved");
+    if (result.error) {
+      console.error("Preferences save failed", { code: result.error.code });
+      throw new Error("Preferences could not be saved. Run setup to apply database updates, then try again.");
+    }
     (await cookies()).set("moneo-theme", settings.theme, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 31536000 });
     revalidatePath("/", "layout");
     return { saved: true };

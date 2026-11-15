@@ -3,7 +3,7 @@ import { resetAllData, saveSettings } from "./actions";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { getModel } from "@/lib/ai/provider";
-import { APICallError, generateText } from "ai";
+import { generateText } from "ai";
 import { settingsSchema } from "@/lib/settings";
 
 vi.mock("next/headers", () => ({ cookies: async () => ({ set: vi.fn() }) }));
@@ -71,45 +71,16 @@ it("saves an unchanged model during a provider outage without a completion", asy
   }));
 });
 
-it("live-checks only the changed agent and saves it", async () => {
-  const rpc = vi.fn(async () => ({ error: null }));
-  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith("gpt-old", rpc));
-  const data = form(); data.set("model:chat", "gpt-old"); data.set("model:imports", "gpt-new");
-  expect(await saveSettings({}, data)).toEqual({ saved: true });
-  expect(getModel).toHaveBeenCalledExactlyOnceWith("gpt-new");
-  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ ai_models: { chat: "gpt-old", imports: "gpt-new" } }) }));
-});
-
-it("refuses a changed model that fails or replies empty, preserving the previous settings", async () => {
-  const rpc = vi.fn();
-  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith("gpt-old", rpc));
-  for (const reply of [Promise.reject(new Error("404 model not found")), Promise.resolve({ text: "  " })]) {
-    reply.catch(() => {});
-    vi.mocked(generateText).mockReturnValueOnce(reply as ReturnType<typeof generateText>);
-    const data = form(); data.set("model:chat", "gpt-typo");
-    expect(await saveSettings({}, data)).toMatchObject({ error: expect.stringContaining('"gpt-typo" did not respond') });
-  }
-  expect(rpc).not.toHaveBeenCalled();
-});
-
-it("saves a changed model that is rate-limited upstream", async () => {
+it("saves a shared model and titles override without calling a provider", async () => {
   const rpc = vi.fn(async () => ({ error: null }));
   vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
-  vi.mocked(generateText).mockRejectedValue(new APICallError({ message: "rate-limited", url: "", requestBodyValues: {}, statusCode: 429 }));
-  const data = form(); data.set("model:chat", "busy-free");
+  const data = form(); data.set("model:default", "  gpt-6-luna  "); data.set("model:titles", "gpt-title");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
-  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ ai_models: { chat: "busy-free" } }) }));
-});
-
-it("rejects a custom ID for a disconnected provider rather than checking a fallback", async () => {
-  const rpc = vi.fn();
-  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
-  vi.mocked(getModel).mockRejectedValueOnce(new Error("Sign in with Claude"));
-  const data = form(); data.set("model:chat", "claude-future");
-  expect(await saveSettings({}, data)).toMatchObject({ error: "Sign in with Claude", field: "model:chat" });
-  expect(getModel).toHaveBeenCalledExactlyOnceWith("claude-future");
+  expect(getModel).not.toHaveBeenCalled();
   expect(generateText).not.toHaveBeenCalled();
-  expect(rpc).not.toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({
+    p_preferences: expect.objectContaining({ ai_models: { default: "gpt-6-luna", titles: "gpt-title" } }),
+  }));
 });
 
 function resetForm(confirmation: string) {
