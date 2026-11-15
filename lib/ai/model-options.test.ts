@@ -12,7 +12,7 @@ test("Claude-only installs offer and default to Claude without OpenAI", () => {
 
 test("OpenRouter-only defaults use explicit OpenRouter IDs and combined connections include both catalogs", () => {
   const connections = { openai: false, claude: false, openrouter: true };
-  expect(connectedDefault("chat", connections, false)).toBe("openai/gpt-6.1-sol");
+  expect(connectedDefault("chat", connections, false)).toBe("openai/gpt-6-luna");
   expect(modelOptions(connections).every(id => id.includes("/"))).toBe(true);
   expect(modelOptions({ ...connections, claude: true })).toEqual(expect.arrayContaining(["claude-opus-5-5", "openai/gpt-6.1-sol"]));
   expect(modelOptions({ openai: false, claude: false, openrouter: false })).toEqual([]);

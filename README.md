@@ -68,6 +68,8 @@ Go to **Settings → Keys and connections → AI access** and choose one:
 - **Sign in with Claude** to use your Claude Pro, Max, Team or Enterprise plan (see [Use your Claude plan](#use-your-claude-plan-optional)), or
 - **Paste an OpenAI API key** ([create one here](https://platform.openai.com/api-keys)) and click **Save key**. Usage is billed to that key.
 
+In Settings ? AI and your data, type or choose one default model for all AI tasks (GPT-6 Luna by default with OpenAI). Turn on ?Customize by task? for individual overrides; turning it off clears those overrides when you save. Model IDs are saved without a provider call, so unavailable models report an error when used. Claude-only installs use a Claude default.
+
 Voice calls and dictation need the OpenAI API key. An OpenRouter key is optional (for other models).
 
 #### 6. Add your money

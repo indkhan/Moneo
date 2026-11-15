@@ -8,15 +8,15 @@ export type AiDataScope = typeof AI_DATA_SCOPES[number];
 // Each AI agent and its default OpenAI model; Settings lets the user type a different one per agent.
 // `model` is the default on ChatGPT or an API key, `claude` the default on a Claude plan.
 export const AI_AGENTS = {
-  chat: { label: "Chat assistant", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
-  review: { label: "Financial review", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
+  chat: { label: "Chat assistant", model: "gpt-6-luna", claude: "claude-opus-5-5" },
+  review: { label: "Financial review", model: "gpt-6-luna", claude: "claude-opus-5-5" },
   agents: { label: "Agent team", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
   imports: { label: "Import mapping", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
   organize: { label: "Organization suggestions", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
-  artifacts: { label: "Artifact builder", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
+  artifacts: { label: "Artifact builder", model: "gpt-6-luna", claude: "claude-opus-5-5" },
   titles: { label: "Chat titles", model: "gpt-6-luna", claude: "claude-haiku-5-5" },
   // Typed as a model like the others, but a blank one follows the chat model (see modelIdFor).
-  voice_call: { label: "Voice call", model: "gpt-6.1-sol", claude: "claude-opus-5-5" },
+  voice_call: { label: "Voice call", model: "gpt-6-luna", claude: "claude-opus-5-5" },
 } as const;
 export type AiAgent = keyof typeof AI_AGENTS;
 export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];
@@ -28,7 +28,7 @@ export const settingsSchema = z.object({
   timezone: z.string().max(100).refine(value => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; } }, "Choose a valid timezone").default("Europe/Berlin"),
   locale: z.string().max(50).refine(value => { try { return Intl.DateTimeFormat.supportedLocalesOf([value]).length === 1; } catch { return false; } }, "Choose a supported locale").default("en-GB"),
   theme: z.enum(["system", "light", "dark"]).default("system"),
-  ai_models: z.partialRecord(z.enum(AI_AGENT_KEYS as [AiAgent, ...AiAgent[]]), z.string().trim().min(1).max(200)).default({}),
+  ai_models: z.partialRecord(z.enum(["default", ...AI_AGENT_KEYS] as ["default", ...AiAgent[]]), z.string().trim().min(1).max(200)).default({}),
   voice: z.enum(VOICES).default(DEFAULT_VOICE),
   ai_data_scopes: z.array(z.enum(AI_DATA_SCOPES)).max(AI_DATA_SCOPES.length).default([...AI_DATA_SCOPES]),
   muted_insight_types: z.array(z.enum(INSIGHT_TYPES)).max(INSIGHT_TYPES.length).default([]),
