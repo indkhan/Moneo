@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7FRCA55RGSS6ZEJWVS6WR94",
+  "strategy": "manual-commit",
+  "branch": "t3/agent-codebase-guardrails",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "AGENTS.md",
+    "app/money/organization/actions.ts",
+    "app/money/organization/page.test.tsx",
+    "app/money/organization/review-form.test.tsx",
+    "app/money/recurring/actions.ts",
+    "app/settings/ai-access.tsx",
+    "eslint.config.mjs",
+    "lib/ai/agent-apply.ts",
+    "lib/auth.ts",
+    "lib/bank/return-listener.ts",
+    "lib/env.ts",
+    "lib/phone-access.test.ts",
+    "lib/phone-access.ts",
+    "lib/readable-error.ts",
+    "lib/remote-device.ts",
+    "lib/safe-action.test.ts",
+    "lib/safe-action.ts",
+    "lib/scalable/orders.ts",
+    "lib/scheduler.ts",
+    "lib/settings.test.ts",
+    "lib/settings.ts",
+    "scripts/qa-screenshots.mjs",
+    "tsconfig.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 34,
+    "cache_creation_tokens": 248251,
+    "cache_read_tokens": 3619697,
+    "output_tokens": 18158,
+    "api_call_count": 21,
+    "subagent_tokens": {
+      "input_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cache_read_tokens": 0,
+      "output_tokens": 0,
+      "api_call_count": 0
+    }
+  },
+  "redaction": {
+    "replacements": 11,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 11,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
