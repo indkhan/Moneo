@@ -1,0 +1,41 @@
+add those skills , no need of tla and lean for now 
+anything else do an audit with another agent to check up on it and suggesat what more should we do if it has something we might have missed
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>b3ih8kq1j</task-id>
+<tool-use-id>toolu_015oUCsd7kqk1rkXNfZ7Eep7</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\7ff046d910d4e78a\059d0d84-037d-402e-bd2e-0ef47d95b4d6\tasks\b3ih8kq1j.output</output-file>
+<status>failed</status>
+<summary>Background command "Run the QA app on port 3100" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>batpe5lco</task-id>
+<tool-use-id>toolu_01VFiaawrMV5pC1K4keqPuz9</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\7ff046d910d4e78a\059d0d84-037d-402e-bd2e-0ef47d95b4d6\tasks\batpe5lco.output</output-file>
+<status>killed</status>
+<summary>Background command "Run this checkout's QA app on a spare port 3101" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>bwhgtphiy</task-id>
+<tool-use-id>toolu_019CTcViHFsRtUhnpL9yNecc</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\7ff046d910d4e78a\059d0d84-037d-402e-bd2e-0ef47d95b4d6\tasks\bwhgtphiy.output</output-file>
+<status>failed</status>
+<summary>Background command "Run this checkout's QA app on spare port 3101 again" failed with exit code 127</summary>
+</task-notification>
