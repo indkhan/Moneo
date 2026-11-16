@@ -9,7 +9,7 @@ import { ChevronRight, X } from "lucide-react";
 import { RecurringCards } from "@/app/money/recurring/cards";
 import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { displayFormat } from "@/lib/display-format";
-import { categorizeGroups, loadUncategorizedGroups } from "./home-review-actions";
+import { categorizeGroups, loadUncategorizedGroups, skipUncategorized } from "./home-review-actions";
 import type { UncategorizedGroup } from "@/lib/import/uncategorized-groups";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
 import type { HomeFinding } from "@/lib/ai/home-review";
@@ -152,6 +152,11 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
   const openTransactions = open.reduce((sum, group) => sum + group.count, 0);
   const suggested = open.filter(group => { const choice = resolve(typed(group)); return !!group.suggested && !!choice && "id" in choice && choice.id === group.suggested; });
   const skip = (groups: UncategorizedGroup[]) => setDone(current => ({ ...current, ...Object.fromEntries(groups.map(group => [group.key, "Skipped"])) }));
+  const skipAll = () => run(async () => {
+    const failed = await skipUncategorized();
+    if (!failed) skip(open);
+    return failed;
+  });
   const reopen = (key: string) => setEditing(current => new Set(current).add(key));
   return <div>
     <div className="mt-2 flex flex-wrap items-center gap-2"><p className="mr-auto text-sm text-muted-foreground">Every batch can be undone. Nothing changes until you apply.</p>
@@ -160,7 +165,7 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
       <p className="w-full text-sm font-medium">Everything left ({openTransactions} {openTransactions === 1 ? "transaction" : "transactions"})</p>
       <CategoryCombobox label="Category for everything left" options={data.categories} value={everything} allowCreate placeholder="One category for all" disabled={pending} onChange={setEverything} className="w-full sm:w-56" />
       <button type="button" disabled={pending || !resolve(everything)} className={primary} onClick={() => apply(open, everything)}>Apply to all {openTransactions}</button>
-      <button type="button" disabled={pending} className={secondary} onClick={() => skip(open)}>Skip all</button>
+      <button type="button" disabled={pending} className={secondary} onClick={skipAll}>Skip all</button>
     </div>}
     <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={remember} disabled={pending} onChange={event => setRemember(event.target.checked)} />Do the same for future entries</label>
     <p className="mt-1 text-xs text-muted-foreground">{remember ? "Applying also saves a rule, so future entries with the same description get this category." : "Applying changes only these transactions. Future entries stay uncategorized."}</p>
