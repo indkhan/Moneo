@@ -1,0 +1,30 @@
+Act as the test sub-agent for this task.
+
+Fix GitHub issue #232 in Moneo. Add behaviour tests for three security guarantees:
+1. Chart tooltip labels in components/chat-chart.tsx are HTML-escaped, so a hostile merchant name renders as text.
+2. A failed bank connection in app/api/bank/connect/route.ts never logs the JWT, key or token. Use synthetic secrets and capture console output.
+3. The IOU proposal loader in lib/ai/iou-actions.ts never returns `payload`.
+Each test must fail when you remove its protection (try that, then revert) and must still pass after an internal refactor. Extend existing test files where they fit. Use at most about three vi.mocks per file. Never assert on UI copy.
+
+## RESUME: earlier work may exist
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-b0084152-7e47269ec25ed672` (branch `t3/issue-232-security-invariant-tests`). A branch `t3/issue-232-security-tests` also exists.
+- Inspect both read-only (`git -C <path> status`/`diff`, `git log origin/main..<branch>`).
+- Bring over anything useful into your own checkout, then continue.
+- Never modify, reset or delete the old worktree.
+- Use your own branch `t3/issue-232-security-checks`, created from current `origin/main`.
+- Commit as soon as the earlier work is applied, and after each step.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 232 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Never kill any process you did not start yourself in this session, verified by its PID.** Never kill by name or command line, because other agents run `npm ci`, builds and servers in parallel.
+- If `npm ci` stalls, retry it once with `--prefer-offline`. Run only one install at a time.
+- Other agents share the moneo-qa backend and QA port 3100:
+  - Never run `npm run qa:reset` or `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend (.env, port 3000, project `moneo`).
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`. Full-suite 5-second timeouts under machine load in files you didn't touch: report them, don't change them.
+- Push and open a PR to `main` (`Closes #232`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
