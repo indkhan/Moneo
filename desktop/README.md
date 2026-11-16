@@ -28,7 +28,7 @@ builds get an ad-hoc signature. Package each platform on that platform (`npm run
 - Package: `app.asar` holds only `dist/`, `setup/` and the icon. Next to it: `app/` (Next server),
   `migrations/`, `bootstrap/`, `backend/<os>-<arch>/`, `storage-api/`.
 - Per user: the Electron user-data folder (`MONEO_DESKTOP_HOME` overrides it): `config.json` (backend
-  secrets), `shell.json` (app port, tray notice, last backup), `postgres/`, `storage/`, `data/`
+  secrets), `shell.json` (app port, tray notice, last backup, start-at-sign-in default applied), `postgres/`, `storage/`, `data/`
   (ChatGPT sign-in, bank certificate), `backups/`, `logs/`, `chromium/` (the window's own cookies).
 
 The app listens on `http://localhost:47300` (chosen once, then kept: phone access, Scalable's return
@@ -39,6 +39,10 @@ address and ChatGPT's callback name it). If it is taken on the first run, a free
 - Start: a small status window shows each step (the first run says it is creating a private database),
   then the app window opens Home. On failure it offers Try again, Open logs folder, Restore from backup, Quit.
 - Closing the window keeps Moneo in the tray, so background syncs and phone access keep working.
+- Moneo starts hidden in the tray when you sign in to the computer. It turns this on once, at the first
+  start of a new or updated install; untick "Start Moneo when I sign in" in the tray to turn it off.
+  Runs with `MONEO_DESKTOP_HOME` never turn it on. Linux uses `~/.config/autostart/moneo.desktop`;
+  the Windows uninstaller removes the sign-in entry.
   Quit (tray, Cmd+Q, `Moneo --quit`, OS shutdown) stops the server, then the database, then exits.
 - Daily automatic backup while running; Back up now, Open backups folder and Restore from backup in the tray.
 - Sign-ins (ChatGPT, banks, Scalable) open in the system browser and return to Moneo's loopback

@@ -23,3 +23,9 @@ Var pid
   ${endif}
   !insertmacro _CHECK_APP_RUNNING
 !macroend
+!macro customUnInstall
+  ${ifNot} ${isUpdated}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.${PRODUCT_NAME}"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "electron.app.${PRODUCT_NAME}"
+  ${endIf}
+!macroend
