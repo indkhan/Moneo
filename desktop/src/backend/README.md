@@ -13,6 +13,7 @@ SHA-256 in that script), and land in `desktop/.build/` (in a package, `resources
 | `postgres/` | the cluster (`initdb -U supabase_admin`, UTF8, ICU en-US, scram-sha-256) |
 | `storage/` | Storage API files |
 | `data/`, `workflow/` | `MONEO_DATA_DIR`, `WORKFLOW_LOCAL_DATA_DIR` for the app |
+| `data/speech-models/` | speech-to-text models downloaded in Settings → Voice; not in backups, since they can be downloaded again |
 | `backups/<time>-<reason>/` | `database.dump` (pg_dump -Fc), `storage/`, `config.json`, `manifest.json` |
 | `logs/` | `backend.log`, `auth.log`, `rest.log`, `storage.log`, `postgres/` |
 | `run/services.json` | PID and executable of each running service, so a start after a crash can end leftovers |
