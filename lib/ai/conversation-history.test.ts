@@ -95,8 +95,8 @@ describe("saved answer activity", () => {
         { id: "m3", workspace_id: workspace, conversation_id: conversation, role: "assistant", content: "B", created_at: "2026-01-01T00:00:03+00:00", reply_to: "r2" },
       ],
       chat_requests: [
-        { id: "r1", workspace_id: workspace, tool_calls: [{ name: "plan_investigation", input: { steps: ["Check spending"] }, output: "" }, { name: "accounts_list", input: {}, output: "[]" }, { name: "transactions_search", input: {}, output: "x".repeat(50_000) }] },
-        { id: "r2", workspace_id: "other", tool_calls: [{ name: "accounts_list", input: {}, output: "secret" }] },
+        { id: "r1", workspace_id: workspace, usage: { model_id: "gpt-test-1", input_tokens: 3 }, tool_calls: [{ name: "plan_investigation", input: { steps: ["Check spending"] }, output: "" }, { name: "accounts_list", input: {}, output: "[]" }, { name: "transactions_search", input: {}, output: "x".repeat(50_000) }] },
+        { id: "r2", workspace_id: "other", usage: { model_id: "foreign-model" }, tool_calls: [{ name: "accounts_list", input: {}, output: "secret" }] },
       ],
     };
     const fake = { from(table: string) {
@@ -111,10 +111,11 @@ describe("saved answer activity", () => {
     } };
     const { messages } = await loadConversation(fake as never, workspace, conversation);
     const answer = messages.find(row => row.id === "m2");
-    expect(answer).toMatchObject({ plan: ["Check spending"], tools: [{ name: "accounts_list", state: "done", input: {}, output: "[]" }, { name: "transactions_search" }] });
+    expect(answer).toMatchObject({ model: "gpt-test-1", plan: ["Check spending"], tools: [{ name: "accounts_list", state: "done", input: {}, output: "[]" }, { name: "transactions_search" }] });
     expect(answer?.tools?.[1].output).toHaveLength(2000 + "\n… (truncated)".length);
     expect(answer).not.toHaveProperty("reply_to");
     expect(messages.find(row => row.id === "m3")).not.toHaveProperty("tools");
+    expect(messages.find(row => row.id === "m3")).not.toHaveProperty("model");
     expect(messages.find(row => row.id === "m1")).toMatchObject({ spoken: true });
     expect(messages.find(row => row.id === "m1")).not.toHaveProperty("context");
     expect(answer).not.toHaveProperty("spoken");

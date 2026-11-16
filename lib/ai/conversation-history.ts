@@ -5,7 +5,7 @@ import { isSpoken } from "./voice-context";
 import { callStubs, loadCalls, type CallCard } from "./voice-call-history";
 
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
-export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; attachments?: ChatAttachment[]; spoken?: boolean; call?: CallCard };
+export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; model?: string; attachments?: ChatAttachment[]; spoken?: boolean; call?: CallCard };
 export type SavedToolStep = { name: string; state: "done"; input?: unknown; output?: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
 const THREAD_PAGE = 30;
@@ -79,18 +79,20 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
 
 const savedCall = z.object({ name: z.string(), input: z.unknown().optional(), output: z.string().optional() });
 const planSteps = z.object({ steps: z.array(z.string()) });
+const savedUsage = z.object({ model_id: z.string().min(1).max(200) });
 
 async function savedActivity(supabase: SupabaseClient, workspace: string, requestIds: string[]) {
-  const activity = new Map<string, { plan?: string[]; tools?: SavedToolStep[] }>();
+  const activity = new Map<string, { plan?: string[]; tools?: SavedToolStep[]; model?: string }>();
   if (!requestIds.length) return activity;
-  const { data, error } = await supabase.from("chat_requests").select("id,tool_calls").eq("workspace_id", workspace).in("id", requestIds);
+  const { data, error } = await supabase.from("chat_requests").select("id,tool_calls,usage").eq("workspace_id", workspace).in("id", requestIds);
   if (error) return activity;
-  for (const row of (data ?? []) as { id: string; tool_calls: unknown }[]) {
-    const calls = z.array(savedCall).safeParse(row.tool_calls);
-    if (!calls.success) continue;
-    const plan = calls.data.flatMap(call => call.name === "plan_investigation" ? [planSteps.safeParse(call.input)] : []).find(parsed => parsed.success)?.data?.steps;
-    const tools = calls.data.filter(call => call.name !== "plan_investigation").map(call => ({ name: call.name, state: "done" as const, input: call.input, output: preview(call.output) }));
-    activity.set(row.id, { ...(plan ? { plan } : {}), ...(tools.length ? { tools } : {}) });
+  for (const row of (data ?? []) as { id: string; tool_calls: unknown; usage: unknown }[]) {
+    const model = savedUsage.safeParse(row.usage).data?.model_id;
+    const parsed = z.array(savedCall).safeParse(row.tool_calls);
+    const calls = parsed.success ? parsed.data : [];
+    const plan = calls.flatMap(call => call.name === "plan_investigation" ? [planSteps.safeParse(call.input)] : []).find(found => found.success)?.data?.steps;
+    const tools = calls.filter(call => call.name !== "plan_investigation").map(call => ({ name: call.name, state: "done" as const, input: call.input, output: preview(call.output) }));
+    activity.set(row.id, { ...(plan ? { plan } : {}), ...(tools.length ? { tools } : {}), ...(model ? { model } : {}) });
   }
   return activity;
 }

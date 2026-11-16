@@ -11,6 +11,7 @@ import { ChatComposer, withSpoken } from "@/components/chat-composer";
 import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { ChatQueue } from "@/components/chat-queue";
 import { DRAFT_EVENT } from "@/components/chat-messages";
+import { RESEND_EVENT, type Resend } from "@/components/message-actions";
 
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
 
@@ -41,6 +42,11 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     window.addEventListener(DRAFT_EVENT, draft);
     return () => window.removeEventListener(DRAFT_EVENT, draft);
   }, []);
+  useEffect(() => {
+    const resend = (event: Event) => { const detail = (event as CustomEvent<Resend>).detail; void sendMessage(detail.message, true, detail.attachments); };
+    window.addEventListener(RESEND_EVENT, resend);
+    return () => window.removeEventListener(RESEND_EVENT, resend);
+  }, [sendMessage]);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
