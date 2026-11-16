@@ -1,9 +1,8 @@
 import { ForecastChart } from "@/components/chart";
 import type { ForecastEvent, forecastDaily } from "@/lib/finance/calculations";
-import { formatInputAmount, formatMoney } from "@/lib/finance/format";
+import { formatMoney } from "@/lib/finance/format";
 
 type Days = Extract<ReturnType<typeof forecastDaily>, { status: "available" }>["days"];
-const major = (amount: bigint, currency: string) => Number(formatInputAmount(amount, currency));
 
 function upcomingObligations(events: ForecastEvent[], days: Days) {
   const window = new Set(days.map(day => day.date));
@@ -18,11 +17,11 @@ export function ForecastView({ days, events, currency, locale, names, compare }:
   const last = days.at(-1)!;
   const payment = (event: ForecastEvent, index: number) => <li key={index} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2"><span><span className="font-mono text-muted-foreground">{event.date}</span> · {event.name ?? "Forecast movement"} · {names.get(event.accountId) ?? "Account"}{event.source === "scenario" ? " · what-if" : ""}</span><span className="font-mono">{money(event.expectedMinor)}</span></li>;
   return <div className="space-y-4">
-    <ForecastChart currency={currency}
+    <ForecastChart currency={currency} locale={locale}
       label={`Expected balance with a conservative to optimistic band from ${days[0].date} to ${last.date}; dots mark upcoming payments`}
-      days={days.map(day => ({ date: day.date, expected: major(day.expectedMinor, currency), conservative: major(day.conservativeMinor, currency), optimistic: major(day.optimisticMinor, currency) }))}
+      days={days.map(day => ({ date: day.date, expected: day.expectedMinor, conservative: day.conservativeMinor, optimistic: day.optimisticMinor }))}
       obligations={obligations.map(event => ({ date: event.date, name: event.name ?? "Payment", amount: money(event.expectedMinor) }))}
-      compare={compare && { name: compare.name, values: compare.days.map(day => major(day.expectedMinor, currency)) }} />
+      compare={compare && { name: compare.name, values: compare.days.map(day => day.expectedMinor) }} />
     <p className="text-xs text-muted-foreground">Shaded band runs from conservative to optimistic. Chart coordinates are approximate; exact amounts appear below.</p>
     <dl className="grid gap-3 sm:grid-cols-3">{([["Expected", last.expectedMinor], ["Conservative", last.conservativeMinor], ["Optimistic", last.optimisticMinor]] as const).map(([label, amount]) =>
       <div key={label} className="rounded-lg bg-muted/60 px-4 py-3"><dt className="text-xs text-muted-foreground">{label} at horizon</dt><dd className="mt-1 font-mono text-base font-semibold">{money(amount)}</dd></div>)}</dl>

@@ -46,8 +46,8 @@ function TopList({ title, groups, metric, names, param, from, to, currency, loca
   </div>;
 }
 
-export function CashFlowView({ months, scale, categoryNames, merchantNames, currency, locale, ask }: {
-  months: CashFlowMonth[]; scale: number; categoryNames: Record<string, string>; merchantNames: Record<string, string>; currency: string; locale: string; ask: ReactNode;
+export function CashFlowView({ months, categoryNames, merchantNames, currency, locale, ask }: {
+  months: CashFlowMonth[]; categoryNames: Record<string, string>; merchantNames: Record<string, string>; currency: string; locale: string; ask: ReactNode;
 }) {
   const search = useSearchParams();
   const show = flowOf(search.get("show")), flow = flowOf(search.get("flow"));
@@ -63,7 +63,7 @@ export function CashFlowView({ months, scale, categoryNames, merchantNames, curr
             {swatch && <span aria-hidden="true" className={`size-2 rounded-sm ${swatch}`} />}{label}</CashFlowLink>)}
       </span>{ask}</span></div>
     <div className="mt-4"><TrendChart height={240} flow={show} selected={flow ? months.indexOf(selected) : undefined} picked={flow} months={months.map(row => row.month)} labels={months.map(row => row.label)}
-      income={months.map(row => Number(row.incomeMinor) / scale)} spending={months.map(row => Number(row.spendingMinor) / scale)} /></div>
+      income={months.map(row => row.incomeMinor)} spending={months.map(row => row.spendingMinor)} currency={currency} locale={locale} /></div>
     {flow === "in" && <div className="mt-5 grid gap-6 border-t border-border pt-5 md:grid-cols-2">
       <TopList title={`Where money came from ${when}`} groups={selected.incomeMerchants} metric="incomeMinor" names={merchantNames} param="merchant" unknown="Unknown source" {...lists} />
       <TopList title={`Income by category ${when}`} groups={selected.incomeCategories} metric="incomeMinor" names={categoryNames} param="category" unknown="Uncategorized" {...lists} />
