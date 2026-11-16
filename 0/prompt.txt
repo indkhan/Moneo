@@ -1,0 +1,205 @@
+Delegated task node:delegated-task:command%3Amcp%3A4ab48689-1401-4926-b4f6-fa0aa685ec23%3Adelegate-task%3Ad39d8089-ae09-42eb-9a9d-1c71db847b62 (#188 import slowdown (resume)) [completed]:
+I fixed #188 and opened PR #274. Each imported row's duplicate guard was reading every transaction in the workspace, so per-row work grew with history; after the fix a 10,000-row import costs about the same per row as a 1,000-row one. The old worktree had nothing uncommitted, so I started fresh from `origin/main`.
+
+**Measurements.** `EXPLAIN (ANALYZE, BUFFERS)` on every statement inside the two functions, for batch 1 and batch 40 of 10,000 rows:
+- `import_batch_candidates` is flat, at about 2,000 blocks per batch.
+- `ingest_import_batch` grows from about 30k blocks in batch 1 to about 2.5M in batch 40. Of that, 2.48M is one statement in `ingest_import_row_internal`: the "Import candidates changed" guard.
+- Running `ANALYZE` after staging doesn't flatten the curve on the old code (383 s of ingest, still growing).
+
+**Cause and fix.** The guard put the duplicate match (date, amount, description) and an external-ID lookup in one OR, so the database couldn't use the indexes on `description` or `external_id`. New migration `202611160081_import_guard_index_paths.sql` splits it into two separate checks with the same conditions, each using its index. It's the split `import_batch_candidates` already uses. No new index, and no extensions the desktop's bundled Postgres lacks. I numbered it after 0051 and 0061, which other branches have already applied on the QA database. `lib/schema.ts` doesn't change.
+
+**Throughput script.** It also had a measurement problem. All 10,000 rows were on one day, in tables that are never analyzed, so even after the fix the guard scanned the whole day for each row. It now spreads the rows over a year; the old code still explodes with spread dates, so the migration is the real fix. The script now asserts on buffer blocks per row, because wall times on the loaded database varied up to 5×:
+
+| | 1,000 rows | 10,000 rows | result |
+|---|---:|---:|---|
+| `main` | 147 | 6,018 | fails (41×) |
+| this PR | 147 | 280 | passes (bound is 3×) |
+
+What's left of the growth is `recount_import_progress`, which recounts the whole import after every batch for the live progress display. I filed that as #272.
+
+**Results unchanged.** The script's exact counts, totals and source-row checks pass. I added checks to `supabase/tests/import-batches.sql` proving both halves of the split guard still block a duplicate. They fail if I disable the external-ID half.
+
+**Checks:**
+- `npm run lint`: last line `> eslint .`, no errors.
+- `npm run typecheck`: last line `> tsc --noEmit && tsc --noEmit -p desktop`, no errors.
+- `npm test`: 303 files and 1,719 tests passed, with no 5-second timeouts.
+- `npm run test:db` fails, but not because of this change; the cause is the shared QA database.
+  - The fresh replay of 136 migrations and 60 SQL tests passes, including the new checks.
+  - The upgrade replay fails in `atomic-review.sql` because another branch's `202611160061_workspace_time_zone_required` is applied there.
+  - In the live tests, 8 files pass, including both import tests. `schema.live`, `evidence-receipts.live` and `review-request.live` fail on that same other-branch schema.
+
+Other worktrees recreated the QA database three times while I worked, so timings were noisy. The PR says so. My test runs were all rollback-only, and the QA migration history is unchanged.
+
+PR https://github.com/indkhan/Moneo/pull/274, head b4159fcd699f76b64fa60be78b8dfaadc2cd746b, checks and reviews: GitGuardian passed; checks, database, browser and desktop builds in progress; no review yet.
+
+---
+
+Update on pull request #274 (https://github.com/indkhan/Moneo/pull/274), which T3 Code is watching for you:
+- All 1 required check passed on b4159fc.
+
+Update on pull request #266 (https://github.com/indkhan/Moneo/pull/266), which T3 Code is watching for you:
+- All 1 required check passed on 7d6ed18.
+
+Look into each item and act on it as your task requires. Each PR T3 Code still watches stays linked and watched, so do not link, watch, or list them again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request for each first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A4ab48689-1401-4926-b4f6-fa0aa685ec23%3Adelegate-task%3A1b9ecc24-60b8-4a66-8ea3-a1ea4796e6a1 (#255 Berlin fallback in database) [completed]:
+PR #275 is open for #255 and not merged. Lint, typecheck and `npm test` pass, but `npm run test:db` fails in its upgrade half because of other branches' migrations in the shared QA database.
+
+**What changed**
+- **Migration:** `202611160061_workspace_time_zone_required.sql` adds `workspace_time_zone(workspace_id)`, which raises `Workspace time zone is not set` (SQLSTATE 55000) when no zone is stored.
+- **Functions:** It rewrites the ten functions that fell back to Berlin to call it. They are patched from their live definitions, not copied from the old files. A later migration (`202610310001`) rewrote `40001` to `PT409` inside them, and copying the old text would have undone that.
+- **Diff check:** I dumped the ten functions before and after on the QA database. Only the Berlin fallback lines differ. The migration also fails if any `Europe/Berlin` is left in a function.
+- **Defaults:** It drops the defaults on `workspace_settings.timezone` and `spending_plans.rollover_from`, and `lib/schema.ts` matches.
+- **`rollover_from`:** A before-insert trigger now fills `rollover_from` from the workspace zone. That keeps the two app code paths that insert spending plans unchanged.
+- **Workspace creation paths:** None of them stores a zone, so nothing there needed changes. Setup, desktop bootstrap and the QA auth script leave it to the first workspace load (`requireWorkspace`).
+- **Tests and scripts:** About 20 SQL fixtures, `.mjs` tests, live tests and `voice-call-check.mjs` now insert a zone before calling these functions. In the two fixtures that seed every table generically, `reset-workspace.sql` and `workspace-isolation.sql`, I moved `workspace_settings` first in the table list and gave it a zone.
+
+**Last lines of each check**
+- `npm run lint`: clean, no output (exit 0).
+- `npm run typecheck`: clean, no output (exit 0).
+- `npm test`: `Test Files 304 passed | 11 skipped (315)`, `Tests 1725 passed | 17 skipped (1742)`.
+- `npm run test:db`: the first half passes: `PASS: fresh replay 137 migrations and 61 SQL regressions; disposable schema rollback verified`. The upgrade half then fails with `Upgrade SQL regression reset-workspace.sql: Missing reset fixture for table scalable_security_charts; update reset coverage`. The shared QA database now has other branches' migrations applied (e.g. `202611160137`), so the failure is not from this change. It was not a lock timeout, so I did not retry.
+- The live vitest suites pass except `lib/schema.live.test.ts`, which fails for the same reason: its diff lists only other branches' tables and columns (`scalable_security_charts`, `speech_engine`).
+- `reservation-balance-concurrency.mjs` passes.
+
+**QA database:** I applied the migration to `moneo-qa` while testing, then reverted it. The ten function definitions match the dump taken before, the defaults are back and the migration row is gone. The QA database container also restarted once during my runs. I did not touch it and it came back healthy.
+
+PR https://github.com/indkhan/Moneo/pull/275, head 91eb653417f13f2711c6481561e9c445d2263ca9, checks and reviews pending
+
+---
+
+Update on pull request #253 (https://github.com/indkhan/Moneo/pull/253), which T3 Code is watching for you:
+- All 9 checks passed on 4034161.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #258 (https://github.com/indkhan/Moneo/pull/258), which T3 Code is watching for you:
+- All 1 required check passed on b23674c.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #275 (https://github.com/indkhan/Moneo/pull/275), which T3 Code is watching for you:
+- All 1 required check passed on 91eb653.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A4ab48689-1401-4926-b4f6-fa0aa685ec23%3Adelegate-task%3A08e958cf-ec8b-4e46-a2c4-766e015fa0c3 (#261 IBAN normalization bug) [completed]:
+Fixed #261 in PR #276. The bug is reproduced by a failing test, which now passes, and every IBAN normalization goes through one helper.
+
+- **Test:** added to `workflows/bank-sync.test.ts`. It fails on `main` (`expected [ false ] to deeply equal [ true ]`).
+- **Cause:** `ownAccountIbans` used `.replace(/s/g, "")`. Five other call sites had their own inline regex too.
+- **Fix:** moved `normalizeIban` from `lib/finance/own-transfers.ts` to a new leaf module `lib/iban.ts`, so `lib/bank` and `lib/organize` can import it without pulling in finance code. Routed bank sync, bank rows, CSV statements, identity matching and the bank callback through it.
+- **Behaviour change:** `normalizeIban` returns `null` for a value that isn't a valid IBAN shape. Some call sites used to keep the raw string, so an invalid IBAN is now stored as null.
+
+Commits: failing test, then the helper move and routing. The branch is `t3/issue-261-iban-normalize`, based on `origin/main`. Nothing is merged.
+
+Checks:
+- `npm run lint`: exit 0, no errors reported.
+- `npm run typecheck`: exit 0.
+- `npm test`: 309 files passed, 11 skipped; 1775 tests passed, 17 skipped; exit 0.
+- `gh pr checks 276`: no checks reported yet.
+
+PR <https://github.com/indkhan/Moneo/pull/276>, head 5519c20d, checks and reviews: no checks reported yet, no reviews.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A4ab48689-1401-4926-b4f6-fa0aa685ec23%3Adelegate-task%3Aed1bdfd5-b80e-408d-abfd-372498fb2cc5 (#152 Wealth charts and news) [completed]:
+The Wealth detail drawer for Scalable positions is built and the PR is open.
+
+**What it does**
+- Tapping a position opens a drawer, driven by `?position=<isin>` like the transaction drawer. It has 1D/1W/1M/1Y/Max charts read from the last sync and shows "As of <sync time>".
+- Your own settled buys and sells appear as green and red dots on the chart, with a list below.
+- News loads live from `get_security_news` when the drawer opens. It has a loading state, an error or offline state with a retry, and never blocks the chart.
+- Sync stores the charts, and the trades from its recent transactions. The daily history job also saves the trades from its full read. Disconnecting Scalable removes both, and reset all data removes them with the workspace.
+- The migration is `202611160137_scalable_security_charts.sql`.
+
+**Not done**
+- I added no chat tool or artifact. `investments_security` already returns Scalable's live chart and news for any ISIN, and `read-tools.ts` had no obvious spot for it.
+- I did not screenshot the news error state.
+
+**Checks**
+
+| Command | Result |
+| --- | --- |
+| `npm run lint` | passes, no output after `eslint .` |
+| `npm run typecheck` | passes, no output after `tsc --noEmit && tsc --noEmit -p desktop` |
+| `npm test` | 312 files passed, 1783 tests passed |
+| `npm run build` | passes (run before the rebase and the last lint fix) |
+| `node supabase/tests/migrations.mjs` | fresh replay and upgrade both pass, including the new `scalable-security-charts.sql` regression and the reset and isolation fixtures |
+
+- Two `data-query.live.test.ts` tests fail in `npm run test:db` because the shared QA database currently has no `moneo_query` views. My migration doesn't touch them.
+- I checked the drawer in light, dark and mobile on the QA app against the local Scalable stand-in. The screenshots are linked in the PR body from a commit and removed from the branch.
+- I stopped the two servers I started, deleted my seeded rows, and reverted the migration from the shared QA database.
+- On the PR itself, only GitGuardian has reported so far (pass). No reviews yet.
+
+PR https://github.com/indkhan/Moneo/pull/277, head 35ef063be1e5971738f543c903ab600c7c435f6d, checks and reviews: GitGuardian passed, other CI pending, no reviews.
+
+---
+
+Update on pull request #276 (https://github.com/indkhan/Moneo/pull/276), which T3 Code is watching for you:
+- Checks failed on 5519c20:
+  - checks https://github.com/indkhan/Moneo/actions/runs/43932719737/job/133529116713
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A4ab48689-1401-4926-b4f6-fa0aa685ec23%3Adelegate-task%3Ac7765292-4575-490b-8777-34f7de5f5abc (#262 Regenerate replaces reply) [failed]:
+Claude API rate limit reached. Try again later.
+
+Last assistant message before the run failed:
+
+You've hit your 5-hour limit · resets 10pm (Europe/Berlin)
+
+---
+
+<task-notification>
+<task-id>b4657v7pa</task-id>
+<tool-use-id>toolu_012a1cGj2CzJ2ugxhP9wV4LQ</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ff8438f77c7e4b53\bb0f6ad7-c86a-46b2-8129-8044cbbbb88f\tasks\b4657v7pa.output</output-file>
+<status>completed</status>
+<summary>Background command "Typecheck, lint and test the IBAN change" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Update on pull request #276 (https://github.com/indkhan/Moneo/pull/276), which T3 Code is watching for you:
+- Checks failed on 5519c20:
+  - browser https://github.com/indkhan/Moneo/actions/runs/43932719737/job/133529117303
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #275 (https://github.com/indkhan/Moneo/pull/275), which T3 Code is watching for you:
+- Checks failed on 91eb653:
+  - mac-arm64 (cancelled) https://github.com/indkhan/Moneo/actions/runs/43931797593/job/133525876282
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #274 (https://github.com/indkhan/Moneo/pull/274), which T3 Code is watching for you:
+- All 9 checks passed on b4159fc.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #275 (https://github.com/indkhan/Moneo/pull/275), which T3 Code is watching for you:
+- Checks failed on 91eb653:
+  - mac-x64 https://github.com/indkhan/Moneo/actions/runs/43931797593/job/133525876558
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Continue where you left off.

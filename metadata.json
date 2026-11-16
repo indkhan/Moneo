@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7K2RSMHDKQGVBV0K3VEJK7P",
+  "strategy": "manual-commit",
+  "checkpoints_count": 16,
+  "files_touched": [
+    "app/api/bank/callback/route.ts",
+    "lib/bank/normalize.ts",
+    "lib/bank/statement.ts",
+    "lib/iban.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 70,
+    "cache_creation_tokens": 412184,
+    "cache_read_tokens": 13095246,
+    "output_tokens": 16269,
+    "api_call_count": 42
+  },
+  "redaction": {
+    "replacements": 56,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 4,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 52,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
