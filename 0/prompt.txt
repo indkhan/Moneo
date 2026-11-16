@@ -1,0 +1,35 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #237 in Moneo: make failures outside workflows observable, and enforce async handling.
+
+1. Recount the empty catches and ignored promises in lib/, server actions and route handlers.
+2. For each one, decide who owns the failure, then do one of three things: return an actionable failure, persist a job outcome, or route it to a named existing handler.
+3. Add type-aware lint (no-floating-promises, no-misused-promises, switch-exhaustiveness-check) for lib/, workflows/ and server actions. Introduce it incrementally and keep lint time reasonable.
+4. Don't add generic retries or catch-and-log wrappers, and never log financial data or credentials.
+5. Add a row to the AGENTS.md rules table for the new enforcement.
+
+If the full scope is too big for one reviewable PR, deliver the lint plus the fixes for lib/, and list the rest in the PR body.
+
+## RESUME: earlier work may exist
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-f0e181a0-dfef6705946df609` (branch `t3/issue-237-observable-failures`).
+- Inspect it read-only (`git -C <path> status`/`diff`) and bring over what's useful.
+- Never modify, reset or delete that worktree.
+- Use your own branch `t3/issue-237-failure-handling` from current `origin/main`.
+- Commit as soon as the earlier work is applied, and after each step.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 237 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for installs and builds in the same turn: a foreground command with a long timeout, or a background command plus `t3_background_wait`.
+- **Never kill a process you didn't start yourself in this session, verified by PID.** Never kill by name or command line.
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Shared test backend:
+  - Never run `npm run qa:reset` or `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend (.env, port 3000, project `moneo`).
+- **Run `npm run lint` yourself and quote its last lines in your final reply**, because CI rejected a previous agent's PR on lint.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`. If tests time out at 5 seconds under load in files you didn't touch, report them; don't change them.
+- Push and open a PR to `main` (`Closes #237`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
