@@ -1,0 +1,46 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #255 in Moneo: remove the Europe/Berlin fallback from database functions and column defaults. Read the issue for the list.
+
+Several applied migrations fall back to `'Europe/Berlin'` when a workspace has no `workspace_settings` row:
+- reservation and reviewed-balance functions
+- wealth and goal date checks
+- budget rollover
+- bank observations
+- loan repayments
+
+`workspace_settings.timezone` and `spending_plans.rollover_from` also default to Berlin. Since PR #256, the app saves the detected device time zone on the first workspace load (`requireWorkspace`).
+
+The work: add a new migration that replaces those functions so they raise a clear error when no zone is stored, and drops the column defaults. Keep `lib/schema.ts` aligned.
+- Use a unique timestamp prefix later than `202611160051`.
+- Never rewrite an applied migration.
+- It must run on the desktop backend, so use no extensions the bundle lacks.
+- Re-create each function from its LATEST definition, changing only the fallback. Diff the old and new bodies to prove nothing else changed.
+- Check that every path creating a workspace (setup, desktop bootstrap SQL in `desktop/bootstrap/`, the QA auth script, tests) still stores a time zone, so nothing starts raising.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 255 --comments`.
+- Branch `t3/issue-255-db-time-zone` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The moneo-qa backend is shared:
+  - never `npm run qa:reset` or `docker compose -p moneo-qa down`;
+  - never touch the owner's backend (.env, port 3000, project `moneo`);
+  - if you apply your migration to the QA database for testing, revert it afterwards so other branches' `test:db` isn't broken.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test` and `npm run test:db`. If `test:db` fails on a lock timeout from another checkout, retry once and report it.
+- Push and open a PR to `main` (`Closes #255`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b0uaqx2wj</task-id>
+<tool-use-id>toolu_015y6HkWh6qnwNRmB93YsgY5</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\b35bb72eaed0729f\9a88cbb8-426b-4822-bb7a-2baa2a5d49a9\tasks\b0uaqx2wj.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm ci 2&gt;&amp;1 | tail -5); ls ~/.moneo/qa.env; cat supabase/tests/migrations.mjs | head -40" completed (exit code 0)</summary>
+</task-notification>
