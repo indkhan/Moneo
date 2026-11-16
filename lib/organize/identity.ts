@@ -1,4 +1,5 @@
 import type { RawContext } from "@/lib/bank/raw-context";
+import { normalizeIban } from "@/lib/iban";
 import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
 
 export type AliasType = "creditor_id" | "iban" | "card_merchant" | "counterparty_name" | "description_key";
@@ -80,7 +81,7 @@ export function identityCandidate(description: string, raw: IdentityContext | nu
     if (rest.length < 3) return null;
     return { kind: "processor", displayName: clip(`${processor.label} · ${organizationDisplayName(rest)}`, 200), aliases: [{ type: "description_key", value: clip(`${processor.slug}:${rest}`, 1000) }] };
   }
-  const iban = raw?.counterparty_iban?.replace(/\s/g, "").toUpperCase() || null;
+  const iban = normalizeIban(raw?.counterparty_iban ?? "");
   const card = raw?.payment_type === "card";
   const ownAccount = !!raw?.own_account || (!!iban && ownIbans.has(iban));
   const kind: IdentityKind = ownAccount ? "own_account" : isInternalMove(raw) ? "internal"
