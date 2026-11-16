@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b9k2d174p</task-id>
+<tool-use-id>toolu_016zLLdrXYivQhkPKWqudsCT</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ff8438f77c7e4b53\bb0f6ad7-c86a-46b2-8129-8044cbbbb88f\tasks\b9k2d174p.output</output-file>
+<status>completed</status>
+<summary>Background command "Typecheck and push 257 merge" completed (exit code 0)</summary>
+</task-notification>
