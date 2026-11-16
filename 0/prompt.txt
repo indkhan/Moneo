@@ -1,0 +1,76 @@
+You are the orchestrator agent you have to look at the issues on github leave the really big things like allowing other currencies and all and then give me what things should we fix now then for them u give me options and your recommendation for each and then u call a subagent as per how much the task demands a sonnet agent or haiku and if something really big then only opus 
+
+so go throguh the issues and give me
+
+---
+
+just to make sure the things in queue which started you will continue each chat and not start from beginning right and the prs they file you check edit if needed and then merge to main directly
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A9bb4f367-c3c1-4baf-b780-69bc509f6b8f%3Adelegate-task%3A8f41c92d-8b1e-4fbf-993d-2a116da0a10d (#229 old own account) [completed]:
+One "yes" on an own-account card now remembers that account. It marks every matching transaction, past and future, as an own transfer and doesn't ask again.
+
+- **What it saves:** the account goes on the Accounts page under the accounts Moneo doesn't track. It's saved by IBAN, or by the name on the payment when the bank gave no IBAN.
+- **What it marks:** imports and bank sync mark later payments automatically. A name match also needs the name in the payment text and no other IBAN on the row, so a refund that only carries your name is left alone. The other open "your own account?" cards for the same account are closed.
+- **Undo:** undoing any one of those transfers in the transaction drawer reverts all the transactions the confirmation reclassified and forgets the account. Accounts you add by hand still undo one transaction at a time.
+- **Chat and voice:** both use the same path as the card, so they behave the same.
+- **Migration:** `202611160001_confirmed_own_accounts.sql` makes the IBAN optional and adds a name key and a "confirmed" flag. It uses no extensions, so it runs on the desktop app's Postgres.
+
+**Verification:**
+- Two new database tests (`lib/finance/own-transfers.live.test.ts`, run by `npm run test:db`) pass: one yes marks all, closes the other card and marks a later import, and one undo reverts all. The IBAN-less name case passes too.
+- `lib/schema.live.test.ts`, lint and `tsc` are clean on my files.
+- I applied the migration to the shared `moneo-qa` database for the tests and removed it afterwards. The test data is gone too.
+- `npm test` has five failing files. Two need the `unpdf` package, which is missing from the `node_modules` I borrowed because `npm ci` kept stalling. The other three timed out under load and pass when run alone.
+
+**Not done:**
+- No light/dark/mobile screenshots and no `npm run build`. The only visible changes are one line of card text and a "matched by name" label in the Accounts list.
+- Undoing a single transfer of a hand-added account still leaves that account saved, so the next import marks it again. That is the same as before.
+
+PR https://github.com/indkhan/Moneo/pull/247, head 376b163d, checks and reviews: pending (not yet checked)
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A9bb4f367-c3c1-4baf-b780-69bc509f6b8f%3Adelegate-task%3Ae88b48e9-281b-4a9a-ab1e-5f786caf290c (#231 auto-fill merchants) [completed]:
+The organizer no longer asks the owner anything, and PR #248 is open for #231. `npm test`, lint, typecheck, build and `test:db` pass, apart from five files that time out under load (details below).
+
+- **Source of the 201 items:** the AI organizer raised an open question for every payee it couldn't place. The own-transfer scan raised one for every "To EUR"-style move with nobody on the other side. Both are removed. The AI now always returns a label, and rows it isn't confident about stay unlabelled and are never applied. Moves with no counterparty go to the organizer like any other row.
+- **Existing data:** a new migration, `202611160031`, deletes the questions that are still open and rejects chat cards that answered one. Answered questions, memory and undo batches are untouched.
+- **Surfaces:**
+  - The "Needs you" tab and its merchant/category form are gone from the AI organizer page.
+  - Recently answered, with Undo, moved to the Memory tab.
+  - The nav badge and the home "rows need you" banner are removed.
+  - Chat `organize_review` has no questions view; `organize_propose` now takes a payee `identityId`.
+  - The assistant prompt, app guide and README are updated.
+- **What stays in "Waiting for you":** possible duplicates, fees and unusual charges, own-transfer pairs and name cards, cash withdrawals and recurring changes are untouched.
+- **Verification:**
+  - Five test files (markdown remount, cron, recurring page, wealth page) time out at the default 5 s under load here. All of them pass with a 60 s timeout, and I didn't touch them.
+  - The e2e question-answering journey is replaced by an AI-label list and undo journey, which passes against the QA app.
+  - Screenshots in light, dark and mobile are in `.qa/shots/after/` locally, since `.qa/` is git-ignored and I couldn't upload them to the PR.
+
+Two things to review:
+- Low-confidence AI results are left unlabelled rather than applied as "low" labels. They are retried only when new rows arrive.
+- The migration uses version `202611160031` because three open branches (including this one at first) used `202611160001`. In the shared QA database I changed the recorded version of my migration to match.
+
+PR https://github.com/indkhan/Moneo/pull/248, head a66f45ea5969a50d9b0c491ac4a378be8cfdba64, checks and reviews pending (not yet checked after opening)
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A9bb4f367-c3c1-4baf-b780-69bc509f6b8f%3Adelegate-task%3Af66ceac4-8add-480b-9e98-2610955e12f9 (#230 categorize review) [completed]:
+PR #249 is open: the Home "transactions need a category" sheet now has bulk apply, shows everything in one pass, and lets a category be changed afterwards.
+
+The new browser journey, lint, typecheck, build and bundle check pass. Full `npm test` has 7 failures in 6 files: 5-second timeouts in `lib/cron.test.ts` and other heavy page tests that this change doesn't touch. I read this as machine load (the same cron timeouts as #246) and did not re-run them on `main` to confirm.
+
+- **Bulk:** an "Everything left" box applies one category to every remaining group, and "Skip all" leaves them untouched. Typed new categories are created once, however many groups are involved.
+- **One pass:** items arrived in batches for two reasons.
+  - The sheet loaded only the 1,000 newest rows and showed only the 30 biggest groups. It now loads and shows every group.
+  - Applying a category silently skipped rows the organizer wouldn't propose a label for, then counted them as done. Those rows came back on the next visit. Every selected row is now categorized.
+- **Edit after deciding:** a categorized or skipped group shows "Change" or "Categorize", which applies the new category against the current row versions. Editing from the transaction drawer already worked and is unchanged.
+
+Owner choices still go through the existing review and apply functions, so they stay owner corrections with history and undo. There is no migration and no desktop-specific change.
+
+I added `e2e/home-categorize.gated.spec.ts`: a disposable user with 36 groups (more than the old 30-group cap) gets all groups shown, all 72 rows categorized in one apply, then one group changed. It passes against the QA backend. I also checked the sheet at desktop light, desktop dark and 390px mobile, before and after applying. The screenshots are in `.qa/shots/issue230/`, which is git-ignored, so they are not attached to the PR yet.
+
+"Skip all" only affects the open sheet. The Home card still returns while rows are uncategorized, because a persistent dismissal would need new stored state; I noted this in the PR body.
+
+PR https://github.com/indkhan/Moneo/pull/249, head 7b98c1d76ca14840419ba3a41ed78e6d668c1aab, checks and reviews pending (CI not yet reported).
