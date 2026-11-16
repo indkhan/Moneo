@@ -1,6 +1,7 @@
 import { firstSyncedOn, loadWealthEvents, scalableKnownIds, valuationHistory } from "@/lib/finance/net-worth";
 import { serviceDb } from "@/lib/bank/server";
 import { loadWealthItems } from "@/lib/finance/wealth";
+import { historyTradeRows, saveCharts } from "./charts";
 import { calculateHistory, readHistoryInput, type TradeDetails } from "./history";
 import type { ScalableExtras } from "./portfolio";
 import { withScalable } from "./server";
@@ -27,7 +28,9 @@ export async function rebuildScalableHistory(connection: { id: string; workspace
         if (remembered.error) throw new Error(remembered.error.message);
       },
     };
-    const result = calculateHistory(await withScalable(connection.id, connection.workspace_id, mcp => readHistoryInput(mcp, timeZone, before, details), fetch, LOGIN_NEEDED_MS));
+    const input = await withScalable(connection.id, connection.workspace_id, mcp => readHistoryInput(mcp, timeZone, before, details), fetch, LOGIN_NEEDED_MS);
+    try { await saveCharts(connection.id, { charts: [], trades: historyTradeRows(input.rows), held: null }); } catch (cause) { console.error("Scalable trades were not saved", cause); }
+    const result = calculateHistory(input);
     if (!result.ok) return await failed(result.reason);
     const saved = await db.rpc("replace_scalable_value_history", { p_connection_id: connection.id, p_checked_on: today,
       p_rows: result.days.map(day => ({ on_date: day.date, currency_code: "EUR", securities_minor: day.securitiesMinor.toString(), crypto_minor: day.cryptoMinor.toString(), cash_minor: day.cashMinor.toString(), total_minor: day.totalMinor.toString() })) });

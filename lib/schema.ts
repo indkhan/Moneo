@@ -281,6 +281,37 @@ export const scalableTradeDetails = pgTable("scalable_trade_details", {
   check("scalable_trade_details_price_text_check", sql`${table.priceText} ~ '^[0-9]+(\\.[0-9]+)?$'`),
 ]);
 
+export const scalableSecurityCharts = pgTable("scalable_security_charts", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  isin: text("isin").notNull(),
+  timeframe: text("timeframe").notNull(),
+  currencyCode: text("currency_code").notNull(),
+  points: jsonb("points").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.isin, table.timeframe] }),
+  check("scalable_security_charts_isin_check", sql`${table.isin} ~ '^[A-Z]{2}[A-Z0-9]{9}[0-9]$'`),
+  check("scalable_security_charts_timeframe_check", sql`${table.timeframe} in ('one_day','seven_days','one_month','one_year','max')`),
+  check("scalable_security_charts_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+  check("scalable_security_charts_points_check", sql`jsonb_typeof(${table.points}) = 'array'`),
+]);
+
+export const scalableSecurityTrades = pgTable("scalable_security_trades", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  providerId: text("provider_id").notNull(),
+  isin: text("isin").notNull(),
+  side: text("side").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  quantityText: text("quantity_text").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.providerId] }),
+  index("scalable_security_trades_isin").on(table.workspaceId, table.isin, table.occurredAt),
+  check("scalable_security_trades_provider_id_check", sql`char_length(${table.providerId}) between 1 and 200`),
+  check("scalable_security_trades_isin_check", sql`${table.isin} ~ '^[A-Z]{2}[A-Z0-9]{9}[0-9]$'`),
+  check("scalable_security_trades_side_check", sql`${table.side} in ('BUY','SELL')`),
+  check("scalable_security_trades_quantity_text_check", sql`${table.quantityText} ~ '^[0-9]+(\\.[0-9]+)?$'`),
+]);
+
 export const scalableValueHistory = pgTable("scalable_value_history", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   onDate: date("on_date").notNull(),

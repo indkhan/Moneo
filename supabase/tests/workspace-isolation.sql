@@ -131,6 +131,8 @@ begin
     values(workspace_b,md5('wealth_items'||workspace_b)::uuid,md5('transactions'||workspace_b)::uuid,md5('wealth_events'||workspace_b)::uuid,1,'EUR',100,'2026-10-01',gen_random_uuid());
   insert into public.scalable_value_history(workspace_id,on_date,currency_code,securities_minor,crypto_minor,cash_minor,total_minor) values(workspace_b,'2026-10-01','EUR',1,2,3,6);
   insert into public.scalable_trade_details(workspace_id,provider_id,isin,price_text) values(workspace_b,'isolation-trade','XS0000000001','1.5');
+  insert into public.scalable_security_charts(workspace_id,isin,timeframe,currency_code,points,fetched_at) values(workspace_b,'IE00B4L5Y983','one_month','EUR','[{"at":"2026-10-01T00:00:00Z","price":"1.5"}]','2026-10-02T00:00:00Z');
+  insert into public.scalable_security_trades(workspace_id,provider_id,isin,side,occurred_at,quantity_text) values(workspace_b,'isolation-chart-trade','IE00B4L5Y983','BUY','2026-10-01T00:00:00Z','2');
   foreign_account := md5('accounts'||workspace_b)::uuid;
   foreign_goal := md5('goals'||workspace_b)::uuid;
   foreign_import := md5('imports'||workspace_b)::uuid;
