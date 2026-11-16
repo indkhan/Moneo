@@ -1,0 +1,11 @@
+Continue where you left off.
+
+---
+
+The API rate limit has reset. Continue your task exactly where you stopped:
+1. Check your worktree's git status and commit any uncommitted work first.
+2. Finish the work per the original brief. Any migration needs a prefix later than the newest file in supabase/migrations on origin/main.
+3. Open the PR and quote the last lines of lint and typecheck in your reply.
+4. End your reply with `PR <url>, head <SHA>, checks and reviews <state>`.
+
+Don't end your turn while a command is still running, and never kill a process you didn't start.
