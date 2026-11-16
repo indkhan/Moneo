@@ -16,7 +16,7 @@ import { RESEND_EVENT, type Resend } from "@/components/message-actions";
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
 
 export type ChatFormEvents = {
-  onStart?: (conversationId: string, question: string, attachments: ChatAttachment[], spoken: boolean) => void;
+  onStart?: (conversationId: string, question: string, attachments: ChatAttachment[], spoken: boolean, regenerating?: boolean) => void;
   onEvent?: (conversationId: string, event: ChatStreamEvent) => void;
   onDone?: (conversationId: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[]) => void;
 };
@@ -57,12 +57,12 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     void sendMessage(typed, false, files.ready, true);
   }
 
-  async function sendMessage(typed: string, queued = false, attachments: ChatAttachment[] = [], spoken = false) {
+  async function sendMessage(typed: string, queued = false, attachments: ChatAttachment[] = [], spoken = false, regenerates?: string) {
     if (busy) return;
     const message = typed.trim() || ATTACHMENT_ONLY_MESSAGE;
-    onStart?.(conversationId, message, attachments, spoken);
+    onStart?.(conversationId, regenerates ? "" : message, attachments, spoken, !!regenerates);
     if (!queued) { setMessage(""); files.clear(); }
-    const result = await send({ conversationId, message, ...(spoken && { context: VOICE_CONTEXT }), ...(attachments.length && { attachments }) }, streamed => onEvent?.(conversationId, withSteers(streamed)));
+    const result = await send({ conversationId, message, ...(regenerates && { regenerates }), ...(spoken && { context: VOICE_CONTEXT }), ...(attachments.length && { attachments }) }, streamed => onEvent?.(conversationId, withSteers(streamed)));
     if (result) {
       selectConversation(selectionKey, conversationId);
     } else if (!queued) { setMessage(current => current || typed); files.restore(attachments); }
@@ -84,7 +84,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     void sendMessage(autoSend);
   });
   useEffect(() => {
-    const resend = (event: Event) => { const detail = (event as CustomEvent<Resend>).detail; void sendMessage(detail.message, true, detail.attachments); };
+    const resend = (event: Event) => { const detail = (event as CustomEvent<Resend>).detail; void sendMessage(detail.message, true, detail.attachments, detail.spoken, detail.regenerates); };
     window.addEventListener(RESEND_EVENT, resend);
     return () => window.removeEventListener(RESEND_EVENT, resend);
   });

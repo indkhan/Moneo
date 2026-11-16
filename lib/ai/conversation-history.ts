@@ -6,7 +6,7 @@ import { isSpoken } from "./voice-context";
 import { callStubs, loadCalls, type CallCard } from "./voice-call-history";
 
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
-export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; model?: string; attachments?: ChatAttachment[]; spoken?: boolean; call?: CallCard };
+export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; model?: string; attachments?: ChatAttachment[]; spoken?: boolean; call?: CallCard; answer_of?: string | null };
 export type SavedToolStep = { name: string; state: "done"; input?: unknown; output?: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
 const THREAD_PAGE = 30;
@@ -53,7 +53,7 @@ export async function loadThreads(supabase: SupabaseClient, workspace: string, t
 export async function loadConversation(supabase: SupabaseClient, workspace: string, id: string, messagesBefore?: string) {
   const mc = before(messagesBefore);
   if (!z.uuid().safeParse(id).success) throw new Error("Conversation unavailable");
-  let mq = supabase.from("messages").select("id,role,content,created_at,request_id,reply_to,attachments,context").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
+  let mq = supabase.from("messages").select("id,role,content,created_at,request_id,reply_to,answer_of,attachments,context").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (mc) mq = mq.or(`created_at.lt.${mc.created_at},and(created_at.eq.${mc.created_at},id.lt.${mc.id})`);
   const [conversation, page, run, stubs] = await Promise.all([
     supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),

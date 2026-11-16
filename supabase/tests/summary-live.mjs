@@ -21,7 +21,7 @@ try {
   await db.begin(async tx => {
     await tx`insert into auth.users(id,email) values(${user},${`qa-${user}@example.invalid`})`;
     [{ id: workspace }] = await tx`select id from public.workspaces where owner_id=${user}`;
-    await tx`insert into public.workspace_settings(workspace_id,summary_cadence,summary_time,ai_data_scopes) values(${workspace},'weekly','00:00',array['accounts','transactions'])`;
+    await tx`insert into public.workspace_settings(workspace_id,timezone,summary_cadence,summary_time,ai_data_scopes) values(${workspace},'Europe/Berlin','weekly','00:00',array['accounts','transactions'])`;
   });
   writeFileSync(recoveryPath, JSON.stringify({ project, user, workspace }));
   await cron();

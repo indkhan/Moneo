@@ -281,6 +281,37 @@ export const scalableTradeDetails = pgTable("scalable_trade_details", {
   check("scalable_trade_details_price_text_check", sql`${table.priceText} ~ '^[0-9]+(\\.[0-9]+)?$'`),
 ]);
 
+export const scalableSecurityCharts = pgTable("scalable_security_charts", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  isin: text("isin").notNull(),
+  timeframe: text("timeframe").notNull(),
+  currencyCode: text("currency_code").notNull(),
+  points: jsonb("points").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.isin, table.timeframe] }),
+  check("scalable_security_charts_isin_check", sql`${table.isin} ~ '^[A-Z]{2}[A-Z0-9]{9}[0-9]$'`),
+  check("scalable_security_charts_timeframe_check", sql`${table.timeframe} in ('one_day','seven_days','one_month','one_year','max')`),
+  check("scalable_security_charts_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+  check("scalable_security_charts_points_check", sql`jsonb_typeof(${table.points}) = 'array'`),
+]);
+
+export const scalableSecurityTrades = pgTable("scalable_security_trades", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  providerId: text("provider_id").notNull(),
+  isin: text("isin").notNull(),
+  side: text("side").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  quantityText: text("quantity_text").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.providerId] }),
+  index("scalable_security_trades_isin").on(table.workspaceId, table.isin, table.occurredAt),
+  check("scalable_security_trades_provider_id_check", sql`char_length(${table.providerId}) between 1 and 200`),
+  check("scalable_security_trades_isin_check", sql`${table.isin} ~ '^[A-Z]{2}[A-Z0-9]{9}[0-9]$'`),
+  check("scalable_security_trades_side_check", sql`${table.side} in ('BUY','SELL')`),
+  check("scalable_security_trades_quantity_text_check", sql`${table.quantityText} ~ '^[0-9]+(\\.[0-9]+)?$'`),
+]);
+
 export const scalableValueHistory = pgTable("scalable_value_history", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   onDate: date("on_date").notNull(),
@@ -893,6 +924,7 @@ export const messages = pgTable("messages", {
   role: text("role").notNull(),
   requestId: uuid("request_id"),
   replyTo: uuid("reply_to"),
+  answerOf: uuid("answer_of"),
   content: text("content").notNull(),
   context: jsonb("context"),
   attachments: jsonb("attachments").notNull().default(sql`'[]'::jsonb`),
@@ -1064,7 +1096,7 @@ export const spendingPlans = pgTable("spending_plans", {
   limitMinor: bigint("limit_minor", { mode: "bigint" }).notNull(),
   enabled: boolean("enabled").notNull().default(true),
   rollover: boolean("rollover").notNull().default(false),
-  rolloverFrom: date("rollover_from").notNull().default(sql`date_trunc('month',now() at time zone 'Europe/Berlin')::date`),
+  rolloverFrom: date("rollover_from").notNull(),
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1164,6 +1196,7 @@ export const chatRequests = pgTable("chat_requests", {
   conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
   message: text("message").notNull(),
   context: jsonb("context").notNull().default({}),
+  regenerates: uuid("regenerates").references((): AnyPgColumn => chatRequests.id, { onDelete: "cascade" }),
   status: text("status").notNull().default("running"),
   allowedTransactionId: uuid("allowed_transaction_id"),
   allowedCategory: text("allowed_category"),
@@ -1219,7 +1252,7 @@ export const transactionBatches = pgTable("transaction_batches", {
 
 export const workspaceSettings = pgTable("workspace_settings", {
   workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
-  timezone: text("timezone").notNull().default("Europe/Berlin"),
+  timezone: text("timezone").notNull(),
   locale: text("locale").notNull().default("en-GB"),
   theme: text("theme").notNull().default("system"),
   voice: text("voice").notNull().default("marin"),
@@ -1231,6 +1264,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   artifactScalableData: text("artifact_scalable_data").notNull().default("snapshot"),
   speechEngine: text("speech_engine").notNull().default("openai"),
   speechLocalModel: text("speech_local_model"),
+  uncategorizedSkippedAt: timestamp("uncategorized_skipped_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),

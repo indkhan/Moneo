@@ -26,7 +26,7 @@ begin
   execute 'reset role';
   if (select count(*) from public.saved_analyses where job_id=job)<>1 or not exists(select 1 from public.saved_analyses where job_id=job and body='Original exact evidence') then raise exception 'Review retry replaced historical evidence'; end if;
   if exists(select 1 from public.saved_analyses where job_id=canceled_job) then raise exception 'Cancellation wrote analysis'; end if;
-  insert into public.workspace_settings(workspace_id,ai_data_scopes,summary_cadence) values(workspace,array['accounts'],'weekly');
+  insert into public.workspace_settings(workspace_id,timezone,ai_data_scopes,summary_cadence) values(workspace,'Europe/Berlin',array['accounts'],'weekly');
   execute 'set local role service_role';
   if public.finish_financial_review(revoked_job,workspace,'Private review','Synthetic body','{}',false)<>'canceled' then raise exception 'Revoked scope wrote review'; end if;
   execute 'reset role';

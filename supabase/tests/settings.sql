@@ -5,7 +5,7 @@ begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid'),(foreign_actor,'qa-'||foreign_actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
   select id into strict foreign_workspace from public.workspaces where owner_id=foreign_actor;
-  insert into public.workspace_settings(workspace_id,theme) values(foreign_workspace,'dark');
+  insert into public.workspace_settings(workspace_id,timezone,theme) values(foreign_workspace,'Europe/Berlin','dark');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   execute 'set local role authenticated';
   insert into public.workspace_settings(workspace_id,timezone,locale,theme,ai_data_scopes)
@@ -17,7 +17,7 @@ begin
     raise exception 'Unallowlisted provider scope accepted' using errcode='ZX001';
   exception when check_violation then null; end;
   begin
-    insert into public.workspace_settings(workspace_id,theme) values(foreign_workspace,'light');
+    insert into public.workspace_settings(workspace_id,timezone,theme) values(foreign_workspace,'Europe/Berlin','light');
     raise exception 'Foreign settings write allowed' using errcode='ZX001';
   exception when insufficient_privilege then null; end;
   update public.workspace_settings set theme='dark',summary_cadence='weekly',summary_time='08:15' where workspace_id=workspace;

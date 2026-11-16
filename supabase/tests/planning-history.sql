@@ -16,6 +16,7 @@ declare
 begin
   insert into auth.users(id,email) values(user_id,'qa-'||user_id||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=user_id;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub', user_id::text, true);
   insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Synthetic','EUR');
   insert into public.financial_assumptions(id,workspace_id,account_id,name,kind,amount_minor,currency_code,cadence,starts_on,source,confirmed)

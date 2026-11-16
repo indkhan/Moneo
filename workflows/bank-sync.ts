@@ -11,6 +11,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { claimBankSync, holdBankSync, releasedLease } from "@/lib/bank/sync-lease";
 import { ALIGNED_SPACING_MS, accountDue } from "@/lib/bank/sync-state";
 import { loadWorkspaceSettings } from "@/lib/settings";
+import { normalizeIban } from "@/lib/iban";
 import { startSyncAgentRun } from "@/lib/import/follow-up";
 import { importFile } from "@/workflows/import-file";
 
@@ -168,7 +169,7 @@ async function ownAccountIbans(db: ReturnType<typeof serviceDb>, workspaceId: st
     db.from("own_account_identifiers").select("iban").eq("workspace_id", workspaceId)]);
   if (connected.error) throw new Error(connected.error.message);
   if (declared.error) throw new Error(declared.error.message);
-  return new Set([...connected.data, ...declared.data].flatMap(row => row.iban ? [String(row.iban).replace(/s/g, "").toUpperCase()] : []));
+  return new Set([...connected.data, ...declared.data].map(row => normalizeIban(row.iban ?? "")).filter((iban): iban is string => iban !== null));
 }
 
 async function stageImport(db: ReturnType<typeof serviceDb>, workspaceId: string, account: { provider_account_uid: string; account_name: string; currency_code: string },
