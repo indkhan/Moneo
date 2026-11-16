@@ -61,6 +61,8 @@ function assemble() {
     `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude${process.platform === "win32" ? ".exe" : ""}`]) {
     if (!existsSync(path.join(app, file))) fail(`${file} is missing from the standalone server`);
   }
+  const speechRuntime = `node_modules/onnxruntime-node/bin/napi-v6/${process.platform}/${process.arch}/onnxruntime_binding.node`;
+  if (existsSync(path.join(root, speechRuntime)) && !existsSync(path.join(app, speechRuntime))) fail(`${speechRuntime} is missing from the standalone server; local speech to text needs it`);
   const migrations = path.join(out, "migrations");
   rmSync(migrations, { recursive: true, force: true });
   cpSync(path.join(root, "supabase", "migrations"), migrations, { recursive: true });
