@@ -12,7 +12,9 @@ export function checkProperty<T>(name: string, property: fc.IPropertyWithHooks<T
   try {
     fc.assert(property, { seed: SEED, numRuns: runs });
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    const cause = error instanceof Error && error.cause instanceof Error ? `
+Failing check: ${error.cause.message}` : "";
+    const reason = `${error instanceof Error ? error.message : String(error)}${cause}`;
     throw new Error(`${reason}\n\nTo keep this failure as a permanent check, add its seed and path to lib/property-regressions.json under "${name}".`);
   }
 }
