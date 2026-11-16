@@ -1,0 +1,170 @@
+Update on pull request #276 (https://github.com/indkhan/Moneo/pull/276), which T3 Code is watching for you:
+- Checks failed on 2b58ca7:
+  - checks https://github.com/indkhan/Moneo/actions/runs/43956396083/job/133611970783
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #278 (https://github.com/indkhan/Moneo/pull/278), which T3 Code is watching for you:
+- All 1 required check passed on 7a0ab58.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:limit-resume%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253A0ec64cf3-b9b1-406b-b5dd-9c0225120f43%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253A0ec64cf3-b9b1-406b-b5dd-9c0225120f43%3Aordinal%3A1%3A1794862800000%3Alimit-arm%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253A0ec64cf3-b9b1-406b-b5dd-9c0225120f43%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253A0ec64cf3-b9b1-406b-b5dd-9c0225120f43%3Aordinal%3A1%3A1794862800000 (#265 mac-arm64 quit leaves a process) [completed]:
+The fix is in PR #273. The mac-arm64 smoke passes on rerun, and all four Desktop platform jobs and the CI jobs are green. The first mac-arm64 job was cancelled for lack of a runner. I reran it with `--failed`, and it passed on the rerun.
+
+**Cause.** The app's own shutdown is fine. The log shows the Next server and the backend stopped and awaited, then `Stopped`, before `app.exit(0)`. The smoke names processes by the first word of the command, so `Moneo#65851` is a `Moneo Helper (…)` Chromium process, not a backend process. I couldn't run macOS here, so this is reasoned from the log and code, not reproduced. My reading is that on macOS those helpers are orphaned and reaped by the system a moment after the main process exits, and the check sampled right at that moment. The port was already closed.
+
+**Fix.** I added `Desktop.leftRunning()` to the smoke harness. It polls until every sampled process has exited, for up to 30 seconds, then returns anything still alive. The quit checks in `package-smoke.mjs` and `package-journey.mjs` now use it. A real leaked process still fails after the wait. I changed nothing in the app's shutdown code and added no unit test, because the only change is in the packaged-app harness.
+
+The check passing on the rerun fits this explanation but doesn't prove it, since the failure happened once.
+
+- **lint:** `> eslint .` finished with no output.
+- **typecheck:** `> tsc --noEmit && tsc --noEmit -p desktop` finished with no output.
+- **npm test:** 304 files passed (11 skipped), 1725 tests passed (17 skipped).
+
+No reviews yet. The Draft release job is skipped, as expected for a PR.
+
+PR https://github.com/indkhan/Moneo/pull/273, head 9557c8b0d71ad280b2611076b03eb7c71d947cae, checks green (mac-arm64 passed on rerun), no reviews yet
+
+---
+
+Update on pull request #276 (https://github.com/indkhan/Moneo/pull/276), which T3 Code is watching for you:
+- All 1 required check passed on 86d2fc6.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:limit-resume%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253A1e8b44e8-3c75-4c6f-bb6b-8463be7f1562%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253A1e8b44e8-3c75-4c6f-bb6b-8463be7f1562%3Aordinal%3A1%3A1794862800000%3Alimit-arm%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253A1e8b44e8-3c75-4c6f-bb6b-8463be7f1562%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253A1e8b44e8-3c75-4c6f-bb6b-8463be7f1562%3Aordinal%3A1%3A1794862800000 (#264 mobile chat footer overlap) [completed]:
+Not fixed yet, and no PR is open. The overlap I reproduced is Next.js's own dev-mode badge, not app UI, so I need your call before changing anything.
+
+**What I found**
+- At 390px in `next dev`, the round "N" badge (Next's dev indicator, default `bottom-left`) sits on top of the composer's attach button on `/ai`. This matches the report.
+- In the production build (`qa:server -- --production`), the same page at 390px has no overlap. The footer "Moneo can use: …" and the composer are clear.
+- The app has no avatar or account button anywhere in `components/` or `app/`, so the "avatar" in the issue is almost certainly that badge.
+
+**Options**
+1. `devIndicators: false` in `next.config.ts`. Simplest, but it also hides Next's build/error indicator in dev.
+2. Move it with `devIndicators: { position: "top-left" | "top-right" | "bottom-right" }`. Every corner collides with something on a phone (header icons at top, send button at bottom-right), so this only trades one overlap for another.
+3. Leave it and close #264 as dev-only.
+
+I'd recommend option 1 if you don't rely on the dev indicator; it is a dev-tooling config change and changes nothing in the shipped app. Tell me which option you want, and I'll make the change, run lint, typecheck and tests, take the before/after screenshots and open the PR.
+
+**Current state**
+- Branch `t3/issue-264-mobile-footer` is created from `origin/main`, with no commits and a clean tree.
+- The QA backend is set up (`npm run setup -- --qa` and `qa:auth` both succeeded).
+- I stopped the QA app I started (PIDs 32824 and 33656). Nothing else was killed.
+- Before screenshots are in `.qa/shots/before/` (`ai-*.png`, `home-*.png`). They are git-ignored, so they are not in the PR.
+- I did not run lint, typecheck or `npm test`, because no code has changed yet.
+
+---
+
+Delegated task node:delegated-task:limit-resume%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253A04a410d4-9cce-4db2-b5ee-6d9c2ad236d9%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253A04a410d4-9cce-4db2-b5ee-6d9c2ad236d9%3Aordinal%3A1%3A1794862800000%3Alimit-arm%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253A04a410d4-9cce-4db2-b5ee-6d9c2ad236d9%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253A04a410d4-9cce-4db2-b5ee-6d9c2ad236d9%3Aordinal%3A1%3A1794862800000 (#263 remember Skip all) [completed]:
+PR #279 is open against `main` with `Closes #263`. Skip all now persists, so the Home card stays hidden until a transaction created after the skip is still uncategorized. Not merged.
+
+**What changed**
+- Migration `202611160151_uncategorized_skip.sql` adds `workspace_settings.uncategorized_skipped_at` (timestamptz). It is later than the newest file on `origin/main` (`202611160081`), and `lib/schema.ts` matches it. Reset all data already deletes the settings row, so it clears the marker.
+- `loadHomeReview` hides the card when no transaction was created after the marker. An unreadable marker is treated as "not skipped" and never blocks the review.
+- `skipUncategorized()` upserts the marker. "Skip all" calls it before closing the sheet.
+- I kept the marker out of `settingsSchema`. The settings save RPC rewrites the whole preferences object, so a field there would be reset on every Settings save.
+
+**Tests**
+- `lib/ai/home-review.test.ts`: hidden after skip (0), shown after a newer row (13). Passes.
+- `app/home-review-actions.test.ts`: skip writes the marker. Passes.
+
+**Checks**
+- Lint: `eslint .` exited 0 with no output lines.
+- Typecheck: `tsc --noEmit && tsc --noEmit -p desktop`, exit 0.
+- Build: exit 0.
+- `npm test`: 1776 passed, 3 failed in 2 files. Both bank-credentials failures are "The service database is not configured", because this worktree has no `.env`. The migration-replay test failed in the full run but passes alone. I did not re-run the full suite, so I can't say whether it is a flake.
+- CI on the PR: `checks`, `database`, `browser` and GitGuardian pass. The desktop platform jobs are still pending.
+
+**Edge case**
+A categorization that is later undone puts rows back as uncategorized with their original `created_at`, so they don't bring the card back. Per-group Skip is unchanged.
+
+PR https://github.com/indkhan/Moneo/pull/279, head b7b20512, checks and reviews pending (CI passing except desktop platform jobs still running; no reviews)
+
+---
+
+Update on pull request #275 (https://github.com/indkhan/Moneo/pull/275), which T3 Code is watching for you:
+- All 1 required check passed on a0af817.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #275 (https://github.com/indkhan/Moneo/pull/275), which T3 Code is watching for you:
+- Checks failed on a0af817:
+  - database https://github.com/indkhan/Moneo/actions/runs/43962377061/job/133632893422
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:limit-resume%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253Ac7765292-4575-490b-8777-34f7de5f5abc%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253Ac7765292-4575-490b-8777-34f7de5f5abc%3Aordinal%3A1%3A1794862800000%3Alimit-arm%3Athread%3Adelegated-task%3Acommand%253Amcp%253A4ab48689-1401-4926-b4f6-fa0aa685ec23%253Adelegate-task%253Ac7765292-4575-490b-8777-34f7de5f5abc%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A4ab48689-1401-4926-b4f6-fa0aa685ec23%25253Adelegate-task%25253Ac7765292-4575-490b-8777-34f7de5f5abc%3Aordinal%3A1%3A1794862800000 (#262 Regenerate replaces reply) [completed]:
+Regenerate now replaces the last reply and doesn't repeat the question; earlier answers stay behind a `1/2 ‹ ›` switcher. I could not click Regenerate live, because the QA app's placeholder AI key rejects every provider. The stream-and-replace step is untested in the browser.
+
+- **Storage:** a regeneration is a new `chat_requests` row that points at the original request (`regenerates`). Every assistant message records the question it answers (`answer_of`). Nothing is deleted. The migration is `supabase/migrations/202611160201_regenerated_replies.sql`, `lib/schema.ts` is aligned, and the migration replay passes.
+- **Server:** the server only accepts a regeneration of the newest completed non-voice question.
+- **Model context:** the model only sees the newest answer to each question. For a regeneration, it also doesn't see the question, its old replies or steering from the run being replaced.
+- **UI:** the old reply is hidden while the new one streams, and comes back if the new one fails. It works in the main chat and the artifact chat. Voice calls are unchanged.
+- **Queue and steering:** a queued message starts normally after a regeneration finishes. Steering sent during a regenerated run keeps its answer in the same group.
+- **Checked:** I seeded a conversation with two answers to one question. After a reload it shows one question, the newer answer and a `2/2` switcher. I looked at light, dark and mobile, plus the state after pressing previous. The screenshots are linked in the PR body and removed from the branch.
+- **Tests:** `components/message-actions.test.tsx` and `lib/ai/replayable-history.test.ts` are new or extended, and `supabase/tests/chat-regenerate.sql` is a new SQL regression. `lib/schema.live.test.ts` passes against QA with the migration applied. I reverted the migration and removed the seeded data from the shared QA database, and stopped the QA app I started.
+
+`npm run lint` printed no findings and exited 0. The last lines of the others:
+
+```
+npm run typecheck:  tsc --noEmit && tsc --noEmit -p desktop   (no errors)
+npm test:           Test Files  311 passed | 11 skipped (322)
+                    Tests  1782 passed | 17 skipped (1799)
+npm run build:      exit 0
+```
+
+PR https://github.com/indkhan/Moneo/pull/280, head 7bc209a38d290c7412e5121871bb4e11cd014370, checks pending (browser, checks, database and four desktop builds are running), no reviews yet.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Adbf87628-c489-4723-9420-d915b808edcf%3Adelegate-task%3Afcb003eb-dfb6-46da-a3b6-cd50277360b8 (#262 Regenerate replaces reply (resume)) [completed]:
+Regenerate now replaces the last reply instead of adding a duplicate question and a second answer. One thing I could not check: clicking Regenerate end to end, because the QA app's AI key is a placeholder that every provider rejects.
+
+I applied the previous agent's work to a branch from current `origin/main` and committed it before going further. The old worktree was not touched.
+
+**How it works**
+- **One question, newest answer:** Regenerate asks again under the original question and stores the new reply as another answer to it. The chat shows one question with a `1/2 ‹ ›` switcher on the newest answer.
+- **Nothing deleted:** earlier answers stay in the database and survive a reload.
+- **Model context:** the model only sees the newest answer per question, not the one you rejected.
+- **Other paths:** voice calls, queued messages and steering use the unchanged path.
+- **Guard:** only the latest completed, non-voice question can be regenerated.
+- **Migration:** `202611160201_regenerated_replies.sql` adds `messages.answer_of` and `chat_requests.regenerates`, and `lib/schema.ts` matches. It uses only core Postgres, so it works on the desktop's bundled Postgres.
+
+**What I ran**
+- **Typecheck, lint, build:** `npm run typecheck` (root and `desktop`), `npm run lint` and `npm run build` all exit 0.
+- **`npm test`:** one early run had 3 failures, in `app/api/bank/credentials/route.test.ts` and `supabase/tests/migration-replay.test.ts`. The first two failed because my base was behind `main`. After rebasing, those two files and the new regenerate tests (28 tests) pass. I did not re-run the full `npm test` after the rebase.
+- **Migration on QA:** tested in a rolled-back transaction on the QA database. It then went on the QA database for the screenshots and I reverted it afterwards, including my seeded rows.
+- **Screenshots:** light, dark and mobile look right, with the switcher showing 2/2. They use seeded conversations, and the "before" shot is a hand-seeded stand-in for the old duplicated-question layout. They are on the `pr-assets/281` branch and embedded in the PR body.
+
+I stopped the QA app on port 3100, which was my own server. The PR is open and not merged; checks (browser, database, desktop builds) were still running and there are no reviews yet.
+
+PR https://github.com/indkhan/Moneo/pull/281, head 807b0b99bebb50984fe954ae53e2d7fe564f66b2, checks pending, no reviews yet
+
+---
+
+Update on pull request #280 (https://github.com/indkhan/Moneo/pull/280), which T3 Code is watching for you:
+- All 1 required check passed on 7bc209a.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+<task-notification>
+<task-id>bcaxme1x2</task-id>
+<tool-use-id>toolu_01MR8dWT8XboPViCrVgC5gQm</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ff8438f77c7e4b53\bb0f6ad7-c86a-46b2-8129-8044cbbbb88f\tasks\bcaxme1x2.output</output-file>
+<status>completed</status>
+<summary>Background command "Typecheck, lint, test 277 merge" completed (exit code 0)</summary>
+</task-notification>
