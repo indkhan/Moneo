@@ -1,0 +1,58 @@
+Act as the implementation sub-agent for this task.
+
+Build Moneo issue #152: per-position price charts and news on the Wealth page for Scalable Capital positions.
+
+The owner decided: **the chart comes from the last sync, and news loads live when the detail opens.**
+
+**Detail view**
+- Tapping a Scalable position on Wealth opens a detail view with a price chart. Use a drawer or page, whichever matches how the app shows transaction details.
+- Offer the periods 1D/1W/1M/1Y/Max, as far as Scalable's `get_security_chart` timeframes allow.
+- Mark the owner's own buys and sells on the chart from the stored trade history. lib/scalable/history.ts and history-job.ts already read charts and trade details, so reuse them.
+
+**Storing the chart**
+- Store the chart points during the regular Scalable sync (lib/scalable/sync.ts), so the chart works offline and opening it costs no extra calls.
+- Add a new ordered migration with a unique timestamp prefix later than `202611160041`. Keep lib/schema.ts aligned. It must work on the desktop's bundled Postgres.
+- Prices are decimal text or integer minor units with an explicit currency, never floats for money. Use the formatter in lib/finance/format.ts.
+- Show "as of <sync time>".
+
+**News**
+- Fetch it live from `get_security_news` when the detail opens, with a loading state and a clear offline/error state.
+- Never block the chart on it.
+
+**Scope and surfaces**
+- Read-only: no trading changes.
+- Check the mobile layout and both light and dark.
+- If lib/scalable/read-tools.ts has an obvious spot, add a chat tool or artifact for "show me the chart for X".
+- Disconnecting Scalable and "reset all data" must remove the stored chart data.
+- Mock Scalable in tests. On the QA app, use a mocked or stand-in connection. Never call the real account.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 152 --comments`.
+- Branch `t3/issue-152-wealth-charts` from current `origin/main`. Commit each step in plain language, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The QA app on port 3100 and the moneo-qa backend are shared with other agents:
+  - Never run `npm run qa:reset` or `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend (.env, port 3000, project `moneo`).
+  - If 3100 is busy, wait and retry.
+- If you apply your migration to the shared QA database for testing, revert it afterwards, so other branches' `test:db` isn't broken.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.**
+- Also run `npm test`, `npm run build` and `npm run test:db`.
+- Use the verify-ui skill for light/dark/mobile. Link the screenshots in the PR body from a commit, then remove them from the branch.
+- Push and open a PR to `main` (`Closes #152`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bivxtgtnl</task-id>
+<tool-use-id>toolu_01VwEcRQ8GNvCo1hpcoBynDz</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\59a16e6727d3b68d\177daa07-2f80-407c-8201-234a343f799c\tasks\bivxtgtnl.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm ci &gt; "$TEMP/npmci-152.log" 2&gt;&amp;1; echo "exit $?" &gt;&gt; "$TEMP/npmci-152.log") &amp;
+sleep 1; echo started" completed (exit code 0)</summary>
+</task-notification>
