@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { normalizeCategoryName, resolveMerchantName, type MappedRow } from "@/lib/import/csv";
+import { normalizeCategoryName, resolveMerchantName, ZONE_OF_IMPORTS_SAVED_WITHOUT_ONE, type MappedRow } from "@/lib/import/csv";
 import { calendarDayBoundary } from "@/lib/finance/calendar";
 
 export function stableId(value: string): string {
@@ -17,5 +17,5 @@ export function importRowPayload(workspaceId: string, importId: string, row: Map
     postedOn: row.postedOn, postedAt: row.postedAt ?? null, description: row.description, amountMinor: row.amountMinor.toString(), currencyCode: row.currencyCode,
     status: row.status, kind: row.kind, merchantName, merchantNormalizedName: merchantName?.toLowerCase() ?? null, merchantId: merchantName ? stableId(`${workspaceId}:merchant:${merchantName.toLowerCase()}`) : null,
     categoryName, categoryId: categoryName ? stableId(`${workspaceId}:category:${categoryName}`) : null,
-    balanceMinor: row.balanceMinor?.toString() ?? null, balanceAsOf: row.balanceMinor !== undefined ? row.postedAt ?? calendarDayBoundary(row.postedOn, row.calendarTimezone) : null };
+    balanceMinor: row.balanceMinor?.toString() ?? null, balanceAsOf: row.balanceMinor !== undefined ? row.postedAt ?? calendarDayBoundary(row.postedOn, row.calendarTimezone ?? ZONE_OF_IMPORTS_SAVED_WITHOUT_ONE) : null };
 }

@@ -392,12 +392,12 @@ ${artifactBrief}` : ""}`,
     requireAiScope(current.settings, ...readScopes);
     const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [moneoToolName(toolResult.toolName)] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
-    emit({ type: "answer", conversationId, answer, toolsUsed, followUps });
+    emit({ type: "answer", conversationId, answer, toolsUsed, followUps, model: model.modelId });
     const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer,
       p_usage: reportedUsage(model.modelId, usage), p_tool_calls: toolCalls });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return [{ status: finished.data, error: `Request is ${finished.data}` }, 409];
-    return [{ conversationId, answer, toolsUsed, followUps }, 200];
+    return [{ conversationId, answer, toolsUsed, followUps, model: model.modelId }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
     await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });

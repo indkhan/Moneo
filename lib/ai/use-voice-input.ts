@@ -5,8 +5,8 @@ export const VOICE_MAX_SECONDS = 120;
 
 export type VoiceStatus = "idle" | "starting" | "recording" | "finishing";
 export type VoiceAction = "send" | "done";
-export type VoiceState = { status: VoiceStatus; text: string; level: number; error: string; startedAt: number };
-export const IDLE_VOICE: VoiceState = { status: "idle", text: "", level: 0, error: "", startedAt: 0 };
+export type VoiceState = { status: VoiceStatus; text: string; level: number; error: string; note: string; startedAt: number };
+export const IDLE_VOICE: VoiceState = { status: "idle", text: "", level: 0, error: "", note: "", startedAt: 0 };
 
 export function createVoiceInput({ record, onFinish, onChange, maxSeconds = VOICE_MAX_SECONDS, now = Date.now }: {
   record: (handlers: VoiceHandlers) => Promise<VoiceRecording>; onFinish: (action: VoiceAction, text: string) => void;
@@ -22,7 +22,7 @@ export function createVoiceInput({ record, onFinish, onChange, maxSeconds = VOIC
     set({ ...IDLE_VOICE, status: "starting" });
     const live = <T>(handler: (value: T) => void) => (value: T) => { if (current === run) handler(value); };
     try {
-      const next = await record({ onText: live<string>(text => set({ text })), onLevel: live<number>(level => set({ level })), onError: live(fail) });
+      const next = await record({ onText: live<string>(text => set({ text })), onLevel: live<number>(level => set({ level })), onError: live(fail), onNote: live<string>(note => set({ note })) });
       if (current !== run) return next.cancel();
       recording = next;
       set({ status: "recording", startedAt: now() });
@@ -35,15 +35,16 @@ export function createVoiceInput({ record, onFinish, onChange, maxSeconds = VOIC
     const current = run, active = recording;
     clearTimeout(limit);
     set({ status: "finishing", level: 0 });
-    const heard = (await active.stop().catch(() => state.text)).trim() || state.text.trim();
+    let heard: string;
+    try { heard = (await active.stop()).trim() || state.text.trim(); } catch (error) { if (current === run) fail(error); return; }
     if (current !== run) return;
-    reset(heard ? {} : { error: "Didn't catch that. Try again." });
+    reset(heard ? { note: state.note } : { error: "Didn't catch that. Try again.", note: state.note });
     if (heard) finished(action, heard);
   }
 
   function cancel() {
     recording?.cancel();
-    if (state.status !== "idle" || state.error) reset();
+    if (state.status !== "idle" || state.error || state.note) reset();
   }
 
   function fail(error: unknown) {

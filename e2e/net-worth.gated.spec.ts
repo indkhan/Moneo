@@ -127,8 +127,19 @@ test("a cash machine card adds the money to Cash once, counts nothing until acce
     await page.goto("/");
     const card = page.getByRole("region", { name: "Cash withdrawal proposal" }).filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 30_000 });
-    await card.getByRole("button", { name: `${label}: ${title}`, exact: true }).click();
+    await card.getByRole("button", { name: `${label}: ${title}`, exact: true }).dblclick();
     await expect.poll(async () => (await db`select status from public.agent_proposals where workspace_id=${workspace} and title=${title}`)[0].status, { timeout: 30_000 }).toBe("accepted");
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Cash withdrawal proposal" }).filter({ hasText: title })).toHaveCount(0);
+  };
+  const dismiss = async (title: string) => {
+    await page.goto("/");
+    const card = page.getByRole("region", { name: "Cash withdrawal proposal" }).filter({ hasText: title });
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    await card.getByRole("button", { name: `Dismiss: ${title}`, exact: true }).dblclick();
+    await expect.poll(async () => (await db`select status from public.agent_proposals where workspace_id=${workspace} and title=${title}`)[0].status, { timeout: 30_000 }).toBe("rejected");
+    await page.reload();
+    await expect(card).toHaveCount(0);
   };
   const cashBalance = async () => { await page.goto("/money/accounts"); return page.getByRole("region", { name: "Your accounts" }).getByRole("article", { name: "Cash", exact: true }); };
 
@@ -142,6 +153,12 @@ test("a cash machine card adds the money to Cash once, counts nothing until acce
   await accept(await raise(1500, day(-3)), "Add to cash");
   await expect(await cashBalance()).toContainText("EUR 45.00");
   expect(await db`select count(*)::int n from public.transactions where account_id=${cash.id}`).toEqual([{ n: 2 }]);
+
+  const declined = await raise(2500, day(-2));
+  await dismiss(declined);
+  await expect(await cashBalance()).toContainText("EUR 45.00");
+  expect(await db`select count(*)::int n from public.transactions where account_id=${cash.id}`).toEqual([{ n: 2 }]);
+  expect(await db`select count(*)::int n from public.transactions where workspace_id=${workspace} and kind='transfer' and transfer_id is not null and description like ${`%${suffix} 2500`}`).toEqual([{ n: 0 }]);
 });
 
 test("a repeated bank row can be resolved from review without posting twice, and undone", async ({ page }) => {

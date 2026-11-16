@@ -112,6 +112,7 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | No comments, except exact tool directives | `moneo/no-comments` (lint, autofix) |
 | `app/` → `components/` → `lib/`, `workflows/`; `lib/finance` never imports `lib/ai`; Electron only in `desktop/`; no app code in `desktop/src` | `moneo/import-boundaries` (lint) |
 | The modules every page loads (`lib/auth`, `lib/settings`, `lib/safe-action`, `lib/env`) never import `lib/ai` | `moneo/import-boundaries` (lint) |
+| Dates use the owner's time zone from Settings (detected from their device, saved on first load); no function assumes one | required `timeZone` parameters (compiler); `no-restricted-syntax` (lint) |
 | No hard-coded port 3000 or app address outside `lib/env.ts` | `no-restricted-syntax` (lint) |
 | Tests never wait on a real timer, skip from inside a test, read migration text, or touch port 3000 | `no-restricted-syntax` (lint) |
 | One way to make a database client: `serviceDb()` for the service role, `createClient()` in `lib/supabase-server.ts` for the owner | `no-restricted-imports` (lint) |

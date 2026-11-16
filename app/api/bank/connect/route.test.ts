@@ -44,6 +44,17 @@ it("keeps the generic message for errors that are not from Enable Banking", asyn
   expect((await (await connect()).json()).error).toBe("The bank connection could not be started");
 });
 
+it("never logs a JWT, private key or token from a failed connection", async () => {
+  const jwt = ["eyJhbGciOiJSUzI1NiJ9", "eyJzeW50aGV0aWMiOnRydWV9", "c3ludGhldGljLXNpZ25hdHVyZQ"].join(".");
+  const privateKey = "-----BEGIN PRIVATE KEY-----SYNTHETIC-KEY-MATERIAL-----END PRIVATE KEY-----";
+  const token = "synthetic-bank-token-7f3a91";
+  startAuthorization.mockRejectedValue(new Error(`request with Bearer ${jwt} signed by ${privateKey} sent token ${token} failed`));
+  await connect();
+  const logged = vi.mocked(console.error).mock.calls.flat().map(String).join("\n");
+  expect(logged).toContain("bank connect failed");
+  for (const secret of [jwt, privateKey, token]) expect(logged).not.toContain(secret);
+});
+
 it("sends a bank login from a phone back to the computer without starting anything", async () => {
   const response = await POST(new Request("http://127.0.0.1:3000/api/bank/connect", { method: "POST", headers: { "x-forwarded-host": "pc.example.ts.net" }, body: JSON.stringify({ aspspName: "Revolut", country: "DE" }) }));
   expect(response.status).toBe(409);

@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
-import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, INSIGHT_TYPES, VOICES, type WorkspaceSettings } from "@/lib/settings";
+import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, deviceTimeZone, INSIGHT_TYPES, SPEECH_ENGINES, VOICES, type WorkspaceSettings } from "@/lib/settings";
+import { SPEECH_ENGINE_LABELS } from "@/lib/ai/speech/engine";
 import { saveSettings } from "./actions";
 import type { AiSource } from "@/lib/ai/chatgpt";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
@@ -91,10 +92,14 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
     {state === "failed" && <span role="alert" className="text-sm font-normal text-danger">{"Couldn’t play the sample. Check your sound and try again."}</span>}</div>;
 }
 
+const neverChanges = () => () => {};
+
 export function SettingsForm({ settings, currency, timeZones, aiSource, connections }: { settings: WorkspaceSettings; currency: string; timeZones: string[]; aiSource: AiSource; connections: ModelConnections }) {
   const [state, action, pending] = useActionState(saveSettings, {});
   const [customize, setCustomize] = useState(AI_AGENT_KEYS.some(agent => Boolean(settings.ai_models[agent])));
   const [dirty, setDirty] = useState(false);
+  const [zone, setZone] = useState(settings.timezone);
+  const deviceZone = useSyncExternalStore(neverChanges, deviceTimeZone, () => null);
   const [locale, setLocale] = useState(settings.locale);
   const form = useRef<HTMLFormElement>(null);
   const unsaved = dirty || !!state.error;
@@ -119,7 +124,8 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
     <fieldset id="display" className={card}><legend className={legend}>Display and calendar</legend>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className={label}>Display currency<CurrencySelect name="display_currency" label="Display currency" defaultValue={currency} locale={settings.locale} onChange={() => setDirty(true)} /></label>
-        <label className={label}>Timezone<select className={input} name="timezone" defaultValue={settings.timezone} {...invalid("timezone")}>{zones.map(zone => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}</select></label>
+        <div><label className={label}>Timezone<select className={input} name="timezone" value={zone} onChange={event => setZone(event.target.value)} {...invalid("timezone")}>{zones.map(name => <option key={name} value={name}>{name.replaceAll("_", " ")}</option>)}</select></label>
+          {deviceZone && deviceZone !== zone && zones.includes(deviceZone) && <button type="button" className="mt-1 text-xs font-medium text-brand hover:underline" onClick={() => { setZone(deviceZone); setDirty(true); }}>Use this device&apos;s timezone ({deviceZone.replaceAll("_", " ")})</button>}</div>
         <label className={label}>Date and number locale<select className={input} name="locale" defaultValue={settings.locale} onChange={event => setLocale(event.target.value)} {...invalid("locale")}>{locales.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
         <label className={label}>Appearance<select className={input} name="theme" defaultValue={settings.theme}><option value="system">Follow device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       </div><p className={help}>Dates and numbers will look like {example.longDate("2026-01-31")} and {example.money(123456, currency)}.</p>
@@ -141,10 +147,18 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
         </div>)}</fieldset>
         <p className={help}>OpenRouter IDs include vendor/model. Saving does not call the AI provider.</p>
       </div>
-      <VoicePicker value={settings.voice} />
       <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI, Anthropic or OpenRouter (depending on the model) receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key, or counts toward your ChatGPT or Claude plan.</p></details>
       <div className="divide-y divide-border">{AI_DATA_SCOPES.map(scope => <label key={scope} className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_data_scopes" value={scope} defaultChecked={settings.ai_data_scopes.includes(scope)} /><span><strong className="block capitalize">{scope}</strong><span className="text-muted-foreground">{scopeDescriptions[scope]}</span></span></label>)}
         <label className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="artifact_scalable_data" value="live" defaultChecked={settings.artifact_scalable_data === "live"} /><span><strong className="block">Live Scalable data in artifacts</strong><span className="text-muted-foreground">Off: artifact Pages and Home cards show your Scalable portfolio as of the last sync, the same figures as Wealth. On: they read Scalable live each time they open, with current prices and quotes and charts for any security, but they load slower and show an error when Scalable can&apos;t be reached.</span></span></label></div>
+    </fieldset>
+    <fieldset id="voice" className={card}><legend className={legend}>Voice</legend>
+      <VoicePicker value={settings.voice} />
+      <label className={label}>Speech to text
+        <select name="speech_engine" className={input} defaultValue={settings.speech_engine}>
+          {SPEECH_ENGINES.map(engine => <option key={engine} value={engine} disabled={engine !== "openai" && engine !== settings.speech_engine}>{SPEECH_ENGINE_LABELS[engine]}{engine === "openai" || engine === settings.speech_engine ? "" : " (coming soon)"}</option>)}
+        </select>
+        <span className={`${help} font-normal`}>Turns what you say into text when you use the microphone in chat. Voice calls always use OpenAI. If the engine you choose can&apos;t run, Moneo uses OpenAI when you have added an API key.</span>
+      </label>
     </fieldset>
     <fieldset id="insights" className={card}><legend className={legend}>Insights and summaries</legend>
       <p className={help}>Mute the insight types you do not want to see.</p>

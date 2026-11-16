@@ -31,7 +31,7 @@ export async function applyCashWithdrawal({ supabase, workspace }: Context, prop
     accountId = created.data.id as string; createdAccount = true;
   }
   const balance = async () => {
-    const evidence = await loadBalanceEvidence(supabase, workspace.id);
+    const evidence = await loadBalanceEvidence(supabase, workspace.id, new Date().toISOString());
     return resolveBalances(evidence.accounts.filter(account => account.id === accountId), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0]?.balance ?? null;
   };
   const before = await balance();

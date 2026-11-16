@@ -8,7 +8,7 @@ const Chart = dynamic(loadChart, {
   ssr: false, loading: () => <div aria-hidden="true" className="h-[240px] animate-pulse rounded-lg bg-muted" />,
 });
 
-export function TrendChart({ months, ...props }: { months: string[]; labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; picked?: "in" | "out"; height: number }) {
+export function TrendChart({ months, ...props }: { months: string[]; labels: string[]; income: bigint[]; spending: bigint[]; currency: string; locale?: string; flow?: "in" | "out"; selected?: number; picked?: "in" | "out"; height: number }) {
   const params = useSearchParams();
   return <Chart {...props} onSelect={(index, flow) => {
     const next = new URLSearchParams(params);

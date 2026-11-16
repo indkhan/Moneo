@@ -33,8 +33,11 @@ export type TransferCandidate = {
 
 const CASH = /\b(bargeldauszahlung|bargeldeinzahlung|geldautomat|cash withdrawal|atm withdrawal|cash deposit)\b/i;
 const SCALABLE = /\bscalable capital\b/i, SCALABLE_LABEL = /\bscalable\b/i;
-export type NamedAccount = "cash" | "scalable";
-export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital" };
+const REVOLUT_POCKET = /^(?:To|From) ([A-Z]{3})(?: MB:\S+)?$/, REVOLUT_EXCHANGE = /^Exchanged (?:to|from) ([A-Z]{3})$/;
+const CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
+const revolutWording = (pattern: RegExp, text?: string) => { const code = pattern.exec(text?.trim() ?? "")?.[1]; return !!code && CURRENCIES.has(code); };
+export type NamedAccount = "cash" | "scalable" | "pocket";
+export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital", pocket: "Revolut pocket" };
 export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string, string>;
   names?: Map<string, string>; ids?: Map<string, string> };
 
@@ -78,6 +81,7 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
   const named = rows.flatMap((row): { transactionId: string; account: NamedAccount }[] => {
     if (used.has(row.id) || marked.has(row.id) || counterparts(row).some(iban => own.tracked.has(iban) || own.untracked.has(iban))) return [];
     if (CASH.test(row.text ?? "")) return [{ transactionId: row.id, account: "cash" }];
+    if (revolutWording(REVOLUT_POCKET, row.text) && withoutOutsideParty(row)) return [{ transactionId: row.id, account: "pocket" }];
     if (options.scalable && SCALABLE.test(`${row.counterparty ?? ""} ${row.text ?? ""}`)) return [{ transactionId: row.id, account: "scalable" }];
     return [];
   });
@@ -87,9 +91,11 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
 const OUTSIDE = new Set(["card", "direct_debit", "cash", "fee_interest"]);
 const EXCHANGE_DAYS = 1;
 const noOutsideParty = (row: TransferCandidate) => !!row.raw && !OUTSIDE.has(row.raw.payment_type) && !row.raw.counterparty_name && (!row.raw.counterparty_iban || row.raw.own_account);
+const withoutOutsideParty = (row: TransferCandidate) => !row.counterparty && (row.raw ? noOutsideParty(row) : row.ibans.length === 0);
 
 export function exchangeEvidence(row: TransferCandidate) {
   const raw = row.raw;
+  if (revolutWording(REVOLUT_EXCHANGE, row.text) && withoutOutsideParty(row)) return true;
   if (!raw || OUTSIDE.has(raw.payment_type)) return false;
   return raw.payment_type === "exchange" || ((!!raw.exchange_rate || (!!raw.instructed_currency && raw.instructed_currency !== row.currencyCode)) && noOutsideParty(row));
 }
