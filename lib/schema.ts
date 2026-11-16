@@ -1230,6 +1230,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   summaryTime: text("summary_time").notNull().default("09:00"),
   artifactScalableData: text("artifact_scalable_data").notNull().default("snapshot"),
   speechEngine: text("speech_engine").notNull().default("openai"),
+  speechLocalModel: text("speech_local_model"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),
@@ -1243,6 +1244,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   check("workspace_settings_summary_time_check", sql`${table.summaryTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
   check("workspace_settings_artifact_scalable_data_check", sql`${table.artifactScalableData} in ('snapshot','live')`),
   check("workspace_settings_speech_engine_check", sql`${table.speechEngine} in ('openai','local','openrouter')`),
+  check("workspace_settings_speech_local_model_check", sql`length(${table.speechLocalModel}) between 1 and 1000`),
 ]);
 
 export const voiceCalls = pgTable("voice_calls", {
