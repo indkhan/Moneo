@@ -16,7 +16,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
   try {
     const { supabase, workspace } = await requireWorkspace();
     const settings = settingsSchema.parse({
-      timezone: form.get("timezone"), locale: form.get("locale"), theme: form.get("theme"), voice: form.get("voice"),
+      timezone: form.get("timezone"), locale: form.get("locale"), theme: form.get("theme"), voice: form.get("voice"), speech_engine: form.get("speech_engine") ?? undefined,
       ai_models: Object.fromEntries(["default", ...AI_AGENT_KEYS].map(agent => [agent, String(form.get(`model:${agent}`) ?? "").trim()]).filter(([, model]) => model)),
       ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
