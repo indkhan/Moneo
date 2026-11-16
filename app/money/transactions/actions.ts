@@ -73,7 +73,7 @@ export async function undoCorrection(form: FormData) {
   const { error } = operation === "verified_link"
     ? await supabase.rpc("undo_transaction_link", { p_link_id:z.uuid().parse((event.after as { link_id?:string }).link_id), p_rows:versionedRows.max(2).parse(JSON.parse(z.string().max(500).parse(form.get("rows")))) })
     : operation === "own_account_transfer"
-    ? await supabase.rpc("undo_own_account_transfer", { p_event_id: eventId, p_expected_version: version })
+    ? await undoOwnAccountTransfer(supabase, workspace.id, eventId, version, (event.after as { identifier_id?: string | null }).identifier_id)
     : operation === "split"
     ? await supabase.rpc("undo_transaction_splits", { p_set_id: z.uuid().parse((event.after as { split_set_id?: string }).split_set_id), p_expected_version: version })
     : await supabase.rpc(procedure, { p_event_id: eventId, p_expected_version: version });
@@ -200,6 +200,12 @@ export async function markRefund(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
   redirect(`${returnPath(form)}&transaction=${id}`);
+}
+
+async function undoOwnAccountTransfer(supabase: Awaited<ReturnType<typeof requireWorkspace>>["supabase"], workspaceId: string, eventId: string, version: number, identifierId?: string | null) {
+  const confirmed = identifierId ? await supabase.from("own_account_identifiers").select("id").eq("workspace_id", workspaceId).eq("id", identifierId).eq("confirmed", true).maybeSingle() : undefined;
+  if (confirmed?.error) return { error: confirmed.error };
+  return confirmed?.data ? supabase.rpc("undo_own_account_confirmation", { p_identifier_id: confirmed.data.id }) : supabase.rpc("undo_own_account_transfer", { p_event_id: eventId, p_expected_version: version });
 }
 
 export async function markOwnAccountTransfer(form: FormData) {

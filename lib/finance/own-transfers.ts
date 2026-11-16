@@ -38,11 +38,16 @@ const SCALABLE = /\bscalable capital\b/i, SCALABLE_LABEL = /\bscalable\b/i;
 export type NamedAccount = "cash" | "scalable";
 export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital" };
 export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string, string>;
-  ids?: Map<string, string> };
+  names?: Map<string, string>; ids?: Map<string, string> };
 
 const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
 
 export type Leg = Pick<TransferCandidate, "id" | "accountId" | "postedOn" | "amountMinor" | "currencyCode">;
+
+function namedIdentifier(row: TransferCandidate, own: OwnAccounts) {
+  const key = row.counterparty ? nameKey(row.counterparty) : "";
+  return key && !row.ibans.some(iban => own.tracked.get(iban) !== row.accountId) && nameKey(row.text ?? "").includes(key) ? own.names?.get(key) : undefined;
+}
 
 export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, legs: Leg[] = rows, options: { scalable?: boolean } = {}) {
   const counterparts = (row: TransferCandidate) => row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
@@ -65,7 +70,7 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
     && other.currencyCode === row.currencyCode && other.amountMinor === -row.amountMinor && days(row.postedOn, other.postedOn) <= MATCH_DAYS);
   const single = rows.flatMap((row): { transactionId: string; identifierId?: string; iban?: string }[] => {
     if (used.has(row.id)) return [];
-    const identifierId = counterparts(row).map(iban => own.untracked.get(iban)).find(Boolean);
+    const identifierId = counterparts(row).map(iban => own.untracked.get(iban)).find(Boolean) ?? namedIdentifier(row, own);
     if (identifierId) return [{ transactionId: row.id, identifierId }];
     const iban = counterparts(row).find(item => own.tracked.has(item));
     const accountId = iban ? own.tracked.get(iban) : undefined;
@@ -147,7 +152,7 @@ export function cashWithdrawals<T extends Pick<TransferCandidate, "id" | "posted
   return rows.filter(row => row.amountMinor < 0n && !row.transferId && CASH.test(row.text ?? "") && !answered.has(row.id) && days(row.postedOn, today) <= CASH_CARD_DAYS);
 }
 
-const nameKey = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
+export const nameKey = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
 
 export function ownNameSuggestions(rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts, answered = new Set<string>()) {
   const names = new Map<string, string>();
@@ -165,21 +170,23 @@ const PAGE = 1000, MAX_ROWS = 5000;
 
 export async function loadOwnAccounts(db: SupabaseClient, workspaceId: string): Promise<OwnAccounts> {
   const [identifiers, bank, accounts] = await Promise.all([
-    db.from("own_account_identifiers").select("id, account_id, iban").eq("workspace_id", workspaceId),
+    db.from("own_account_identifiers").select("id, account_id, iban, name_key").eq("workspace_id", workspaceId),
     db.from("bank_connection_accounts").select("iban, account_name, currency_code").eq("workspace_id", workspaceId).not("iban", "is", null),
     db.from("accounts").select("id, name, currency_code").eq("workspace_id", workspaceId),
   ]);
   for (const result of [identifiers, bank, accounts]) if (result.error) throw new Error(result.error.message);
-  const tracked = new Map<string, string>(), untracked = new Map<string, string>();
+  const tracked = new Map<string, string>(), untracked = new Map<string, string>(), names = new Map<string, string>();
   for (const row of bank.data ?? []) {
     const account = accounts.data?.find(item => item.name === row.account_name && item.currency_code === row.currency_code);
     const iban = normalizeIban(row.iban ?? "");
     if (account && iban) tracked.set(iban, account.id);
   }
   for (const row of identifiers.data ?? []) {
-    if (row.account_id) tracked.set(row.iban, row.account_id); else untracked.set(row.iban, row.id);
+    if (row.name_key) names.set(row.name_key, row.id);
+    else if (row.account_id) tracked.set(row.iban, row.account_id);
+    else untracked.set(row.iban, row.id);
   }
-  return { tracked, untracked };
+  return { tracked, untracked, names };
 }
 
 type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null; description: string; transfer_id: string | null; identity_id: string | null;
@@ -217,7 +224,7 @@ export async function loadTransferLegs(db: SupabaseClient, workspaceId: string):
   const [rows, own, identifiers] = await Promise.all([loadRows(db, workspaceId, "transfer"), loadOwnAccounts(db, workspaceId),
     db.from("own_account_identifiers").select("iban, label").eq("workspace_id", workspaceId)]);
   if (identifiers.error) throw new Error(identifiers.error.message);
-  const brokerIbans = new Set((identifiers.data ?? []).filter(row => SCALABLE_LABEL.test(row.label)).map(row => row.iban as string));
+  const brokerIbans = new Set((identifiers.data ?? []).filter(row => row.iban && SCALABLE_LABEL.test(row.label)).map(row => row.iban as string));
   return rows.map(row => ({ id: row.id, accountId: row.accountId, amountMinor: row.amountMinor, currencyCode: row.currencyCode, postedOn: row.postedOn, transferId: row.transferId ?? null, text: row.text,
     provesBroker: row.ibans.some(iban => brokerIbans.has(iban)) || SCALABLE.test(`${row.counterparty ?? ""} ${row.text ?? ""}`),
     ownAccount: row.ibans.some(iban => own.tracked.has(iban) && own.tracked.get(iban) !== row.accountId) }));
@@ -251,7 +258,7 @@ async function proposeOwnNames(db: SupabaseClient, workspaceId: string, rows: Tr
     const row = byId.get(transactionId)!, money = formatMoney(row.amountMinor < 0n ? -row.amountMinor : row.amountMinor, row.currencyCode, locale);
     return { workspace_id: workspaceId, agent: "chat", kind: "own_transfer", conflict_key: `own_transfer:${transactionId}`, confidence: 70,
       title: (row.amountMinor < 0n ? `${money} to ${name}: your own account?` : `${money} from ${name}: your own account?`).slice(0, 200),
-      detail: `You sent money under the name ${name} to one of your own accounts before. If this is yours too, it moves to transfers and stops counting as ${row.amountMinor < 0n ? "spending" : "income"}.`,
+      detail: `You sent money under the name ${name} to one of your own accounts before. If this is yours too, Moneo remembers it as an account it doesn't track, moves every payment with it to transfers so none counts as spending or income, and doesn't ask again. Undoing any of them undoes them all.`,
       evidence: { facts: [], transactions: [{ id: row.id, date: row.postedOn, description: row.text ?? "", amountMinor: row.amountMinor.toString(), currency: row.currencyCode }], links: [] },
       payload: ownTransferPayloadSchema.parse({ transactionId, name }) };
   });
@@ -374,4 +381,38 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
   const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own);
   const cashCards = await proposeCashWithdrawals(db, workspaceId, [...rows.filter(row => !handled.has(row.id) || named.some(item => item.transactionId === row.id && item.account === "cash")), ...transfers]);
   return { linked, marked, skipped, suggested: suggested + pairCards, cashCards, questions };
+}
+
+export async function confirmOwnAccount(db: SupabaseClient, workspaceId: string, transactionId: string, name: string) {
+  const [own, rows] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId)]);
+  const target = rows.find(row => row.id === transactionId);
+  if (!target) throw new Error("This transaction was removed");
+  const strangers = target.ibans.filter(iban => own.tracked.get(iban) !== target.accountId && !own.tracked.has(iban) && !own.untracked.has(iban));
+  const identity = strangers.length === 1 ? { iban: strangers[0] } : { name_key: nameKey(name) };
+  const saved = await db.from("own_account_identifiers").insert({ workspace_id: workspaceId, account_id: null, label: name, confirmed: true, ...identity }).select("id").single();
+  let identifierId = saved.data?.id as string | undefined;
+  if (saved.error?.code === "23505") {
+    const existing = await db.from("own_account_identifiers").select("id").eq("workspace_id", workspaceId).match(identity).single();
+    if (existing.error) throw new Error(existing.error.message);
+    identifierId = existing.data.id;
+  } else if (saved.error) throw new Error(saved.error.message);
+  const marked = await db.rpc("mark_own_account_transfer", { p_transaction_id: transactionId, p_expected_version: target.version, p_identifier_id: identifierId });
+  if (marked.error) throw new Error(marked.error.message);
+  const linked = await linkOwnTransfers(db, workspaceId);
+  const open = await db.from("agent_proposals").select("id, payload").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").in("status", ["proposed", "failed"]).limit(5000);
+  if (open.error) throw new Error(open.error.message);
+  const asked = new Map((open.data ?? []).flatMap(row => {
+    const payload = ownTransferPayloadSchema.safeParse(row.payload);
+    return payload.success && "name" in payload.data ? [[payload.data.transactionId, row.id as string] as const] : [];
+  }));
+  if (asked.size) {
+    const answered = await db.from("transactions").select("id").eq("workspace_id", workspaceId).eq("kind", "transfer").in("id", [...asked.keys()]);
+    if (answered.error) throw new Error(answered.error.message);
+    const closed = (answered.data ?? []).map(row => asked.get(row.id as string)!);
+    if (closed.length) {
+      const result = await db.from("agent_proposals").update({ status: "accepted", decided_at: new Date().toISOString(), result: { href: "/money/transactions?kind=transfer", undo: "Undo from the transaction" } }).in("id", closed);
+      if (result.error) throw new Error(result.error.message);
+    }
+  }
+  return { ...linked, identifierId: identifierId! };
 }
