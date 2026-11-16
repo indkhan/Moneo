@@ -1,8 +1,0 @@
-<task-notification>
-<task-id>b9gqg10cu</task-id>
-<tool-use-id>toolu_016zXXpTqZHymrD9y59HEkoM</tool-use-id>
-<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c97f6c21e3df10b7\41eac1a6-c936-4c6d-868b-278caad52504\tasks\b9gqg10cu.output</output-file>
-<status>completed</status>
-<summary>Background command "(E2E_BASE_URL=http://localhost:3137 npm run qa:auth 2&gt;&amp;1 | tail -3); node scripts/qa-server-3137.mjs &gt; ../qa3137-66e1.log 2&gt;&amp;1 &amp;
-sleep 1; echo started" completed (exit code 0)</summary>
-</task-notification>

@@ -5,8 +5,7 @@
   "branch": "t3/issue-231-auto-fill-merchant",
   "checkpoints_count": 1,
   "files_touched": [
-    "app/money/organize/memory.tsx",
-    "scripts/qa-server-3137.mjs"
+    "app/money/organize/memory.tsx"
   ],
   "sessions": [
     {
@@ -14,15 +13,15 @@
       "transcript": "/0/full.jsonl",
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
-      "prompt": "/0/prompt.txt"
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 34,
-    "cache_creation_tokens": 15123,
-    "cache_read_tokens": 3735988,
-    "output_tokens": 3815,
-    "api_call_count": 17
+    "input_tokens": 2,
+    "cache_creation_tokens": 408,
+    "cache_read_tokens": 229175,
+    "output_tokens": 174,
+    "api_call_count": 1
   },
   "redaction": {
     "replacements": 1,

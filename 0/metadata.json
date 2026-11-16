@@ -3,25 +3,24 @@
   "checkpoint_id": "01M7J50A0N2Q173M05WBJ46G99",
   "session_id": "41eac1a6-c936-4c6d-868b-278caad52504",
   "strategy": "manual-commit",
-  "created_at": "2026-11-16T12:23:45.0736786Z",
+  "created_at": "2026-11-16T12:23:51.3907108Z",
   "branch": "t3/issue-231-auto-fill-merchant",
   "checkpoints_count": 1,
   "files_touched": [
-    "app/money/organize/memory.tsx",
-    "scripts/qa-server-3137.mjs"
+    "app/money/organize/memory.tsx"
   ],
   "agent": "Claude Code",
   "model": "claude-sonnet-5-5",
   "turn_id": "ee8dcfa733b3",
-  "checkpoint_transcript_start": 779,
-  "transcript_lines_at_start": 779,
-  "compact_transcript_start": 97,
+  "checkpoint_transcript_start": 921,
+  "transcript_lines_at_start": 921,
+  "compact_transcript_start": 116,
   "token_usage": {
-    "input_tokens": 34,
-    "cache_creation_tokens": 15123,
-    "cache_read_tokens": 3735988,
-    "output_tokens": 3815,
-    "api_call_count": 17
+    "input_tokens": 2,
+    "cache_creation_tokens": 408,
+    "cache_read_tokens": 229175,
+    "output_tokens": 174,
+    "api_call_count": 1
   },
   "redaction": {
     "replacements": 1,
