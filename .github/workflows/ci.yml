@@ -65,3 +65,36 @@ jobs:
           done
           exit 1
       - run: npm run test:db
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      E2E_PRODUCTION_BUILD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start the test backend
+        run: |
+          for attempt in 1 2 3 4; do
+            npm run setup -- --qa && exit 0
+            echo "::warning::Starting the test backend failed (attempt $attempt); the image registry limits pulls. Trying again."
+            sleep $((attempt * 30))
+          done
+          exit 1
+      - run: npm run qa:auth
+      - run: npx playwright install --with-deps chromium
+      - name: Browser journeys
+        run: npm run test:e2e -- --workers=1 --retries=1 e2e/net-worth.gated.spec.ts e2e/import-journey.mocked.spec.ts
+      - name: Upload failure traces and screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failures
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

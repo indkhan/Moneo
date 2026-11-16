@@ -9,7 +9,8 @@ import { NextServer } from "./next-server";
 import { backupsDir, home, log, readSettings, resources, setupHome, updateSettings } from "./paths";
 import { choosePort } from "./port";
 import { closeSetup, focusSetup, progress, registerSetupIpc, setSetupState, showSetup } from "./setup-window";
-import { createTray, openedAtLogin, type TrayActions } from "./tray";
+import { openedAtLogin, startAtLoginByDefault } from "./login-item";
+import { createTray, type TrayActions } from "./tray";
 import { createUpdater } from "./updates";
 
 const debug = process.env.MONEO_DESKTOP_DEBUG === "1";
@@ -245,6 +246,7 @@ function main() {
     log(`Moneo ${app.getVersion()} starting (home ${paths.home})`);
     lockDownSession();
     registerSetupIpc({ retry: () => void retry(), restore: restoreBackup, quit: () => void quit() });
+    startAtLoginByDefault();
     createTray(trayActions);
     powerMonitor.on("shutdown", (...args: unknown[]) => { (args[0] as Electron.Event | undefined)?.preventDefault(); void quit(); });
     void boot("launch");

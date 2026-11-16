@@ -4,8 +4,10 @@ import path from "node:path";
 
 export const resources = () => app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), ".build");
 
+export const customHome = () => process.env.MONEO_DESKTOP_HOME ? path.resolve(process.env.MONEO_DESKTOP_HOME) : undefined;
+
 export function setupHome() {
-  const home = process.env.MONEO_DESKTOP_HOME ? path.resolve(process.env.MONEO_DESKTOP_HOME) : app.getPath("userData");
+  const home = customHome() ?? app.getPath("userData");
   app.setPath("userData", home);
   app.setPath("sessionData", path.join(home, "chromium"));
   mkdirSync(path.join(home, "logs"), { recursive: true });
@@ -26,7 +28,7 @@ export function log(message: string, file = "main.log") {
   if (!app.isPackaged) process.stdout.write(line);
 }
 
-export type ShellSettings = { port?: number; trayNoticeShown?: boolean; lastBackupAt?: string; bankCertificateTrusted?: boolean };
+export type ShellSettings = { port?: number; trayNoticeShown?: boolean; lastBackupAt?: string; bankCertificateTrusted?: boolean; startAtLoginDefaulted?: boolean };
 const settingsFile = () => path.join(home(), "shell.json");
 
 export function readSettings(): ShellSettings {

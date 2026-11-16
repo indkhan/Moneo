@@ -15,6 +15,8 @@ export default defineConfig({
     baseURL: external ?? "http://localhost:3100",
     storageState: e2eStorageStatePath() ?? undefined,
     extraHTTPHeaders: { "x-moneo-test": "1" },
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   webServer: external ? undefined : {
     command: production ? "node scripts/qa-server.mjs --production" : "node scripts/qa-server.mjs",
