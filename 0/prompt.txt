@@ -1,0 +1,36 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #265 in Moneo. In the desktop smoke test (`npm run desktop:smoke`, scripts/desktop/package-smoke.mjs), the check `quit stops every process` failed on mac-arm64 in the Desktop workflow for PR #253 (actions run 43915218876, job 133467406741, log `smoke-mac-arm64` artifact). It reported a leftover `Moneo#65851`. Windows and Linux passed. The server port was closed after quit.
+
+1. Read the logs: `gh api repos/indkhan/Moneo/actions/jobs/133467406741/logs`, and download the `smoke-mac-arm64` artifact with `gh run download 43915218876 -n smoke-mac-arm64`.
+2. Work out which process outlived quit. Moneo#<pid> is likely an Electron helper or a child the app spawned. Then work out why:
+   - Look at the main process's quit/shutdown path in desktop/src (backend processes in desktop/src/backend/processes.ts and index.ts), and at how the smoke test samples processes.
+3. Fix the shutdown cause: every child is stopped and awaited before the app exits. If the cause is really in the check, for example sampling a process while macOS is still reaping it, fix the check so it waits for exit deterministically rather than by sleeping, and explain why.
+   - Don't simply retry the check or loosen it.
+4. You can't run macOS here. Reason from the code and logs. Make the fix platform-neutral where possible, and add a unit test in desktop if the shutdown ordering is testable (see desktop/src/backend/processes.test.ts).
+5. The Desktop workflow runs on PRs that touch `desktop/` or `scripts/desktop/`. Make sure it runs on your PR, and check the mac-arm64 smoke result with `gh pr checks`. GitHub's Apple Silicon runners are scarce, so if the job is cancelled for lack of a runner, rerun it with `gh run rerun <id> --failed` once the run finishes.
+
+## Rules
+- Read AGENTS.md (the Desktop app section) and desktop/README.md first, and follow them.
+- Branch `t3/issue-265-mac-quit` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command or CI run is still going.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Never test against the owner's installed app or its user-data folder. Set `MONEO_DESKTOP_HOME` to a scratch folder.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test`.
+- Push and open a PR to `main` (`Closes #265`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bpshy36n8</task-id>
+<tool-use-id>toolu_01AwPzbewsTYeBkeT8DmpgA3</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\2b1d79be5185f1ea\ea34b730-c97c-4829-ae34-876fba9ea7b7\tasks\bpshy36n8.output</output-file>
+<status>killed</status>
+<summary>Background command "npm ci --ignore-scripts --prefer-offline &gt; /c/Users/mgsuk/AppData/Local/Temp/claude/ci.log 2&gt;&amp;1; echo exit $?; tail -3 /c/Users/mgsuk/AppData/Local/Temp/claude/ci.log; ls node_modules/.bin | wc -l" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
