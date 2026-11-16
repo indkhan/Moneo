@@ -46,16 +46,16 @@ it("authenticates before calling the provider", async () => {
 it("persists exact scoped preferences with blank models left as defaults", async () => {
   const rpc = vi.fn(async () => ({ error: null }));
   vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
-  const data = form(); data.set("model:chat", "  "); data.set("speech_engine", "local");
+  const data = form(); data.set("model:chat", "  "); data.set("speech_engine", "local"); data.set("speech_local_model", " /models/whisper-small ");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
-  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_workspace_id: "owned", p_display_currency: "EUR", p_preferences: expect.objectContaining({ theme: "dark", voice: "cedar", speech_engine: "local", ai_data_scopes: ["accounts"], ai_models: {} }) }));
+  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_workspace_id: "owned", p_display_currency: "EUR", p_preferences: expect.objectContaining({ theme: "dark", voice: "cedar", speech_engine: "local", speech_local_model: "/models/whisper-small", ai_data_scopes: ["accounts"], ai_models: {} }) }));
 });
 
 it("saves OpenAI speech to text when the form does not send an engine", async () => {
   const rpc = vi.fn(async () => ({ error: null }));
   vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
   expect(await saveSettings({}, form())).toEqual({ saved: true });
-  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ speech_engine: "openai" }) }));
+  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ speech_engine: "openai", speech_local_model: null }) }));
   const data = form(); data.set("speech_engine", "whisper");
   expect(await saveSettings({}, data)).toMatchObject({ error: expect.any(String), field: "speech_engine" });
 });
