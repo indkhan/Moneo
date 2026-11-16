@@ -15,12 +15,12 @@ export type DownloadStatus =
 type Progress = { received: number; total: number; error?: string };
 
 const fileUrl = (model: LocalSpeechModel, file: ModelFile) => `https://huggingface.co/${model.repo}/resolve/${model.revision}/${file.path}`;
-const size = (file: string) => fs.stat(file).then(stat => stat.size, () => 0);
+const size = (file: string) => fs.stat(/*turbopackIgnore: true*/ file).then(stat => stat.size, () => 0);
 
 async function matches(file: string, expected: ModelFile) {
   if (await size(file) !== expected.bytes) return false;
   const hash = "sha256" in expected ? createHash("sha256") : createHash("sha1").update(`blob ${expected.bytes}\0`);
-  for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer);
+  for await (const chunk of createReadStream(/*turbopackIgnore: true*/ file)) hash.update(chunk as Buffer);
   return hash.digest("hex") === ("sha256" in expected ? expected.sha256 : expected.gitSha1);
 }
 
@@ -31,27 +31,27 @@ export function createModelDownloads({ dir = speechModelsDir, fetcher = (url: st
   const running = new Map<string, Promise<void>>();
 
   async function fetchFile(model: LocalSpeechModel, file: ModelFile, counter: Progress) {
-    const target = path.join(modelFolder(model, dir()), file.path), part = `${target}.part`;
+    const target = path.join(/*turbopackIgnore: true*/ modelFolder(model, dir()), file.path), part = `${target}.part`;
     if (await size(target) === file.bytes) return;
-    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.mkdir(/*turbopackIgnore: true*/ path.dirname(/*turbopackIgnore: true*/ target), { recursive: true });
     let have = await size(part);
-    if (have > file.bytes) { await fs.rm(part, { force: true }); have = 0; }
+    if (have > file.bytes) { await fs.rm(/*turbopackIgnore: true*/ part, { force: true }); have = 0; }
     counter.received += have;
     if (have < file.bytes) {
       const response = await fetcher(fileUrl(model, file), { headers: have ? { Range: `bytes=${have}-` } : {}, signal: AbortSignal.timeout(30 * 60_000) });
       if (!response.ok || !response.body) throw new Error(`The download server answered ${response.status}`);
       const resumed = have > 0 && response.status === 206;
       if (!resumed) { counter.received -= have; have = 0; }
-      const handle = await fs.open(part, resumed ? "a" : "w");
+      const handle = await fs.open(/*turbopackIgnore: true*/ part, resumed ? "a" : "w");
       try {
         for await (const chunk of Readable.fromWeb(response.body as WebReadableStream<Uint8Array>)) { await handle.write(chunk); counter.received += (chunk as Buffer).byteLength; }
       } finally { await handle.close(); }
     }
     if (!await matches(part, file)) {
-      await fs.rm(part, { force: true });
+      await fs.rm(/*turbopackIgnore: true*/ part, { force: true });
       throw new Error(`${file.path} did not match the expected file. Try the download again.`);
     }
-    await fs.rename(part, target);
+    await fs.rename(/*turbopackIgnore: true*/ part, target);
   }
 
   async function download(model: LocalSpeechModel) {
