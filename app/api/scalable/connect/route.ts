@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/auth";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { encryptToken } from "@/lib/bank/token-crypto";
 import { authorizeUrl, pkcePair, registerClient } from "@/lib/scalable/client";
 import { scalableConfigured, scalableRedirectUri } from "@/lib/scalable/server";

@@ -1,11 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { registerClient } from "@/lib/scalable/client";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 vi.mock("@/lib/scalable/client", () => ({ authorizeUrl: vi.fn(), pkcePair: vi.fn(), registerClient: vi.fn() }));
 vi.mock("@/lib/scalable/server", () => ({ scalableConfigured: () => true, scalableRedirectUri: () => "http://localhost:3000/api/scalable/callback" }));
 

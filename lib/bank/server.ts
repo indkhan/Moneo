@@ -1,10 +1,9 @@
+import "server-only";
 import { maskAccountNumber } from "@/lib/import/csv";
 import { serviceDb } from "@/lib/service-db";
 import { EnableBankingError, enableBankingClient, enableBankingConfigured, type BankAccount, type PsuContext } from "./enable-banking";
 import { BANK_REDIRECT_URL } from "./return-listener";
 import { decryptToken } from "./token-crypto";
-
-export { serviceDb };
 
 export function enableBankingErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof EnableBankingError)) return fallback;

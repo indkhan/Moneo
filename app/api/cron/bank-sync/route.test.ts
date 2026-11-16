@@ -1,12 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { start } from "workflow/api";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { GET } from "./route";
 
 vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({ runId: "run" })) }));
 vi.mock("@/workflows/bank-sync", () => ({ syncBankConnection: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", () => ({ enableBankingConfigured: async () => true }));
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
 it("denies missing or incorrect cron credentials before reading connections", async () => {
