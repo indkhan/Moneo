@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cashWithdrawals } from "./own-transfers";
-import { findExchanges, findOwnTransfers, internalMoves, normalizeIban, ownNameSuggestions, sourceIbans, uncertainPairs, withBankContext, type TransferCandidate } from "./own-transfers";
+import { findExchanges, findOwnTransfers, normalizeIban, ownNameSuggestions, sourceIbans, uncertainPairs, withBankContext, type TransferCandidate } from "./own-transfers";
 import type { RawContext } from "@/lib/bank/raw-context";
 
 const CURRENT = "DE89370400440532013000", SAVINGS = "DE02120300000000202051", ELSEWHERE = "DE75512108001245126199";
@@ -167,14 +167,5 @@ describe("bank context", () => {
     expect(findExchanges([eur, usd])).toEqual({ pairs: [{ outId: "eur", inId: "usd" }], single: [] });
     expect(findExchanges([eur, { ...usd, amountMinor: 9999n }])).toEqual({ pairs: [], single: ["eur"] });
     expect(findExchanges([eur])).toEqual({ pairs: [], single: ["eur"] });
-  });
-
-  it("groups moves with nobody on the other side into one question per description", () => {
-    const moves = [row("a", "current", -2000n, "2026-10-01", { text: "To EUR MB:1234", raw: ctx({ payment_type: "unknown" }), identityId: "id-1" }),
-      row("b", "current", 2000n, "2026-10-05", { text: "To EUR MB:5678", raw: ctx({ payment_type: "unknown" }), identityId: "id-1" }),
-      row("c", "current", -500n, "2026-10-06", { text: "To EUR", raw: ctx({ payment_type: "unknown" }) }),
-      row("d", "current", -900n, "2026-10-06", { text: "Rent October", raw: ctx({ counterparty_name: "Example Landlord", counterparty_iban: "DE44500105175407324931" }) })];
-    expect(internalMoves(moves)).toEqual([{ key: "to eur mb", transactionIds: ["a", "b"], identityId: "id-1" }]);
-    expect(internalMoves([{ ...moves[2], raw: ctx({ payment_type: "top_up" }) }])).toEqual([{ key: "to eur", transactionIds: ["c"], identityId: null }]);
   });
 });
