@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { connectionReturn } from "@/lib/desktop-bridge";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { decryptToken } from "@/lib/bank/token-crypto";
 import { exchangeCode } from "@/lib/scalable/client";
 import { sealTokens } from "@/lib/scalable/server";
 import { syncScalable } from "@/lib/scalable/sync";
+
+const syncFailureIsStoredOnTheConnection = () => undefined;
 
 const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1).max(2000).optional(), error: z.string().max(200).optional() });
 
@@ -35,7 +37,7 @@ export async function GET(request: Request) {
     if (activated.error) throw activated.error;
     await db.from("scalable_connections").update({ status: "revoked", tokens_encrypted: null }).eq("workspace_id", workspaceId)
       .in("status", ["active", "expired", "error"]).neq("id", connectionId);
-    await syncScalable(connectionId, workspaceId).catch(() => undefined);
+    await syncScalable(connectionId, workspaceId).catch(syncFailureIsStoredOnTheConnection);
     return back("connected");
   } catch {
     return fail("The Scalable login could not be completed");

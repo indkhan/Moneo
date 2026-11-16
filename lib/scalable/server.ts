@@ -1,4 +1,5 @@
-import { serviceDb } from "@/lib/bank/server";
+import "server-only";
+import { serviceDb } from "@/lib/service-db";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 import { getEnv } from "@/lib/env";
 import { refreshTokens, scalableMcp, ScalableError, type ScalableMcp, type ScalableTokens } from "./client";

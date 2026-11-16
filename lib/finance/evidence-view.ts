@@ -28,8 +28,9 @@ export async function readEvidenceView(context: Awaited<ReturnType<typeof requir
     } else if (receipt.query.kind === "tool") {
       const input = receipt.query.input, imports = receipt.scopes.includes("imports");
       const query = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+      const toolName = String(receipt.query.toolName);
       let result: unknown;
-      switch (receipt.query.toolName) {
+      switch (toolName) {
         case "analytics_cashflow": result = await cashflow(input, context, imports); break;
         case "accounts_getBalances": result = await getBalances(context, imports, true); break;
         case "accounts_list": result = await listAccounts(context); break;
@@ -45,7 +46,7 @@ export async function readEvidenceView(context: Awaited<ReturnType<typeof requir
           result = await loadCategoryPreview(context.supabase, context.workspace.id, args.transactionIds, args.categoryId); break;
         }
       }
-      if (result !== undefined) sourceVersion = toolSourceVersion(await retainToolSourceSupport(String(receipt.query.toolName), input, result, context, imports));
+      if (result !== undefined) sourceVersion = toolSourceVersion(await retainToolSourceSupport(toolName, input, result, context, imports));
     }
   } catch { sourceVersion = null; }
   const supportingIds = metric ? new Set(metric.sourceIds) : null;

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
 import { EnableBankingError, enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", async original => ({ ...await original<typeof import("@/lib/bank/enable-banking")>(), enableBankingClient: vi.fn(), enableBankingConfigured: vi.fn() }));
-vi.mock("@/lib/bank/server", async original => ({ ...await original<typeof import("@/lib/bank/server")>(), serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", async original => ({ ...await original<typeof import("@/lib/service-db")>(), serviceDb: vi.fn() }));
 
 const startAuthorization = vi.fn();
 beforeEach(() => {
@@ -42,6 +42,17 @@ it("explains rejected credentials and names unknown codes", async () => {
 it("keeps the generic message for errors that are not from Enable Banking", async () => {
   startAuthorization.mockRejectedValue(new Error("socket hang up"));
   expect((await (await connect()).json()).error).toBe("The bank connection could not be started");
+});
+
+it("never logs a JWT, private key or token from a failed connection", async () => {
+  const jwt = ["eyJhbGciOiJSUzI1NiJ9", "eyJzeW50aGV0aWMiOnRydWV9", "c3ludGhldGljLXNpZ25hdHVyZQ"].join(".");
+  const privateKey = "-----BEGIN PRIVATE KEY-----SYNTHETIC-KEY-MATERIAL-----END PRIVATE KEY-----";
+  const token = "synthetic-bank-token-7f3a91";
+  startAuthorization.mockRejectedValue(new Error(`request with Bearer ${jwt} signed by ${privateKey} sent token ${token} failed`));
+  await connect();
+  const logged = vi.mocked(console.error).mock.calls.flat().map(String).join("\n");
+  expect(logged).toContain("bank connect failed");
+  for (const secret of [jwt, privateKey, token]) expect(logged).not.toContain(secret);
 });
 
 it("sends a bank login from a phone back to the computer without starting anything", async () => {

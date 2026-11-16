@@ -103,10 +103,35 @@ const hardCodedAddress = [
   },
 ];
 
+const exactMoney = [
+  {
+    selector: "NewExpression[callee.object.name='Intl'][callee.property.name='NumberFormat'] Property[key.name='style'][value.value='currency']",
+    message: "Currency formatting through Intl takes a float and rounds cents. Use formatMoney or formatCompactMoney from lib/finance/format.ts with integer minor units (AGENTS.md Non-negotiables).",
+  },
+  {
+    selector: "CallExpression[callee.property.name='toLocaleString'] Property[key.name='currency']",
+    message: "toLocaleString with a currency takes a float and rounds cents. Use formatMoney from lib/finance/format.ts with integer minor units (AGENTS.md Non-negotiables).",
+  },
+  {
+    selector: "BinaryExpression[operator='/'] > BinaryExpression[operator='**'][left.value=10][right.callee.name='minorDigits']",
+    message: "Dividing by 10 ** minorDigits() turns minor units into a float. Keep amounts as bigint minor units and format them with lib/finance/format.ts (AGENTS.md Non-negotiables).",
+  },
+  {
+    selector: ":matches(CallExpression[callee.name='Number'], CallExpression[callee.name='parseFloat']) > CallExpression[callee.name='formatInputAmount']",
+    message: "Number(formatInputAmount()) turns an exact amount into a float. Pass the bigint minor units to formatMoney, or plot Number(minor) and format ticks with formatCompactMoney (AGENTS.md Non-negotiables).",
+  },
+  {
+    selector: "TemplateLiteral:has(CallExpression[callee.property.name='toFixed']):has(:matches(Identifier[name=/^currency(Code)?$/], MemberExpression[property.name=/^currency(Code|_code)?$/]))",
+    message: "toFixed on an amount shown next to its currency rounds a float. Use formatMoney from lib/finance/format.ts with integer minor units (AGENTS.md Non-negotiables).",
+  },
+];
+
 const unexplainedIgnoredFailure = {
-  selector: ":matches(CatchClause > BlockStatement[body.length=0], CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement[body.length=0])",
-  message: "A workflow that ignores a failure must say what handles it instead. Call a function named for that reason, as workflows/bank-sync.ts does (catch { hourlyBacklogCheckPicksUpTheRows(); }), or record the failure (AGENTS.md How to work, \"Fix the class\").",
+  selector: ":matches(CatchClause > BlockStatement[body.length=0], CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement[body.length=0], CallExpression[callee.property.name='catch'] > ArrowFunctionExpression[body.type='Identifier'][body.name='undefined'], CallExpression[callee.property.name='then'][arguments.length=2] > :matches(ArrowFunctionExpression, FunctionExpression):last-child > BlockStatement[body.length=0])",
+  message: "Ignoring a failure must say what handles it instead. Return an actionable failure, record the outcome, or call a function named for that reason, as workflows/bank-sync.ts does (catch { hourlyBacklogCheckPicksUpTheRows(); }) (AGENTS.md How to work, \"Fix the class\").",
 };
+
+const typedAsyncFiles = ["lib/**/*.ts", "lib/**/*.tsx", "workflows/**/*.ts", "app/**/actions.ts", "app/**/*-actions.ts", "app/**/*-action.ts", "app/**/route.ts"];
 
 const assumedTimeZone = {
   selector: ":matches(Literal[value='Europe/Berlin'], TemplateElement[value.raw=/Europe.Berlin/])",
@@ -205,17 +230,39 @@ export default defineConfig([
   },
   {
     files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts", "lib/schema.ts", "lib/import/csv.ts", "workflows/**"],
-    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone] },
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts", "lib/finance/format.ts", "lib/schema.ts", "lib/import/csv.ts", "workflows/**"],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney] },
   },
   {
     files: ["lib/schema.ts", "lib/import/csv.ts"],
-    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress] },
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, ...exactMoney] },
   },
   {
-    files: ["workflows/**"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    files: ["workflows/**", ...typedAsyncFiles],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts", "lib/finance/format.ts", "lib/schema.ts", "lib/import/csv.ts"],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney, unexplainedIgnoredFailure] },
+  },
+  {
+    files: ["lib/schema.ts", "lib/import/csv.ts"],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, ...exactMoney, unexplainedIgnoredFailure] },
+  },
+  {
+    files: ["lib/finance/format.ts"],
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, unexplainedIgnoredFailure] },
+  },
+  {
+    files: ["lib/env.ts"],
+    rules: { "no-restricted-syntax": ["error", unexplainedIgnoredFailure] },
+  },
+  {
+    files: typedAsyncFiles,
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
+    },
   },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],

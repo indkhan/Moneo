@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cashWithdrawals } from "./own-transfers";
-import { findExchanges, findOwnTransfers, normalizeIban, ownNameSuggestions, sourceIbans, uncertainPairs, withBankContext, type TransferCandidate } from "./own-transfers";
+import { findExchanges, findOwnTransfers, ownNameSuggestions, sourceIbans, uncertainPairs, withBankContext, type TransferCandidate } from "./own-transfers";
+import { normalizeIban } from "@/lib/iban";
 import type { RawContext } from "@/lib/bank/raw-context";
 
 const CURRENT = "DE89370400440532013000", SAVINGS = "DE02120300000000202051", ELSEWHERE = "DE75512108001245126199";

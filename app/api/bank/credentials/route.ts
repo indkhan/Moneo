@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { checkEnableBankingCredentials, EnableBankingError } from "@/lib/bank/enable-banking";
-import { enableBankingErrorMessage, serviceDb } from "@/lib/bank/server";
+import { enableBankingErrorMessage } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { removeServiceKeys, saveServiceKeys } from "@/lib/service-keys";
 
 const bodySchema = z.object({
@@ -27,8 +28,8 @@ export async function POST(request: Request) {
   }
   try { await saveServiceKeys({ enable_banking_app_id: appId, enable_banking_private_key: privateKey }); }
   catch { return NextResponse.json({ error: "The App ID and key could not be saved" }, { status: 500 }); }
-  try { await serviceDb().from("bank_connection_accounts").update({ next_allowed_at: null }).eq("workspace_id", context.workspace.id).is("last_error", null).not("next_allowed_at", "is", null); }
-  catch {}
+  const resumed = await serviceDb().from("bank_connection_accounts").update({ next_allowed_at: null }).eq("workspace_id", context.workspace.id).is("last_error", null).not("next_allowed_at", "is", null);
+  if (resumed.error) return NextResponse.json({ error: "The App ID and key were saved, but bank syncing could not be resumed. Save them again to retry." }, { status: 500 });
   return NextResponse.json({ saved: true });
 }
 

@@ -2,8 +2,7 @@
 
 import { createContext, createElement, Fragment, useContext, useEffect, useRef, useState, useTransition, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
-import { formatMoney } from "@/lib/finance/format";
-import { minorDigits } from "@/lib/finance/fx";
+import { formatCompactMoney, formatMoney } from "@/lib/finance/format";
 import type { CardNode } from "@/lib/cards/sandbox";
 import type { LocalControl, ParamState } from "@/lib/cards/params";
 import type { LocalRun } from "@/lib/cards/local";
@@ -28,10 +27,14 @@ function Money({ minor, currency, signed, compact, className, style }: { minor: 
   const value = BigInt(minor);
   let text: string;
   try {
-    text = compact ? new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(Number(value) / 10 ** minorDigits(currency))
-      : formatMoney(value, currency, locale);
+    text = compact ? formatCompactMoney(value, currency, locale) : formatMoney(value, currency, locale);
   } catch { text = `${value} ${currency}`; }
   return <span className={`tabular-nums ${className ?? ""}`} style={style}>{signed && value > 0n ? "+" : ""}{text}</span>;
+}
+
+function LocalizedChart(props: CardChartProps) {
+  const { locale } = useContext(LiveCard);
+  return <CardChart {...props} locale={locale} />;
 }
 
 function Tabs({ tabs, className, style, scope }: { tabs: { label: string; content: CardNode }[]; className?: string; style?: React.CSSProperties; scope: string }) {
@@ -88,7 +91,7 @@ function render(node: CardNode, scope: string, key?: number): ReactNode {
   const props = node.props;
   switch (node.type) {
     case "kit:Money": return <Money key={key} {...(props as ComponentProps<typeof Money>)} />;
-    case "kit:Chart": return <CardChart key={key} {...(props as CardChartProps)} />;
+    case "kit:Chart": return <LocalizedChart key={key} {...(props as CardChartProps)} />;
     case "kit:Tabs": return <Tabs key={key} {...(props as ComponentProps<typeof Tabs>)} scope={scope} />;
     case "kit:Param": return <Param key={key} {...(props as ComponentProps<typeof Param>)} />;
     case "kit:Link": { const { to, ...rest } = node.props as { to: z.infer<typeof linkTarget> }; return <Link key={key} href={linkHref(to)} {...rest} className={`hover:underline ${(rest as { className?: string }).className ?? ""}`}>{children}</Link>; }

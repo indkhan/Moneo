@@ -29,7 +29,7 @@ export function retryLeftoversAt(stopped: unknown, now: number) {
   if (stopped instanceof StopWork) return now;
   if (APICallError.isInstance(stopped)) {
     let body: { error?: Record<string, unknown> } & Record<string, unknown> = {};
-    try { body = JSON.parse(stopped.responseBody ?? "{}") ?? {}; } catch {}
+    try { body = JSON.parse(stopped.responseBody ?? "{}") ?? {}; } catch { body = {}; }
     const detail = body.error ?? body, at = Number(detail.resets_at) * 1000;
     const wait = Number(detail.resets_in_seconds ?? stopped.responseHeaders?.["retry-after"]) * 1000;
     const reset = at > now ? at : wait > 0 ? now + wait : null;

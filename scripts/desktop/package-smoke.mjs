@@ -127,7 +127,7 @@ try {
 
   app.snapshot();
   await app.quit();
-  const left = [...app.seen.values()].filter(row => alive(row.pid));
+  const left = await app.leftRunning();
   check("quit stops every process", left.length === 0, left.map(row => `${row.name}#${row.pid}`).join(", "));
   check("the server port is closed after quit", !(await health(port)));
   await app.launch();
@@ -154,7 +154,7 @@ try {
 
   app.snapshot();
   await app.quit();
-  const leftAll = [...app.seen.values()].filter(row => alive(row.pid));
+  const leftAll = await app.leftRunning();
   check("no process from any launch is left", leftAll.length === 0, leftAll.map(row => `${row.name}#${row.pid}`).join(", "));
 } catch (error) {
   check("smoke run", false, error.message);

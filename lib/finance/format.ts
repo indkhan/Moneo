@@ -62,3 +62,14 @@ export function formatInputAmount(amountMinor: bigint | string | number, currenc
   const fraction = (abs % divisor).toString().padStart(digits, "0");
   return `${value < 0n ? "-" : ""}${whole}.${fraction}`;
 }
+
+export function formatCompactMoney(amountMinor: bigint | string | number, currencyCode: string, locale?: string): string {
+  const format = new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode, currencyDisplay: "code", notation: "compact", maximumFractionDigits: 1 });
+  return format.format(formatInputAmount(amountMinor, currencyCode) as `${number}`).replace(/\s/g, " ");
+}
+
+export function minorFromMajor(major: number, currencyCode: string): bigint {
+  const text = major.toFixed(minorDigits(currencyCode));
+  if (!/^-?\d+(\.\d+)?$/.test(text)) throw new Error("Amount is too large to show exactly");
+  return BigInt(text.replace(".", ""));
+}

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { enableBankingClient, enableBankingConfigured, EnableBankingError } from "@/lib/bank/enable-banking";
-import { psuFrom, serviceDb } from "@/lib/bank/server";
+import { psuFrom } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { decryptToken } from "@/lib/bank/token-crypto";
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {

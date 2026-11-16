@@ -132,6 +132,12 @@ export class Desktop {
     await until("Moneo to exit", async () => this.child.exited, 60_000);
   }
 
+  async leftRunning(timeout = 30_000) {
+    const running = () => [...this.seen.values()].filter(row => alive(row.pid));
+    await until("every Moneo process to exit", async () => running().length === 0, timeout).catch(() => {});
+    return running();
+  }
+
   log(name = "main.log") {
     const file = path.join(this.home, "logs", name);
     return existsSync(file) ? readFileSync(file, "utf8") : "";

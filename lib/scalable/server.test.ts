@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { refreshTokens, ScalableError, scalableMcp } from "./client";
 import { withScalable } from "./server";
 
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 vi.mock("@/lib/bank/token-crypto", () => ({ decryptToken: (sealed: string) => sealed, encryptToken: (plain: string) => plain }));
 vi.mock("./client", async original => ({ ...await original<typeof import("./client")>(), refreshTokens: vi.fn(), scalableMcp: vi.fn() }));
 afterEach(() => vi.resetAllMocks());

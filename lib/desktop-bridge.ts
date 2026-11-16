@@ -11,12 +11,10 @@ const CONTINUE_PAGE = "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">
 export async function connectionReturn(base: string | URL, path: string) {
   const url = bridge();
   if (url) {
-    try {
-      const response = await fetch(`${url}/return`, { method: "POST", headers: { "x-moneo-return": path }, signal: AbortSignal.timeout(10_000) });
-      if (response.ok) return new Response(CONTINUE_PAGE, {
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" },
-      });
-    } catch {}
+    const handedToTheApp = await fetch(`${url}/return`, { method: "POST", headers: { "x-moneo-return": path }, signal: AbortSignal.timeout(10_000) }).then(response => response.ok, () => false);
+    if (handedToTheApp) return new Response(CONTINUE_PAGE, {
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" },
+    });
   }
   return NextResponse.redirect(new URL(path, base), 303);
 }

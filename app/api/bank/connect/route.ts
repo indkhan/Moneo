@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
-import { consentValidUntil, enableBankingErrorMessage, psuFrom, serviceDb } from "@/lib/bank/server";
+import { EnableBankingError, enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
+import { consentValidUntil, enableBankingErrorMessage, psuFrom } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { BANK_REDIRECT_URL } from "@/lib/bank/return-listener";
 import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ url });
   } catch (error) {
-    console.error("bank connect failed", error instanceof Error ? error.message : "unknown error");
+    console.error("bank connect failed", error instanceof EnableBankingError ? error.message : error instanceof Error ? error.name : "unknown error");
     return NextResponse.json({ error: enableBankingErrorMessage(error, "The bank connection could not be started") }, { status: 502 });
   }
 }

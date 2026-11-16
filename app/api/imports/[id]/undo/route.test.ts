@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 
 const updates: { values: unknown; filters: unknown[][] }[] = [];
 

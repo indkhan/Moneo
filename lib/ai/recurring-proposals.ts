@@ -9,6 +9,8 @@ import { liveAccounts } from "@/lib/ai/transaction-proposals";
 import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields, type SeriesDecision } from "@/lib/recurring/schedules";
 import { loadSuggestions, olderRuns, priceChanges, seriesDecision } from "@/lib/recurring/suggestions";
 
+const supersededRunsAreAlreadyHiddenFromPending = () => undefined;
+
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
 export const recurringInputSchema = z.object({
@@ -124,7 +126,7 @@ export async function decideCurrentSeries(context: Context, stored: SeriesDecisi
   const { candidates, superseded } = await loadSuggestions(context.supabase, context.workspace);
   const found = candidates.find(item => item.series.accountId === stored.accountId && item.series.runAnchorId === stored.runAnchorId);
   await decideSeries(context, found ? seriesDecision(found) : stored, decision, changes, requestId);
-  for (const older of found ? olderRuns(superseded, found) : []) await decideSeries(context, seriesDecision(older), "dismissed").catch(() => undefined);
+  for (const older of found ? olderRuns(superseded, found) : []) await decideSeries(context, seriesDecision(older), "dismissed").catch(supersededRunsAreAlreadyHiddenFromPending);
 }
 
 export async function applyRecurringProposal(context: Context, proposalId: string, payload: unknown, edits: Partial<ScheduleFields> = {}) {
