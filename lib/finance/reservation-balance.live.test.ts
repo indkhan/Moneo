@@ -41,7 +41,7 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches balance evidenc
         for (const snapshot of snapshots) await tx`insert into public.balance_snapshots(id,workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,source_transaction_id)
           values(${snapshot.id},${workspace},${account.id},${snapshot.amount_minor},'EUR',${snapshot.as_of},'synthetic',${snapshot.boundary_kind},${snapshot.source_transaction_id})`;
         const [sql] = await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`;
-        const application = resolveBalances([account], snapshots, ledger, asOf)[0].balance;
+        const application = resolveBalances([account], snapshots, ledger, asOf, "Europe/Berlin")[0].balance;
         if (fixture === "conflicting_ties") {
           expect(application.conflicts).toHaveLength(1);
           expect(application.status).toBe("current");

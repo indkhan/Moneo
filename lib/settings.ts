@@ -20,8 +20,10 @@ export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];
 export const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] as const;
 export const DEFAULT_VOICE = VOICES[0];
 
+export const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
 export const settingsSchema = z.object({
-  timezone: z.string().max(100).refine(value => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; } }, "Choose a valid timezone").default("Europe/Berlin"),
+  timezone: z.string().max(100).refine(value => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; } }, "Choose a valid timezone").default(deviceTimeZone),
   locale: z.string().max(50).refine(value => { try { return Intl.DateTimeFormat.supportedLocalesOf([value]).length === 1; } catch { return false; } }, "Choose a supported locale").default("en-GB"),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   ai_models: z.partialRecord(z.enum(["default", ...AI_AGENT_KEYS] as ["default", ...AiAgent[]]), z.string().trim().min(1).max(200)).default({}),

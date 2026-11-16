@@ -108,6 +108,11 @@ const unexplainedIgnoredFailure = {
   message: "A workflow that ignores a failure must say what handles it instead. Call a function named for that reason, as workflows/bank-sync.ts does (catch { hourlyBacklogCheckPicksUpTheRows(); }), or record the failure (AGENTS.md How to work, \"Fix the class\").",
 };
 
+const assumedTimeZone = {
+  selector: ":matches(Literal[value='Europe/Berlin'], TemplateElement[value.raw=/Europe.Berlin/])",
+  message: "Never assume where the owner lives. Take the time zone from workspace.timezone or settings.timezone (set in Settings, detected from their device) and pass it in (AGENTS.md Rules).",
+};
+
 const isTest = file => /\.(test|spec)\.tsx?$/.test(file);
 const under = (file, folder) => file === folder || file.startsWith(`${folder}/`);
 
@@ -200,13 +205,17 @@ export default defineConfig([
   },
   {
     files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts", "lib/schema.ts", "lib/import/csv.ts", "workflows/**"],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone] },
+  },
+  {
+    files: ["lib/schema.ts", "lib/import/csv.ts"],
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress] },
   },
   {
     files: ["workflows/**"],
     ignores: ["**/*.test.ts", "**/*.test.tsx"],
-    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, unexplainedIgnoredFailure] },
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, unexplainedIgnoredFailure] },
   },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],

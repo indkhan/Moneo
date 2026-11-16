@@ -75,7 +75,7 @@ beforeEach(() => {
   tables = {
     bank_connections: [{ id: "c1", workspace_id: "w1", status: "active", valid_until: "2099-01-01T00:00:00Z", last_error: null }],
     bank_connection_accounts: [{ connection_id: "c1", workspace_id: "w1", iban: "DE89370400440532013000", provider_account_uid: "u1", currency_code: "EUR", account_name: "Revolut ••1234", last_booked_on: null }],
-    imports: [], workspace_settings: [], bank_transaction_raw: [], own_account_identifiers: [{ workspace_id: "w1", iban: "NL91ABNA0417164300" }],
+    imports: [], workspace_settings: [{ workspace_id: "w1", timezone: "Europe/Berlin" }], bank_transaction_raw: [], own_account_identifiers: [{ workspace_id: "w1", iban: "NL91ABNA0417164300" }],
   };
   vi.useFakeTimers({ now, toFake: ["Date"] });
   rpc = vi.fn(async (name: string, args: Record<string, string>) => name.endsWith("_bank_sync") ? lease(name, args) : { error: null });

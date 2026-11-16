@@ -1,4 +1,4 @@
-export function calendarDate(value: string | Date = new Date(), timeZone = "Europe/Berlin"): string {
+export function calendarDate(value: string | Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
     .formatToParts(new Date(value));
   const part = (type: string) => parts.find(item => item.type === type)!.value;
@@ -27,6 +27,6 @@ export function reviewedLocalTimestamp(value: string, timeZone: string): string 
   return new Date([...candidates][0] + Number((match[7] ?? "").padEnd(3, "0"))).toISOString();
 }
 
-export function calendarDayBoundary(date: string, timeZone = "Europe/Berlin"): string {
+export function calendarDayBoundary(date: string, timeZone: string): string {
   return reviewedLocalTimestamp(`${date}T00:00:00`, timeZone);
 }
