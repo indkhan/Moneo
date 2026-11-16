@@ -13,8 +13,8 @@ const pct = (part: bigint, whole: bigint) => whole > 0n ? Number(part * 10000n /
 const pctText = (value: number | null) => value === null ? "" : `${value > 0 ? "+" : ""}${value.toLocaleString("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 const SHADES = ["bg-brand", "bg-brand/75", "bg-brand/55", "bg-brand/40", "bg-brand/25", "bg-amber-500/70"];
 
-export function ScalableInvestments({ portfolio, positions, history, calculatedBefore, historyFailed, syncedAt, active, locale, timeZone }: {
-  portfolio: ScalablePortfolio; positions: WealthItem[]; history: Point[]; calculatedBefore: string | null; historyFailed: boolean; syncedAt: string | null; active: boolean; locale: string; timeZone: string;
+export function ScalableInvestments({ portfolio, positions, history, calculatedBefore, historyFailed, syncedAt, active, locale, timeZone, positionLinks = {} }: {
+  portfolio: ScalablePortfolio; positions: WealthItem[]; history: Point[]; calculatedBefore: string | null; historyFailed: boolean; syncedAt: string | null; active: boolean; locale: string; timeZone: string; positionLinks?: Record<string, string>;
 }) {
   const { money, date, dateTime } = displayFormat(locale, timeZone);
   const cur = portfolio.currency, show = (minor: bigint | string) => money(minor, cur);
@@ -69,8 +69,9 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
     <div className="divide-y divide-border rounded-lg border border-border">
       {positions.map(item => {
         const value = BigInt(item.amount_minor), gain = item.cost_basis_minor === null ? null : value - BigInt(item.cost_basis_minor);
-        return <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
-          <div className="min-w-0"><p className="truncate font-medium">{item.name}</p>
+        const isin = positionLinks[item.id];
+        return <div key={item.id} className="relative flex items-start justify-between gap-3 px-4 py-3">
+          <div className="min-w-0"><p className="truncate font-medium">{isin ? <Link href={`/money/wealth?position=${isin}`} scroll={false} className="after:absolute after:inset-0 hover:underline" aria-label={`${item.name}: price chart and news`}>{item.name}</Link> : item.name}</p>
             <p className="text-xs text-muted-foreground">{item.quantity_text} × {item.unit_price_text ? money(toMinor(item.unit_price_text, item.currency_code), item.currency_code) : "—"}</p></div>
           <div className="shrink-0 text-right"><p className="font-mono tabular-nums">{money(value, item.currency_code)}</p>
             {gain !== null && <p className={`font-mono text-xs tabular-nums ${tone(gain)}`}>{signed(gain, money(gain, item.currency_code))} {pctText(pct(gain, BigInt(item.cost_basis_minor!)))}</p>}</div>
