@@ -1,0 +1,8 @@
+<task-notification>
+<task-id>b2u6ut9z2</task-id>
+<tool-use-id>toolu_014VhgBXvNQKz2dKL22K2LSv</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\31acb6d83129e0af\3478ea10-3fd6-463f-95ac-e3ae1183a0e8\tasks\b2u6ut9z2.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-11eeb76d-2af921d475ac5d92" &amp;&amp; S=C:/Users/mgsuk/AppData/Local/Temp/claude/31acb6d83129e0af/3478ea10-3fd6-463f-95ac-e3ae1183a0e8/scratchpad; nohup npm run qa:server &gt; $S/qa-server.log 2&gt;&amp;1 &amp;
+echo started" completed (exit code 0)</summary>
+</task-notification>
