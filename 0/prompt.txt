@@ -1,0 +1,24 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #263 in Moneo. Since PR #249, "Skip all" in the Home "transactions need a category" sheet (app/home-review.tsx, app/home-review-actions.ts) only closes the open sheet, so the Home card comes back while rows stay uncategorized.
+
+Remember the skip: the card stays hidden until new uncategorized rows arrive that weren't part of the skipped set.
+- Store it server-side as an owner preference or a small marker, for example the newest uncategorized `created_at`/id at skip time. Follow how lib/settings.ts stores preferences, including its rule that an unreadable stored preference must never block sign-in.
+- Choose the smallest correct storage.
+- If you add a migration, give it a unique timestamp prefix later than `202611160141`, keep lib/schema.ts aligned, and make sure it works on the desktop's Postgres.
+- "Reset all data" clears it.
+- Write a test for the behaviour: after Skip all, the card is hidden, and it shows again after a new uncategorized row arrives.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 263`.
+- Branch `t3/issue-263-skip-all` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Shared test backend: never `npm run qa:reset`, never `docker compose -p moneo-qa down`, never touch the owner's backend. If you apply a migration to QA, revert it afterwards.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test` and `npm run build`.
+- Push and open a PR to `main` (`Closes #263`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
