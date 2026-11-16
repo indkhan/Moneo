@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, readSettings, settingsSchema, requireAiScope } from "./settings";
 
 describe("workspace preferences", () => {
-  it("defaults to EUR-era Germany calendar and explicitly scoped AI data", () => {
-    expect(settingsSchema.parse({})).toMatchObject({ timezone: "Europe/Berlin", locale: "en-GB", theme: "system",
+  it("defaults to this device's time zone and explicitly scoped AI data", () => {
+    expect(settingsSchema.parse({})).toMatchObject({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, locale: "en-GB", theme: "system",
       ai_data_scopes: ["accounts", "transactions", "planning", "imports"], summary_cadence: "none" });
   });
   it("rejects invalid timezone, locale, scopes and summary times", () => {

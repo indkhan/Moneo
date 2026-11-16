@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = { session: "s1", getUser: vi.fn() };
+const savedSettings = vi.fn(async () => ({ error: null }));
 vi.mock("@/lib/supabase-server", () => ({ createClient: async () => ({
   auth: { getClaims: async () => ({ data: { claims: { sub: "u1", session_id: auth.session } } }), getUser: auth.getUser },
-  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "w1", owner_id: "u1", display_currency: "EUR", workspace_settings: null }, error: null }) }) }) }),
+  from: () => ({ upsert: savedSettings, select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "w1", owner_id: "u1", display_currency: "EUR", workspace_settings: null }, error: null }) }) }) }),
 }) }));
 const { requireWorkspace } = await import("./auth");
 const signedIn = { data: { user: { id: "u1" } }, error: null };
@@ -19,7 +20,10 @@ describe("requireWorkspace session confirmation", () => {
     await requireWorkspace();
     expect(auth.getUser).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(60_001);
-    expect((await requireWorkspace()).workspace.id).toBe("w1");
+    const loaded = await requireWorkspace();
+    expect(loaded.workspace.id).toBe("w1");
+    expect(loaded.workspace.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(savedSettings).toHaveBeenCalledWith({ workspace_id: "w1", timezone: loaded.workspace.timezone }, { onConflict: "workspace_id", ignoreDuplicates: true });
     expect(auth.getUser).toHaveBeenCalledTimes(2);
     auth.session = "another-device";
     await requireWorkspace();

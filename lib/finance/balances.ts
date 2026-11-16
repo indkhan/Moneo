@@ -73,7 +73,7 @@ export function coveredRows(snapshot: BalanceSnapshot, ledger: BalanceTransactio
   return covered;
 }
 
-export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin", sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>) {
+export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf: string, timeZone: string, sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>) {
   const today = calendarDate(asOf, timeZone);
   const resolved = accounts.map(account => {
     const candidates = snapshots.filter(snapshot => snapshot.account_id === account.id && !snapshot.undone_at && Number.isFinite(Date.parse(snapshot.as_of)) && Date.parse(snapshot.as_of) <= Date.parse(asOf))
@@ -129,7 +129,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
   }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources) }));
 }
 
-export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: string, asOf = new Date().toISOString()): Promise<{
+export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: string, asOf: string): Promise<{
   accounts: BalanceAccount[]; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; asOf: string;
 }> {
   const rows = <T>(table: string, columns: string) =>
