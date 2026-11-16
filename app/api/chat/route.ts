@@ -219,7 +219,7 @@ export async function POST(request: Request) {
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
-      organize_propose: tool({ description: "The user decides what a payee is for the organizer: answers one of its open questions, or says what their payments to someone are (a category and/or merchant that already exist). Call organize_review with view questions first to get the ids. Shows a card; nothing is labelled until they accept, and then all that payee's blank or AI-labelled rows get it and future payments follow.",
+      organize_propose: tool({ description: "The user says what their payments to a payee are (a category and/or merchant that already exist). Get the payee's identityId from organize_review first. Shows a card; nothing is labelled until they accept, and then all that payee's blank or AI-labelled rows get it and future payments follow.",
         inputSchema: organizeInputSchema, execute: async input => {
           const created = await proposeOrganizeAnswer({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
@@ -302,7 +302,7 @@ ${artifactBrief}` : ""}`,
           } }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
           inputSchema: z.object({ includeDecided: z.boolean().optional() }).strict(), execute: ({ includeDecided }) => aiEvidence(["transactions"], latest => agentFindings(latest.supabase, workspace.id, { includeDecided })) }) } : {}),
-        ...(settings.ai_data_scopes.includes("transactions") ? { organize_review: tool({ description: "Read what the organizer (the AI that labels categories and merchants) has done and what it needs: view questions lists open questions with the payee, its rows and ids; decisions lists rows labelled by the AI, a rule, a confirmed payee or the bank's data with who decided, confidence and reason; memory lists what the owner told it each payee is. Read-only; the owner reviews and undoes on the AI organizer page (/money/organize).",
+        ...(settings.ai_data_scopes.includes("transactions") ? { organize_review: tool({ description: "Read what the organizer (the AI that labels categories and merchants) has done: decisions lists rows labelled by the AI, a rule, a confirmed payee or the bank's data with who decided, confidence, reason and the payee's identityId; memory lists what the owner told it each payee is. Read-only; the owner reviews and undoes on the AI organizer page (/money/organize).",
           inputSchema: organizeReviewSchema, execute: input => aiEvidence(["transactions"], latest => organizeReview(latest, input)) }) } : {}),
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
           description: "Read recorded import workflow status and row counts. Completed means processing finished, not that all financial classifications or current balances are complete. Use this to answer whether imports are still running; do not infer status from balance freshness or filenames.",
@@ -394,12 +394,12 @@ ${artifactBrief}` : ""}`,
     requireAiScope(current.settings, ...readScopes);
     const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [moneoToolName(toolResult.toolName)] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
-    emit({ type: "answer", conversationId, answer, toolsUsed, followUps });
+    emit({ type: "answer", conversationId, answer, toolsUsed, followUps, model: model.modelId });
     const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer,
       p_usage: reportedUsage(model.modelId, usage), p_tool_calls: toolCalls });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return [{ status: finished.data, error: `Request is ${finished.data}` }, 409];
-    return [{ conversationId, answer, toolsUsed, followUps }, 200];
+    return [{ conversationId, answer, toolsUsed, followUps, model: model.modelId }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
     await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });

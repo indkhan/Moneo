@@ -11,6 +11,7 @@ import { ChatComposer, withSpoken } from "@/components/chat-composer";
 import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { ChatQueue } from "@/components/chat-queue";
 import { DRAFT_EVENT } from "@/components/chat-messages";
+import { RESEND_EVENT, type Resend } from "@/components/message-actions";
 
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
 
@@ -81,6 +82,11 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     if (autoSent.current === autoSend) return;
     autoSent.current = autoSend;
     void sendMessage(autoSend);
+  });
+  useEffect(() => {
+    const resend = (event: Event) => { const detail = (event as CustomEvent<Resend>).detail; void sendMessage(detail.message, true, detail.attachments); };
+    window.addEventListener(RESEND_EVENT, resend);
+    return () => window.removeEventListener(RESEND_EVENT, resend);
   });
 
   const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder={placeholder} busyText="Working on a reply. Anything you send now is queued." attachments={files} voice={{ onSend: sendSpoken }} /></>;

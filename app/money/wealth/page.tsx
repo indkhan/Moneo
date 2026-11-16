@@ -39,7 +39,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const itemsPromise = loadWealthItems(supabase, workspace.id, true), eventsPromise = loadWealthEvents(db, workspace.id), balancesPromise = loadBalanceEvidence(db, workspace.id);
+  const itemsPromise = loadWealthItems(supabase, workspace.id, true), eventsPromise = loadWealthEvents(db, workspace.id), balancesPromise = loadBalanceEvidence(db, workspace.id, new Date().toISOString());
   const [items, accounts, assumptions, pending, events, scalable, netWorthEvidence, imports, repayments] = await Promise.all([
     itemsPromise,
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),

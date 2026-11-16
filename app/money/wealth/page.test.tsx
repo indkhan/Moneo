@@ -19,10 +19,10 @@ const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, i
   then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", locale: "en-US", timezone: "UTC", display_currency: "EUR" },
   supabase: { from: (table: string) => query(tables[table] ?? []) } }) }));
+const { default: WealthPage } = await import("./page");
 
 it("summarizes accounts, assets and debts and charts recorded net worth", async () => {
   vi.useFakeTimers({ now: new Date("2026-10-16T12:00:00Z"), toFake: ["Date"] });
-  const { default: WealthPage } = await import("./page");
   const html = renderToStaticMarkup(await WealthPage());
   vi.useRealTimers();
   expect(html).toContain("EUR 45.00");
@@ -43,7 +43,6 @@ it("shows the Scalable portfolio in its own panel, with today's move and each po
   tables.scalable_connections = [{ status: "active", last_synced_at: "2026-10-16T06:00:00Z", portfolio: { currency: "EUR", asOf: "2026-10-16", totalMinor: "5862", securitiesMinor: "3549", cryptoMinor: "0", cashMinor: "2313",
     performance: [{ timeframe: "INTRADAY", returnMinor: "136" }, { timeframe: "ONE_YEAR", returnMinor: "-3511" }], itemIds: ["etf", "cash"],
     activity: [{ id: "t", date: "2026-10-14", status: "SETTLED", type: "buy", description: "Tech ETF", shares: "3", amountMinor: "-2463", currencyCode: "EUR" }] } }];
-  const { default: WealthPage } = await import("./page");
   const html = renderToStaticMarkup(await WealthPage());
   vi.useRealTimers();
   expect(html).toContain("+EUR 1.36");

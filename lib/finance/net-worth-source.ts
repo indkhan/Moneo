@@ -24,7 +24,7 @@ export async function loadScalableTransfers(db: SupabaseClient, workspaceId: str
 
 export async function loadNetWorthEvidence(db: SupabaseClient, workspace: Workspace, given: { balances?: PromiseLike<Awaited<ReturnType<typeof loadBalanceEvidence>>>; items?: PromiseLike<Awaited<ReturnType<typeof loadWealthItems>>>; events?: PromiseLike<Awaited<ReturnType<typeof loadWealthEvents>>> } = {}) {
   const [balances, items, events, scalable, transfers, legs] = await Promise.all([
-    given.balances ?? loadBalanceEvidence(db, workspace.id), given.items ?? loadWealthItems(db, workspace.id, true), given.events ?? loadWealthEvents(db, workspace.id),
+    given.balances ?? loadBalanceEvidence(db, workspace.id, new Date().toISOString()), given.items ?? loadWealthItems(db, workspace.id, true), given.events ?? loadWealthEvents(db, workspace.id),
     loadScalableHistory(db, workspace.id), loadScalableTransfers(db, workspace.id), loadTransferLegs(db, workspace.id),
   ]);
   return { timeZone: workspace.timezone, balances, items, events, scalable, transfers, legs };

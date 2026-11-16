@@ -32,8 +32,8 @@ describe("monthly category spending", () => {
   });
 
   it("uses Berlin calendar months at UTC month boundaries", () => {
-    expect(monthPrefix(new Date("2026-03-31T22:30:00Z"))).toBe("2026-04");
-    expect(monthPrefix(new Date("2026-10-31T23:30:00Z"))).toBe("2026-11");
+    expect(monthPrefix(new Date("2026-03-31T22:30:00Z"), "Europe/Berlin")).toBe("2026-04");
+    expect(monthPrefix(new Date("2026-10-31T23:30:00Z"), "Europe/Berlin")).toBe("2026-11");
   });
   it("nets posted ordinary expenses with linked refunds and excludes transfers, pending, income and other months", () => {
     const transactions = [

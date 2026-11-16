@@ -5,8 +5,6 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { loadRawContext, type RawContext } from "@/lib/bank/raw-context";
-import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
-import { isInternalMove } from "@/lib/organize/identity";
 import { wealthAmount } from "./wealth";
 import { closingMovedTo } from "./account-closing";
 import type { BankLeg } from "./transit";
@@ -35,8 +33,11 @@ export type TransferCandidate = {
 
 const CASH = /\b(bargeldauszahlung|bargeldeinzahlung|geldautomat|cash withdrawal|atm withdrawal|cash deposit)\b/i;
 const SCALABLE = /\bscalable capital\b/i, SCALABLE_LABEL = /\bscalable\b/i;
-export type NamedAccount = "cash" | "scalable";
-export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital" };
+const REVOLUT_POCKET = /^(?:To|From) ([A-Z]{3})(?: MB:\S+)?$/, REVOLUT_EXCHANGE = /^Exchanged (?:to|from) ([A-Z]{3})$/;
+const CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
+const revolutWording = (pattern: RegExp, text?: string) => { const code = pattern.exec(text?.trim() ?? "")?.[1]; return !!code && CURRENCIES.has(code); };
+export type NamedAccount = "cash" | "scalable" | "pocket";
+export const NAMED_LABELS: Record<NamedAccount, string> = { cash: "Cash", scalable: "Scalable Capital", pocket: "Revolut pocket" };
 export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string, string>;
   names?: Map<string, string>; ids?: Map<string, string> };
 
@@ -80,6 +81,7 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
   const named = rows.flatMap((row): { transactionId: string; account: NamedAccount }[] => {
     if (used.has(row.id) || marked.has(row.id) || counterparts(row).some(iban => own.tracked.has(iban) || own.untracked.has(iban))) return [];
     if (CASH.test(row.text ?? "")) return [{ transactionId: row.id, account: "cash" }];
+    if (revolutWording(REVOLUT_POCKET, row.text) && withoutOutsideParty(row)) return [{ transactionId: row.id, account: "pocket" }];
     if (options.scalable && SCALABLE.test(`${row.counterparty ?? ""} ${row.text ?? ""}`)) return [{ transactionId: row.id, account: "scalable" }];
     return [];
   });
@@ -89,9 +91,11 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
 const OUTSIDE = new Set(["card", "direct_debit", "cash", "fee_interest"]);
 const EXCHANGE_DAYS = 1;
 const noOutsideParty = (row: TransferCandidate) => !!row.raw && !OUTSIDE.has(row.raw.payment_type) && !row.raw.counterparty_name && (!row.raw.counterparty_iban || row.raw.own_account);
+const withoutOutsideParty = (row: TransferCandidate) => !row.counterparty && (row.raw ? noOutsideParty(row) : row.ibans.length === 0);
 
 export function exchangeEvidence(row: TransferCandidate) {
   const raw = row.raw;
+  if (revolutWording(REVOLUT_EXCHANGE, row.text) && withoutOutsideParty(row)) return true;
   if (!raw || OUTSIDE.has(raw.payment_type)) return false;
   return raw.payment_type === "exchange" || ((!!raw.exchange_rate || (!!raw.instructed_currency && raw.instructed_currency !== row.currencyCode)) && noOutsideParty(row));
 }
@@ -130,21 +134,6 @@ export function uncertainPairs(rows: TransferCandidate[]) {
     const ins = open.filter(into => matches(out, into));
     return ins.length === 1 && open.filter(other => matches(other, ins[0])).length === 1 ? [{ outId: out.id, inId: ins[0].id }] : [];
   });
-}
-
-export function internalMoves(rows: TransferCandidate[]) {
-  const groups = new Map<string, TransferCandidate[]>();
-  for (const row of rows) {
-    const key = organizationDescriptionKey(row.text ?? "");
-    if (!isInternalMove(row.raw) || key.length < 3) continue;
-    groups.set(key, [...groups.get(key) ?? [], row]);
-  }
-  const bothWays = (items: TransferCandidate[]) => items.some(a => a.amountMinor < 0n && items.some(b => b.amountMinor > 0n && b.accountId === a.accountId));
-  return [...groups].filter(([, items]) => bothWays(items) || items.some(item => ["transfer", "top_up"].includes(item.raw!.payment_type)))
-    .map(([key, items]) => {
-      const identities = new Set(items.map(item => item.identityId ?? null));
-      return { key, transactionIds: items.map(item => item.id).sort().slice(0, 500), identityId: identities.size === 1 ? [...identities][0] : null };
-    }).sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export const CASH_CARD_DAYS = 30;
@@ -309,15 +298,6 @@ async function proposePairs(db: SupabaseClient, workspaceId: string, pairs: { ou
   return data?.length ?? 0;
 }
 
-async function askAboutInternalMoves(db: SupabaseClient, workspaceId: string, moves: ReturnType<typeof internalMoves>) {
-  for (const move of moves) {
-    const { error } = await db.rpc("raise_organize_question", { p_workspace: workspaceId, p_identity_key: `internal:${move.key}`, p_identity_id: move.identityId,
-      p_question: `"${organizationDisplayName(move.key)}" moves money with nobody else on the other side. What is it?`, p_transaction_ids: move.transactionIds, p_created_by: "system" });
-    if (error) throw new Error(error.message);
-  }
-  return moves.length;
-}
-
 export function withBankContext(rows: TransferCandidate[], raw: Map<string, RawContext>) {
   for (const row of rows) {
     row.raw = raw.get(row.id);
@@ -377,10 +357,9 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
   const unproven = uncertainPairs(rows.filter(row => !handled.has(row.id)));
   const pairCards = await proposePairs(db, workspaceId, unproven, byId, accounts ?? []);
   for (const pair of unproven) { handled.add(pair.outId); handled.add(pair.inId); }
-  const questions = await askAboutInternalMoves(db, workspaceId, internalMoves(rows.filter(row => !handled.has(row.id))));
   const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own);
   const cashCards = await proposeCashWithdrawals(db, workspaceId, [...rows.filter(row => !handled.has(row.id) || named.some(item => item.transactionId === row.id && item.account === "cash")), ...transfers]);
-  return { linked, marked, skipped, suggested: suggested + pairCards, cashCards, questions };
+  return { linked, marked, skipped, suggested: suggested + pairCards, cashCards };
 }
 
 export async function confirmOwnAccount(db: SupabaseClient, workspaceId: string, transactionId: string, name: string) {

@@ -72,7 +72,7 @@ export function buildReviewInvestigation(rows: ReviewTransaction[], period: { fr
 }
 
 export function buildReviewEvidence(accounts: Account[], snapshots: BalanceSnapshot[], transactions: Transaction[], from: string, to: string,
-  balanceEvidence: { asOf: string; ledger: BalanceTransaction[]; timeZone?: string; sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>> } = { asOf: new Date().toISOString(), ledger: [] }) {
+  balanceEvidence: { asOf: string; ledger: BalanceTransaction[]; timeZone: string; sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>> }) {
   const accountEvidence = resolveBalances(accounts, snapshots, balanceEvidence.ledger, balanceEvidence.asOf, balanceEvidence.timeZone, balanceEvidence.sourceMetadata).map(account => {
     const balance = account.balance;
     return { id: account.id, name: account.name, currencyCode: account.currency_code,

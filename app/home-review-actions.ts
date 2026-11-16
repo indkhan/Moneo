@@ -4,63 +4,60 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
-import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
+import { groupUncategorized, type UncategorizedRow } from "@/lib/import/uncategorized-groups";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 
-export type UncategorizedGroup = { key: string; label: string; count: number; rows: { id: string; version: number }[]; suggested: string | null;
-  recent: { id: string; date: string; amountMinor: string; currency: string }[] };
-
-const MAX_GROUPS = 30;
+const PAGE = 1000;
+const SUGGESTION_BATCH = 50;
 
 export async function loadUncategorizedGroups() {
   const { supabase, workspace } = await requireWorkspace();
   const [rows, categories, proposals, loans] = await Promise.all([
-    supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code, merchants(name)").eq("workspace_id", workspace.id).eq("status", "posted").is("category_id", null).neq("kind", "transfer")
-      .order("posted_on", { ascending: false }).limit(1000),
+    loadAllUncategorized(supabase, workspace.id),
     supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).order("name").limit(500),
     supabase.from("agent_proposals").select("payload").eq("workspace_id", workspace.id).eq("kind", "categorize").in("status", ["proposed", "failed"]).limit(200),
     loadLoanPayoutIds(supabase, workspace.id).catch(() => new Set<string>()),
   ]);
-  if (rows.error || categories.error || proposals.error) throw new Error((rows.error ?? categories.error ?? proposals.error)!.message);
+  if (categories.error || proposals.error) throw new Error((categories.error ?? proposals.error)!.message);
   const picked = new Map<string, string>();
   for (const { payload } of proposals.data ?? []) {
     const category = payload?.patch?.category_id;
     if (typeof category === "string") for (const row of payload.rows ?? []) picked.set(row.id, category);
   }
-  const groups = new Map<string, UncategorizedGroup>();
-  const spending = (rows.data ?? []).filter(row => !loans.has(row.id));
-  for (const row of spending) {
-    const key = organizationDescriptionKey(row.description) || row.description;
-    const merchant = [row.merchants].flat()[0]?.name;
-    const group: UncategorizedGroup = groups.get(key) ?? { key, label: merchant ?? organizationDisplayName(key), count: 0, rows: [], suggested: null, recent: [] };
-    group.count++;
-    group.rows.push({ id: row.id, version: row.version });
-    if (group.recent.length < 8) group.recent.push({ id: row.id, date: row.posted_on, amountMinor: row.amount_minor, currency: row.currency_code });
-    group.suggested ??= picked.get(row.id) ?? null;
-    groups.set(key, group);
-  }
-  const top = [...groups.values()].sort((a, b) => b.count - a.count).slice(0, MAX_GROUPS);
-  const named = Map.groupBy(top, group => group.label);
-  for (const group of top) if (named.get(group.label)!.length > 1) group.label = organizationDisplayName(group.key);
-  const open = top.filter(group => !group.suggested);
-  if (open.length) {
-    const history = await loadOrganizationSuggestions(supabase, workspace.id, open.map(group => group.rows[0])).catch(() => null);
+  const spending = rows.filter(row => !loans.has(row.id));
+  const groups = groupUncategorized(spending, picked);
+  const open = groups.filter(group => !group.suggested);
+  for (let offset = 0; offset < open.length; offset += SUGGESTION_BATCH) {
+    const batch = open.slice(offset, offset + SUGGESTION_BATCH);
+    const history = await loadOrganizationSuggestions(supabase, workspace.id, batch.map(group => group.rows[0])).catch(() => null);
     for (const proposal of history?.proposals ?? []) {
-      const group = open.find(item => item.rows[0].id === proposal.transactionId);
+      const group = batch.find(item => item.rows[0].id === proposal.transactionId);
       if (group && proposal.categoryId) group.suggested = proposal.categoryId;
     }
   }
-  return { groups: top, total: spending.length, categories: (categories.data ?? []) as { id: string; name: string }[] };
+  return { groups, total: spending.length, categories: (categories.data ?? []) as { id: string; name: string }[] };
+}
+
+async function loadAllUncategorized(supabase: Awaited<ReturnType<typeof requireWorkspace>>["supabase"], workspaceId: string) {
+  const rows: UncategorizedRow[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const page = await supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code, merchants(name)").eq("workspace_id", workspaceId).eq("status", "posted").is("category_id", null).neq("kind", "transfer")
+      .order("posted_on", { ascending: false }).order("id", { ascending: false }).range(offset, offset + PAGE - 1);
+    if (page.error) throw new Error(page.error.message);
+    rows.push(...(page.data as unknown as UncategorizedRow[]));
+    if (page.data.length < PAGE) return rows;
+  }
 }
 
 const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.number().int().min(0) }).strict()).min(1).max(1000), categoryId: z.uuid().optional(),
   newCategory: z.string().trim().min(1).max(100).optional(), key: z.string().max(1000) }).refine(group => !!group.categoryId !== !!group.newCategory);
 
-export async function categorizeGroups(inputs: z.input<typeof groupInput>[], remember = false): Promise<{ applied: Record<string, number>; error?: string }> {
+export async function categorizeGroups(inputs: z.input<typeof groupInput>[], remember = false): Promise<{ applied: Record<string, number>; rows: Record<string, { id: string; version: number }[]>; error?: string }> {
   const groups = z.array(groupInput).min(1).max(30).safeParse(inputs);
-  if (!groups.success) return { applied: {}, error: "These transactions could not be categorized. Reload and try again." };
+  if (!groups.success) return { applied: {}, rows: {}, error: "These transactions could not be categorized. Reload and try again." };
   const context = await requireWorkspace();
   const applied: Record<string, number> = {};
+  const rows: Record<string, { id: string; version: number }[]> = {};
   let error: string | undefined;
   try {
     const created = new Map<string, string>();
@@ -68,13 +65,14 @@ export async function categorizeGroups(inputs: z.input<typeof groupInput>[], rem
       const categoryId = group.categoryId ?? created.get(group.newCategory!) ?? await createCategory(context, group.newCategory!);
       created.set(group.newCategory ?? "", categoryId);
       applied[group.key] = await categorize(context, { ...group, categoryId }, remember === true);
+      rows[group.key] = await currentVersions(context, group.rows);
     }
   } catch (cause) {
     console.error("categorizeGroups failed", cause);
     error = cause instanceof z.ZodError || !(cause instanceof Error) ? "Could not categorize these transactions. Reload and try again." : cause.message;
   }
   if (Object.keys(applied).length) revalidatePath("/", "layout");
-  return { applied, error };
+  return { applied, rows, error };
 }
 
 async function createCategory({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, name: string) {
@@ -83,19 +81,26 @@ async function createCategory({ supabase, workspace }: Awaited<ReturnType<typeof
   return data.id as string;
 }
 
+async function currentVersions({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, rows: { id: string }[]) {
+  const versions: { id: string; version: number }[] = [];
+  for (let offset = 0; offset < rows.length; offset += 200) {
+    const { data, error } = await supabase.from("transactions").select("id, version").eq("workspace_id", workspace.id).in("id", rows.slice(offset, offset + 200).map(row => row.id));
+    if (error) throw new Error(error.message);
+    versions.push(...data);
+  }
+  return versions;
+}
+
 async function categorize({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, { rows, categoryId, key }: { rows: { id: string; version: number }[]; categoryId: string; key: string }, remember: boolean) {
-  let applied = 0;
   for (let offset = 0; offset < rows.length; offset += 50) {
-    const current = await loadOrganizationSuggestions(supabase, workspace.id, rows.slice(offset, offset + 50));
-    if (!current.proposals.length) continue;
+    const batch = rows.slice(offset, offset + 50);
+    const current = await loadOrganizationSuggestions(supabase, workspace.id, batch);
     const evidence = [...new Map(current.proposals.flatMap(item => item.evidence).map(row => [row.id, row])).values()];
     const rule = remember && offset === 0 && key.length >= 3 && current.proposals.every(item => item.descriptionKey === key) ? key : null;
-    const created = await supabase.rpc("create_organization_review", { p_rows: current.proposals.map(item => ({ id: item.transactionId, version: item.version })),
-      p_patch: { category_id: categoryId }, p_merchant_name: null, p_rule_key: rule, p_evidence: evidence, p_request_id: crypto.randomUUID() });
+    const created = await supabase.rpc("create_organization_review", { p_rows: batch, p_patch: { category_id: categoryId }, p_merchant_name: null, p_rule_key: rule, p_evidence: evidence, p_request_id: crypto.randomUUID() });
     if (created.error) throw new Error(created.error.message);
     const done = await supabase.rpc("apply_organization_review", { p_review_id: created.data.id, p_save_rule: rule !== null });
     if (done.error) throw new Error(done.error.message);
-    applied += current.proposals.length;
   }
-  return applied;
+  return rows.length;
 }

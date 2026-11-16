@@ -7,6 +7,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
 } }) }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 import { setManualBalance, confirmRecordedBalance } from "./actions";
+import { updateBalance } from "./money/accounts/actions";
 const id = "00000000-0000-4000-8000-000000000001";
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-06T12:00:00Z")); fixture.rpc.mockReset().mockResolvedValue({ error: null }); });
 afterEach(() => vi.useRealTimers());
@@ -46,8 +47,6 @@ it("does not turn yesterday's confirmation into current coverage after midnight"
 });
 
 it("lets the Accounts balance form confirm today's activity too", async () => {
-  vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
-  const { updateBalance } = await import("./money/accounts/actions");
   const f = form(true);
   f.set("coveredTransactions", JSON.stringify([{ id, version: 1, amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-06", posted_at: null }]));
   await updateBalance({}, f);

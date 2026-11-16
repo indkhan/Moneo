@@ -6,7 +6,7 @@ import { formatMoney } from "@/lib/finance/format";
 
 export async function ModelSources({ db, workspace }: { db: SupabaseClient; workspace: { id: string; timezone: string; locale: string } }) {
   const [evidence, items, rates] = await Promise.all([
-    loadBalanceEvidence(db, workspace.id), loadWealthItems(db, workspace.id),
+    loadBalanceEvidence(db, workspace.id, new Date().toISOString()), loadWealthItems(db, workspace.id),
     db.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source").eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("id").limit(20),
   ]);
   if (rates.error) throw rates.error;
