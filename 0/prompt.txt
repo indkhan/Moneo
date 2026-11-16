@@ -1,0 +1,56 @@
+Act as the test sub-agent for this task.
+
+Fix GitHub issue #242 in Moneo: add a small set of property tests for financial and import invariants. The owner wants about 5 properties:
+1. Money stays exact beyond Number.MAX_SAFE_INTEGER.
+2. Currency decimals are respected for 0-, 2- and 3-decimal currencies (lib/finance/format.ts and the money helpers).
+3. Importing then undoing an import restores the prior state, and preserves source history where the contract allows.
+4. Reimporting the same file doesn't double-count.
+5. Calendar math is correct across DST changes and leap days, with explicit time zones (lib/finance/calendar.ts; time zones are now required parameters).
+
+Approach:
+- Prefer an installed tool. Add `fast-check` as a devDependency only if needed, with an exact version.
+- Derive the properties from the financial contract, never from a run of the code. Use synthetic values.
+- Persist failing seeds and show shrinking output.
+- Keep each test file within the 10-second budget (AGENTS.md).
+- Mutation check: make a deliberate wrong-sign edit, a dropped-effect edit and a duplicate-effect edit, confirm the properties catch each one, then revert them. Say which edits you tried in the PR.
+- Tests must run offline with no Docker. Import/undo properties that need the database belong in a `*.live.test.ts`, or should use the pure functions where they exist; prefer the pure functions.
+
+## Rules
+- Read AGENTS.md first and follow it exactly, especially the Tests section. Read `gh issue view 242`.
+- Branch `t3/issue-242-property-tests` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Shared test backend: never run `npm run qa:reset` or `docker compose -p moneo-qa down`, and never touch the owner's backend.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test`.
+- Push and open a PR to `main` (`Closes #242`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bm8ggwm4a</task-id>
+<summary>Monitor event: "Wait for npm ci"</summary>
+<event>[Monitor expired after 10m with no events delivered. Re-arm it if you still need the watch — and widen the filter if silence was unexpected.]</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bspeddr2q</task-id>
+<summary>Monitor event: "Wait for npm ci finish"</summary>
+<event>[Monitor expired after 10m with no events delivered. Re-arm it if you still need the watch — and widen the filter if silence was unexpected.]</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bb3eylth0</task-id>
+<tool-use-id>toolu_01VYPGseJZm6DwDDE7UGSJRu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\1d6341a6a831d886\1f018f1d-a5e3-404d-896a-c676f78274cd\tasks\bb3eylth0.output</output-file>
+<status>completed</status>
+<summary>Background command "until grep -q '^done' /tmp/npmci.log; do sleep 3; done; tail -4 /tmp/npmci.log | cut -c1-200; ls node_modules/.bin | grep -c vitest" completed (exit code 0)</summary>
+</task-notification>
