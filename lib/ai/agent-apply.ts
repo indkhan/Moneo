@@ -11,7 +11,7 @@ import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recur
 import type { ScheduleFields } from "@/lib/recurring/schedules";
 import { applyScalableProposal, OrderOutcomeUnknown, TRADE_KINDS } from "@/lib/scalable/orders";
 import { withScalable } from "@/lib/scalable/server";
-import { ownTransferPayloadSchema } from "@/lib/finance/own-transfers";
+import { confirmOwnAccount, ownTransferPayloadSchema } from "@/lib/finance/own-transfers";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit" | "scalable_order" | "scalable_cancel" | "own_transfer" | "cash_withdrawal" | "organize_answer"; payload: unknown };
@@ -87,10 +87,7 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
         if (error) throw new Error(error.message);
         return { href: `/money/transactions?transaction=${payload.transactionId}`, undo: "Undo from the transaction" };
       }
-      const row = await supabase.from("transactions").select("version").eq("workspace_id", workspace.id).eq("id", payload.transactionId).maybeSingle();
-      if (row.error || !row.data) throw new Error("This transaction was removed");
-      const { error } = await supabase.rpc("mark_own_named_transfer", { p_transaction_id: payload.transactionId, p_expected_version: row.data.version, p_kind: "owner", p_label: payload.name });
-      if (error) throw new Error(error.message);
+      await confirmOwnAccount(supabase, workspace.id, payload.transactionId, payload.name);
       return { href: `/money/transactions?transaction=${payload.transactionId}`, undo: "Undo from the transaction" };
     }
     case "finding":

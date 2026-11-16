@@ -308,12 +308,17 @@ export const ownAccountIdentifiers = pgTable("own_account_identifiers", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   accountId: uuid("account_id").references(() => accounts.id, { onDelete: "cascade" }),
-  iban: text("iban").notNull(),
+  iban: text("iban"),
+  nameKey: text("name_key"),
+  confirmed: boolean("confirmed").notNull().default(false),
   label: text("label").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [
   unique("own_account_identifiers_workspace_id_iban_key").on(table.workspaceId, table.iban),
+  unique("own_account_identifiers_workspace_id_name_key_key").on(table.workspaceId, table.nameKey),
   check("own_account_identifiers_iban_check", sql`${table.iban} ~ '^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$'`),
+  check("own_account_identifiers_name_key_check", sql`${table.nameKey} is null or char_length(${table.nameKey}) between 1 and 120`),
+  check("own_account_identifiers_identity_check", sql`(${table.iban} is not null) <> (${table.nameKey} is not null)`),
   check("own_account_identifiers_label_check", sql`char_length(btrim(${table.label})) between 1 and 120`),
 ]);
 

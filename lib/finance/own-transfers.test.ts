@@ -81,6 +81,22 @@ describe("own money without an IBAN", () => {
   });
 });
 
+describe("an own account the owner confirmed by name", () => {
+  const named = { ...own, names: new Map([["usman khan", "usman-id"]]) };
+  const payment = (id: string, over: Partial<TransferCandidate> = {}) => row(id, "current", -1000n, "2026-03-06", { counterparty: "USMAN  KHAN", text: "Usman Khan main", ...over });
+
+  it("marks every payment under that name, past and future, without asking again", () => {
+    const result = findOwnTransfers([payment("a"), payment("b", { postedOn: "2026-04-06" }), payment("c", { amountMinor: 2500n })], named);
+    expect(result.single).toEqual(["a", "b", "c"].map(transactionId => ({ transactionId, identifierId: "usman-id" })));
+  });
+
+  it("leaves out a payment to someone else's IBAN and one where the bank only echoed the owner's name", () => {
+    const stranger = payment("stranger", { ibans: ["DE44500105175407324931"] });
+    const refund = payment("refund", { amountMinor: 3653n, text: "Refund from temu.com" });
+    expect(findOwnTransfers([stranger, refund], named).single).toEqual([]);
+  });
+});
+
 describe("ownNameSuggestions", () => {
   const proven = row("proven", "current", -80000n, "2026-03-06", { ibans: [ELSEWHERE], counterparty: "Usman Khan" });
   const old = row("old", "current", 150000n, "2025-08-18", { counterparty: "USMAN  KHAN", text: "main Usman Khan main End-to-End-Ref.: NOTPROVIDED" });
