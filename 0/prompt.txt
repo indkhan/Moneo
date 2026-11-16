@@ -1,0 +1,37 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #238 in Moneo.
+
+Add a bounded Playwright job to pull-request CI (.github/workflows/):
+- It starts its own disposable moneo-qa backend in the CI runner and uses the existing qa:auth and qa:server commands.
+- Extend an existing whole-user journey in e2e/ to cover accepting a proposal card (applied exactly once) and declining one (not applied). Check the result after a refresh, and cover duplicate clicks and undo where supported.
+- Mock AI.
+- On failure, upload sanitized traces and screenshots.
+- Document how to reproduce it locally in e2e/README.md.
+
+Make sure the new CI job passes on your PR (`gh pr checks <n>`). Keep fixing it until it's green, or explain exactly why it can't be.
+
+## RESUME: earlier work may exist
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-d21039d9-175739a3aa65d6d8` (branch `t3/issue-238-playwright-pr-ci`).
+- Inspect it read-only (`git -C <path> status`, `git -C <path> diff`) and bring over what's useful.
+- Never modify, reset or delete that worktree.
+- Use your own branch `t3/issue-238-e2e-ci`, created from current `origin/main`.
+- Commit as soon as the earlier work is applied, and after each step.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 238 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command or CI run is still going.** Wait in the same turn: a foreground command with a long timeout, or a background command plus `t3_background_wait`.
+- **Never kill a process you didn't start yourself in this session, verified by PID.** Never kill by name or command line.
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The local QA app on port 3100 and the moneo-qa backend are shared with other agents:
+  - Never run `npm run qa:reset` or `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend (.env, port 3000, project `moneo`).
+  - If 3100 is busy, wait and retry.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** CI rejected earlier agents' PRs that claimed these passed.
+- Before finishing, also run `npm test`. Report 5-second timeouts under load in files you didn't touch, but don't change them.
+- Push and open a PR to `main` (`Closes #238`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
