@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7HTY3EN2EQYX1MAS4T61JP5",
+  "session_id": "84c9502f-eb89-46cc-b4c6-818cd19ea24b",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-16T09:27:50.4192986Z",
+  "branch": "t3/research-self-hosted-voice",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "research/voice-duplex/experiments/expE/call_turns_qa.mjs"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-2",
+  "turn_id": "f34d9e1fc4ca",
+  "checkpoint_transcript_start": 2671,
+  "transcript_lines_at_start": 2671,
+  "compact_transcript_start": 344,
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 19772,
+    "cache_read_tokens": 3095180,
+    "output_tokens": 11625,
+    "api_call_count": 8
+  },
+  "redaction": {
+    "replacements": 62,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 10,
+      "credentialed_uri": 0,
+      "entropy": 21,
+      "key_context": 31,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 32
+  }
+}
