@@ -57,5 +57,39 @@
       "provider_token": 0,
       "shell_stdin": 0
     }
-  }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01NWct965YY8phfR2aU5x4Dq",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "verify-ui"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "d22a72337db9",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 316,
+        "end": 317,
+        "entry_ids": [
+          "90423082-91f8-44d1-8ad2-c602ff713efa"
+        ],
+        "tool_use_id": "toolu_01NWct965YY8phfR2aU5x4Dq"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01NWct965YY8phfR2aU5x4Dq"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: verify-ui",
+        "default_collapsed": true
+      }
+    }
+  ]
 }
