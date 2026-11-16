@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7KA0Q9R265S2QM2HQHX8VS5",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-241-db-types",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/ai/agents/page.tsx",
+    "app/api/chat/route.ts",
+    "app/api/imports/confirm/route.ts",
+    "app/api/scalable/connections/route.ts",
+    "app/home-review-actions.ts",
+    "app/layout.tsx",
+    "app/money/accounts/actions.ts",
+    "app/money/organization/page.tsx",
+    "app/money/transactions/drawer.tsx",
+    "app/money/transactions/pending-hold-panel.tsx",
+    "app/money/transactions/scope.test.ts",
+    "app/money/transactions/scope.ts",
+    "lib/ai/agent-apply.ts",
+    "lib/ai/iou-actions.ts",
+    "lib/database.ts",
+    "lib/scalable/live.ts",
+    "lib/service-db.ts",
+    "lib/supabase-server.ts",
+    "workflows/bank-sync.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 72,
+    "cache_creation_tokens": 72854,
+    "cache_read_tokens": 5056696,
+    "output_tokens": 29653,
+    "api_call_count": 36
+  },
+  "redaction": {
+    "replacements": 7,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
