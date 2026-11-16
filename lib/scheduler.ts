@@ -24,8 +24,8 @@ export function startScheduler(env: NodeJS.ProcessEnv = process.env) {
     running = true;
     try { await runCronJobs(baseUrl, secret); } finally { running = false; }
   };
-  const first = setTimeout(tick, FIRST_RUN);
-  const hourly = setInterval(tick, HOUR);
+  const first = setTimeout(() => void tick(), FIRST_RUN);
+  const hourly = setInterval(() => void tick(), HOUR);
   first.unref(); hourly.unref();
   return () => { clearTimeout(first); clearInterval(hourly); };
 }

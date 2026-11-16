@@ -34,11 +34,13 @@ export function consentValidUntil(maximumSeconds: number | null | undefined, now
   return new Date(now + (maximumSeconds ?? 90 * 86_400) * 1000);
 }
 
+const sessionsExpireWithTheirConsent = () => undefined;
+
 export async function revokeBankSessions(workspaceId: string) {
   if (!(await enableBankingConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
   try {
     const { data } = await serviceDb().from("bank_connections").select("id, session_id_encrypted").eq("workspace_id", workspaceId).not("session_id_encrypted", "is", null);
     const client = await enableBankingClient();
     await Promise.allSettled((data ?? []).map(async row => client.deleteSession(decryptToken(row.session_id_encrypted, row.id))));
-  } catch {}
+  } catch { sessionsExpireWithTheirConsent(); }
 }

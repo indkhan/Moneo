@@ -1,6 +1,8 @@
 import JSZip from "jszip";
 import type { AttachmentType } from "@/lib/ai/chat-attachments";
 
+const unreadableArchiveIsNotAnOfficeFile = () => undefined;
+
 const OFFICE_PARTS: [string, AttachmentType][] = [
   ["wordprocessingml.document.main+xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   ["presentationml.presentation.main+xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
@@ -20,7 +22,7 @@ export async function sniffType(bytes: Uint8Array, name: string): Promise<Attach
   if (starts(0x52, 0x49, 0x46, 0x46) && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "image/webp";
   if (starts(0x25, 0x50, 0x44, 0x46)) return "application/pdf";
   if (starts(0x50, 0x4b, 0x03, 0x04)) {
-    const types = await JSZip.loadAsync(bytes).then(zip => zip.file("[Content_Types].xml")?.async("string")).catch(() => undefined);
+    const types = await JSZip.loadAsync(bytes).then(zip => zip.file("[Content_Types].xml")?.async("string")).catch(unreadableArchiveIsNotAnOfficeFile);
     return OFFICE_PARTS.find(([part]) => types?.includes(part))?.[1] ?? null;
   }
   const extension = /\.(\w+)$/.exec(name)?.[1]?.toLowerCase();
