@@ -1,0 +1,49 @@
+Act as the implementation sub-agent for this task.
+
+GitHub issue #241 in Moneo. The owner chose two PRs: **this is PR 1, generated database types**. PR 2, read-only AI tool clients, comes later, so don't build it.
+
+1. Add `npm run db:types`. It generates TypeScript types from a freshly migrated disposable database, using the Supabase CLI against the moneo-qa test backend, or the disposable schema that `supabase/tests/migrations.mjs` replays. Write them to a checked-in file such as `lib/database.types.ts`.
+   - Generation must be reproducible and deterministic.
+   - It must never read the owner's `.env`.
+2. Add a CI check, in the existing `database` job, that regenerates the types and fails if they differ. The message says to run `npm run db:types`.
+3. Adopt the types at the database boundaries: type the clients made by `serviceDb()` and `createClient()`. Replace unsafe `as unknown as` casts at query results with typed queries, or with Zod validation where the data really is unknown.
+   - Recount the casts first; the issue's counts are historical.
+   - If adopting everywhere is too big for one reviewable PR, type the clients and fix the casts in lib/finance and lib/import, and list the rest in the PR body.
+4. It must work with both the Docker and the bundled desktop Postgres. The types come from the schema, so they're the same for both.
+5. Add a row to the AGENTS.md rules table for the drift check.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 241 --comments`.
+- Branch `t3/issue-241-db-types` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command or CI run is still going.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The moneo-qa backend is shared:
+  - Never run `npm run qa:reset` or `docker compose -p moneo-qa down`, and never touch the owner's backend.
+  - Other branches may have extra migrations applied there, so generate from a fresh schema replay, not the live QA schema.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test`, `npm run build` and `npm run test:db`.
+- Push and open a PR to `main`. Write "Part 1 of #241" in the body (don't close the issue) and end it with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b184oxiap</task-id>
+<tool-use-id>toolu_01PfuknmwbZJVpE6MLqXwFfD</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\4ce5b2d378bf6f24\e4d56206-a86f-46d5-9efb-352450896091\tasks\b184oxiap.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm ci &gt; /scratch_npmci.log 2&gt;&amp;1; true) ; echo; ls ~/.moneo 2&gt;&amp;1; ls -a | head -30" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b8z99j129</task-id>
+<tool-use-id>toolu_01DtowUagwcjMLzASiMZS8j2</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\4ce5b2d378bf6f24\e4d56206-a86f-46d5-9efb-352450896091\tasks\b8z99j129.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci --no-audit --no-fund 2&gt;&amp;1 | Select-Object -Last 8" completed (exit code 0)</summary>
+</task-notification>
