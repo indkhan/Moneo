@@ -1,0 +1,60 @@
+Update on pull request #223 (https://github.com/indkhan/Moneo/pull/223), which T3 Code is watching for you:
+- All 1 required check passed on fd95ef4.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+What all decisions u need in simple and consice words
+
+---
+
+1. Sure 
+2 won’t removing be better as a guards net even if right now u will have to do extra work but it’s fine 
+3. Sure 
+4 sure
+
+---
+
+Update on pull request #223 (https://github.com/indkhan/Moneo/pull/223), which T3 Code is watching for you:
+- All 7 checks passed on fd95ef4.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Continue where you left off.
+
+---
+
+Update on pull request #226 (https://github.com/indkhan/Moneo/pull/226), which T3 Code is watching for you:
+- Checks failed on ccc3ad9:
+  - database https://github.com/indkhan/Moneo/actions/runs/43750891970/job/132924366209
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #226 (https://github.com/indkhan/Moneo/pull/226), which T3 Code is watching for you:
+- All 1 required check passed on a7b000e.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #226 (https://github.com/indkhan/Moneo/pull/226), which T3 Code is watching for you:
+- All 3 checks passed on a7b000e.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+dont file issue just fix then and then file a pr and close the issue and the next things dont wait for me to say continue just solve each and for each then make a pr
+
+---
+
+but it should be that the timing is in setting that gests where the suer is and all
+
+---
+
+honestly before now u continue working on these small things can you give me how should i work now that u have added the skills , changed agents.md and all so if there is omething new i want or something i want edited oor fixed how should i ask and what should i tell it to give and what will i get first give me a brief of what u changed and all
