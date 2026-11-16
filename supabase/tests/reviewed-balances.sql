@@ -15,7 +15,7 @@ begin
   insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance)
     values(workspace,account,10000,'EUR',clock_timestamp()-interval '2 minutes','synthetic') returning id into baseline;
   insert into public.transactions(workspace_id,account_id,posted_on,posted_at,description,amount_minor,currency_code,status)
-    values(workspace,account,today,clock_timestamp()-interval '1 minute','Synthetic timestamped posting',-100,'EUR','posted') returning id into morning;
+    values(workspace,account,today,greatest(clock_timestamp()-interval '1 minute',today::timestamp at time zone 'Europe/Berlin'),'Synthetic timestamped posting',-100,'EUR','posted') returning id into morning;
   insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status)
     values(workspace,account,today,'Synthetic date-only posting',-200,'EUR','posted') returning id into date_only;
   insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status)
