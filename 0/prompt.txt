@@ -1,0 +1,21 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #261 in Moneo. `ownAccountIbans` in `workflows/bank-sync.ts` normalizes IBANs with `.replace(/s/g, "")` instead of `/\s/g`, so it strips the letter "s" instead of spaces.
+
+1. Reproduce it with a failing unit test. Extend `workflows/bank-sync.test.ts`, or better, test the normalization through the existing shared helper.
+2. Look for an existing `normalizeIban` in lib/ (lib/finance/own-transfers.ts imports one). Use that helper instead of a second inline regex, so this class of bug can't come back. Fix the cause, not just the character.
+3. Search for other inline IBAN normalizations (`git grep -n "replace(/s\|replace(/\\\\s" -- lib workflows app`) and route them through the same helper if any exist.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 261`.
+- Branch `t3/issue-261-iban-normalize` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Never run `npm run qa:reset`, never `docker compose -p moneo-qa down`, never touch the owner's backend.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test`.
+- Push and open a PR to `main` (`Closes #261`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
