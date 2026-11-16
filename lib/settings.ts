@@ -31,6 +31,7 @@ export const settingsSchema = z.object({
   ai_models: z.partialRecord(z.enum(["default", ...AI_AGENT_KEYS] as ["default", ...AiAgent[]]), z.string().trim().min(1).max(200)).default({}),
   voice: z.enum(VOICES).default(DEFAULT_VOICE),
   speech_engine: z.enum(SPEECH_ENGINES).default("openai"),
+  speech_local_model: z.string().trim().min(1).max(1000).nullable().default(null),
   ai_data_scopes: z.array(z.enum(AI_DATA_SCOPES)).max(AI_DATA_SCOPES.length).default([...AI_DATA_SCOPES]),
   muted_insight_types: z.array(z.enum(INSIGHT_TYPES)).max(INSIGHT_TYPES.length).default([]),
   summary_cadence: z.enum(["none", "weekly", "monthly"]).default("none"),

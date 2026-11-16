@@ -89,6 +89,11 @@ function main() {
             await showReturn(window, returnPath);
           },
           update: updater,
+          chooseFolder: async () => {
+            const options = { title: "Choose a speech-to-text model folder", properties: ["openDirectory" as const] };
+            const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+            return picked.canceled ? null : picked.filePaths[0] ?? null;
+          },
         });
         server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: { ...running.env, MONEO_DESKTOP_BRIDGE: bridge.url, MONEO_DESKTOP_VERSION: app.getVersion() } }, error => fail("The Moneo server keeps stopping", error));
         await server.start();
