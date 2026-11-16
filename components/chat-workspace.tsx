@@ -163,7 +163,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   }
 
   const live = useRef<Record<string, PendingExchange>>({});
-  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { followOutput(); live.current[id] = { question, attachments, tools: [], spoken }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean, regenerating = false) { followOutput(); live.current[id] = { question, attachments, tools: [], spoken, regenerating }; setPending(current => ({ ...current, [id]: live.current[id] })); }
   const written = useRef<Record<string, string>>({});
   function onEvent(id: string, event: ChatStreamEvent) {
     if (event.type === "title") { written.current[id] = event.title; retitle(id, event.title); return; }
@@ -179,9 +179,9 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     const now = new Date().toISOString();
     const conversation = { id, title: written.current[id] ?? standIn, created_at: now };
     const exchange: ChatItem[] = [
-      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken: finished?.spoken },
+      ...(result.regenerates ? [] : [{ id: `local-${crypto.randomUUID()}`, role: "user" as const, content: question.trim(), created_at: now, attachments, spoken: finished?.spoken }]),
       ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
-      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps, model: result.model },
+      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, answer_of: result.regenerates ?? result.requestId, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps, model: result.model },
     ];
     setEntries(current => ({ ...current, [id]: current[id] ? { ...current[id], messages: [...current[id].messages, ...exchange] } : { conversation, messages: exchange, cursor: null } }));
     setThreads(current => current.some(thread => thread.id === id) ? current : [conversation, ...current]);
