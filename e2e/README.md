@@ -27,6 +27,17 @@ Use one worker: several specs change the same QA workspace and its preferences. 
 - `*.provider.spec.ts` call the real AI model, so they cost money. They run only with `E2E_REAL_AI=1`; `npm run test:e2e` leaves them out.
 - `review-runtime.config.ts` and `review-investigation.config.ts` run the real Workflow engine against local synthetic database and model servers (ports 3040/3041), including a server restart mid-review: `npx playwright test --config e2e/review-runtime.config.ts`.
 
+## Pull-request CI
+
+The `browser` job in `.github/workflows/ci.yml` runs on every pull request. It starts its own disposable `moneo-qa` backend on the runner (`npm run setup -- --qa`, with the same retry as the `database` job), creates the QA user (`npm run qa:auth`), builds this checkout and serves it on port 3100 against `.env.qa` with AI, bank and Scalable access off (`E2E_PRODUCTION_BUILD=1`, see `scripts/qa-server.mjs`), then runs one worker with one retry over a bounded set of specs: `net-worth.gated.spec.ts` (accepting a cash-machine proposal card once even when double-clicked, dismissing one without applying it, and checking both after a reload) and `import-journey.mocked.spec.ts`. A failure fails the job and uploads `test-results/` (a trace and screenshot per failed test) as the `browser-failures` artifact for 7 days. The runner and its backend are discarded afterwards, and the specs only create synthetic rows, so the artifact holds no owner data or credentials. The specs refuse any server that would sign tests in as the owner (`e2e/global-setup.ts`).
+
+To reproduce a CI failure locally, follow Setup, make sure nothing else is serving port 3100, and run:
+
+```sh
+E2E_PRODUCTION_BUILD=1 npx playwright test --workers=1 e2e/net-worth.gated.spec.ts e2e/import-journey.mocked.spec.ts
+npx playwright show-trace test-results/<failed test folder>/trace.zip
+```
+
 ## Nightly
 
 `npm run qa:nightly -- --install` schedules the whole suite for 03:00 every day (a Windows scheduled task that starts as soon as possible if the PC was off). It runs every spec twice on a production build of `origin/main`, in its own worktree in `~/.moneo/nightly`, and keeps one GitHub issue, "Nightly browser suite is failing", up to date. A night with Docker off or port 3100 busy is skipped quietly; the log is `~/.moneo/nightly.log`.
