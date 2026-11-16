@@ -158,7 +158,7 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
       {suggested.length > 0 && <button type="button" disabled={pending} className={primary} onClick={() => apply(suggested)}>Apply {suggested.length} suggested</button>}</div>
     {open.length > 0 && <div role="group" aria-label="Everything left" className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border p-3">
       <p className="w-full text-sm font-medium">Everything left ({openTransactions} {openTransactions === 1 ? "transaction" : "transactions"})</p>
-      <CategoryCombobox label="Category for everything left" options={data.categories} value={everything} allowCreate placeholder="One category for all" disabled={pending} onChange={setEverything} className="flex-1 sm:max-w-56" />
+      <CategoryCombobox label="Category for everything left" options={data.categories} value={everything} allowCreate placeholder="One category for all" disabled={pending} onChange={setEverything} className="w-full sm:w-56" />
       <button type="button" disabled={pending || !resolve(everything)} className={primary} onClick={() => apply(open, everything)}>Apply to all {openTransactions}</button>
       <button type="button" disabled={pending} className={secondary} onClick={() => skip(open)}>Skip all</button>
     </div>}
