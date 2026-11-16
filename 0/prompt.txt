@@ -1,0 +1,68 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #236 in Moneo: use one exact money formatter (integer minor units as bigint, explicit currency) everywhere money is shown: cards, chart tooltips, chat charts, artifacts and forecasts. Known places: components/cards/card-view.tsx, components/cards/card-chart.tsx, components/chat-chart.tsx, app/plan/forecast.tsx, plus any duplicate formatMoney. Add a precise lint rule against lossy money formatting that still allows non-money number work. Follow the issue's acceptance criteria: large bigints, negatives, and currencies with 0, 2 and 3 decimals.
+
+## RESUME: earlier work exists
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-f629ea95-ba66b678a4f7f383`, branch `t3/issue-236-exact-money-formatting`.
+- Inspect it read-only with `git -C <path> status` and `git -C <path> diff`, and look at its untracked files.
+- Bring the useful work into your own checkout: apply its diff and copy the untracked files.
+- Continue from there. Never modify, reset or delete that worktree.
+- Use your own branch `t3/issue-236-money-format`, created from current `origin/main`.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 236 --comments`.
+- Commit each step in plain language, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- Other agents share the moneo-qa backend and QA port 3100:
+  - Never `npm run qa:reset` and never `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend (.env, port 3000, project `moneo`).
+  - If 3100 is busy with another checkout, wait and retry.
+  - Never kill a process you didn't start.
+  - If `npm ci` stalls, retry once with `--prefer-offline`.
+- `lib/cron.test.ts` times out under load and is being fixed separately (#246). Report that timeout, but don't change it.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, and the verify-ui skill for the changed screens. `.qa/` is git-ignored, so upload the screenshots to the PR body or a PR comment (e.g. `gh` with image links, or commit them under a PR-only path that you delete before the end). If you can't, say so.
+- Push and open a PR to `main` (`Closes #236`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b4h1e0w9v</task-id>
+<tool-use-id>toolu_012jJEyHNwkpqvAB2jNxneSD</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\31acb6d83129e0af\3478ea10-3fd6-463f-95ac-e3ae1183a0e8\tasks\b4h1e0w9v.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-11eeb76d-2af921d475ac5d92" &amp;&amp; ls node_modules | wc -l; ls node_modules/.bin 2&gt;/dev/null | head -3; npm ci --prefer-offline 2&gt;&amp;1 | grep -iE "error|ERR" | head" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b4enxyqg2</task-id>
+<tool-use-id>toolu_01TtY5nzvXtFYPocDkL5z6ut</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\31acb6d83129e0af\3478ea10-3fd6-463f-95ac-e3ae1183a0e8\tasks\b4enxyqg2.output</output-file>
+<status>killed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-11eeb76d-2af921d475ac5d92" &amp;&amp; git status --short | head -20; npm run typecheck 2&gt;&amp;1 | tail -30; npm run lint 2&gt;&amp;1 | tail -40" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b5qc3fb05</task-id>
+<tool-use-id>toolu_01Ej1s3T6iUYKJiWr5MNmpv2</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\31acb6d83129e0af\3478ea10-3fd6-463f-95ac-e3ae1183a0e8\tasks\b5qc3fb05.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-11eeb76d-2af921d475ac5d92" &amp;&amp; S=C:/Users/mgsuk/AppData/Local/Temp/claude/31acb6d83129e0af/3478ea10-3fd6-463f-95ac-e3ae1183a0e8/scratchpad; (time npx tsc --noEmit) &gt; $S/tsc.log 2&gt;&amp;1; tail -30 $S/tsc.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bacazf3nd</task-id>
+<tool-use-id>toolu_01XGed6bQhjTocQiTZHLGnkw</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\31acb6d83129e0af\3478ea10-3fd6-463f-95ac-e3ae1183a0e8\tasks\bacazf3nd.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-11eeb76d-2af921d475ac5d92" &amp;&amp; S=C:/Users/mgsuk/AppData/Local/Temp/claude/31acb6d83129e0af/3478ea10-3fd6-463f-95ac-e3ae1183a0e8/scratchpad; npx tsc --noEmit &gt; $S/tsc.log 2&gt;&amp;1; echo "tsc exit $?" &gt; $S/checks.log; npx tsc --noEmit -p desktop &gt;&gt; $S/tsc.log 2&gt;&amp;1; echo "tsc desktop exit $?" &gt;&gt; $S/checks.log; npx eslint . &gt; $S/lint.log 2&gt;&amp;1; echo "lint exit $?" &gt;&gt; $S/checks.log; npx vitest run &gt; $S/test.log 2&gt;&amp;1; echo "test exit $?" &gt;&gt; $S/checks.log" completed (exit code 0)</summary>
+</task-notification>
