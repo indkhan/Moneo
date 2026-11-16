@@ -3,6 +3,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid:=gen_random_
 begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Filter splits','EUR');
   insert into public.categories(id,workspace_id,name) values(category,workspace,'Food');

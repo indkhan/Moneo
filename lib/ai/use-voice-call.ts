@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useReducer, useState } from "react";
+import { awaitedLater } from "@/lib/awaited-later";
 import { readResponse, type ChatAnswer } from "./use-chat-request";
 import { VoiceCallController, type CallAsk } from "./voice-call-controller";
 import { boundTranscript } from "./voice-call-record";
@@ -23,6 +24,9 @@ function level(analyser: AnalyserNode | null, buffer: Uint8Array<ArrayBuffer>) {
   return Math.min(1, Math.sqrt(sum / buffer.length) * 4);
 }
 
+const sessionAlreadyClosed = () => undefined;
+const screenMayStillSleep = () => undefined;
+const callRecordIsNotSavedWhenOffline = () => undefined;
 const trace = process.env.NODE_ENV === "production" ? undefined : (message: string) => console.info(`[call ${new Date().toISOString().slice(11, 23)}] ${message}`);
 
 class Connection {
@@ -69,7 +73,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     audio.autoplay = true;
     const playback = new VoicePlayback();
     let context: AudioContext | null = null, wakeLock: WakeLockSentinel | null = null;
-    const lock = () => { if (document.visibilityState === "visible") navigator.wakeLock?.request("screen").then(sentinel => { if (closed) void sentinel.release(); else wakeLock = sentinel; }, () => {}); };
+    const lock = () => { if (document.visibilityState === "visible") navigator.wakeLock?.request("screen").then(sentinel => { if (closed) void sentinel.release(); else wakeLock = sentinel; }, screenMayStillSleep); };
     async function connect() {
       if (!pc || !navigator.mediaDevices?.getUserMedia) throw new Error("This browser cannot make voice calls. Try a recent Chrome, Safari or Firefox.");
       const slot = pc.addTransceiver("audio", { direction: "sendrecv" });
@@ -87,9 +91,8 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       pc.onconnectionstatechange = () => { if (!closed && pc.connectionState === "failed") { setStatus("error"); setError("The call dropped. Check your connection and try again."); } };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const answer = fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) })
-        .then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? "Could not start the call"); return body.sdp as string; });
-      answer.catch(() => {});
+      const answer = awaitedLater(fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) })
+        .then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? "Could not start the call"); return body.sdp as string; }));
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       if (closed) { stream.getTracks().forEach(track => track.stop()); return; }
       live.set({ mic: stream });
@@ -110,7 +113,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       void fetch("/api/voice/calls", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: live.callId, conversationId, durationSeconds: seconds, transcript,
           tasks: controller.tasks.slice(-30).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300), ...(task.title && { title: task.title }), status: task.status })) }) })
-        .then(response => { if (response.ok) finished?.(); }, () => {});
+        .then(response => { if (response.ok) finished?.(); }, callRecordIsNotSavedWhenOffline);
     }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
     const buffer = new Uint8Array(512);
@@ -131,7 +134,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       clearInterval(meter);
       saveRecord();
       document.removeEventListener("visibilitychange", lock);
-      try { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify({ type: "session.close" })); } catch {}
+      try { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify({ type: "session.close" })); } catch { sessionAlreadyClosed(); }
       live.set({ channel: null, micLevel: null, moneoLevel: null });
       live.mic?.getTracks().forEach(track => track.stop());
       pc?.close();

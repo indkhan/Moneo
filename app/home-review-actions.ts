@@ -49,6 +49,17 @@ async function loadAllUncategorized(supabase: Awaited<ReturnType<typeof requireW
   }
 }
 
+export async function skipUncategorized(): Promise<string | undefined> {
+  const { supabase, workspace } = await requireWorkspace();
+  const { error } = await supabase.from("workspace_settings").upsert({ workspace_id: workspace.id, uncategorized_skipped_at: new Date().toISOString() }, { onConflict: "workspace_id" });
+  if (error) {
+    console.error("skipUncategorized failed", { code: error.code });
+    return "Could not save. Try again.";
+  }
+  revalidatePath("/", "layout");
+  return undefined;
+}
+
 const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.number().int().min(0) }).strict()).min(1).max(1000), categoryId: z.uuid().optional(),
   newCategory: z.string().trim().min(1).max(100).optional(), key: z.string().max(1000) }).refine(group => !!group.categoryId !== !!group.newCategory);
 

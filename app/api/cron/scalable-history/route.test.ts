@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { rebuildScalableHistory } from "@/lib/scalable/history-job";
 import { GET } from "./route";
 
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 vi.mock("@/lib/scalable/server", () => ({ scalableConfigured: () => true }));
 vi.mock("@/lib/scalable/history-job", () => ({ rebuildScalableHistory: vi.fn(async () => "saved") }));
 vi.mock("@/lib/settings", () => ({ loadWorkspaceSettings: async () => ({ timezone: "Europe/Berlin" }) }));

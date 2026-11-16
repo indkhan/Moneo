@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/auth";
 import { enableBankingConfigured } from "@/lib/bank/enable-banking";
-import { psuFrom, serviceDb } from "@/lib/bank/server";
+import { psuFrom } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { startBankSync } from "@/lib/bank/start-sync";
 import { scalableConfigured } from "@/lib/scalable/server";
 import { syncScalable } from "@/lib/scalable/sync";

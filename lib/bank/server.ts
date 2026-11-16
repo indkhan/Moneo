@@ -1,10 +1,9 @@
+import "server-only";
 import { maskAccountNumber } from "@/lib/import/csv";
 import { serviceDb } from "@/lib/service-db";
 import { EnableBankingError, enableBankingClient, enableBankingConfigured, type BankAccount, type PsuContext } from "./enable-banking";
 import { BANK_REDIRECT_URL } from "./return-listener";
 import { decryptToken } from "./token-crypto";
-
-export { serviceDb };
 
 export function enableBankingErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof EnableBankingError)) return fallback;
@@ -34,11 +33,13 @@ export function consentValidUntil(maximumSeconds: number | null | undefined, now
   return new Date(now + (maximumSeconds ?? 90 * 86_400) * 1000);
 }
 
+const sessionsExpireWithTheirConsent = () => undefined;
+
 export async function revokeBankSessions(workspaceId: string) {
   if (!(await enableBankingConfigured()) || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
   try {
     const { data } = await serviceDb().from("bank_connections").select("id, session_id_encrypted").eq("workspace_id", workspaceId).not("session_id_encrypted", "is", null);
     const client = await enableBankingClient();
     await Promise.allSettled((data ?? []).map(async row => client.deleteSession(decryptToken(row.session_id_encrypted, row.id))));
-  } catch {}
+  } catch { sessionsExpireWithTheirConsent(); }
 }

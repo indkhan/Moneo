@@ -1,3 +1,4 @@
+import { compactIban } from "@/lib/iban";
 import type { BankTransaction } from "./enable-banking";
 
 export const PAYMENT_TYPES = ["card", "transfer", "direct_debit", "cash", "fee_interest", "top_up", "exchange", "unknown"] as const;
@@ -77,7 +78,7 @@ const clean = (value: unknown, length: number): string | null => {
   return text || null;
 };
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
-const normalizedIban = (value: unknown) => clean(typeof value === "string" ? value.replace(/\s/g, "").toUpperCase() : null, 34);
+const normalizedIban = (value: unknown) => clean(typeof value === "string" ? compactIban(value) : null, 34);
 const decimal = (value: unknown) => (typeof value === "string" || typeof value === "number") && /^-?\d+(?:\.\d+)?$/.test(String(value)) ? String(value) : null;
 
 function identifications(value: unknown): Identification[] {

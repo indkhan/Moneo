@@ -1,4 +1,4 @@
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { calendarDate } from "@/lib/finance/calendar";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { ScalableError } from "./client";
@@ -8,6 +8,7 @@ import { cashSchema, holdingsSchema, overviewSchema, scalableWealth, type Scalab
 import { withScalable } from "./server";
 import { saveTransfers, transferRows } from "./transfers";
 
+const optionalExtraIsSkipped = () => undefined;
 const RECENT_TRANSACTIONS = 100, ACTIVITY_SHOWN = 8;
 
 export async function syncScalable(connectionId: string, workspaceId: string) {
@@ -18,8 +19,8 @@ export async function syncScalable(connectionId: string, workspaceId: string) {
     const fetchedAt = new Date().toISOString();
     const { snapshot, extras, access, recent, charts } = await withScalable(connectionId, workspaceId, async mcp => {
       const [holdings, overview, cash, activity, watchlist, access] = await Promise.all([mcp.callTool("get_portfolio_holdings"), mcp.callTool("get_portfolio_overview", { includeYearToDate: true }),
-        mcp.callTool("get_portfolio_cash_breakdown"), mcp.callTool("list_portfolio_transactions", { pageSize: RECENT_TRANSACTIONS }).catch(() => undefined),
-        investmentsWatchlist(mcp).catch(() => undefined), tradingAccess(mcp).catch(() => undefined)]);
+        mcp.callTool("get_portfolio_cash_breakdown"), mcp.callTool("list_portfolio_transactions", { pageSize: RECENT_TRANSACTIONS }).catch(optionalExtraIsSkipped),
+        investmentsWatchlist(mcp).catch(optionalExtraIsSkipped), tradingAccess(mcp).catch(optionalExtraIsSkipped)]);
       const held = [...new Set(holdingsSchema.parse(holdings).holdings.filter(holding => holding.position.filled > 0).map(holding => holding.isin))];
       const charts = await readCharts(mcp, held, fetchedAt);
       const shown = (() => { try { return activity === undefined ? undefined : readTransactions(activity).slice(0, ACTIVITY_SHOWN); } catch { return undefined; } })();

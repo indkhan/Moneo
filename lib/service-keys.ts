@@ -1,3 +1,4 @@
+import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 

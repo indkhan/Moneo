@@ -4,7 +4,7 @@ import { DELETE } from "./route";
 const rpc = vi.fn(async () => ({ error: null }));
 const revoked = vi.fn(async () => ({ data: [{ id: "c" }], error: null }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w1" } }) }));
-vi.mock("@/lib/bank/server", () => ({ serviceDb: () => ({ rpc, from: () => ({ update: () => { const chain = { eq: () => chain, select: revoked }; return chain; } }) }) }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: () => ({ rpc, from: () => ({ update: () => { const chain = { eq: () => chain, select: revoked }; return chain; } }) }) }));
 const id = "6f1d2b0e-5a3c-4c53-9a43-2d3f4f6e8a10";
 const call = () => DELETE(new Request("http://localhost"), { params: Promise.resolve({ id }) });
 

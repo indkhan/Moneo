@@ -25,7 +25,7 @@ These are defaults. The developer's instructions override them; if a rule confli
 4. **Never write a comment.** Put the meaning in a name, a type, a test or a lint rule; if a comment would defend a workaround, fix the cause instead. `npm run lint` rejects comments (`moneo/no-comments` in `eslint.config.mjs`) except tool directives such as `eslint-disable-next-line <rule> -- reason`.
 5. **Corrections become checks.** When a review correction could recur, enforce it with a lint rule, a type or a test whose error message says what to do instead. Add a line here only when it needs human judgment.
 6. **Fix the class, not the case.** Trace a failure to the first place the system went wrong and fix it there, so every similar case is fixed with it. A guard, a retry, a swallowed error or a special case at the place it showed up hides the fault. When the assistant in the app cannot do something, give it the tool, data or scope it lacks; never add a sentence to its system prompt (`lib/ai/provider.ts`, `lib/ai/voice-*`) that names one request, keyword or example.
-7. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts by reproducing the failure; see Tests for when that becomes a kept test. Purely visual changes get a before/after screenshot instead.
+7. **Goal-driven.** Turn the task into checks you can run, then loop until they pass. A bug fix starts by reproducing the failure; see Tests for when that becomes a kept test. Purely visual changes get before/after screenshots instead (skill `verify-ui`).
 
 ## Safety
 
@@ -66,7 +66,7 @@ Use npm (`package-lock.json` is authoritative).
 Everything that needs a database or a running app is tested against `moneo-qa`, never the owner's setup:
 
 - **Backend:** Docker project `moneo-qa` (ports 54521/54522), secrets in the git-ignored `.env.qa` (one shared copy in `~/.moneo/qa.env`, so every worktree uses the same stack). Create, upgrade or copy it into a new worktree with `npm run setup -- --qa`; then `npm run qa:auth` creates the QA user and saves `e2e/.auth.json`.
-- **App:** `npm run qa:server` runs this checkout on http://localhost:3100 against `.env.qa`, building into `.next-qa`, with bank access off and a placeholder AI key that every provider rejects, so nothing costs money. `npm run test:e2e` starts it on its own and refuses to run against any server that would sign tests in as the owner.
+- **App:** `npm run qa:server` runs this checkout on http://localhost:3100 against `.env.qa`, building into `.next-qa` (`QA_PORT=<port>` for another port), with bank access off and a placeholder AI key that every provider rejects, so nothing costs money. `npm run test:e2e` starts it on its own and refuses to run against any server that would sign tests in as the owner.
 - **Screenshots:** `npm run qa:shots -- <label> home money/transactions` saves each page in light, dark and mobile to `.qa/shots/<label>/` and fails on a console error or a failed request (skill `verify-ui`).
 - **Reset:** `npm run qa:reset` empties the QA workspace. Each spec should still set up the state it needs rather than rely on what earlier runs left behind.
 - `npm run test:db` and the `supabase/tests/*.mjs` scripts read `.env.qa` only.
@@ -116,8 +116,9 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | No hard-coded port 3000 or app address outside `lib/env.ts` | `no-restricted-syntax` (lint) |
 | Tests never wait on a real timer, skip from inside a test, read migration text, or touch port 3000 | `no-restricted-syntax` (lint) |
 | One way to make a database client: `serviceDb()` for the service role, `createClient()` in `lib/supabase-server.ts` for the owner | `no-restricted-imports` (lint) |
+| Secret-bearing server modules (`lib/supabase-server.ts`, `lib/service-db.ts`, `lib/service-keys.ts`, `lib/bank/server.ts`, `lib/scalable/server.ts`) can't reach a client bundle | `import "server-only"` (Next build fails on a client import; Vitest aliases it to an empty module) |
 | Every scheduled route checks the cron secret, through `cronRoute()` | `lib/cron.test.ts` walks every route; `no-restricted-properties` (lint) |
-| A workflow never ignores a failure without naming what handles it | `no-restricted-syntax` (lint, `workflows/`) |
+| Nothing in `lib/`, `workflows/`, server actions or route handlers ignores a failure without naming what handles it; no floating or misused promises; switches over unions list every case | `no-restricted-syntax`, `@typescript-eslint/no-floating-promises`, `no-misused-promises`, `switch-exhaustiveness-check` (lint) |
 | No `eslint-disable` that suppresses nothing | `reportUnusedDisableDirectives` (lint) |
 | Every code path returns; overrides are marked; no switch fall-through | `tsconfig.json` |
 | A stored preference this version cannot read never blocks sign-in | `lib/settings.test.ts` |
@@ -165,6 +166,8 @@ Run the smallest relevant test while iterating. Before finishing, run `npm test`
 - Write commit messages in plain language: what changed and why.
 - Deferred work gets their issue created on github.
 - Stacked PRs: before merging a PR that another open PR is based on, change the dependent PR's base to `main`; deleting the merged branch otherwise closes it.
+- Every PR that changes code has a **Speed** section: how long the app takes to open and how long the changed action takes, before and after (skill `measure-speed`). If something got slower, the change caused it: fix it before opening the PR, or say why it cannot be faster and ask. Docs-only PRs write "No runtime change".
+- A PR that changes what the owner sees embeds its screenshots and recordings in the description (skill `verify-ui`). A path to a local folder is not enough.
 - Long agent prompts and plans don't get committed; if guidance must persist, put the rule in AGENTS.md.
 - suggest edits in agents.md if there was something that is changed or needs to be there in agents.md but only suggest when it is actually needed dont suggest just for suggesting.(only for prs)
 

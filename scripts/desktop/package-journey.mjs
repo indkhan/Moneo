@@ -4,7 +4,7 @@ import { request as httpsRequest, createServer as createHttpsServer } from "node
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "@playwright/test";
-import { alive, check, defaultExe, Desktop, freePort, listeningPid, summary, transactionsText, until } from "./harness.mjs";
+import { check, defaultExe, Desktop, freePort, listeningPid, summary, transactionsText, until } from "./harness.mjs";
 
 const args = process.argv.slice(2);
 const videoAt = args.indexOf("--video");
@@ -199,7 +199,7 @@ try {
 
   app.snapshot();
   await app.quit();
-  const left = [...app.seen.values()].filter(row => alive(row.pid));
+  const left = await app.leftRunning();
   check("quit stops every process", left.length === 0, left.map(row => `${row.name}#${row.pid}`).join(", "));
 } catch (error) {
   check("journey run", false, error.message);

@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { historyTradeRows, readCharts, thinned, tradeRows } from "./charts";
 
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 
 const reply = (...points: [string, number | string | null][]) => ({ currency: "EUR", dataPoints: points.map(([timestampUtc, midPrice]) => ({ timestampUtc, midPrice })) });
 

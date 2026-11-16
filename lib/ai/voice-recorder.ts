@@ -4,6 +4,7 @@ type Microphone = { audio: AudioContext; stream: MediaStream; release: () => voi
 type SessionPlan = { mode: "live"; fellBack: boolean; token: string; url: string } | { mode: "batch"; fellBack: boolean };
 
 const RATE = 24000;
+const notRunningIsReportedBelow = () => undefined;
 type RealtimeEvent = { type: string; item_id?: string; delta?: string; transcript?: string; error?: { message?: string } };
 const str = (value: unknown) => typeof value === "string" ? value : undefined;
 function realtimeEvent(data: unknown): RealtimeEvent | null {
@@ -49,7 +50,7 @@ function micError(cause: unknown) {
 async function openMicrophone(): Promise<Microphone> {
   const audio = new AudioContext();
   const microphone = navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-  const resumed = audio.resume().catch(() => {});
+  const resumed = audio.resume().catch(notRunningIsReportedBelow);
   let stream: MediaStream;
   try { stream = await microphone; } catch (cause) { void audio.close(); throw micError(cause); }
   const release = () => { stream.getTracks().forEach(track => track.stop()); if (audio.state !== "closed") void audio.close(); };

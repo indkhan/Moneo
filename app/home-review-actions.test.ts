@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { categorizeGroups } from "./home-review-actions";
+import { categorizeGroups, skipUncategorized } from "./home-review-actions";
 
 const fixture = vi.hoisted(() => ({ rpc: vi.fn(), suggestions: vi.fn(), upsert: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -46,4 +46,9 @@ it("categorizes every row of a group, including ones the organizer would not pro
   const result = await categorizeGroups([{ ...group, rows: [row, owned] }]);
   expect(fixture.rpc).toHaveBeenCalledWith("create_organization_review", expect.objectContaining({ p_rows: [row, owned] }));
   expect(result.applied).toEqual({ "coffee shop": 2 });
+});
+
+it("remembers Skip all so the Home card stays hidden until new rows arrive", async () => {
+  expect(await skipUncategorized()).toBeUndefined();
+  expect(fixture.upsert).toHaveBeenCalledWith("workspace_settings", { workspace_id: "owned", uncategorized_skipped_at: expect.any(String) }, { onConflict: "workspace_id" });
 });

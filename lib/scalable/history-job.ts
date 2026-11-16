@@ -1,5 +1,5 @@
 import { firstSyncedOn, loadWealthEvents, scalableKnownIds, valuationHistory } from "@/lib/finance/net-worth";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { loadWealthItems } from "@/lib/finance/wealth";
 import { historyTradeRows, saveCharts } from "./charts";
 import { calculateHistory, readHistoryInput, type TradeDetails } from "./history";

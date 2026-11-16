@@ -20,6 +20,7 @@ try {
   await db.begin(async tx => {
     await tx`insert into auth.users(id,email) values(${user},${`qa-${user}@example.invalid`})`;
     [{ id: workspace }] = await tx`select id from public.workspaces where owner_id=${user}`;
+    await tx`insert into public.workspace_settings(workspace_id,timezone) values(${workspace},'Europe/Berlin')`;
     await tx`insert into public.accounts(id,workspace_id,name,currency_code) values(${account},${workspace},'Synthetic exact money','EUR')`;
     await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code)
       values(${transaction},${workspace},${account},'2026-10-01','Synthetic exact money',${exact},'EUR')`;

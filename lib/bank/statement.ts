@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import { parseCsv, validateImportConfirmation, type ImportMapping } from "@/lib/import/csv";
 import { calendarDate, calendarDayBoundary } from "@/lib/finance/calendar";
+import { compactIban } from "@/lib/iban";
 import { BOOKED_BALANCE_TYPES } from "@/lib/finance/net-worth-checks";
 import { wealthAmount } from "@/lib/finance/wealth";
 import type { BankBalance, BankTransaction } from "./enable-banking";
@@ -20,7 +21,7 @@ export function bankStatementRow(tx: BankTransaction) {
     id: clip(tx.entry_reference ?? tx.transaction_id ?? "", 500),
     date: tx.booking_date ?? tx.value_date ?? tx.transaction_date ?? "",
     description, amount, currency: tx.transaction_amount.currency, balance, counterparty,
-    counterparty_iban: ((debit ? tx.creditor_account?.iban : tx.debtor_account?.iban) ?? "").replace(/\s/g, ""),
+    counterparty_iban: compactIban((debit ? tx.creditor_account?.iban : tx.debtor_account?.iban) ?? ""),
   } satisfies Record<(typeof headers)[number], string>;
 }
 

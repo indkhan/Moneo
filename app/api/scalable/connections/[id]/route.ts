@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { removeCharts } from "@/lib/scalable/charts";
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {

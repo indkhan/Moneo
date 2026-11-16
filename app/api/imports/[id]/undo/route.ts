@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/auth";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 
 type UndoPreview = {
   import_id: string;

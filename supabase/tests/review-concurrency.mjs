@@ -56,7 +56,7 @@ try {
   await whileBlocked(async tx => {
     await tx`select set_config('request.jwt.claim.sub',${user},true)`;
     await tx.unsafe("set local role authenticated");
-    await tx`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspace},array['accounts'])`;
+    await tx`insert into public.workspace_settings(workspace_id,timezone,ai_data_scopes) values(${workspace},'Europe/Berlin',array['accounts'])`;
   }, tx => finish(tx, permissionsJob), "finish_financial_review");
   assert.equal((await db`select count(*)::integer count from public.saved_analyses where workspace_id=${workspace}`)[0].count, 0);
   assert.equal((await db`select count(*)::integer count from public.background_jobs where workspace_id=${workspace} and status='canceled'`)[0].count, 2);
