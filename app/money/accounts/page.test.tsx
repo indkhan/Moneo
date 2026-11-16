@@ -28,9 +28,9 @@ vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof 
   ],
   ledger: [{ id: "t1", account_id: "imported", amount_minor: "-500", currency_code: "EUR", posted_on: "2026-10-12", status: "posted", version: 1 }],
 }) }));
+const { default: AccountsPage } = await import("./page");
 
-it("lists balances with as-of date, trend, rename suggestion, balance update and undo", { timeout: 30_000 }, async () => {
-  const { default: AccountsPage } = await import("./page");
+it("lists balances with as-of date, trend, rename suggestion, balance update and undo", async () => {
   const html = renderToStaticMarkup(await AccountsPage());
   expect(html).toContain("EUR 115.00");
   expect(html).toContain("2026-10-10");
@@ -47,7 +47,6 @@ it("lists balances with as-of date, trend, rename suggestion, balance update and
 });
 
 it("lists own account IBANs masked and reports found transfers", async () => {
-  const { default: AccountsPage } = await import("./page");
   const html = renderToStaticMarkup(await AccountsPage({ searchParams: Promise.resolve({ transfers: "2-1-0" }) }));
   expect(html).toContain("Savings at DKB · ••2051");
   expect(html).not.toContain("DE02120300000000202051");
@@ -55,7 +54,6 @@ it("lists own account IBANs masked and reports found transfers", async () => {
 });
 
 it("shows the synced Scalable portfolio with a link to manage the connection on Import", async () => {
-  const { default: AccountsPage } = await import("./page");
   const html = renderToStaticMarkup(await AccountsPage());
   expect(html).toContain("12,345.00");
   expect(html).toContain('href="/import#scalable"');

@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getRun, start } from "workflow/api";
-import { agentTeam } from "@/workflows/agent-team";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { backlogRerunNeeded } from "@/lib/ai/agent-team";
 
@@ -61,7 +60,10 @@ export async function startBacklogRun(db: SupabaseClient, workspaceId: string, n
 }
 
 async function dispatch(db: SupabaseClient, runId: string, workspaceId: string, notBefore?: string) {
-  try { await start(agentTeam, notBefore ? [runId, workspaceId, notBefore] : [runId, workspaceId]); }
+  try {
+    const { agentTeam } = await import("@/workflows/agent-team");
+    await start(agentTeam, notBefore ? [runId, workspaceId, notBefore] : [runId, workspaceId]);
+  }
   catch (error) {
     await db.from("agent_runs").update({ status: "failed", error: String(error).slice(0, 2000), finished_at: new Date().toISOString() }).eq("id", runId).eq("workspace_id", workspaceId);
     throw error;

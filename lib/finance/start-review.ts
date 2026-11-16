@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceDb } from "@/lib/service-db";
 import { getRun, start } from "workflow/api";
 import { getWorld } from "workflow/runtime";
-import { financialReview } from "@/workflows/financial-review";
 import type {ReviewRequest} from "./review-request";
 
 export async function startFinancialReview(db: SupabaseClient, workspaceId: string, requestId: string, chatRequestId?: string, specification?: ReviewRequest) {
@@ -67,6 +66,7 @@ export async function dispatchFinancialReview(service: SupabaseClient, jobId: st
       if (receipt.error) throw receipt.error;
       scheduled = Boolean(receipt.data);
     }
+    const { financialReview } = await import("@/workflows/financial-review");
     const run = await start(financialReview, [jobId, workspaceId, scheduled]);
     const receipt = await service.rpc("register_financial_review_run", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: run.runId });
     if (receipt.error) throw receipt.error;
