@@ -42,12 +42,11 @@ async function WorkspaceTheme({ fallback }: { fallback: Theme }) {
 async function loadShellData(): Promise<ShellData> {
   try {
     const { supabase, workspace } = await requireWorkspace();
-    const pending = (table: string) => supabase.from(table).select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id);
     const [accounts, recurring, reviews, jobs] = await Promise.all([
       supabase.from("accounts").select("id, name").eq("workspace_id", workspace.id).is("archived_at", null).order("name").limit(200),
-      pending("recurring_series").eq("status", "pending"),
-      pending("organization_reviews").eq("status", "pending"),
-      pending("background_jobs").in("status", ["queued", "running"]),
+      supabase.from("recurring_series").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("status", "pending"),
+      supabase.from("organization_reviews").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("status", "pending"),
+      supabase.from("background_jobs").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).in("status", ["queued", "running"]),
     ]);
     return {
       accounts: accounts.data ?? [],

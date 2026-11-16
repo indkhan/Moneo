@@ -1,21 +1,21 @@
 import type { ParsedTransactionParams } from "./filters";
 
-interface Filterable {
-  eq(column: string, value: string): Filterable;
-  neq(column: string, value: string): Filterable;
-  gt(column: string, value: number | string): Filterable;
-  gte(column: string, value: string): Filterable;
-  lt(column: string, value: number | string): Filterable;
-  lte(column: string, value: string): Filterable;
-  ilike(column: string, pattern: string): Filterable;
-  is(column: string, value: null): Filterable;
-  contains(column: string, value: string[]): Filterable;
+interface Filterable<Q> {
+  eq(column: string, value: string): Q;
+  neq(column: string, value: string): Q;
+  gt(column: string, value: number | string): Q;
+  gte(column: string, value: string): Q;
+  lt(column: string, value: number | string): Q;
+  lte(column: string, value: string): Q;
+  ilike(column: string, pattern: string): Q;
+  is(column: string, value: null): Q;
+  contains(column: string, value: string[]): Q;
 }
 
-export const ledgerTable = (filters: ParsedTransactionParams) => filters.categoryId || filters.uncategorized ? "transaction_category_ledger" : "transactions";
+export const ledgerTable = (filters: ParsedTransactionParams): "transactions" => (filters.categoryId || filters.uncategorized ? "transaction_category_ledger" : "transactions") as "transactions";
 
-export function scopeLedger<Q>(query: Q, filters: ParsedTransactionParams): Q {
-  let q = query as unknown as Filterable;
+export function scopeLedger<Q extends Filterable<Q>>(query: Q, filters: ParsedTransactionParams): Q {
+  let q = query;
   if (filters.q) q = q.ilike("description", `%${filters.q.replace(/[%_]/g, "\\$&")}%`);
   if (filters.tag) q = q.contains("tags", [filters.tag]);
   if (filters.eventName) q = q.eq("event_name", filters.eventName);
@@ -33,5 +33,5 @@ export function scopeLedger<Q>(query: Q, filters: ParsedTransactionParams): Q {
   else if (filters.merchantUnknown) q = q.is("merchant_id", null);
   if (filters.minAmountMinor !== undefined) q = q.gte("amount_minor", filters.minAmountMinor);
   if (filters.maxAmountMinor !== undefined) q = q.lte("amount_minor", filters.maxAmountMinor);
-  return q as unknown as Q;
+  return q;
 }

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 
 const TRANSIENT = /is not reachable|socket hang up|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|UND_ERR_SOCKET|fetch failed|bad gateway|service unavailable|gateway time-?out/i;
 const TRANSIENT_STATUS = new Set([502, 503, 504]);
@@ -39,7 +40,7 @@ export function retryingFetch(delays: number[] = [250, 1000, 3000], base: typeof
 }
 
 export function serviceClient(url: string, key: string) {
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: retryingFetch() } });
+  return createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: retryingFetch() } });
 }
 
 export function serviceDb() {

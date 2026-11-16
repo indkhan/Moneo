@@ -46,7 +46,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
   const canLinkRefund = selected.status === "posted" && ["ordinary", "refund"].includes(selected.kind) && !linked && !selected.refund_of_id && amount > 0n;
   const candidateBase = () => supabase.from("transactions").select(LINK_COLUMNS).eq("workspace_id", ws).neq("id", selected.id).eq("status", "posted").eq("kind", "ordinary").is("transfer_id", null).is("refund_of_id", null);
   const transferQuery = () => { let q = candidateBase().neq("account_id", selected.account_id); q = amount < 0n ? q.gt("amount_minor", 0) : q.lt("amount_minor", 0); if (linkSearch) q = q.ilike("description", `%${escapeLike(linkSearch)}%`); return q.order("posted_on", { ascending: false }).order("id").limit(100); };
-  const refundQuery = () => { let q = candidateBase().eq("review_reasons", "{}").lte("posted_on", selected.posted_on).lt("amount_minor", 0); if (linkSearch) q = q.ilike("description", `%${escapeLike(linkSearch)}%`); return q.order("posted_on", { ascending: false }).order("id").limit(100); };
+  const refundQuery = () => { let q = candidateBase().filter("review_reasons", "eq", "{}").lte("posted_on", selected.posted_on).lt("amount_minor", 0); if (linkSearch) q = q.ilike("description", `%${escapeLike(linkSearch)}%`); return q.order("posted_on", { ascending: false }).order("id").limit(100); };
   const none = { data: null, error: null };
   const canMarkOwnTransfer = canLinkTransfer && !splitSet.data && amount !== 0n && (selected.review_reasons ?? []).every((reason: string) => reason === "source_transfer");
   const [splitRows, counterpart, refundOriginal, fees, transferCandidates, refundCandidates, untrackedOwn] = await Promise.all([
