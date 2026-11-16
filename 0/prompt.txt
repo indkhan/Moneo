@@ -1,0 +1,35 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #244 in Moneo: generate a feature map of pages, widgets, chat tools and commands. The owner chose this design:
+- `npm run feature-map` generates `FEATURES.md` from the registries that already exist: App Router routes, chat tool registrations (lib/ai), voice tools, home widgets, the command palette, workflows and cron routes, and undo paths where represented. Don't hand-maintain a second catalogue.
+- Regeneration is deterministic: sorted, with no timestamps.
+- CI fails when `FEATURES.md` is stale. Add the check to the existing `checks` job, or as a script run by `npm run lint` or `npm test`. The failure message says to run `npm run feature-map`.
+- Keep the map compact: per feature, its entry points (page, chat tool, voice, widget, palette, background job) and the main code paths.
+- Never include private data, env values or credentials.
+- The verify-ui and state-chart skills can refer to it. Add one line to AGENTS.md "Hit every surface" pointing to FEATURES.md, plus a rules-table row for the staleness check.
+- Don't write tests that grep implementation text. The generator reads registries as data.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 244`.
+- Branch `t3/issue-244-feature-map` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Shared test backend: never run `npm run qa:reset` or `docker compose -p moneo-qa down`, and never touch the owner's backend.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test` and `npm run build`.
+- Push and open a PR to `main` (`Closes #244`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bhah330tl</task-id>
+<tool-use-id>toolu_01TPw2KA2YhWwM6pg2wTrju4</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\038a9fb581ec08d4\fb75cc2c-dda9-44b1-923f-f7d934a1430a\tasks\bhah330tl.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm ci &gt; /tmp/npmci.log 2&gt;&amp;1; echo done &gt;&gt; /tmp/npmci.log) &amp;
+sleep 1; echo started" completed (exit code 0)</summary>
+</task-notification>
