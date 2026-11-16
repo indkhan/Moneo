@@ -1,0 +1,29 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #233 in Moneo:
+- Add the supported `server-only` boundary to lib/supabase-server.ts, lib/service-db.ts, lib/service-keys.ts, lib/bank/server.ts and lib/scalable/server.ts. Check the Next.js docs in node_modules/next/dist/docs/ first, and make sure Vitest still works (e.g. alias `server-only` in the vitest config if needed).
+- Remove the serviceDb re-export from lib/bank/server.ts, and point every caller and mock at lib/service-db.ts.
+- Source build and desktop build (`npm run desktop:build` if the backend is fetched, otherwise at least `npm run build`) must pass.
+- If you add an enforcement, add a row for it to the AGENTS.md rules table.
+
+## RESUME: earlier work may exist
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-932b500a-3deb8e8deca2b7b7` (branch `t3/issue-233-server-only`).
+- Inspect it read-only (`git -C <path> status` / `diff`).
+- Bring over what's useful: apply its diff into your own checkout and copy its untracked files. Never modify, reset or delete that worktree.
+- Use your own branch `t3/issue-233-server-boundary` from current `origin/main`.
+- Commit as soon as the earlier work is applied, and after each step.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 233 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- Other agents share the moneo-qa backend and QA port 3100:
+  - Never `npm run qa:reset`, and never `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend (.env, port 3000, project `moneo`).
+  - If 3100 is busy, wait and retry. Never kill a process you didn't start.
+  - If `npm ci` stalls, retry once with `--prefer-offline`.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`.
+- Push and open a PR to `main` (`Closes #233`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
