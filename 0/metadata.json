@@ -1,0 +1,85 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7K5E62SS7W0T4TF43DN2F71",
+  "session_id": "60e1b2db-7f26-4fab-90c1-9f9f4aa5a7a0",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-16T21:50:35.3754393Z",
+  "branch": "t3/issue-262-regenerate",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/ai/artifacts/[id]/artifact-chat.tsx",
+    "app/api/chat/route.ts",
+    "components/chat-form.tsx",
+    "components/chat-messages.tsx",
+    "components/chat-workspace.tsx",
+    "components/message-actions.test.tsx",
+    "components/message-actions.tsx",
+    "lib/ai/conversation-history.ts",
+    "lib/ai/replayable-history.test.ts",
+    "lib/ai/replayable-history.ts",
+    "lib/ai/use-chat-request.ts",
+    "lib/schema.ts",
+    "supabase/migrations/202611160201_regenerated_replies.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "23229f059c80",
+  "checkpoint_transcript_start": 56,
+  "transcript_lines_at_start": 56,
+  "compact_transcript_start": 5,
+  "token_usage": {
+    "input_tokens": 102,
+    "cache_creation_tokens": 67735,
+    "cache_read_tokens": 4862478,
+    "output_tokens": 20435,
+    "api_call_count": 51
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01ASP9gvfJX3YBG5e6pNMaii",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "verify-ui"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "23229f059c80",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 237,
+        "end": 238,
+        "entry_ids": [
+          "59d5c87a-a6d2-4cb1-abd4-4077a3072a8e"
+        ],
+        "tool_use_id": "toolu_01ASP9gvfJX3YBG5e6pNMaii"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01ASP9gvfJX3YBG5e6pNMaii"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: verify-ui",
+        "default_collapsed": true
+      }
+    }
+  ]
+}
