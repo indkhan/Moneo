@@ -31,7 +31,7 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("enforces owned sc
       await tx`select set_config('request.jwt.claim.sub',${foreign},true)`;
       expect(await tx.unsafe(`select id from ${disposable}.financial_evidence_receipts`)).toHaveLength(0);
       await tx.unsafe("reset role");
-      await tx`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspaceId},array['accounts']) on conflict(workspace_id) do update set ai_data_scopes=array['accounts']`;
+      await tx`insert into public.workspace_settings(workspace_id,timezone,ai_data_scopes) values(${workspaceId},'Europe/Berlin',array['accounts']) on conflict(workspace_id) do update set ai_data_scopes=array['accounts']`;
       await tx`select set_config('request.jwt.claim.sub',${owner},true)`;
       await tx.unsafe("set local role authenticated");
       expect(await tx.unsafe(`select id from ${disposable}.financial_evidence_receipts`)).toHaveLength(0);

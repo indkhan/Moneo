@@ -4,6 +4,7 @@ declare u uuid:=gen_random_uuid(); w uuid; g uuid:=gen_random_uuid(); r uuid:=ge
 begin
   insert into auth.users(id,email) values(u,'qa-'||u||'@example.invalid');
   select id into strict w from public.workspaces where owner_id=u;
+  insert into public.workspace_settings(workspace_id,timezone) values(w,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub',u::text,true);
   insert into public.goals(id,workspace_id,name,target_minor,currency_code) values(g,w,'Synthetic goal',10000,'EUR');
   begin

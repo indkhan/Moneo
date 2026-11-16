@@ -1064,7 +1064,7 @@ export const spendingPlans = pgTable("spending_plans", {
   limitMinor: bigint("limit_minor", { mode: "bigint" }).notNull(),
   enabled: boolean("enabled").notNull().default(true),
   rollover: boolean("rollover").notNull().default(false),
-  rolloverFrom: date("rollover_from").notNull().default(sql`date_trunc('month',now() at time zone 'Europe/Berlin')::date`),
+  rolloverFrom: date("rollover_from").notNull(),
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1219,7 +1219,7 @@ export const transactionBatches = pgTable("transaction_batches", {
 
 export const workspaceSettings = pgTable("workspace_settings", {
   workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
-  timezone: text("timezone").notNull().default("Europe/Berlin"),
+  timezone: text("timezone").notNull(),
   locale: text("locale").notNull().default("en-GB"),
   theme: text("theme").notNull().default("system"),
   voice: text("voice").notNull().default("marin"),

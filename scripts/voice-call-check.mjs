@@ -24,7 +24,7 @@ if (db && process.env.E2E_USER_EMAIL) {
     await db`update public.workspace_settings set ai_models = ai_models - 'chat' where workspace_id=${workspaceId}`;
     console.log(`chat model was ${row.chat}; reset to the default OpenAI model`);
   }
-  await db`insert into public.workspace_settings(workspace_id, voice) values (${workspaceId}, ${VOICE}) on conflict (workspace_id) do update set voice = excluded.voice`;
+  await db`insert into public.workspace_settings(workspace_id, timezone, voice) values (${workspaceId}, 'Europe/Berlin', ${VOICE}) on conflict (workspace_id) do update set voice = excluded.voice`;
 }
 
 async function speech(text) {

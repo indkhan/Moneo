@@ -27,10 +27,10 @@ begin
   select id into strict workspace_b from public.workspaces where owner_id=user_b;
   perform set_config('request.jwt.claim.sub', user_b::text, true);
   -- Each table gets a real foreign record so an empty-table pass cannot hide missing RLS.
-  foreach target_table in array array['accounts','balance_snapshots','data_sources','imports','source_transactions','categories','merchants',
+  foreach target_table in array array['workspace_settings','accounts','balance_snapshots','data_sources','imports','source_transactions','categories','merchants',
     'transactions','pending_hold_resolutions','transaction_sources','correction_events','goals','goal_allocations','financial_assumptions','scenarios','scenario_overrides',
     'forecast_runs','background_jobs','saved_analyses','conversations','messages',
-    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','chat_steers','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews','bank_transaction_raw'] loop
+    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','chat_steers','manual_transaction_entries','transaction_batches','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews','bank_transaction_raw'] loop
     -- The same fixture also verifies older private upgrade baselines.
     if target_table in ('organization_rules','organization_reviews') and to_regclass(format('%I.%I',app_schema,target_table)) is null then continue; end if;
     data := jsonb_build_object('id',md5(target_table||workspace_b)::uuid,'workspace_id',workspace_b,'name','Synthetic foreign',
@@ -51,7 +51,7 @@ begin
       'label','Synthetic foreign','normalized_label','synthetic foreign','amount_min_minor','100','amount_max_minor','100','occurrences',3,
       'series_id',md5('recurring_series'||workspace_b)::uuid,'from_currency','EUR','to_currency','USD','rate_text','1.1','rate_date','2026-10-01',
       'request_id',md5('request'||target_table||workspace_b)::uuid,'original_record','{}'::jsonb,'selection','[]'::jsonb,'patch','{}'::jsonb,
-      'limit_minor','10000','entity_type','assumption','entity_id',md5('financial_assumptions'||workspace_b)::uuid);
+      'limit_minor','10000','timezone','Europe/Berlin','entity_type','assumption','entity_id',md5('financial_assumptions'||workspace_b)::uuid);
     data := data || jsonb_build_object('kind', case target_table when 'data_sources' then 'file' when 'financial_assumptions' then 'income'
       when 'background_jobs' then 'financial_review' else 'ordinary' end,
       'status', case target_table when 'source_transactions' then 'review' when 'imports' then 'completed' when 'background_jobs' then 'completed'
