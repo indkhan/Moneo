@@ -1,0 +1,74 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7J50A0N2Q173M05WBJ46G99",
+  "session_id": "41eac1a6-c936-4c6d-868b-278caad52504",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-16T12:23:45.0736786Z",
+  "branch": "t3/issue-231-auto-fill-merchant",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/money/organize/memory.tsx",
+    "scripts/qa-server-3137.mjs"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "ee8dcfa733b3",
+  "checkpoint_transcript_start": 779,
+  "transcript_lines_at_start": 779,
+  "compact_transcript_start": 97,
+  "token_usage": {
+    "input_tokens": 34,
+    "cache_creation_tokens": 15123,
+    "cache_read_tokens": 3735988,
+    "output_tokens": 3815,
+    "api_call_count": 17
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_016csBXbu5A46jCBwuEzFxWm",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "verify-ui"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "ee8dcfa733b3",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 798,
+        "end": 799,
+        "entry_ids": [
+          "9b36fc05-0f0c-437c-b4f9-b804099a5393"
+        ],
+        "tool_use_id": "toolu_016csBXbu5A46jCBwuEzFxWm"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_016csBXbu5A46jCBwuEzFxWm"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: verify-ui",
+        "default_collapsed": true
+      }
+    }
+  ]
+}
