@@ -1,0 +1,20 @@
+can you make it that by default it is a applcaitjon that starts on its own when the laptop is turned on for the downl;aodable applciation 
+
+lets talk about how can that be in simple words
+
+
+so as soon as laptopp is started our program starts running
+
+---
+
+yes go ahead file a pr and even get it merged to main so that when i do a realease later with all thw work even people who will update it updates to starting on sign in for them as well and for everyone with other stuff
+
+---
+
+<task-notification>
+<task-id>b7a2cyc39</task-id>
+<tool-use-id>toolu_01EyVwRLGMtTyWm3iXDNXVmj</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\343f72a8b4619e1b\c59e3087-b676-4e4a-8ce2-080f1a41836e\tasks\b7a2cyc39.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci --no-audit --no-fund 2&gt;&amp;1 | tail -5" completed (exit code 0)</summary>
+</task-notification>
