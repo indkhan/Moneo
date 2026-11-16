@@ -152,7 +152,9 @@ export function validateImportConfirmation(rows: SourceRow[], input: unknown): I
   return { ...mapping, parserVersion: "numeric-convention-v2", rowContractVersion: "normalized-row-v1" };
 }
 
-export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapping, workspaceTimezone = "Europe/Berlin"): ImportMapping {
+export const ZONE_OF_IMPORTS_SAVED_WITHOUT_ONE = "Europe/Berlin";
+
+export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapping, workspaceTimezone: string): ImportMapping {
   const naive = rows.some(row => NAIVE_TIMESTAMP.test(row[mapping.dateColumn]?.trim() ?? ""));
   return { ...mapping, calendarTimezone: workspaceTimezone,
     ...(naive ? { timestampTimezone: mapping.timestampTimezone ?? workspaceTimezone,
@@ -563,7 +565,7 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
       return [{
         rowNumber: index + 2,
         accountName,
-        postedOn: postedAt ? calendarDate(postedAt, mapping.calendarTimezone) : postedDate,
+        postedOn: postedAt ? calendarDate(postedAt, mapping.calendarTimezone ?? ZONE_OF_IMPORTS_SAVED_WITHOUT_ONE) : postedDate,
         ...(postedAt ? { postedAt } : {}),
         ...(mapping.calendarTimezone ? { calendarTimezone: mapping.calendarTimezone } : {}),
         description,

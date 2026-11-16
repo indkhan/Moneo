@@ -16,7 +16,7 @@ export function settlementPosting(item: Obligation, link: OccurrenceSettlement, 
   const amount = BigInt(row.canonical_amount_minor ?? row.amount_minor);
   return amount !== 0n && (amount < 0n) === (BigInt(item.amount_minor) < 0n) ? row : null;
 }
-export function reconcileOccurrence(item: Obligation, scheduledOn: string, settlements: OccurrenceSettlement[], ledger: OccurrencePosting[], asOf: string, startDate: string, timeZone = "Europe/Berlin") {
+export function reconcileOccurrence(item: Obligation, scheduledOn: string, settlements: OccurrenceSettlement[], ledger: OccurrencePosting[], asOf: string, startDate: string, timeZone: string) {
   const expected = BigInt(item.amount_minor);
   let fulfilled = 0n, complete = false;
   const events: { date: string; amountMinor: bigint; observed: boolean }[] = [];

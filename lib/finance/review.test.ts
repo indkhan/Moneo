@@ -24,7 +24,7 @@ it("builds exact scoped evidence, excluding pending and transfers and retaining 
       { amount_minor: "300", currency_code: "USD", status: "posted", kind: "ordinary" },
     ],
     "2026-07-01", "2026-09-26",
-    { asOf: "2026-09-26T12:00:00Z", ledger: [] },
+    { asOf: "2026-09-26T12:00:00Z", ledger: [], timeZone: "Europe/Berlin" },
   )).toMatchObject({
     period: { from: "2026-07-01", to: "2026-09-26" },
     accounts: [
@@ -50,13 +50,13 @@ it("separates dated savings, virtual reservations and budget pressure with exact
 it("labels historical evidence stale while still counting it", () => {
   const evidence = buildReviewEvidence([{ id: "a", name: "Cash", currency_code: "EUR" }],
     [{ account_id: "a", amount_minor: "10000", currency_code: "EUR", as_of: "2026-09-01T00:00:00Z", provenance: "manual" }],
-    [], "2026-07-01", "2026-10-01", { asOf: "2026-10-01T12:00:00Z", ledger: [] });
+    [], "2026-07-01", "2026-10-01", { asOf: "2026-10-01T12:00:00Z", ledger: [], timeZone: "Europe/Berlin" });
   expect(evidence.accounts[0]).toMatchObject({ balanceMinor: "10000", snapshotBalanceMinor: "10000", balanceStatus: "stale" });
 });
 
 it("keeps unresolved classifications visible as partial review evidence", () => {
   expect(buildReviewEvidence([], [], [{ amount_minor: "50000", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: ["source_transfer"] }],
-    "2026-09-01", "2026-09-30").cashflow.EUR).toEqual({ incomeMinor: "0", spendingMinor: "0", netMinor: "0", partial: true, excludedReviewRows: 1 });
+    "2026-09-01", "2026-09-30", { asOf: "2026-09-30T12:00:00Z", ledger: [], timeZone: "Europe/Berlin" }).cashflow.EUR).toEqual({ incomeMinor: "0", spendingMinor: "0", netMinor: "0", partial: true, excludedReviewRows: 1 });
 });
 
 it("compares equal calendar periods and grouped source evidence without counting uncertain, pending or internal movements", () => {

@@ -39,7 +39,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
   const { transfers, saved } = (await searchParams) ?? {};
   const { supabase, workspace } = await requireWorkspace();
   const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }] = await Promise.all([
-    loadBalanceEvidence(supabase, workspace.id),
+    loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()),
     supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
     supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
     supabase.from("bank_connection_accounts").select("account_name,currency_code,iban,bank_connections(status)").eq("workspace_id", workspace.id),

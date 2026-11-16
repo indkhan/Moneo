@@ -7,6 +7,7 @@ import { EnableBankingError, enableBankingClient, type BankTransaction, type Ena
 import { bankRawRows } from "@/lib/bank/normalize";
 import { bankObservation, bankStatement } from "@/lib/bank/statement";
 import { serviceDb } from "@/lib/service-db";
+import { calendarDate } from "@/lib/finance/calendar";
 import { claimBankSync, holdBankSync, releasedLease } from "@/lib/bank/sync-lease";
 import { ALIGNED_SPACING_MS, accountDue } from "@/lib/bank/sync-state";
 import { loadWorkspaceSettings } from "@/lib/settings";
@@ -120,7 +121,7 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   const settings = await loadWorkspaceSettings(db, workspaceId);
   const client = await enableBankingClient();
   const ownIbans = await ownAccountIbans(db, workspaceId);
-  const today = isoDay(new Date());
+  const instant = new Date(), today = calendarDate(instant, settings.timezone);
   for (const account of due) {
     const attemptedAt = new Date().toISOString();
     const saveAccount = async (values: Record<string, unknown>) => {
@@ -130,7 +131,7 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
     };
     staged.fetched++;
     try {
-      const observation = bankObservation(await client.balances(account.provider_account_uid, psu), account.currency_code, new Date(), settings.timezone);
+      const observation = bankObservation(await client.balances(account.provider_account_uid, psu), account.currency_code, instant, settings.timezone);
       if (observation) staged.observations.push({ accountName: account.account_name, currencyCode: account.currency_code, ...observation });
       const transactions = await bookedSince(client, account.provider_account_uid, account.last_booked_on, today, psu);
       const item = await stageImport(db, workspaceId, account, transactions, settings.timezone, today, ownIbans);

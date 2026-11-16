@@ -11,10 +11,10 @@ const schedules = [
 const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, is: () => q, in: () => q, order: () => q, limit: () => q, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", locale: "en-US", timezone: "UTC" },
   supabase: { from: (table: string) => query(table === "accounts" ? [{ id: "acc", name: "Checking" }] : schedules) } }) }));
+const { default: RecurringPage } = await import("./page");
 
 it("lists confirmed schedules by next date with exact monthly totals", async () => {
   vi.useFakeTimers({ now: new Date("2026-10-16T12:00:00Z"), toFake: ["Date"] });
-  const { default: RecurringPage } = await import("./page");
   const html = renderToStaticMarkup(await RecurringPage());
   vi.useRealTimers();
   expect(html.indexOf("Gym")).toBeLessThan(html.indexOf("Streaming"));
