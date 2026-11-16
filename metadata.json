@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7K606NG70ENMQN9AZ8HV09P",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-227-local-engine",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/voice/models/folder/route.test.ts",
+    "app/api/voice/models/folder/route.ts",
+    "app/api/voice/models/route.test.ts",
+    "app/api/voice/models/route.ts",
+    "app/api/voice/models/try/route.test.ts",
+    "app/api/voice/models/try/route.ts",
+    "desktop/src/bridge.test.ts",
+    "desktop/src/bridge.ts",
+    "desktop/src/main.ts",
+    "lib/ai/speech/local.test.ts",
+    "lib/desktop-bridge.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 14,
+    "cache_creation_tokens": 12157,
+    "cache_read_tokens": 1473567,
+    "output_tokens": 9760,
+    "api_call_count": 7
+  },
+  "redaction": {
+    "replacements": 7,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
