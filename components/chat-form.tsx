@@ -42,11 +42,6 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     window.addEventListener(DRAFT_EVENT, draft);
     return () => window.removeEventListener(DRAFT_EVENT, draft);
   }, []);
-  useEffect(() => {
-    const resend = (event: Event) => { const detail = (event as CustomEvent<Resend>).detail; void sendMessage(detail.message, true, detail.attachments); };
-    window.addEventListener(RESEND_EVENT, resend);
-    return () => window.removeEventListener(RESEND_EVENT, resend);
-  }, [sendMessage]);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,6 +82,11 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
     if (autoSent.current === autoSend) return;
     autoSent.current = autoSend;
     void sendMessage(autoSend);
+  });
+  useEffect(() => {
+    const resend = (event: Event) => { const detail = (event as CustomEvent<Resend>).detail; void sendMessage(detail.message, true, detail.attachments); };
+    window.addEventListener(RESEND_EVENT, resend);
+    return () => window.removeEventListener(RESEND_EVENT, resend);
   });
 
   const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder={placeholder} busyText="Working on a reply. Anything you send now is queued." attachments={files} voice={{ onSend: sendSpoken }} /></>;
