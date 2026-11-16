@@ -1,0 +1,52 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #162 in Moneo. Revolut pocket and currency-exchange moves (`To EUR MB:<uuid>`, `To EUR`, `Exchanged to SAR`, `Exchanged to EUR`) count as spending and income. They have no counterparty or IBAN, so lib/finance/own-transfers.ts misses them. Make them own transfers deterministically, in code, not AI. Choose between the issue's two ideas: an untracked own "Revolut pocket" via mark_own_named_transfer with a new kind, or pairing the legs when they net out. Prefer the one that stays correct when only one leg is visible and that works for both bank sync and file imports. Use synthetic test data only. Keep source records, history and undo intact.
+
+## Recent changes in flight you must fit with
+- PR #248 (#231, not merged yet) removes the own-transfer scan question for "To EUR"-style moves with no counterparty and sends those rows to the AI organizer instead. Your deterministic rule should mark them as transfers before that, so they never reach the organizer. Read PR #248's diff (`gh pr diff 248`) so the two fit together. If #248 merges first, rebase onto main.
+- PR #247 (#229) adds `own_account_identifiers.name_key` and `confirmed`, plus `confirmOwnAccount`. Reuse those if a remembered "Revolut pocket" identifier helps.
+- Migration file names: use a unique timestamp prefix later than `202611160031`, e.g. `202611160041_...`.
+
+## RESUME: earlier work exists
+An earlier agent was stopped partway through and may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-6cd1320c-8aa1d475f75ba0f8` (branch `t3/revolut-pocket-transfers`). Branch `t3/issue-162-revolut-pocket-transfers` may also hold work. Inspect both read-only (`git -C <path> status`/`diff`, `git log origin/main..<branch>`), bring over anything useful (apply the diff and copy untracked files into your own checkout), and continue from there. Never modify, reset or delete the old worktree. Use your own branch `t3/issue-162-revolut-pockets`.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 162 --comments`.
+- Commit each step in plain language, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- The moneo-qa backend and QA port 3100 are shared with other agents: never `npm run qa:reset`, never `docker compose -p moneo-qa down`, never touch the owner's backend (.env, port 3000, project `moneo`). If 3100 is busy with another checkout, wait and retry; never kill a process you didn't start. If `npm ci` stalls, retry once with `--prefer-offline`.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, plus `npm run test:db` if you add a migration.
+- Push and open a PR to `main` (`Closes #162`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bl8i7co7s</task-id>
+<tool-use-id>toolu_01QiC5DSAH3aLC3pWLTi2JGc</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f55e48442bc00df1\b1ddb623-c0d1-46fb-b40e-ca8d4f20773e\tasks\bl8i7co7s.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci --prefer-offline 2&gt;&amp;1 | tail -8" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b9qz2ofdo</task-id>
+<tool-use-id>toolu_012ha6A1Mjrq1Usjj49fzzW9</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f55e48442bc00df1\b1ddb623-c0d1-46fb-b40e-ca8d4f20773e\tasks\b9qz2ofdo.output</output-file>
+<status>completed</status>
+<summary>Background command "until grep -q "added\|ERR" "$TEMP/npmci.log"; do sleep 3; done; tail -3 "$TEMP/npmci.log"" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bmgnzp3br</task-id>
+<tool-use-id>toolu_01AoZ4ZqvDCkUkLNtyMCmSsE</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f55e48442bc00df1\b1ddb623-c0d1-46fb-b40e-ca8d4f20773e\tasks\bmgnzp3br.output</output-file>
+<status>completed</status>
+<summary>Background command "cd C:/Users/mgsuk/.t3/worktrees/Moneo/t3-ce0a3a74-ecac94ae0be6a130 &amp;&amp; npm ci --prefer-offline --no-audit --no-fund &gt; "$TEMP/npmci3.log" 2&gt;&amp;1; echo "EXIT $?"; tail -5 "$TEMP/npmci3.log"; ls node_modules/.bin | wc -l" completed (exit code 0)</summary>
+</task-notification>
