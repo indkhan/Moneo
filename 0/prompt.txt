@@ -1,0 +1,41 @@
+Act as the implementation sub-agent for this task.
+
+Moneo issue #227 (configurable speech-to-text for the CHAT MIC only; voice calls/GPT-Live untouched). You build **PR 1 of 4**: the engine contract, the Settings section and the fallback. No local model or OpenRouter yet; later PRs add those on top, so keep the contract clean.
+
+Today the chat mic (lib/ai/use-voice-input.ts, lib/ai/voice-recorder.ts) streams PCM to OpenAI realtime transcription through app/api/voice/session/route.ts. That route uses gpt-live-transcribe with vocabulary hints from lib/ai/voice-vocabulary.ts, and the mic shows live words.
+
+Build:
+1. **Engine contract.** Create `lib/ai/speech/` with one engine contract: batch engines take the recorded audio plus hints and return text. The existing OpenAI live path becomes the `openai` engine, with unchanged behaviour. Add engine choice and fallback as a pure, unit-tested function:
+   - If the chosen engine is unavailable or fails and an OpenAI key exists, use OpenAI and report that a fallback happened.
+   - If there's no key, return a clear reason the mic can't work.
+2. **Batch route.** A server route for batch engines (e.g. `app/api/voice/transcribe/route.ts`). It accepts recorded audio (PCM16 or WAV, size-limited, validated with Zod) and calls the chosen engine, with owner auth like the other voice routes. Wire it to an engine registry. If it's small, add OpenAI batch transcription (/v1/audio/transcriptions) as a second mode; otherwise the registry alone is enough.
+3. **Client.** Keep live streaming for `openai`. For batch engines, capture the audio and post it on Send/Done. Show a small note in the mic UI when the fallback was used. The Send/Done UX doesn't change.
+4. **Settings.** Add a "Speech to text" section under Settings → Voice with the engine choice. Today only OpenAI is selectable; leave room for "On this computer" and "OpenRouter". Store it like the other owner preferences (see lib/settings.ts and its unreadable-preference test). Reset all data clears it.
+5. **Tests.** Engine selection and fallback (fake engines), route validation and auth, audio encoding. No real API calls.
+
+## RESUME: earlier work may exist
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-bda54e9d-8afa9823e2e7fab0` (branch `t3/issue-227-speech-engines`; git lists that worktree as locked).
+- Inspect it read-only (`git -C <path> status`, `git -C <path> diff`) and bring over what's useful.
+- Never modify, unlock, reset or delete it.
+- Use your own branch `t3/issue-227-speech-contract`, created from current `origin/main`.
+- Commit as soon as the earlier work is applied, and after each step.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 227 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The QA app on port 3100 and the moneo-qa backend are shared:
+  - never `npm run qa:reset` or `docker compose -p moneo-qa down`;
+  - never touch the owner's backend (.env, port 3000, project `moneo`);
+  - if 3100 is busy, wait and retry.
+- If you add a migration, give it a unique timestamp prefix later than `202611160041`.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.**
+- Also run `npm test` and `npm run build`.
+- Use the verify-ui skill for the Settings change. Link the screenshots in the PR body from a commit, then remove them from the branch.
+- Push and open a PR to `main`. The body says what changed and why, says "Part 1 of #227" (don't close the issue), and explains how you verified it. End the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
