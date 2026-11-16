@@ -19,6 +19,8 @@ export type AiAgent = keyof typeof AI_AGENTS;
 export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];
 export const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] as const;
 export const DEFAULT_VOICE = VOICES[0];
+export const SPEECH_ENGINES = ["openai", "local", "openrouter"] as const;
+export type SpeechEngineId = typeof SPEECH_ENGINES[number];
 
 export const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
@@ -28,6 +30,7 @@ export const settingsSchema = z.object({
   theme: z.enum(["system", "light", "dark"]).default("system"),
   ai_models: z.partialRecord(z.enum(["default", ...AI_AGENT_KEYS] as ["default", ...AiAgent[]]), z.string().trim().min(1).max(200)).default({}),
   voice: z.enum(VOICES).default(DEFAULT_VOICE),
+  speech_engine: z.enum(SPEECH_ENGINES).default("openai"),
   ai_data_scopes: z.array(z.enum(AI_DATA_SCOPES)).max(AI_DATA_SCOPES.length).default([...AI_DATA_SCOPES]),
   muted_insight_types: z.array(z.enum(INSIGHT_TYPES)).max(INSIGHT_TYPES.length).default([]),
   summary_cadence: z.enum(["none", "weekly", "monthly"]).default("none"),

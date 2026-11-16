@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { POST } from "./route";
 
 type Query = { table: string; filters: [string, ...unknown[]][]; limit?: number };
-const fixture = vi.hoisted(() => ({ denied: false, scopes: ["accounts", "transactions", "planning", "imports"] as string[], queries: [] as Query[],
+const fixture = vi.hoisted(() => ({ denied: false, engine: "openai", scopes: ["accounts", "transactions", "planning", "imports"] as string[], queries: [] as Query[],
   rows: {} as Record<string, unknown[]>, failing: "" }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   if (fixture.denied) throw new Error("Unauthorized");
@@ -19,7 +19,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
     };
     return builder;
   } };
-  return { supabase, workspace: { id: "workspace-1" }, settings: { ai_data_scopes: fixture.scopes } };
+  return { supabase, workspace: { id: "workspace-1" }, settings: { ai_data_scopes: fixture.scopes, speech_engine: fixture.engine } };
 } }));
 
 const openai = vi.fn();
@@ -33,7 +33,7 @@ beforeEach(() => {
     transactions: [{ merchants: { name: "Netto" } }, { merchants: { name: "Rewe" } }, { merchants: { name: "Netto" } }, { merchants: null }],
   };
 });
-afterEach(() => { fixture.denied = false; fixture.scopes = ["accounts", "transactions", "planning", "imports"]; fixture.queries = []; fixture.failing = ""; vi.unstubAllEnvs(); vi.unstubAllGlobals(); openai.mockReset(); });
+afterEach(() => { fixture.denied = false; fixture.engine = "openai"; fixture.scopes = ["accounts", "transactions", "planning", "imports"]; fixture.queries = []; fixture.failing = ""; vi.unstubAllEnvs(); vi.unstubAllGlobals(); openai.mockReset(); });
 
 const request = (body: unknown = {}) => new Request("http://localhost/api/voice/session", { method: "POST", body: JSON.stringify(body) });
 const sentSession = () => JSON.parse(openai.mock.calls[0][1].body);
@@ -53,13 +53,28 @@ it("returns only a short-lived secret, never the server key", async () => {
   const response = await POST(request());
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body).toEqual({ token: "ek_short_lived", expiresAt: 1_900_000_000, url: "wss://api.openai.com/v1/realtime?intent=transcription" });
+  expect(body).toEqual({ mode: "live", fellBack: false, token: "ek_short_lived", expiresAt: 1_900_000_000, url: "wss://api.openai.com/v1/realtime?intent=transcription" });
   expect(JSON.stringify(body)).not.toContain("sk-server-only");
   const [url, init] = openai.mock.calls[0];
   expect(url).toBe("https://api.openai.com/v1/realtime/client_secrets");
   expect(init.headers.Authorization).toBe("Bearer sk-server-only");
   expect(sentSession()).toMatchObject({ expires_after: { anchor: "created_at", seconds: 60 },
     session: { type: "transcription", audio: { input: { format: { type: "audio/pcm", rate: 24000 }, turn_detection: null, transcription: { model: "gpt-live-transcribe" } } } } });
+});
+
+it("keeps streaming through OpenAI and says so when the chosen engine is not available", async () => {
+  fixture.engine = "local";
+  const body = await (await POST(request())).json();
+  expect(body).toMatchObject({ mode: "live", fellBack: true, token: "ek_short_lived" });
+});
+
+it("explains why the mic cannot work with an unavailable engine and no OpenAI key", async () => {
+  fixture.engine = "openrouter";
+  vi.stubEnv("OPENAI_API_KEY", "");
+  const response = await POST(request());
+  expect(response.status).toBe(503);
+  expect((await response.json()).error).toContain("OpenRouter is not available");
+  expect(openai).not.toHaveBeenCalled();
 });
 
 it("hints the workspace's own names, most used merchants first, deduplicated and bounded", async () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { level, pcm16Base64, startVoiceRecording } from "./voice-recorder";
+import { level, pcm16, pcm16Base64, startVoiceRecording } from "./voice-recorder";
 
 class FakeSocket {
   static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
@@ -27,14 +27,14 @@ class FakeAudioContext {
 const track = { stop: vi.fn() };
 const getUserMedia = vi.fn();
 const fetchMock = vi.fn();
-const handlers = () => ({ onText: vi.fn(), onLevel: vi.fn(), onError: vi.fn() });
+const handlers = () => ({ onText: vi.fn(), onLevel: vi.fn(), onError: vi.fn(), onNote: vi.fn() });
 const connected = () => vi.waitFor(() => { if (!FakeSocket.last) throw new Error("not connected yet"); return FakeSocket.last; });
 const speak = (value = 0.5) => audio.processor!.onaudioprocess!({ inputBuffer: { getChannelData: () => new Float32Array(480).fill(value) } });
 
 beforeEach(() => {
   audio.state = "running"; audio.closed = 0; audio.processor = null; track.stop.mockClear(); FakeSocket.last = null;
   getUserMedia.mockResolvedValue({ getTracks: () => [track] });
-  fetchMock.mockResolvedValue(Response.json({ token: "ek_test", url: "wss://api.openai.com/v1/realtime?intent=transcription" }));
+  fetchMock.mockResolvedValue(Response.json({ mode: "live", fellBack: false, token: "ek_test", url: "wss://api.openai.com/v1/realtime?intent=transcription" }));
   vi.stubGlobal("window", { AudioContext: FakeAudioContext, WebSocket: FakeSocket });
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
   vi.stubGlobal("WebSocket", FakeSocket);
@@ -112,9 +112,67 @@ it("asks for a tap when the browser keeps audio suspended", async () => {
 
 it("passes on the session route's error and releases the mic", async () => {
   fetchMock.mockResolvedValue(Response.json({ error: "Voice input is not configured" }, { status: 503 }));
+  await expect(startVoiceRecording(handlers())).rejects.toThrow("Voice input is not configured");
+  expect(track.stop).toHaveBeenCalled();
+  expect(FakeSocket.last).toBeNull();
+});
+
+it("tells the owner when live streaming replaced the engine they chose", async () => {
+  fetchMock.mockResolvedValue(Response.json({ mode: "live", fellBack: true, token: "ek_test", url: "wss://api.openai.com/v1/realtime?intent=transcription" }));
   const events = handlers();
   await startVoiceRecording(events);
-  await vi.waitFor(() => expect(events.onError).toHaveBeenCalledWith(new Error("Voice input is not configured")));
+  expect(events.onNote).toHaveBeenCalledWith(expect.stringContaining("used OpenAI"));
+});
+
+it("records for a batch engine and posts the audio once on stop", async () => {
+  fetchMock.mockResolvedValueOnce(Response.json({ mode: "batch", engine: "local", fellBack: false }));
+  const events = handlers();
+  const recording = await startVoiceRecording(events);
+  speak(); speak();
+  expect(FakeSocket.last).toBeNull();
+  expect(events.onText).not.toHaveBeenCalled();
+  fetchMock.mockResolvedValueOnce(Response.json({ text: "Spent twelve", engine: "local", fellBack: false }));
+  expect(await recording.stop()).toBe("Spent twelve");
+  const [url, init] = fetchMock.mock.calls[1];
+  expect(url).toBe("/api/voice/transcribe?rate=24000");
+  expect(init.headers).toEqual({ "Content-Type": "audio/pcm" });
+  expect(init.body).toEqual(new Int16Array([...pcm16(new Float32Array(480).fill(0.5), 48000), ...pcm16(new Float32Array(480).fill(0.5), 48000)]));
+  expect(track.stop).toHaveBeenCalled();
+  expect(audio.closed).toBe(1);
+});
+
+it("tells the owner when a batch recording was transcribed by OpenAI instead", async () => {
+  fetchMock.mockResolvedValueOnce(Response.json({ mode: "batch", engine: "local", fellBack: false }));
+  const events = handlers();
+  const recording = await startVoiceRecording(events);
+  speak();
+  fetchMock.mockResolvedValueOnce(Response.json({ text: "Spent twelve", engine: "openai", fellBack: true }));
+  await recording.stop();
+  expect(events.onNote).toHaveBeenCalledWith(expect.stringContaining("used OpenAI"));
+});
+
+it("posts nothing when a batch recording heard no audio", async () => {
+  fetchMock.mockResolvedValue(Response.json({ mode: "batch", engine: "local", fellBack: false }));
+  const recording = await startVoiceRecording(handlers());
+  expect(await recording.stop()).toBe("");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("rejects a batch stop with the server's reason", async () => {
+  fetchMock.mockResolvedValueOnce(Response.json({ mode: "batch", engine: "local", fellBack: false }));
+  const recording = await startVoiceRecording(handlers());
+  speak();
+  fetchMock.mockResolvedValueOnce(Response.json({ error: "Local speech is not available." }, { status: 503 }));
+  await expect(recording.stop()).rejects.toThrow("Local speech is not available.");
+});
+
+it("cancelling a batch recording posts nothing", async () => {
+  fetchMock.mockResolvedValue(Response.json({ mode: "batch", engine: "local", fellBack: false }));
+  const recording = await startVoiceRecording(handlers());
+  speak();
+  recording.cancel();
+  expect(await recording.stop()).toBe("");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(track.stop).toHaveBeenCalled();
 });
 

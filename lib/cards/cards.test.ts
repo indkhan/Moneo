@@ -113,8 +113,10 @@ describe("presets", () => {
   it("charts minor units as money: 40000 cents shows as 400 euros, not 40,000", async () => {
     const tree = await render(presetSource("trend", { rows: "cats.rows", label: "name", amount: "total_minor", currency: "EUR" }), { cats: { rows: [{ name: "Oct", total_minor: "40000" }] } });
     expect(JSON.stringify(tree)).toContain('"minor":true');
-    expect(chartValue(40000, "EUR", true)).toBe(new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(400));
-    expect(chartValue(400, "EUR")).toBe(new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(400));
+    expect(chartValue(40000, "EUR", true)).toBe("EUR 400.00");
+    expect(chartValue(400, "EUR")).toBe("EUR 400.00");
+    expect(chartValue(-123456, "KWD", true)).toBe("-KWD 123.456");
+    expect(chartValue(12345, "JPY", true)).toBe("JPY 12345");
   });
 
   it("every preset shows its declared controls, and a card that hides one is refused", async () => {

@@ -4,7 +4,8 @@ import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStor
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
-import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, deviceTimeZone, INSIGHT_TYPES, VOICES, type WorkspaceSettings } from "@/lib/settings";
+import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, deviceTimeZone, INSIGHT_TYPES, SPEECH_ENGINES, VOICES, type WorkspaceSettings } from "@/lib/settings";
+import { SPEECH_ENGINE_LABELS } from "@/lib/ai/speech/engine";
 import { saveSettings } from "./actions";
 import type { AiSource } from "@/lib/ai/chatgpt";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
@@ -146,10 +147,18 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
         </div>)}</fieldset>
         <p className={help}>OpenRouter IDs include vendor/model. Saving does not call the AI provider.</p>
       </div>
-      <VoicePicker value={settings.voice} />
       <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI, Anthropic or OpenRouter (depending on the model) receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key, or counts toward your ChatGPT or Claude plan.</p></details>
       <div className="divide-y divide-border">{AI_DATA_SCOPES.map(scope => <label key={scope} className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_data_scopes" value={scope} defaultChecked={settings.ai_data_scopes.includes(scope)} /><span><strong className="block capitalize">{scope}</strong><span className="text-muted-foreground">{scopeDescriptions[scope]}</span></span></label>)}
         <label className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="artifact_scalable_data" value="live" defaultChecked={settings.artifact_scalable_data === "live"} /><span><strong className="block">Live Scalable data in artifacts</strong><span className="text-muted-foreground">Off: artifact Pages and Home cards show your Scalable portfolio as of the last sync, the same figures as Wealth. On: they read Scalable live each time they open, with current prices and quotes and charts for any security, but they load slower and show an error when Scalable can&apos;t be reached.</span></span></label></div>
+    </fieldset>
+    <fieldset id="voice" className={card}><legend className={legend}>Voice</legend>
+      <VoicePicker value={settings.voice} />
+      <label className={label}>Speech to text
+        <select name="speech_engine" className={input} defaultValue={settings.speech_engine}>
+          {SPEECH_ENGINES.map(engine => <option key={engine} value={engine} disabled={engine !== "openai" && engine !== settings.speech_engine}>{SPEECH_ENGINE_LABELS[engine]}{engine === "openai" || engine === settings.speech_engine ? "" : " (coming soon)"}</option>)}
+        </select>
+        <span className={`${help} font-normal`}>Turns what you say into text when you use the microphone in chat. Voice calls always use OpenAI. If the engine you choose can&apos;t run, Moneo uses OpenAI when you have added an API key.</span>
+      </label>
     </fieldset>
     <fieldset id="insights" className={card}><legend className={legend}>Insights and summaries</legend>
       <p className={help}>Mute the insight types you do not want to see.</p>

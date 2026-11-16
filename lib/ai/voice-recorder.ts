@@ -1,5 +1,7 @@
 export type VoiceRecording = { stop: () => Promise<string>; cancel: () => void };
-export type VoiceHandlers = { onText: (text: string) => void; onLevel: (level: number) => void; onError: (error: Error) => void };
+export type VoiceHandlers = { onText: (text: string) => void; onLevel: (level: number) => void; onError: (error: Error) => void; onNote: (note: string) => void };
+type Microphone = { audio: AudioContext; stream: MediaStream; release: () => void };
+type SessionPlan = { mode: "live"; fellBack: boolean; token: string; url: string } | { mode: "batch"; fellBack: boolean };
 
 const RATE = 24000;
 type RealtimeEvent = { type: string; item_id?: string; delta?: string; transcript?: string; error?: { message?: string } };
@@ -12,7 +14,7 @@ function realtimeEvent(data: unknown): RealtimeEvent | null {
   } catch { return null; }
 }
 
-export function pcm16Base64(samples: Float32Array, sampleRate: number) {
+export function pcm16(samples: Float32Array, sampleRate: number) {
   const length = Math.round(samples.length * RATE / sampleRate);
   const pcm = new Int16Array(length);
   for (let index = 0; index < length; index++) {
@@ -20,7 +22,11 @@ export function pcm16Base64(samples: Float32Array, sampleRate: number) {
     const value = samples[before] + ((samples[Math.min(before + 1, samples.length - 1)] ?? 0) - samples[before]) * (position - before);
     pcm[index] = Math.max(-1, Math.min(1, value)) * 0x7fff;
   }
-  const bytes = new Uint8Array(pcm.buffer);
+  return pcm;
+}
+
+export function pcm16Base64(samples: Float32Array, sampleRate: number) {
+  const bytes = new Uint8Array(pcm16(samples, sampleRate).buffer);
   let binary = "";
   for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   return btoa(binary);
@@ -40,9 +46,7 @@ function micError(cause: unknown) {
   return new Error("Could not start the microphone.");
 }
 
-export async function startVoiceRecording({ onText, onLevel, onError }: VoiceHandlers): Promise<VoiceRecording> {
-  if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || !window.AudioContext || !window.WebSocket)
-    throw new Error("Voice input isn't supported in this browser.");
+async function openMicrophone(): Promise<Microphone> {
   const audio = new AudioContext();
   const microphone = navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
   const resumed = audio.resume().catch(() => {});
@@ -53,17 +57,29 @@ export async function startVoiceRecording({ onText, onLevel, onError }: VoiceHan
     await Promise.race([resumed, new Promise(resolve => setTimeout(resolve, 1000))]);
     if (audio.state !== "running") throw new Error("Tap the mic to start recording.");
   } catch (cause) { release(); throw cause; }
-  return transcribe(audio, stream, release, openSocket(), { onText, onLevel, onError });
+  return { audio, stream, release };
 }
 
-async function openSocket() {
+export async function startVoiceRecording(handlers: VoiceHandlers): Promise<VoiceRecording> {
+  if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || !window.AudioContext || !window.WebSocket)
+    throw new Error("Voice input isn't supported in this browser.");
+  const microphone = await openMicrophone();
+  let plan: SessionPlan;
+  try { plan = await openSession(); } catch (cause) { microphone.release(); throw cause; }
+  if (plan.fellBack) handlers.onNote("Your chosen speech-to-text engine isn't available, so Moneo used OpenAI.");
+  return plan.mode === "live" ? transcribe(microphone, Promise.resolve(new WebSocket(plan.url, ["realtime", `openai-insecure-api-key.${plan.token}`])), handlers) : recordBatch(microphone, handlers);
+}
+
+async function openSession(): Promise<SessionPlan> {
   const response = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok || !str(body?.token) || !str(body?.url)) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
-  return new WebSocket(body.url, ["realtime", `openai-insecure-api-key.${body.token}`]);
+  const fellBack = body?.fellBack === true;
+  if (response.ok && body?.mode === "batch") return { mode: "batch", fellBack };
+  if (!response.ok || body?.mode !== "live" || !str(body?.token) || !str(body?.url)) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
+  return { mode: "live", fellBack, token: body.token, url: body.url };
 }
 
-function transcribe(audio: AudioContext, stream: MediaStream, release: () => void, connecting: Promise<WebSocket>, { onText, onLevel, onError }: VoiceHandlers): VoiceRecording {
+function transcribe({ audio, stream, release }: Microphone, connecting: Promise<WebSocket>, { onText, onLevel, onError }: VoiceHandlers): VoiceRecording {
   const items = new Map<string, string>();
   const text = () => [...items.values()].join(" ").replace(/\s+/g, " ").trim();
   const waiting: string[] = [];
@@ -128,5 +144,37 @@ function transcribe(audio: AudioContext, stream: MediaStream, release: () => voi
       if (socket?.readyState === WebSocket.OPEN && (sent || waiting.length)) commit();
       else if (socket ? socket.readyState !== WebSocket.CONNECTING : !waiting.length) settle(text());
     }),
+  };
+}
+
+function recordBatch({ audio, stream, release }: Microphone, { onLevel, onNote }: VoiceHandlers): VoiceRecording {
+  const chunks: Int16Array[] = [];
+  const source = audio.createMediaStreamSource(stream);
+  const processor = audio.createScriptProcessor(4096, 1, 1);
+  const mute = audio.createGain();
+  mute.gain.value = 0;
+  let ended = false;
+  processor.onaudioprocess = event => {
+    if (ended) return;
+    const samples = event.inputBuffer.getChannelData(0);
+    onLevel(level(samples));
+    chunks.push(pcm16(samples, audio.sampleRate));
+  };
+  source.connect(processor); processor.connect(mute); mute.connect(audio.destination);
+  const end = () => { ended = true; processor.onaudioprocess = null; release(); };
+  return {
+    cancel: () => { if (!ended) end(); },
+    async stop() {
+      if (ended) return "";
+      end();
+      const samples = new Int16Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+      chunks.reduce((offset, chunk) => { samples.set(chunk, offset); return offset + chunk.length; }, 0);
+      if (!samples.length) return "";
+      const response = await fetch(`/api/voice/transcribe?rate=${RATE}`, { method: "POST", headers: { "Content-Type": "audio/pcm" }, body: samples });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !str(body?.text)) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
+      if (body.fellBack === true) onNote("Your chosen speech-to-text engine didn't work, so Moneo used OpenAI.");
+      return body.text;
+    },
   };
 }

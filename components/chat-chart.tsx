@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { formatMoney } from "@/lib/finance/format";
-import { minorDigits } from "@/lib/finance/fx";
+import { formatCompactMoney, formatMoney } from "@/lib/finance/format";
 import { averageMinor, parseChart, waterfallBars, type BandSpec, type CalendarSpec, type CartesianSpec, type ChartSpec, type ChartUnit, type CircularSpec, type ComboSpec, type SankeySpec, type ScatterSpec, type WaterfallSpec } from "@/lib/ai/chart-spec";
 import { ReactECharts, useThemeColors } from "./chart";
 
@@ -21,13 +20,12 @@ const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFracti
 function formatAmount(value: string | bigint, unit: ChartUnit) {
   return unit.kind === "money" ? formatMoney(value, unit.currency) : BigInt(value).toLocaleString("en-US");
 }
-function plotValue(value: string | bigint, unit: ChartUnit) {
-  return unit.kind === "money" ? Number(value) / 10 ** minorDigits(unit.currency) : Number(value);
+function plotValue(value: string | bigint) {
+  return Number(value);
 }
+const countFormat = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 function compact(unit: ChartUnit) {
-  const format = unit.kind === "money" ? new Intl.NumberFormat("en-US", { style: "currency", currency: unit.currency, notation: "compact", maximumFractionDigits: 1 })
-    : new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
-  return (value: number) => format.format(value);
+  return (value: number) => unit.kind === "money" ? formatCompactMoney(BigInt(Math.round(value)), unit.currency, "en-US") : countFormat.format(value);
 }
 const abs = (value: bigint) => value < 0n ? -value : value;
 
@@ -124,7 +122,7 @@ function SeriesChart({ chart, width }: { chart: CartesianSpec | ComboSpec | Band
     const narrow = width < 480, count = labels.length;
     const names = [...(band ? [band.name] : []), ...series.map(item => item.name)];
     const showLegend = names.length > 1;
-    const plot = (values: string[]) => values.map(value => plotValue(value, unit));
+    const plot = (values: string[]) => values.map(value => plotValue(value));
     const interval = kind === "day" && count > 120 ? (_: number, value: string) => value.endsWith("-01")
       : kind === "day" && count > 45 ? (_: number, value: string) => value.endsWith("-01") || value.endsWith("-15") : "auto";
     const categoryAxis = { type: "category", data: labels, boundaryGap: hasBars, inverse: horizontal, axisLine: { lineStyle: { color: theme.border } }, axisTick: { show: false },
@@ -139,7 +137,7 @@ function SeriesChart({ chart, width }: { chart: CartesianSpec | ComboSpec | Band
       const owner = "average" in reference ? series.findIndex(item => item.name === reference.average) : series.findIndex(item => !item.right);
       const value = "average" in reference ? averageMinor(series[owner].values) : BigInt(reference.value);
       const text = `${reference.label} ${formatAmount(value, unit)}`;
-      lines[owner].push({ [horizontal ? "xAxis" : "yAxis"]: plotValue(value, unit), label: { formatter: () => text, position: horizontal ? "end" : "insideEndTop" } });
+      lines[owner].push({ [horizontal ? "xAxis" : "yAxis"]: plotValue(value), label: { formatter: () => text, position: horizontal ? "end" : "insideEndTop" } });
     }
     for (const marker of chart.markers ?? []) lines[0].push({ [horizontal ? "yAxis" : "xAxis"]: marker.at, label: { formatter: () => marker.label, position: horizontal ? "insideEndTop" : "end" } });
     const markLine = (data: object[]) => data.length ? { markLine: { symbol: ["none", "none"], silent: true, data, lineStyle: { color: theme.muted, type: [4, 4], width: 1 }, label: { color: theme.muted, fontSize: 11, backgroundColor: theme.card, padding: [1, 4], borderRadius: 4 }, emphasis: { disabled: true } } } : {};
@@ -154,7 +152,7 @@ function SeriesChart({ chart, width }: { chart: CartesianSpec | ComboSpec | Band
     });
     const bandSeries = band ? [
       { name: "band-low", type: "line", stack: "band", stackStrategy: "all", data: plot(band.low), symbol: "none", lineStyle: { opacity: 0 }, silent: true, tooltip: { show: false } },
-      { name: band.name, type: "line", stack: "band", stackStrategy: "all", data: band.high.map((high, index) => plotValue(BigInt(high) - BigInt(band.low[index]), unit)), symbol: "none", silent: true,
+      { name: band.name, type: "line", stack: "band", stackStrategy: "all", data: band.high.map((high, index) => plotValue(BigInt(high) - BigInt(band.low[index]))), symbol: "none", silent: true,
         lineStyle: { opacity: 0 }, itemStyle: { color: hexAlpha(theme.color(0), 0.35) }, areaStyle: { color: hexAlpha(theme.color(0), theme.dark ? 0.22 : 0.16) } },
     ] : [];
     const tooltip = (items: { dataIndex: number }[]) => {
@@ -203,11 +201,11 @@ function WaterfallChart({ chart, width }: { chart: WaterfallSpec; width: number 
       yAxis: { type: "value", splitNumber: narrow ? 4 : 5, axisLabel: { color: theme.muted, fontSize: 11, formatter: short }, splitLine: { lineStyle: { color: theme.border } } },
       series: [
         { type: "bar", stack: "bridge", stackStrategy: "all", silent: true, itemStyle: { color: "transparent" }, emphasis: { disabled: true }, tooltip: { show: false },
-          data: bars.map(bar => plotValue(bar.from < bar.to ? bar.from : bar.to, chart.unit)) },
+          data: bars.map(bar => plotValue(bar.from < bar.to ? bar.from : bar.to)) },
         { type: "bar", stack: "bridge", stackStrategy: "all", barMaxWidth: 44, barCategoryGap: "30%",
-          data: bars.map(bar => ({ value: plotValue(abs(bar.to - bar.from), chart.unit), itemStyle: { color: colorOf(bar), borderRadius: 3 } })),
+          data: bars.map(bar => ({ value: plotValue(abs(bar.to - bar.from)), itemStyle: { color: colorOf(bar), borderRadius: 3 } })),
           label: { show: bars.length <= (narrow ? 6 : 14), position: "top", color: theme.muted, fontSize: 11,
-            formatter: ({ dataIndex }: { dataIndex: number }) => { const bar = bars[dataIndex]; return bar.kind === "step" && bar.value > 0n ? `+${short(plotValue(bar.value, chart.unit))}` : short(plotValue(bar.value, chart.unit)); } } },
+            formatter: ({ dataIndex }: { dataIndex: number }) => { const bar = bars[dataIndex]; return bar.kind === "step" && bar.value > 0n ? `+${short(plotValue(bar.value))}` : short(plotValue(bar.value)); } } },
       ],
     };
   }, [bars, chart.unit, theme, width]);
@@ -239,8 +237,8 @@ function SankeyChart({ chart }: { chart: SankeySpec }) {
       series: [{
         type: "sankey", left: 4, right: 4, top: 8, bottom: 8, nodeWidth: 12, nodeGap: 16, nodeAlign: "justify", draggable: false, layoutIterations: 32,
         data: nodes.map((name, index) => ({ name, itemStyle: { color: theme.color(index) },
-          label: { position: outflow.has(name) ? "right" : "left", formatter: () => `{n|${plain(name)}}  {v|${short(plotValue(total(name), chart.unit))}}` } })),
-        links: chart.links.map(link => ({ source: link.from, target: link.to, value: plotValue(link.value, chart.unit) })),
+          label: { position: outflow.has(name) ? "right" : "left", formatter: () => `{n|${plain(name)}}  {v|${short(plotValue(total(name)))}}` } })),
+        links: chart.links.map(link => ({ source: link.from, target: link.to, value: plotValue(link.value) })),
         lineStyle: { color: "gradient", opacity: theme.dark ? 0.38 : 0.3, curveness: 0.5 },
         itemStyle: { borderWidth: 0, borderRadius: 2 },
         emphasis: { focus: "adjacency", lineStyle: { opacity: 0.55 } },
@@ -273,7 +271,7 @@ function ScatterChart({ chart, width }: { chart: ScatterSpec; width: number }) {
       yAxis: axis(chart.yTitle, chart.unit, false),
       series: chart.series.map((series, index) => ({ type: "scatter", name: series.name, symbolSize: 9, emphasis: { scale: 1.5 },
         itemStyle: { color: theme.color(index), opacity: 0.85, borderColor: theme.card, borderWidth: 1 },
-        data: series.points.map(point => [plotValue(point.x, chart.xUnit), plotValue(point.y, chart.unit)]) })),
+        data: series.points.map(point => [plotValue(point.x), plotValue(point.y)]) })),
     };
   }, [chart, theme, width]);
   return <Plot height={width < 480 ? 260 : 300} label={chart.title} option={option} />;
@@ -300,7 +298,7 @@ function CalendarChart({ chart, width }: { chart: CalendarSpec; width: number })
   const option = useMemo(() => {
     const { days, rows, cell, rowHeight } = layout;
     const exact = new Map(days.map(day => [day.date, day.value]));
-    const values = days.map(day => plotValue(day.value, chart.unit));
+    const values = days.map(day => plotValue(day.value));
     const positive = values.filter(value => value > 0);
     const min = positive.length ? Math.min(...positive) : 1, max = positive.length ? Math.max(...positive) : 1;
     const ranges = rows.map(row => {
@@ -318,7 +316,7 @@ function CalendarChart({ chart, width }: { chart: CalendarSpec; width: number })
         dayLabel: { firstDay: 1, nameMap: ["", "Mon", "", "Wed", "", "Fri", ""], color: theme.muted, fontSize: 10 },
         monthLabel: { color: theme.muted, fontSize: 11 }, yearLabel: { show: false } })),
       series: ranges.map((range, index) => ({ type: "heatmap", coordinateSystem: "calendar", calendarIndex: index,
-        data: days.filter(day => day.date >= range[0] && day.date <= range[1]).map(day => [day.date, plotValue(day.value, chart.unit)]) })),
+        data: days.filter(day => day.date >= range[0] && day.date <= range[1]).map(day => [day.date, plotValue(day.value)]) })),
     };
   }, [chart, layout, theme]);
   return <Plot height={22 + layout.rows.length * layout.rowHeight + 34} label={chart.title} option={option} />;
@@ -349,7 +347,7 @@ function CircularChart({ chart, width }: { chart: CircularSpec; width: number })
   const share = (value: string) => shareOf(value, total);
   const option = useMemo(() => {
     const short = compact(unit);
-    const data = items.map((item, index) => ({ name: item.label, value: plotValue(item.value, unit), itemStyle: { color: theme.color(index) },
+    const data = items.map((item, index) => ({ name: item.label, value: plotValue(item.value), itemStyle: { color: theme.color(index) },
       label: { color: index < 8 ? inkOn(index) : theme.foreground } }));
     const describe = (index: number) => tipRow(theme.color(index), items[index].label, `${formatAmount(items[index].value, unit)} · ${shareOf(items[index].value, total)}`);
     return {
@@ -387,7 +385,7 @@ function CircularChart({ chart, width }: { chart: CircularSpec; width: number })
           <circle cx={x} cy={y} r={r} fill={theme.color(index)} stroke={theme.card} strokeWidth={1.5}><title>{`${items[index].label}: ${formatAmount(items[index].value, unit)}`}</title></circle>
           {r >= 22 && <text x={x} y={y} textAnchor="middle" fill={index < 8 ? inkOn(index) : theme.foreground} fontSize={size} pointerEvents="none">
             <tspan x={x} dy={-size * 0.15}>{items[index].label.length > 14 ? `${items[index].label.slice(0, 13)}…` : items[index].label}</tspan>
-            <tspan x={x} dy={size * 1.2} fontWeight={600}>{short(plotValue(items[index].value, unit))}</tspan>
+            <tspan x={x} dy={size * 1.2} fontWeight={600}>{short(plotValue(items[index].value))}</tspan>
           </text>}
         </g>;
       })}
