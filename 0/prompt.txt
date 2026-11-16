@@ -1,0 +1,38 @@
+Act as the implementation sub-agent for this task.
+
+Finish GitHub issue #262 in Moneo. Today Regenerate (components/message-actions.tsx, and the RESEND_EVENT listener in components/chat-form.tsx) resends the last question, which appends a duplicate question and a second answer. Change it so that:
+- Regenerate replaces the last assistant reply with a new one and doesn't duplicate the user's question.
+- The earlier answer stays reachable, for example a small "1/2 ‹ ›" switcher, like ChatGPT.
+- The result survives a reload.
+- History is never deleted (AGENTS.md).
+- Voice calls, artifacts, queued messages and steering keep working.
+
+## RESUME: most of the work exists
+The previous agent hit the API rate limit partway through. Its uncommitted changes are in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-54d7003e-5c89586c1573aeba` (branch `t3/issue-262-regenerate-replace`). They touch chat-form, chat-messages, chat-workspace, message-actions, conversation-history, use-chat-request, the chat route, artifact-chat and lib/schema.ts. Check for untracked files too: a migration may exist.
+
+To pick it up:
+1. Inspect it read-only (`git -C <path> status`, `git -C <path> diff`, and its untracked files).
+2. Apply its diff and copy its untracked files into your own checkout, on a branch `t3/issue-262-regenerate` from current `origin/main`. Use `git apply --3way`, because main has moved.
+3. Commit immediately, then finish the work.
+
+Never modify, reset or delete the old worktree.
+
+Any migration must have a unique timestamp prefix later than `202611160141`. Check `ls supabase/migrations | tail` on main and pick one after the last. Keep lib/schema.ts aligned, and it must work on the desktop's bundled Postgres.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 262`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The QA app on port 3100 and the moneo-qa backend are shared:
+  - never `npm run qa:reset` or `docker compose -p moneo-qa down`
+  - never touch the owner's backend
+  - revert any migration you apply to QA
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test` and `npm run build`.
+- Run the verify-ui skill (light/dark/mobile). Link the screenshots in the PR body from a commit, then remove them from the branch.
+- Push and open a PR to `main` (`Closes #262`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
