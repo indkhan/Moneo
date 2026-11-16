@@ -1,0 +1,41 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #262 in Moneo. Since PR #250, Regenerate (components/message-actions.tsx, the RESEND_EVENT listener in components/chat-form.tsx) resends the last question. That appends a duplicate question and a second answer. Change it so that:
+
+- Regenerate replaces the last assistant reply with a new one and does not duplicate the user's question.
+- The earlier answer stays reachable, e.g. a small "1/2 ‹ ›" switcher or "previous answers" under the reply, like ChatGPT.
+- It survives reload. Check how messages and chat_requests are stored (lib/ai/conversation-history.ts, app/api/chat/route.ts) and pick the smallest correct storage change, for example marking a reply as a regeneration of an earlier request. Never delete history; AGENTS.md says history is kept.
+- If you add a migration, give it a unique timestamp prefix later than `202611160141`, keep lib/schema.ts aligned, and make sure it works on the desktop's Postgres.
+- Voice calls and artifacts are unaffected. Check that queued messages and steering still behave.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 262`.
+- Branch `t3/issue-262-regenerate-replace` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The QA app on port 3100 and the moneo-qa backend are shared:
+  - Never run `npm run qa:reset` or `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend.
+  - If you apply a migration to QA, revert it afterwards.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test` and `npm run build`.
+- Use the verify-ui skill (light/dark/mobile). Link the screenshots in the PR body from a commit, then remove them from the branch.
+- Push and open a PR to `main` (`Closes #262`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>b2tdukj5v</task-id>
+<tool-use-id>toolu_01Dv2fJFa31As7Gt79khZfff</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\59afec0ee105b476\2d085b8a-fc0f-4a91-984f-f383e201f905\tasks\b2tdukj5v.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci --prefer-offline &gt; "$TEMP/npmci.log" 2&gt;&amp;1; echo exit $?; tail -3 "$TEMP/npmci.log"" completed (exit code 0)</summary>
+</task-notification>
