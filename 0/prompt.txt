@@ -1,0 +1,30 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #229 in Moneo: the owner has an old bank account that isn't connected. Moneo asked "is this you?" about a transfer to it, and the owner said yes, but then it asked again for each of the other 8–10 transactions with the same account.
+
+Owner's decision: **Remember it as an own untracked account.** On the first "yes, this is mine", save that identifier (IBAN/name) as one of the owner's own untracked accounts (it shows in the Accounts page under accounts Moneo doesn't track), mark every matching transaction, past and future (imports and bank sync), as an own transfer, and never ask about that account again. Look at lib/finance/own-transfers.ts, the own-account proposal card (components/iou-card.tsx "Own account proposal"), the transaction drawer's "my own account Moneo doesn't track" option, and the home/overview prompt. Fix the class: the confirmation must apply to the identifier, not to one transaction. Keep undo: undoing the confirmation reverts all the transactions it reclassified. Check chat/voice paths that create the same proposal.
+
+## Rules for every child
+- Repo: Moneo (indkhan/Moneo). Read AGENTS.md first and follow it exactly (no comments in code, surgical changes, tests only for real behaviour, hit every surface, desktop + source install both work).
+- Read the full GitHub issue first: `gh issue view <n> --comments`. Recheck the current tree before changing anything; reproduce first.
+- Work only in your own worktree. Create a branch `t3/issue-<n>-<short-slug>` from current `origin/main` (`git fetch origin && git switch -c <branch> origin/main`). Commit each step in plain language, ending each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- Other agents are working in parallel on other issues against the SAME shared moneo-qa test backend and QA app port 3100. So: never run `npm run qa:reset`, never `docker compose -p moneo-qa down`, never touch the owner's backend (.env, port 3000, Docker project `moneo`). Set up the state your test needs with disposable users or rows you create and remove. If port 3100 is already serving another checkout, wait and retry later; never kill a process you didn't start.
+- Mock AI, bank and Scalable. No real paid calls.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`; plus `npm run build` for app/config changes; for UI changes use the verify-ui skill (light/dark/mobile screenshots) and attach the evidence to the PR.
+- Push and open a PR to `main` with `gh pr create`, body: what changed and why, `Closes #<n>`, how it was verified. End the PR body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge. Don't create a new GitHub issue unless work is truly deferred.
+- If a decision is genuinely ambiguous beyond what's written here, pick the option that best fits AGENTS.md, note it in the PR body, and continue.
+- Final line of your reply: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bxlkn3j01</task-id>
+<tool-use-id>toolu_01NWaHeDbz7YPnaa4isaZ8gV</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\65025022da5174e8\88a9bf5c-2211-4278-a793-be223b58c3db\tasks\bxlkn3j01.output</output-file>
+<status>killed</status>
+<summary>Background command "cd C:/Users/mgsuk/.t3/worktrees/Moneo/t3-efc4453f-96a69839090a7263 &amp;&amp; cp ~/.moneo/qa.env .env.qa &amp;&amp; git check-ignore .env.qa &amp;&amp; (npm ci --no-audit --no-fund 2&gt;&amp;1 | tail -3)" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>

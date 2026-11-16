@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7J414AKWZD4S6QXVCXE4X7F",
+  "session_id": "88a9bf5c-2211-4278-a793-be223b58c3db",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-16T12:06:54.9725841Z",
+  "branch": "t3/issue-229-remember-own-untracked-account",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/finance/own-transfers.live.test.ts",
+    "lib/schema.ts",
+    "scripts/test-db.mjs",
+    "supabase/migrations/202611160001_confirmed_own_accounts.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "a832b287a50a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 160,
+    "cache_creation_tokens": 159614,
+    "cache_read_tokens": 11549419,
+    "output_tokens": 52069,
+    "api_call_count": 80
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
