@@ -1,0 +1,30 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #245 in Moneo: instrumentation.ts touches `process.report` and other Node-only startup code, which gives an Edge-runtime warning at build time.
+
+1. Run `npm run build` and check whether the warning still appears. If it doesn't, comment on the issue with the evidence (`gh issue comment 245`) and stop without opening a PR.
+2. If it does, read the instrumentation guide in node_modules/next/dist/docs/. Move the Node-only work behind the supported boundary, for example a dynamic import of a Node-only module under `NEXT_RUNTIME === 'nodejs'`.
+3. Keep the startup order: undici networking config, Workflow, scheduler, bank return listener. The desktop standalone build must still work.
+
+## RESUME: earlier work may exist
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-ed0fca5a-64c8deb03b9c4d32` (branch `t3/issue-245-edge-instrumentation`).
+- Inspect it read-only (`git -C <path> status`/`diff`) and bring over anything useful.
+- Never modify, reset or delete that worktree.
+- Use your own branch `t3/issue-245-edge-startup` from current `origin/main`.
+- Commit as soon as the earlier work is applied.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 245 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for installs and builds in the same turn: a foreground command with a long timeout, or a background command plus `t3_background_wait`. Finish the whole task before replying.
+- **Never kill a process you didn't start yourself in this session, verified by PID.** Never kill by name or command line.
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Shared test backend:
+  - Never run `npm run qa:reset` or `docker compose -p moneo-qa down`.
+  - Never touch the owner's backend (.env, port 3000, project `moneo`).
+- Before finishing, run `npm test`, `npm run lint`, `npm run typecheck` and `npm run build`. If 5-second timeouts under load show up in files you didn't touch, report them but don't change them.
+- Push and open a PR to `main` (`Closes #245`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
