@@ -1,0 +1,29 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #231 in Moneo: the "needs your decision" / "add a merchant" flow asks the owner too much (overview showed 201 items needing decisions, including a merchant prompt for a person the owner knows).
+
+Owner's decision: **Auto-fill, never ask.** Moneo derives the merchant/counterparty deterministically from the transaction (counterparty name, IBAN, description), and the AI organizer labels the rest itself (organized_by = 'ai', listed with the other AI decisions, undoable — AGENTS.md allows this exception). Remove the "add a merchant" prompt from the needs-decision/review surfaces. Only genuine conflicts (e.g. possible duplicates, own-transfer ambiguity) stay in "needs your decision", and the count on overview must reflect only those. Fix it where the review items are created (fix the class), not only by hiding UI. Check every surface: import page, transactions, home widgets, overview count, chat/voice tools that list pending reviews.
+
+## Rules for every child
+- Repo: Moneo (indkhan/Moneo). Read AGENTS.md first and follow it exactly (no comments in code, surgical changes, tests only for real behaviour, hit every surface, desktop + source install both work).
+- Read the full GitHub issue first: `gh issue view <n> --comments`. Recheck the current tree before changing anything; reproduce first.
+- Work only in your own worktree. Create a branch `t3/issue-<n>-<short-slug>` from current `origin/main` (`git fetch origin && git switch -c <branch> origin/main`). Commit each step in plain language, ending each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- Other agents are working in parallel on other issues against the SAME shared moneo-qa test backend and QA app port 3100. So: never run `npm run qa:reset`, never `docker compose -p moneo-qa down`, never touch the owner's backend (.env, port 3000, Docker project `moneo`). Set up the state your test needs with disposable users or rows you create and remove. If port 3100 is already serving another checkout, wait and retry later; never kill a process you didn't start.
+- Mock AI, bank and Scalable. No real paid calls.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`; plus `npm run build` for app/config changes; for UI changes use the verify-ui skill (light/dark/mobile screenshots) and attach the evidence to the PR.
+- Push and open a PR to `main` with `gh pr create`, body: what changed and why, `Closes #<n>`, how it was verified. End the PR body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge. Don't create a new GitHub issue unless work is truly deferred.
+- If a decision is genuinely ambiguous beyond what's written here, pick the option that best fits AGENTS.md, note it in the PR body, and continue.
+- Final line of your reply: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bcmtjxtgz</task-id>
+<tool-use-id>toolu_01Ucw2vVK88DAG8HEzMbeKEZ</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c97f6c21e3df10b7\41eac1a6-c936-4c6d-868b-278caad52504\tasks\bcmtjxtgz.output</output-file>
+<status>failed</status>
+<summary>Background command "mkdir -p /tmp/emptyd_$$ &amp;&amp; robocopy "$(cygpath -w /tmp/emptyd_$$)" node_modules //MIR //NFL //NDL //NJH //NJS //NP &gt;/dev/null; rmdir node_modules 2&gt;&amp;1; ls -d node_modules 2&gt;&amp;1" failed with exit code 2</summary>
+</task-notification>

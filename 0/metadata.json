@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7J43WFQ5Q6W9S4D31TR3067",
+  "session_id": "41eac1a6-c936-4c6d-868b-278caad52504",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-16T12:08:17.0720145Z",
+  "branch": "t3/issue-231-auto-fill-merchant",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "supabase/migrations/202611160001_organizer_never_asks.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "819c47c764a5",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 146,
+    "cache_creation_tokens": 207825,
+    "cache_read_tokens": 11542694,
+    "output_tokens": 35870,
+    "api_call_count": 73
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
