@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7JT6G75XZZ72N3WKGNPS18D",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-152-wealth-charts",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/scalable/news/route.ts",
+    "components/scalable-position-chart.tsx",
+    "components/scalable-position-news.tsx",
+    "lib/scalable/chart-view.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46,
+    "cache_creation_tokens": 29709,
+    "cache_read_tokens": 4594724,
+    "output_tokens": 7785,
+    "api_call_count": 23
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
