@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { jsonObject, type Db, type Json } from "@/lib/database";
 import { allPages } from "@/lib/all-pages";
 
 export type StagedRow = { sourceId: string; importId: string; status: string; accountId: string; postedOn: string; amountMinor: string; description: string; currencyCode: string; rowStatus: string; externalId: string | null };
@@ -21,10 +21,12 @@ export function waitingRepeats(rows: StagedRow[], ledger: LedgerRow[]) {
 
 type SourceRow = { id: string; import_id: string; status: string; external_id: string | null; normalized_row: { accountId?: string; row?: { postedOn: string; amountMinor: string; description: string; currencyCode: string; status: string } } | null };
 
-export const isBankWindow = (imported: { filename: string; mapping: { completeWindow?: boolean; externalIdColumn?: string } | null }) =>
-  imported.mapping?.completeWindow === true || (/ bank sync \d{4}-\d{2}-\d{2}\.csv$/.test(imported.filename) && imported.mapping?.externalIdColumn === "id");
+export const isBankWindow = (imported: { filename: string; mapping: Json }) => {
+  const mapping = jsonObject.safeParse(imported.mapping).data;
+  return mapping?.completeWindow === true || (/ bank sync \d{4}-\d{2}-\d{2}\.csv$/.test(imported.filename) && mapping?.externalIdColumn === "id");
+};
 
-export async function findWaitingRepeats(db: SupabaseClient, workspaceId: string) {
+export async function findWaitingRepeats(db: Db, workspaceId: string) {
   const waiting = await db.from("source_transactions").select("import_id").eq("workspace_id", workspaceId).eq("status", "review").limit(5000);
   if (waiting.error) throw new Error(waiting.error.message);
   const importIds = [...new Set((waiting.data ?? []).map(row => row.import_id as string))];

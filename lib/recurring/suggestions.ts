@@ -1,5 +1,5 @@
 import { cache } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { detectRecurring, type RecurringSeries } from "@/lib/finance/recurring";
 import { normalizeLabel } from "./series";
 
@@ -31,7 +31,7 @@ export function rankSuggestions<T extends { series: { label: string; currencyCod
   return { likely, lessLikely };
 }
 
-export const loadSuggestions = cache(async (supabase: SupabaseClient, workspace: { id: string }) => {
+export const loadSuggestions = cache(async (supabase: Db, workspace: { id: string }) => {
   const storedQuery = Promise.resolve(supabase.from("recurring_series")
     .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id), assumption:financial_assumptions(id,name,amount_minor::text,cadence,starts_on,source,confirmed,enabled,removed_at,category:categories(name))")
     .eq("workspace_id", workspace.id));
@@ -44,7 +44,7 @@ export const loadSuggestions = cache(async (supabase: SupabaseClient, workspace:
       .select("id, posted_on, description, amount_minor::text, currency_code, account_id, merchant_id, version, status, kind, review_reasons")
       .eq("workspace_id", workspace.id)
       .eq("status", "posted")
-      .eq("kind", "ordinary").eq("review_reasons", "{}")
+      .eq("kind", "ordinary").filter("review_reasons", "eq", "{}")
       .order("posted_on", { ascending: false }).order("id", { ascending: false });
     if (cursor) query = query.or(`posted_on.lt.${cursor.posted_on},and(posted_on.eq.${cursor.posted_on},id.lt.${cursor.id})`);
     const size = Math.min(PAGE_SIZE, MAX_TRANSACTIONS + 1 - rows.length);
@@ -56,7 +56,7 @@ export const loadSuggestions = cache(async (supabase: SupabaseClient, workspace:
     cursor = page.at(-1);
   }
   const { data: storedData, error: storedError } = await storedQuery;
-  const stored = (storedData ?? []) as unknown as Stored[];
+  const stored = storedData ?? [];
   const truncated = rows.length > MAX_TRANSACTIONS;
   const cutoff = truncated ? rows[MAX_TRANSACTIONS].posted_on : null;
   if (cutoff) rows.splice(0, rows.length, ...rows.filter(row => row.posted_on > cutoff));

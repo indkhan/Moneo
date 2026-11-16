@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { jsonObject, type Db } from "@/lib/database";
 
 export type IouDirection = "lent" | "borrowed";
 const prefixes = { lent: "Lent to ", borrowed: "Owed to " } as const;
@@ -71,7 +71,7 @@ export function repaymentMatches(items: IouItem[], transactions: IouTransaction[
   return matches;
 }
 
-export async function loadCountedRepayments(supabase: SupabaseClient, workspaceId: string) {
+export async function loadCountedRepayments(supabase: Db, workspaceId: string) {
   const { data, error } = await supabase.from("iou_repayments").select("transaction_id, applied_minor::text").eq("workspace_id", workspaceId).is("undone_at", null).not("transaction_id", "is", null).limit(2000);
   if (error) throw new Error(error.message);
   const counted = new Map<string, bigint>();
@@ -79,7 +79,7 @@ export async function loadCountedRepayments(supabase: SupabaseClient, workspaceI
   return counted;
 }
 
-export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: string): Promise<Set<string>> {
+export async function loadLoanPayoutIds(supabase: Db, workspaceId: string): Promise<Set<string>> {
   const events = await supabase.from("wealth_events").select("item_id, after").eq("workspace_id", workspaceId).is("undone_at", null).order("created_at").limit(2000);
   if (events.error) throw new Error(events.error.message);
   const loans = new Map<string, LoanStart>();
@@ -91,11 +91,11 @@ export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: s
   }
   const settled = await supabase.from("agent_proposals").select("payload").eq("workspace_id", workspaceId).eq("kind", "iou_settle").eq("status", "accepted").limit(1000);
   if (settled.error) throw new Error(settled.error.message);
-  const repaid = (settled.data ?? []).map(row => row.payload?.transactionId).filter((id): id is string => typeof id === "string");
+  const repaid = (settled.data ?? []).map(row => jsonObject.safeParse(row.payload).data?.transactionId).filter((id): id is string => typeof id === "string");
   if (!loans.size) return new Set(repaid);
   const amounts = [...new Set([...loans.values()].map(loan => (loan.direction === "lent" ? -loan.amountMinor : loan.amountMinor).toString()))];
   const rows = await supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspaceId).neq("status", "voided")
-    .in("amount_minor", amounts.slice(0, 200)).limit(2000);
+    .filter("amount_minor", "in", `(${amounts.slice(0, 200).join(",")})`).limit(2000);
   if (rows.error) throw new Error(rows.error.message);
   return new Set([...loanPayouts([...loans.values()], rows.data ?? []), ...repaid]);
 }

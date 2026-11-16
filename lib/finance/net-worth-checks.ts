@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import type { Db } from "@/lib/database";
 import { calendarDate } from "./calendar";
 import { formatMoney } from "./format";
 import type { BalanceSnapshot, BalanceTransaction } from "./balances";
@@ -82,10 +83,10 @@ export function repaymentFindings(links: RepaymentLink[], ledger: BalanceTransac
   });
 }
 
-export async function loadRepaymentLinks(db: SupabaseClient, workspaceId: string): Promise<RepaymentLink[]> {
+export async function loadRepaymentLinks(db: Db, workspaceId: string): Promise<RepaymentLink[]> {
   const { data, error } = await db.from("iou_repayments").select("id, transaction_id, applied_minor::text, currency_code, transaction_amount_minor::text, transaction_posted_on, undone_at").eq("workspace_id", workspaceId).is("undone_at", null).limit(2000);
   if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as RepaymentLink[];
+  return data ?? [];
 }
 
 export type FindingsInput = {
@@ -103,10 +104,12 @@ export const netWorthFindings = (input: FindingsInput): Discrepancy[] => [
   ...repaymentFindings(input.repayments ?? [], input.ledger, input.locale),
 ];
 
-export async function loadImportStates(db: SupabaseClient, workspaceId: string) {
+const importAccountName = z.object({ accountName: z.string().nullish() }).nullable().catch(null);
+
+export async function loadImportStates(db: Db, workspaceId: string) {
   const { data, error } = await db.from("imports").select("id, filename, status, created_at, mapping").eq("workspace_id", workspaceId).in("status", ["failed", "completed"]).order("created_at", { ascending: false }).limit(500);
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map(row => ({ ...row, mapping: importAccountName.parse(row.mapping) }));
 }
 
 export function checksNotice(findings: { title: string }[]) {

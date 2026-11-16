@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadFinancialReviewEvidence } from "./review-loader";
 import {readEvidenceView} from "./evidence-view";
@@ -26,7 +26,7 @@ export function compareReviewEvidence(saved: unknown, current: unknown): ReviewF
     : { status: "stale", reason: "Financial evidence, permissions or the review period have changed. Run a new review for current findings." };
 }
 
-export async function reviewFreshness(db: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, saved: unknown, suppliedSettings?: WorkspaceSettings): Promise<ReviewFreshness> {
+export async function reviewFreshness(db: Db, workspace: { id: string; display_currency: string; timezone: string }, saved: unknown, suppliedSettings?: WorkspaceSettings): Promise<ReviewFreshness> {
   try {
     const settings = suppliedSettings ?? await loadWorkspaceSettings(db, workspace.id);
     requireAiScope(settings, "accounts", "transactions");

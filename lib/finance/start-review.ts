@@ -1,10 +1,10 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { serviceDb } from "@/lib/service-db";
 import { getRun, start } from "workflow/api";
 import { getWorld } from "workflow/runtime";
 import type {ReviewRequest} from "./review-request";
 
-export async function startFinancialReview(db: SupabaseClient, workspaceId: string, requestId: string, chatRequestId?: string, specification?: ReviewRequest) {
+export async function startFinancialReview(db: Db, workspaceId: string, requestId: string, chatRequestId?: string, specification?: ReviewRequest) {
   const claimed = specification
     ? await db.rpc("start_financial_investigation", {p_request_id: requestId, p_chat_request_id: chatRequestId ?? null, p_specification: specification})
     : await db.rpc("start_financial_review", { p_request_id: requestId, p_chat_request_id: chatRequestId ?? null });
@@ -14,7 +14,7 @@ export async function startFinancialReview(db: SupabaseClient, workspaceId: stri
   return dispatchFinancialReview(service, jobId, workspaceId, false);
 }
 
-export async function dispatchFinancialReview(service: SupabaseClient, jobId: string, workspaceId: string, scheduled?: boolean) {
+export async function dispatchFinancialReview(service: Db, jobId: string, workspaceId: string, scheduled?: boolean) {
   const readJob = async () => {
     const job = await service.from("background_jobs").select("status, workflow_run_id, cancel_requested, created_at, dispatched_at, updated_at").eq("id", jobId).eq("workspace_id", workspaceId).eq("kind", "financial_review").single();
     if (job.error) throw job.error;
@@ -76,7 +76,7 @@ export async function dispatchFinancialReview(service: SupabaseClient, jobId: st
   return { jobId, status: job.status };
 }
 
-export async function recoverFinancialReviews(service: SupabaseClient) {
+export async function recoverFinancialReviews(service: Db) {
   const candidates = await service.from("background_jobs").select("id, workspace_id, workflow_run_id, updated_at", { count: "exact" })
     .eq("kind", "financial_review").in("status", ["queued", "running"]).order("updated_at").order("id").limit(25);
   if (candidates.error) throw candidates.error;

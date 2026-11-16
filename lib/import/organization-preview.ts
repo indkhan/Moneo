@@ -1,10 +1,10 @@
-import type {SupabaseClient} from '@supabase/supabase-js';
+import type { Db } from "@/lib/database";
 import {z} from 'zod';
 import {versionedRows} from '@/lib/finance/transaction-input';
 
 export const organizationPreviewSchema=z.object({rows:versionedRows,categoryId:z.uuid().nullable().optional(),merchantId:z.uuid().nullable().optional()}).strict()
   .refine(value=>'categoryId' in value || 'merchantId' in value,'Choose a category or merchant change');
-export async function loadOrganizationPreview(db:SupabaseClient,workspaceId:string,value:unknown) {
+export async function loadOrganizationPreview(db:Db,workspaceId:string,value:unknown) {
   z.uuid().parse(workspaceId);
   const input=organizationPreviewSchema.parse(value);
   const [entries,category,merchant]=await Promise.all([

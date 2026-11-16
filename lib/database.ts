@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Json, Database as Generated } from "@/lib/database.types";
 
@@ -31,4 +32,5 @@ type WithWireTypes<Schema> = {
 };
 
 export type Database = { public: WithWireTypes<Generated["public"]> };
+export type Db = SupabaseClient<Database>;
 export type { Json };

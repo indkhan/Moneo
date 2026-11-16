@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import type { Db } from "@/lib/database";
 import { calendarDate } from "@/lib/finance/calendar";
 import type { WealthItem } from "@/lib/finance/wealth";
 import { coveredRows, latestSnapshotFirst, rowAgainstSnapshot, type BalanceSnapshot, type BalanceTransaction } from "@/lib/finance/balances";
@@ -119,7 +120,7 @@ export function netWorth(point: NetWorthPoint): Map<string, bigint> {
 
 type WealthEvent = { id: string; item_id: string; before: WealthItem | null; after: WealthItem; created_at: string; undone_at: string | null };
 
-export async function loadWealthEvents(db: SupabaseClient, workspaceId: string): Promise<WealthEvent[]> {
+export async function loadWealthEvents(db: Db, workspaceId: string): Promise<WealthEvent[]> {
   const rows: WealthEvent[] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await db.from("wealth_events").select("id, item_id, before, after, created_at, undone_at").eq("workspace_id", workspaceId)
@@ -136,6 +137,8 @@ export function valuationHistory(events: WealthEvent[], items: WealthItem[], tim
     ...items.filter(item => !item.removed_at).map(item => ({ ...item, item_id: item.id, created_at: "9999-12-31", removed: false }))];
 }
 
+const portfolioItems = z.object({ knownItemIds: z.array(z.string()).optional(), itemIds: z.array(z.string()).optional() }).nullable().catch(null);
+
 export const scalableKnownIds = (portfolios: ({ knownItemIds?: string[]; itemIds?: string[] } | null)[]) =>
   new Set(portfolios.flatMap(portfolio => [...(portfolio?.knownItemIds ?? []), ...(portfolio?.itemIds ?? [])]));
 
@@ -143,17 +146,17 @@ export function firstSyncedOn(valuations: Valuation[], knownIds: Set<string>): s
   return valuations.reduce<string | null>((first, row) => knownIds.has(row.item_id) && !row.removed && (first === null || row.as_of < first) ? row.as_of : first, null);
 }
 
-export async function loadScalableHistory(db: SupabaseClient, workspaceId: string) {
+export async function loadScalableHistory(db: Db, workspaceId: string) {
   const rows: CalculatedValue[] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await db.from("scalable_value_history").select("on_date, currency_code, total_minor::text").eq("workspace_id", workspaceId).order("on_date").range(offset, offset + 999);
     if (error) throw error;
-    rows.push(...(data ?? []) as unknown as CalculatedValue[]);
+    rows.push(...data ?? []);
     if (!data || data.length < 1000) break;
   }
   const connections = await db.from("scalable_connections").select("portfolio").eq("workspace_id", workspaceId).not("portfolio", "is", null);
   if (connections.error) throw connections.error;
-  return { rows, knownIds: scalableKnownIds((connections.data ?? []).map(row => row.portfolio)) };
+  return { rows, knownIds: scalableKnownIds((connections.data ?? []).map(row => portfolioItems.parse(row.portfolio))) };
 }
 
 export function firstRealValue(valuations: Valuation[], knownIds: Set<string>, before: string | null, currency: string) {

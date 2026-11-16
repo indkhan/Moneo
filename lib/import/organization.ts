@@ -6,6 +6,7 @@ const rowSchema = z.object({id: z.uuid(), version: z.number().int().min(0).max(2
 export const MAX_ORGANIZATION_RULES = 2000;
 export const organizationRuleSchema = z.object({id: z.uuid(), version: z.number().int().min(1), descriptionKey: z.string().min(3).max(1000),
   merchantId: z.uuid().nullable(), categoryId: z.uuid().nullable(), approvedBy: z.uuid(), enabled: z.boolean()}).strict();
+export const organizationKindSchema = rowSchema.shape.kind;
 export type OrganizationRow = z.infer<typeof rowSchema>;
 export type OrganizationRule = z.infer<typeof organizationRuleSchema>;
 export type OrganizationProposal = {transactionId: string; version: number; descriptionKey: string; merchantId: string | null; categoryId: string | null;
