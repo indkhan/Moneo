@@ -1,0 +1,61 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #228 in Moneo. At the end of each assistant chat message, show a small row of actions: **Copy** (copies the message text), **Regenerate** (reruns the last assistant reply) and the **model** that produced the reply (a small label, or a tooltip on an icon). Find the chat message component and where the model id is known at response time (lib/ai/provider.ts, the /api/chat route). If the message doesn't store the model yet, store it (a new migration in supabase/migrations/ plus lib/schema.ts if a column is needed), so it also shows for old chats after reload. Keep it compact, accessible (aria-labels), working on mobile and in light/dark.
+
+## RESUME: earlier work exists
+An earlier agent on this issue was stopped partway through and left uncommitted work in the worktree at `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-74646337-66fc2da42e266501`, on branch `t3/issue-228-chat-message-actions`. Don't start from scratch:
+1. Inspect it read-only: `git -C <that path> status`, `git -C <that path> diff`, and its untracked files.
+2. Bring that work into your own checkout: `git -C <path> diff HEAD > <your scratch>/old.patch`, then `git apply` it, and copy the untracked files.
+3. Review what's done, then finish it. Never modify, reset or delete the old worktree.
+4. Use your own branch name `t3/issue-228-message-actions` (the old branch name is taken by that worktree).
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 228 --comments`.
+- Commit each step in plain language, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- The moneo-qa backend and QA port 3100 are shared with other agents: never `npm run qa:reset`, never `docker compose -p moneo-qa down`, never touch the owner's backend (.env, port 3000, project `moneo`). If 3100 is busy with another checkout, wait and retry; never kill a process you didn't start. If `npm ci` stalls, retry it once with `--prefer-offline` before borrowing node_modules.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`; verify-ui skill (light/dark/mobile) with the evidence in the PR.
+- Push and open a PR to `main` (`Closes #228`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bx2c9i2ol</task-id>
+<tool-use-id>toolu_01WKfP9sRmUA4JjtVaWreG7k</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\399c4865fcc91933\75207226-0512-4fb0-bf82-3e0780d0d74c\tasks\bx2c9i2ol.output</output-file>
+<status>completed</status>
+<summary>Background command "Install npm dependencies" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bbg5tjqyk</task-id>
+<tool-use-id>toolu_01EHyFcBunveWYkHYWTBt933</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\399c4865fcc91933\75207226-0512-4fb0-bf82-3e0780d0d74c\tasks\bbg5tjqyk.output</output-file>
+<status>completed</status>
+<summary>Background command "Run lint" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bcgtu5ptz</task-id>
+<tool-use-id>toolu_013hCiAWT6wdGvXAuqGZGqFv</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\399c4865fcc91933\75207226-0512-4fb0-bf82-3e0780d0d74c\tasks\bcgtu5ptz.output</output-file>
+<status>completed</status>
+<summary>Background command "Run typecheck" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bh6fkvvr3</task-id>
+<tool-use-id>toolu_01FyRQkChL517auLDaPnXG5e</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\399c4865fcc91933\75207226-0512-4fb0-bf82-3e0780d0d74c\tasks\bh6fkvvr3.output</output-file>
+<status>completed</status>
+<summary>Background command "Run production build" completed (exit code 0)</summary>
+</task-notification>
