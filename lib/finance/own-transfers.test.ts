@@ -178,3 +178,33 @@ describe("bank context", () => {
     expect(internalMoves([{ ...moves[2], raw: ctx({ payment_type: "top_up" }) }])).toEqual([{ key: "to eur", transactionIds: ["c"], identityId: null }]);
   });
 });
+
+describe("Revolut pockets and exchanges", () => {
+  const ctx = (over: Partial<RawContext> = {}): RawContext => ({ bank_id: null, payment_type: "unknown", bank_code: null, bank_sub_code: null, mcc: null, counterparty_name: null,
+    counterparty_iban: null, counterparty_bic: null, counterparty_ids: [], own_side_ids: [], creditor_id: null, mandate_ref: null, instructed_amount: null,
+    instructed_currency: null, exchange_rate: null, own_account: false, ...over });
+
+  it("moves a pocket leg to an own pocket from the description alone, with one leg visible and without bank data", () => {
+    const into = row("into", "main", -2000n, "2026-10-01", { text: "To EUR MB:3f2c1a90-0000-4000-8000-000000000000" });
+    const out = row("out", "main", 2000n, "2026-10-09", { text: "To EUR", raw: ctx() });
+    expect(findOwnTransfers([into], own).named).toEqual([{ transactionId: "into", account: "pocket" }]);
+    expect(findOwnTransfers([out], own).named).toEqual([{ transactionId: "out", account: "pocket" }]);
+  });
+
+  it("keeps a payment to a named party, a card payment and a person's name as spending", () => {
+    const named = row("named", "main", -2000n, "2026-10-01", { text: "To EUR", counterparty: "Example Shop" });
+    const card = row("card", "main", -2000n, "2026-10-01", { text: "To EUR", raw: ctx({ payment_type: "card" }) });
+    const viaIban = row("iban", "main", -2000n, "2026-10-01", { text: "To EUR", raw: ctx({ counterparty_iban: ELSEWHERE }) });
+    const person = row("person", "main", -2000n, "2026-10-01", { text: "To Alex Example" });
+    const shortName = row("tom", "main", -2000n, "2026-10-01", { text: "To Tom" });
+    expect(findOwnTransfers([named, card, viaIban, person, shortName], own).named).toEqual([]);
+  });
+
+  it("recognises exchange legs by their description and still never invents a missing one", () => {
+    const eur = row("eur", "eur", -10000n, "2026-10-01", { text: "Exchanged to SAR" });
+    const sar = row("sar", "sar", 40000n, "2026-10-01", { text: "Exchanged to EUR", currencyCode: "SAR" });
+    expect(findExchanges([eur, sar])).toEqual({ pairs: [{ outId: "eur", inId: "sar" }], single: [] });
+    expect(findExchanges([eur])).toEqual({ pairs: [], single: ["eur"] });
+    expect(findExchanges([{ ...eur, raw: ctx({ payment_type: "card", counterparty_name: "Example Shop" }) }])).toEqual({ pairs: [], single: [] });
+  });
+});
