@@ -1,0 +1,45 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #188 in Moneo: import ingest slows down superlinearly. With `supabase/tests/import-batch-throughput.mjs` on moneo-qa, 10,000 rows take about 40 times as long as 1,000.
+
+1. Measure first: run `EXPLAIN (ANALYZE, BUFFERS)` on `import_batch_candidates` and `ingest_import_batch` for the 1st batch and the 40th batch. Also check whether an `ANALYZE` after staging flattens the curve.
+2. Find the real cause:
+   - If it's in the SQL or a missing index, add a new ordered migration in supabase/migrations/ with a unique timestamp prefix later than `202611160041`. Never rewrite an applied migration. Keep lib/schema.ts aligned. It must work on the desktop's bundled Postgres, so use no extensions it lacks.
+   - If only the script's measurement is wrong, fix the script and explain why.
+3. Make the throughput script assert a near-linear curve, so the slowdown can't come back.
+4. Results must stay identical: the same transactions, dedup, history and undo.
+
+The database is shared with other agents. Use rollback-only transactions and synthetic data, and note in the PR if concurrent load made the timings noisy.
+
+## RESUME: earlier work may exist
+A stopped agent may have left uncommitted work in `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-b95e1cd8-2631cb5b85fb02a0` (branch `t3/issue-188-import-throughput`).
+- Inspect it read-only (`git -C <path> status`, `git -C <path> diff`) and bring over what's useful.
+- Never modify, reset or delete that worktree.
+- Use your own branch `t3/issue-188-ingest-speed`, created from current `origin/main`.
+- Commit as soon as the earlier work is applied, and after each step.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 188 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Shared moneo-qa backend: never run `npm run qa:reset` or `docker compose -p moneo-qa down`. Never touch the owner's backend (.env, port 3000, project `moneo`).
+- If you apply a migration to the shared QA database for testing, roll it back or revert its recorded version afterwards, so other branches' `test:db` isn't broken.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.**
+- Also run `npm test` and `npm run test:db`. Report 5-second timeouts under load in files you didn't touch; don't change those files.
+- Push and open a PR to `main` (`Closes #188`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bq49989pm</task-id>
+<tool-use-id>toolu_01PB5rLRnUtVrCR7sVLx7jm2</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ae03c42d58d25fe0\a2c6d638-73df-4be0-b0d7-ec1f472a16a0\tasks\bq49989pm.output</output-file>
+<status>completed</status>
+<summary>Background command "Install dependencies" completed (exit code 0)</summary>
+</task-notification>
