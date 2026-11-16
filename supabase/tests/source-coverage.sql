@@ -7,7 +7,7 @@ begin
   insert into public.background_jobs(workspace_id,kind) values(workspace,'financial_review') returning id into denied;
   insert into public.background_jobs(workspace_id,kind) values(workspace,'financial_review') returning id into unknown_job;
   insert into public.background_jobs(workspace_id,kind) values(workspace,'financial_review') returning id into allowed;
-  insert into public.workspace_settings(workspace_id,ai_data_scopes) values(workspace,array['accounts','transactions']);
+  insert into public.workspace_settings(workspace_id,timezone,ai_data_scopes) values(workspace,'Europe/Berlin',array['accounts','transactions']);
   execute 'set local role service_role';
   if public.finish_financial_review(denied,workspace,'Source coverage','Synthetic accepted-only review',
     '{"sourceCoverage":{"observedSourceRows":0,"importStatuses":{"failed":1}},"planning":{"unavailable":"disabled"}}',false)<>'canceled' then

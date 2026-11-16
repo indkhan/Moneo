@@ -7,7 +7,7 @@ import { DELETE, POST } from "./route";
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/service-keys", () => ({ saveServiceKeys: vi.fn(), removeServiceKeys: vi.fn() }));
 const resumeBackedOffAccounts = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/bank/server", async original => ({ ...await original<typeof import("@/lib/bank/server")>(),
+vi.mock("@/lib/service-db", async original => ({ ...await original<typeof import("@/lib/service-db")>(),
   serviceDb: () => ({ from: () => ({ update: () => ({ eq: () => ({ is: () => ({ not: resumeBackedOffAccounts }) }) }) }) }) }));
 vi.mock("@/lib/bank/enable-banking", async original => ({ ...await original<typeof import("@/lib/bank/enable-banking")>(), checkEnableBankingCredentials: vi.fn() }));
 

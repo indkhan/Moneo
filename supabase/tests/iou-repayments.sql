@@ -4,6 +4,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid:=gen_random_
 begin
   insert into auth.users(id,email) values(actor,'qa-repay-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Repay cash','EUR');
   insert into public.wealth_items(id,workspace_id,kind,name,currency_code,amount_minor,as_of) values(first_loan,workspace,'asset','Lent to Sam','EUR',10000,'2026-09-01'),(second_loan,workspace,'asset','Lent to Sam Two','EUR',10000,'2026-09-01');

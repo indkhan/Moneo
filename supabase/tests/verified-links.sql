@@ -4,6 +4,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; eur uuid:=gen_random_uuid
 begin
   insert into auth.users(id,email) values(actor,'qa-links-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   insert into public.accounts(id,workspace_id,name,currency_code) values(eur,workspace,'EUR source','EUR'),(usd,workspace,'USD source','USD');
   insert into public.fx_rates(id,workspace_id,from_currency,to_currency,rate_text,rate_date,source) values(rate,workspace,'EUR','USD','1.1','2026-10-01','Owned dated test evidence');

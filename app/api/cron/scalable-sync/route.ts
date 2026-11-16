@@ -1,5 +1,5 @@
 import { cronRoute } from "@/lib/cron";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { calendarDate } from "@/lib/finance/calendar";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { scalableConfigured } from "@/lib/scalable/server";

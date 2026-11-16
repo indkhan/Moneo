@@ -37,7 +37,7 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("freezes owned
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.start_financial_investigation($1,$2::jsonb,null)`, [randomUUID(), sp.json({...specification, budget: {...specification.budget, maxQueries: 500}})]))).rejects.toMatchObject({code: "22023"});
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.start_financial_investigation($1,$2::jsonb,null)`, [randomUUID(), sp.json({...specification, allowedScopes: ["imports"]})]))).rejects.toMatchObject({code: "22023"});
       await tx.unsafe("reset role");
-      await tx`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspace},array['accounts','transactions','planning'])
+      await tx`insert into public.workspace_settings(workspace_id,timezone,ai_data_scopes) values(${workspace},'Europe/Berlin',array['accounts','transactions','planning'])
         on conflict(workspace_id) do update set ai_data_scopes=excluded.ai_data_scopes`;
       await tx.unsafe("set local role authenticated");
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.start_financial_investigation($1,$2::jsonb,null)`, [randomUUID(), sp.json(specification)]))).rejects.toMatchObject({code: "42501"});
@@ -72,7 +72,7 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("freezes owned
       expect(await finish("foreign-run")).toBe("canceled");
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.finish_financial_investigation($1,$2,'run','Review','Supported review',$3::jsonb,false)`, [first.jobId, workspace, sp.json({...evidence, verification: {receiptIds: []}})]))).rejects.toMatchObject({code: "22023"});
       await tx.unsafe("reset role");
-      await tx`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspace},array['accounts','transactions','planning'])
+      await tx`insert into public.workspace_settings(workspace_id,timezone,ai_data_scopes) values(${workspace},'Europe/Berlin',array['accounts','transactions','planning'])
         on conflict(workspace_id) do update set ai_data_scopes=excluded.ai_data_scopes`;
       await tx.unsafe("set local role service_role");
       expect(await finish()).toBe("canceled");

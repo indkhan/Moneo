@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { start } from "workflow/api";
 import { enableBankingClient, EnableBankingError, type BankTransaction, type PsuContext } from "@/lib/bank/enable-banking";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { claimBankSync } from "@/lib/bank/sync-lease";
 import { importFile } from "@/workflows/import-file";
 import { startSyncAgentRun } from "@/lib/import/follow-up";
@@ -9,7 +9,7 @@ import { retryFirstBankSync, syncBankConnection } from "./bank-sync";
 
 vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/import-file", () => ({ importFile: vi.fn() }));
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 vi.mock("@/lib/import/follow-up", () => ({ startSyncAgentRun: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", async original => ({ ...await original<typeof import("@/lib/bank/enable-banking")>(), enableBankingClient: vi.fn() }));
 
@@ -96,6 +96,14 @@ it("syncing the same bank data twice adds no second import", async () => {
   expect(tables.bank_connection_accounts[0].last_booked_on).toBe("2026-10-02");
   expect(bank.bookedTransactions).toHaveBeenLastCalledWith("u1", "2026-09-25", PSU);
   expect(tables.bank_connections[0]).toMatchObject({ status: "active", last_error: null });
+});
+
+it("marks a transfer to an own account whose declared IBAN is spaced and contains the letter s", async () => {
+  tables.own_account_identifiers.push({ workspace_id: "w1", iban: "ES91 2100 0418 4502 0005 1332" });
+  bank.bookedTransactions.mockResolvedValue([
+    { ...tx("b", "2026-10-02", "7.25"), bank_transaction_code: { code: "TRANSFER" }, creditor: { name: "Savings" }, creditor_account: { iban: "ES9121000418450200051332" } }]);
+  await sync();
+  expect(tables.bank_transaction_raw.map(row => row.own_account)).toEqual([true]);
 });
 
 it("stores the bank's full data once per CSV row, and a repeated window adds none", async () => {

@@ -1,6 +1,6 @@
 do $$
 declare actor uuid:=gen_random_uuid(); workspace uuid; imported uuid:=gen_random_uuid(); account uuid:=gen_random_uuid(); other_workspace uuid;
-  payload jsonb; staged jsonb; candidate jsonb; result jsonb; route_source uuid:=gen_random_uuid(); second_import uuid:=gen_random_uuid(); version integer;
+  payload jsonb; staged jsonb; candidate jsonb; result jsonb; route_source uuid:=gen_random_uuid(); second_import uuid:=gen_random_uuid(); version integer; race jsonb;
 begin
   insert into auth.users(id,email) values(actor,'qa-batch-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
@@ -51,6 +51,14 @@ begin
   candidate:=public.import_batch_candidates(second_import,workspace,1,0);
   if candidate->0->'candidates'->0->>'stableExternalMatch'<>'true' then raise exception 'Batch stable matching evidence differs'; end if;
   version:=(candidate->0->'candidates'->0->>'version')::integer;
+  foreach race in array array[jsonb_build_object('externalId','batch-other-external'),jsonb_build_object('description','Batch other synthetic')] loop
+    begin
+      perform public.ingest_import_row(second_import,workspace,1,account,payload||race||jsonb_build_object('action','new','transactionId',gen_random_uuid()));
+      raise exception 'Row overlapping an earlier import posted as new: %',race using errcode='ZX001';
+    exception when sqlstate 'PT409' then
+      if sqlerrm<>'Import candidates changed; retry with current evidence' then raise; end if;
+    end;
+  end loop;
   begin perform public.ingest_import_batch(second_import,workspace,1,0,jsonb_build_array(jsonb_build_object('rowNumber',2,'action','matched','transactionId',candidate->0->'candidates'->0->>'id','expectedTransactionVersion',version+1))); raise exception 'Stale match posted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   perform public.ingest_import_batch(second_import,workspace,1,0,jsonb_build_array(jsonb_build_object('rowNumber',2,'action','matched','transactionId',candidate->0->'candidates'->0->>'id','expectedTransactionVersion',version)));
   if (select count(*) from public.transactions where workspace_id=workspace)<>1 or (select matched_rows from public.imports where id=second_import)<>1 then raise exception 'Batch overlap duplicated canonical posting'; end if;

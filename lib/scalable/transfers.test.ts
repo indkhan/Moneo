@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readAllTransfers, transferRows } from "./transfers";
 
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 vi.mock("./server", () => ({ withScalable: vi.fn(), scalableConfigured: () => true }));
 
 const cash = (id: string, transactionType: string, amount: string, lastEventAt = "2026-11-01T00:00:00.000Z", over = {}) => ({ id, status: "SETTLED", currency: "EUR", isCancellation: false, lastEventAt, description: "Note", cash: { transactionType, amount }, ...over });

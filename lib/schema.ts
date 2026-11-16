@@ -1065,7 +1065,7 @@ export const spendingPlans = pgTable("spending_plans", {
   limitMinor: bigint("limit_minor", { mode: "bigint" }).notNull(),
   enabled: boolean("enabled").notNull().default(true),
   rollover: boolean("rollover").notNull().default(false),
-  rolloverFrom: date("rollover_from").notNull().default(sql`date_trunc('month',now() at time zone 'Europe/Berlin')::date`),
+  rolloverFrom: date("rollover_from").notNull(),
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1221,7 +1221,7 @@ export const transactionBatches = pgTable("transaction_batches", {
 
 export const workspaceSettings = pgTable("workspace_settings", {
   workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
-  timezone: text("timezone").notNull().default("Europe/Berlin"),
+  timezone: text("timezone").notNull(),
   locale: text("locale").notNull().default("en-GB"),
   theme: text("theme").notNull().default("system"),
   voice: text("voice").notNull().default("marin"),
@@ -1232,6 +1232,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   summaryTime: text("summary_time").notNull().default("09:00"),
   artifactScalableData: text("artifact_scalable_data").notNull().default("snapshot"),
   speechEngine: text("speech_engine").notNull().default("openai"),
+  uncategorizedSkippedAt: timestamp("uncategorized_skipped_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),

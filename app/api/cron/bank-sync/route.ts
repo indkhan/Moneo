@@ -1,6 +1,6 @@
 import { cronRoute } from "@/lib/cron";
 import { enableBankingConfigured } from "@/lib/bank/enable-banking";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { startBankSync } from "@/lib/bank/start-sync";
 import { ALIGNED_SPACING_MS, accountDue } from "@/lib/bank/sync-state";
 
