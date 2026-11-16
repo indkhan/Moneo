@@ -18,6 +18,9 @@ import { loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/fi
 import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth, netWorthSeries } from "@/lib/finance/net-worth";
 import { describeMonthSplit, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
 import { transitOn } from "@/lib/finance/transit";
+import { chartedIsins } from "@/lib/scalable/charts";
+import { scalableItemId } from "@/lib/scalable/portfolio";
+import { PositionDrawer } from "./position-drawer";
 
 export const metadata = { title: "Wealth" };
 
@@ -31,7 +34,7 @@ function sum(items: WealthItem[]) {
   return totals;
 }
 
-export default async function WealthPage({ searchParams }: { searchParams?: Promise<{ removed?: string; history?: string }> } = {}) {
+export default async function WealthPage({ searchParams }: { searchParams?: Promise<{ removed?: string; history?: string; position?: string }> } = {}) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/setup"); }
   const { supabase, workspace } = context;
@@ -40,7 +43,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
   const itemsPromise = loadWealthItems(supabase, workspace.id, true), eventsPromise = loadWealthEvents(db, workspace.id), balancesPromise = loadBalanceEvidence(db, workspace.id, new Date().toISOString());
-  const [items, accounts, assumptions, pending, events, scalable, netWorthEvidence, imports, repayments] = await Promise.all([
+  const [items, accounts, assumptions, pending, events, scalable, netWorthEvidence, imports, repayments, charted] = await Promise.all([
     itemsPromise,
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
@@ -51,6 +54,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     loadNetWorthEvidence(db, workspace, { balances: balancesPromise, items: itemsPromise, events: eventsPromise }),
     loadImportStates(db, workspace.id),
     loadRepaymentLinks(db, workspace.id),
+    chartedIsins(db, workspace.id),
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
   const active = items.filter(item => !item.removed_at);
@@ -72,6 +76,8 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const history = params.history === "all" ? events : events.slice(0, HISTORY);
   const portfolio = (scalable.data?.portfolio ?? null) as ScalablePortfolio | null;
   const scalableIds = new Set(portfolio?.itemIds ?? []), knownIds = new Set([...(portfolio?.knownItemIds ?? []), ...scalableIds]);
+  const positionLinks = Object.fromEntries([...charted].map(isin => [scalableItemId(workspace.id, `isin:${isin}`), isin]));
+  const openIsin = params.position && positionLinks[scalableItemId(workspace.id, `isin:${params.position}`)] ? params.position : null;
   const scalableHistory = (() => {
     if (!portfolio) return [];
     const valuations = allValuations.filter(row => knownIds.has(row.item_id));
@@ -114,7 +120,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
 
     {portfolio && <ScalableInvestments portfolio={portfolio} positions={active.filter(item => scalableIds.has(item.id) && item.kind === "holding").sort((a, b) => Number(BigInt(b.amount_minor) - BigInt(a.amount_minor)))}
       history={[...scalableCalculated.map(row => ({ date: row.on_date, value: withReturns(row.on_date, BigInt(row.total_minor), row.currency_code) })), ...scalableHistory]} calculatedBefore={scalableCalculated.length ? calculated.before : null}
-      historyFailed={scalable.data?.history_status === "failed"} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} />}
+      historyFailed={scalable.data?.history_status === "failed"} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} positionLinks={positionLinks} />}
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>
 
@@ -148,5 +154,6 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
         <span className="block text-xs text-muted-foreground">Valued {after.as_of} · saved {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone_at ? " · Undone" : ""}</span></span>
         {!event.undone_at && current && <SafeForm action={undoWealthEventSafely}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={current.version} /><button aria-label={`Undo ${after.name} change`} className="min-h-11 text-sm text-muted-foreground hover:text-foreground">Undo</button></SafeForm>}</li>;
     })}</ul>{history.length < events.length && <a href="/money/wealth?history=all#wealth-history" className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-brand underline">Show all {events.length} changes</a>}{!events.length && <p className="mt-2 text-sm text-muted-foreground">Every add, edit and removal appears here with undo.</p>}</details>
+    {params.position ? <PositionDrawer key={params.position} isin={params.position} item={openIsin ? items.find(item => item.id === scalableItemId(workspace.id, `isin:${openIsin}`) && !item.removed_at) ?? null : null} /> : null}
   </main>;
 }

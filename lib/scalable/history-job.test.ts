@@ -23,7 +23,7 @@ const setup = () => {
   vi.mocked(loadWealthEvents).mockResolvedValue([{ id: "e", item_id: "sold", before: null, created_at: "2026-11-03T10:00:00Z", undone_at: null, after: item("sold", "2026-11-03") }] as never);
   vi.mocked(loadWealthItems).mockResolvedValue([item("cash", "2026-11-05"), item("manual", "2020-01-01")] as never);
   vi.mocked(withScalable).mockImplementation(async (_id, _workspace, work) => work({} as never));
-  vi.mocked(readHistoryInput).mockResolvedValue({ synthetic: true } as never);
+  vi.mocked(readHistoryInput).mockResolvedValue({ synthetic: true, rows: [{ id: "buy", at: "2026-10-01T08:00:00Z", kind: "security", isin: "IE00B4L5Y983", side: "BUY", quantity: "2", amountText: "-3" }, { id: "dep", at: "2026-10-01T08:00:00Z", kind: "cash", amountText: "5" }] } as never);
   return { rpc, update, upsert };
 };
 
@@ -36,6 +36,8 @@ it("saves a passing run and stops before the first synced value, ignoring valuat
   expect(details.known.get("t")).toEqual({ isin: "I", price: "1.5" });
   await details.remember("u", { isin: "J", price: null });
   expect(upsert).toHaveBeenCalledWith({ workspace_id: "w", provider_id: "u", isin: "J", price_text: null });
+  expect(rpc).toHaveBeenCalledWith("save_scalable_charts", { p_connection_id: "c", p_charts: [], p_held: null,
+    p_trades: [{ provider_id: "buy", isin: "IE00B4L5Y983", side: "BUY", occurred_at: "2026-10-01T08:00:00Z", quantity_text: "2" }] });
   expect(rpc).toHaveBeenCalledWith("replace_scalable_value_history", { p_connection_id: "c", p_checked_on: "2026-11-08",
     p_rows: [{ on_date: "2026-11-01", currency_code: "EUR", securities_minor: "1", crypto_minor: "2", cash_minor: "3", total_minor: "6" }] });
   expect(update).not.toHaveBeenCalled();
@@ -46,7 +48,7 @@ it("saves nothing and records the reason when the check fails", async () => {
   const { rpc, update } = setup();
   vi.mocked(calculateHistory).mockReturnValue({ ok: false, reason: "Shares of X do not match" });
   await expect(rebuildScalableHistory(connection, "UTC", "2026-11-08")).resolves.toBe("failed");
-  expect(rpc).not.toHaveBeenCalled();
+  expect(rpc).not.toHaveBeenCalledWith("replace_scalable_value_history", expect.anything());
   expect(update).toHaveBeenCalledWith({ history_status: "failed", history_checked_on: "2026-11-08", history_error: "Shares of X do not match" });
 });
 

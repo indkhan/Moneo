@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { serviceDb } from "@/lib/service-db";
+import { removeCharts } from "@/lib/scalable/charts";
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -12,5 +13,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     .eq("id", id.data).eq("workspace_id", context.workspace.id).select("id");
   if (revoked.error) return NextResponse.json({ error: "Scalable could not be disconnected. Try again." }, { status: 500 });
   if (!revoked.data.length) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  try { await removeCharts(context.workspace.id); } catch { return NextResponse.json({ error: "Scalable was disconnected, but its stored charts could not be removed. Try again." }, { status: 500 }); }
   return NextResponse.json({ status: "revoked" });
 }

@@ -131,6 +131,10 @@ begin
   if to_regclass(format('%I.scalable_trade_details',app_schema)) is not null then
     insert into public.scalable_trade_details(workspace_id,provider_id,isin,price_text) values(seed_ws,'reset-trade','XS0000000001','1.5');
   end if;
+  if to_regclass(format('%I.scalable_security_charts',app_schema)) is not null then
+    insert into public.scalable_security_charts(workspace_id,isin,timeframe,currency_code,points,fetched_at) values(seed_ws,'IE00B4L5Y983','one_month','EUR','[{"at":"2026-10-01T00:00:00Z","price":"1.5"}]','2026-10-02T00:00:00Z');
+    insert into public.scalable_security_trades(workspace_id,provider_id,isin,side,occurred_at,quantity_text) values(seed_ws,'reset-chart-trade','IE00B4L5Y983','BUY','2026-10-01T00:00:00Z','2');
+  end if;
   if to_regclass(format('%I.scalable_value_history',app_schema)) is not null then
     insert into public.scalable_value_history(workspace_id,on_date,currency_code,securities_minor,crypto_minor,cash_minor,total_minor) values(seed_ws,'2026-10-01','EUR',1,2,3,6);
   end if;

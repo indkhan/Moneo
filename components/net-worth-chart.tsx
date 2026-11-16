@@ -2,10 +2,11 @@
 import { useId, useState } from "react";
 
 export type NetWorthPoint = { date: string; label: string; amount: string; y: number; uncertain?: string };
+export type ChartMarker = { index: number; side: "BUY" | "SELL"; label: string };
 
 const WIDTH = 640, HEIGHT = 140, PAD = 6;
 
-export function NetWorthChart({ points, label }: { points: NetWorthPoint[]; label: string }) {
+export function NetWorthChart({ points, label, markers = [] }: { points: NetWorthPoint[]; label: string; markers?: ChartMarker[] }) {
   const [active, setActive] = useState<number | null>(null);
   const gradient = useId();
   const values = points.map(point => point.y);
@@ -26,6 +27,9 @@ export function NetWorthChart({ points, label }: { points: NetWorthPoint[]; labe
       {points.map((point, index) => point.uncertain ? <line key={point.date} data-uncertain="true" x1={x(index)} x2={x(index)} y1={0} y2={HEIGHT} stroke="var(--color-warning)" strokeOpacity={0.45} strokeDasharray="2 3" vectorEffect="non-scaling-stroke" /> : null)}
       {active !== null && <line x1={x(active)} x2={x(active)} y1={0} y2={HEIGHT} stroke="var(--color-muted-foreground)" strokeOpacity={0.5} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />}
     </svg>
+    {markers.map((marker, order) => <span key={order} aria-hidden="true" title={marker.label} data-marker={marker.side}
+      className={`pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card ${marker.side === "BUY" ? "bg-success" : "bg-danger"}`}
+      style={{ left: `${(x(marker.index) / WIDTH) * 100}%`, top: `${(y(points[marker.index].y) / HEIGHT) * 100}%` }} />)}
     {shown && <>
       <span aria-hidden="true" className="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-brand shadow"
         style={{ left: `${(x(active!) / WIDTH) * 100}%`, top: `${(y(shown.y) / HEIGHT) * 100}%` }} />
