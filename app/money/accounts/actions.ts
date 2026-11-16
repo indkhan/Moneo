@@ -23,7 +23,7 @@ export async function editAccount(_state: { error?: string }, form: FormData): P
   try {
   const { supabase, workspace } = await requireWorkspace();
   if (form.get("operation") === "archive") {
-    const evidence = await loadBalanceEvidence(supabase, workspace.id);
+    const evidence = await loadBalanceEvidence(supabase, workspace.id, new Date().toISOString());
     const account = resolveBalances(evidence.accounts.filter(row => row.id === form.get("accountId")), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
     if (account?.balance.status === "ambiguous") throw new Error("Settle this account's balance before archiving it");
     if (account && BigInt(account.balance.amount_minor ?? "0") !== 0n) throw new Error("This account still holds money. Say what happens to it first.");
@@ -49,7 +49,7 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
     const { supabase, workspace } = await requireWorkspace();
     const requestId = z.uuid().parse(form.get("requestId"));
     const answer = closingAnswerSchema.parse({ outcome: form.get("outcome"), ...(form.get("targetAccountId") ? { targetAccountId: form.get("targetAccountId") } : {}) });
-    const evidence = await loadBalanceEvidence(supabase, workspace.id);
+    const evidence = await loadBalanceEvidence(supabase, workspace.id, new Date().toISOString());
     const account = resolveBalances(evidence.accounts.filter(row => row.id === accountId), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
     if (!account || account.archived_at) throw new Error("Account not found");
     if (account.balance.amount_minor === null) throw new Error("Settle this account's balance before archiving it");

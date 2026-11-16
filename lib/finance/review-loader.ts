@@ -14,7 +14,7 @@ import { toolSourceVersion } from "./tool-evidence";
 
 export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, settings: WorkspaceSettings, query?: unknown) {
   requireAiScope(settings, "accounts", "transactions");
-  const balances = await loadBalanceEvidence(db, workspace.id);
+  const balances = await loadBalanceEvidence(db, workspace.id, new Date().toISOString());
   const to = calendarDate(balances.asOf, settings.timezone);
   const from = new Date(Date.parse(`${to}T00:00:00Z`) - 89 * 86400000).toISOString().slice(0, 10);
   const comparisonFrom = new Date(Date.parse(`${from}T00:00:00Z`) - 90 * 86400000).toISOString().slice(0, 10);

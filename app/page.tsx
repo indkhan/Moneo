@@ -60,7 +60,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const display = displayFormat(locale, workspace.timezone);
   const { money } = display;
   const today = calendarDate(new Date(), workspace.timezone);
-  const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id);
+  const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id, new Date().toISOString());
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
   const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
