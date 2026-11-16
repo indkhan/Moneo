@@ -22,7 +22,7 @@ const money: RailItem[] = [
   { label: "Transactions", href: "/money/transactions", icon: ArrowLeftRight, items: [
     { label: "Ledger", href: "/money/transactions", icon: ArrowLeftRight, go: "t" },
     { label: "Organization", href: "/money/organization", icon: Tags, go: "o" },
-    { label: "AI organizer", href: "/money/organize", icon: WandSparkles, about: "What the AI labelled, and what needs you" },
+    { label: "AI organizer", href: "/money/organize", icon: WandSparkles, about: "What the AI labelled, and what you told it a payee is" },
     { label: "Investigations", href: "/money/investigations", icon: SearchCheck },
     { label: "Import", href: "/import", icon: Upload, go: "i" },
   ] },

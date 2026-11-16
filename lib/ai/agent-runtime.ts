@@ -11,7 +11,7 @@ import { organizationDescriptionKey, organizationDisplayName } from "@/lib/impor
 import { StopWork, retryLeftoversAt } from "@/lib/organize/batcher";
 import { calibration } from "@/lib/organize/calibration";
 import { loadJudgedLabels, loadOrganizeInput } from "@/lib/organize/load";
-import { answersSchema, organize, type Ask, type AskRequest, type Decided, type Label, type OrganizeInput, type Source } from "@/lib/organize/organizer";
+import { answersSchema, organize, type Ask, type AskRequest, type Decided, type Label, type OrganizeInput, type OrganizeRow, type Source } from "@/lib/organize/organizer";
 import { proposeRepayments } from "@/lib/ai/iou-proposals";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
@@ -132,7 +132,7 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count} ${cou
 const rowCount = (items: { rows: unknown[] }[]) => items.reduce((sum, item) => sum + item.rows.length, 0);
 
 function organizeProposals(item: Decided, index: number, input: OrganizeInput): Proposal<"categorize">[] {
-  const decision = item.decision as Label;
+  const decision = item.decision;
   const name = item.identity?.displayName ?? (organizationDisplayName(organizationDescriptionKey(item.rows[0].description)) || item.rows[0].description);
   const target = [decision.merchantId ? input.merchants.get(decision.merchantId) ?? "known merchant" : decision.merchantName,
     decision.categoryId ? input.categories.get(decision.categoryId) ?? "known category" : null].filter(Boolean).join(" · ");
@@ -151,14 +151,6 @@ function organizeProposals(item: Decided, index: number, input: OrganizeInput): 
       confidence: decision.confidence, notes: [] });
   }
   return proposals;
-}
-
-function questionText(item: Decided, input: OrganizeInput) {
-  const decision = item.decision;
-  if (decision.kind === "question") return decision.question.slice(0, 500);
-  const name = item.identity?.displayName ?? item.rows[0].description;
-  const guess = [decision.categoryId ? input.categories.get(decision.categoryId) : decision.newCategory, decision.merchantId ? input.merchants.get(decision.merchantId) : decision.merchantName].filter(Boolean).join(" · ");
-  return `${name.slice(0, 80)}: the AI thinks “${guess}” (${decision.confidence}% sure: ${decision.reason.slice(0, 200)}). Is that right?`.slice(0, 500);
 }
 
 async function categorizer(context: Context): Promise<{ proposals: Proposal[]; summary: string }> {
@@ -192,25 +184,19 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
   if (retryAt) checked(await db.from("agent_runs").update({ organize_after: retryAt }).eq("id", runId).eq("workspace_id", workspace.id));
   for (const failure of result.failed.slice(0, 3)) await report(context, { type: "note", text: `The AI failed on ${plural(failure.rows.length, "row")} (${failure.error instanceof Error ? failure.error.message : String(failure.error)}); they wait for the next run` });
 
-  const labels: Decided[] = [], asking: Decided[] = [];
+  const labels: Decided[] = [], unsure: OrganizeRow[] = [...result.unsure];
   for (const item of result.decided) {
-    const level = item.decision.kind === "label" ? aiConfidence(item.decision.confidence) : "low";
-    const applies = item.decision.kind === "label" && (item.decision.source !== "ai" || level === "high" || (level === "medium" && calibrated.mediumAllowed));
-    (applies ? labels : asking).push(item);
+    const level = aiConfidence(item.decision.confidence);
+    const applies = item.decision.source !== "ai" || level === "high" || (level === "medium" && calibrated.mediumAllowed);
+    if (applies) labels.push(item); else unsure.push(...item.rows);
   }
-  const unplaced = new Set(await withNewCategories(context, input.categories, labels.map(item => item.decision as Label)));
-  asking.push(...labels.filter(item => unplaced.has(item.decision as Label)));
-  const applied = labels.filter(item => !unplaced.has(item.decision as Label));
-  let raised = 0;
-  for (const item of asking) {
-    const { error } = await db.rpc("raise_organize_question", { p_workspace: workspace.id, p_identity_key: item.key.slice(0, 1000), p_identity_id: item.identity?.id ?? null,
-      p_question: questionText(item, input), p_transaction_ids: item.rows.slice(0, 500).map(row => row.id), p_created_by: "ai" });
-    if (error) await report(context, { type: "note", text: `A question could not be saved: ${error.message}` }); else raised++;
-  }
+  const unplaced = new Set(await withNewCategories(context, input.categories, labels.map(item => item.decision)));
+  unsure.push(...labels.filter(item => unplaced.has(item.decision)).flatMap(item => item.rows));
+  const applied = labels.filter(item => !unplaced.has(item.decision));
   const proposals = applied.flatMap((item, index) => organizeProposals(item, index, input));
-  const own = rowCount(applied.filter(item => (item.decision as Label).source !== "ai"));
+  const own = rowCount(applied.filter(item => item.decision.source !== "ai"));
   const left = result.left.length + rowCount(result.failed);
-  return { proposals, summary: `${plural(input.rows.length, "row")} read: ${rowCount(applied)} labelled (${own} from your rules, memory and the bank's data), ${rowCount(asking)} in ${plural(raised, "question")} for you${left ? `, ${left} left for the next run` : ""}; ${plural(result.calls, "AI call")}` };
+  return { proposals, summary: `${plural(input.rows.length, "row")} read: ${rowCount(applied)} labelled (${own} from your rules, memory and the bank's data), ${unsure.length} too uncertain to label${left ? `, ${left} left for the next run` : ""}; ${plural(result.calls, "AI call")}` };
 }
 
 async function recurring(context: Context) {

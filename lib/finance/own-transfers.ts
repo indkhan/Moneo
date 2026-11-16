@@ -5,8 +5,6 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { loadRawContext, type RawContext } from "@/lib/bank/raw-context";
-import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
-import { isInternalMove } from "@/lib/organize/identity";
 import { wealthAmount } from "./wealth";
 import { closingMovedTo } from "./account-closing";
 import type { BankLeg } from "./transit";
@@ -130,21 +128,6 @@ export function uncertainPairs(rows: TransferCandidate[]) {
     const ins = open.filter(into => matches(out, into));
     return ins.length === 1 && open.filter(other => matches(other, ins[0])).length === 1 ? [{ outId: out.id, inId: ins[0].id }] : [];
   });
-}
-
-export function internalMoves(rows: TransferCandidate[]) {
-  const groups = new Map<string, TransferCandidate[]>();
-  for (const row of rows) {
-    const key = organizationDescriptionKey(row.text ?? "");
-    if (!isInternalMove(row.raw) || key.length < 3) continue;
-    groups.set(key, [...groups.get(key) ?? [], row]);
-  }
-  const bothWays = (items: TransferCandidate[]) => items.some(a => a.amountMinor < 0n && items.some(b => b.amountMinor > 0n && b.accountId === a.accountId));
-  return [...groups].filter(([, items]) => bothWays(items) || items.some(item => ["transfer", "top_up"].includes(item.raw!.payment_type)))
-    .map(([key, items]) => {
-      const identities = new Set(items.map(item => item.identityId ?? null));
-      return { key, transactionIds: items.map(item => item.id).sort().slice(0, 500), identityId: identities.size === 1 ? [...identities][0] : null };
-    }).sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export const CASH_CARD_DAYS = 30;
@@ -309,15 +292,6 @@ async function proposePairs(db: SupabaseClient, workspaceId: string, pairs: { ou
   return data?.length ?? 0;
 }
 
-async function askAboutInternalMoves(db: SupabaseClient, workspaceId: string, moves: ReturnType<typeof internalMoves>) {
-  for (const move of moves) {
-    const { error } = await db.rpc("raise_organize_question", { p_workspace: workspaceId, p_identity_key: `internal:${move.key}`, p_identity_id: move.identityId,
-      p_question: `"${organizationDisplayName(move.key)}" moves money with nobody else on the other side. What is it?`, p_transaction_ids: move.transactionIds, p_created_by: "system" });
-    if (error) throw new Error(error.message);
-  }
-  return moves.length;
-}
-
 export function withBankContext(rows: TransferCandidate[], raw: Map<string, RawContext>) {
   for (const row of rows) {
     row.raw = raw.get(row.id);
@@ -377,10 +351,9 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
   const unproven = uncertainPairs(rows.filter(row => !handled.has(row.id)));
   const pairCards = await proposePairs(db, workspaceId, unproven, byId, accounts ?? []);
   for (const pair of unproven) { handled.add(pair.outId); handled.add(pair.inId); }
-  const questions = await askAboutInternalMoves(db, workspaceId, internalMoves(rows.filter(row => !handled.has(row.id))));
   const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own);
   const cashCards = await proposeCashWithdrawals(db, workspaceId, [...rows.filter(row => !handled.has(row.id) || named.some(item => item.transactionId === row.id && item.account === "cash")), ...transfers]);
-  return { linked, marked, skipped, suggested: suggested + pairCards, cashCards, questions };
+  return { linked, marked, skipped, suggested: suggested + pairCards, cashCards };
 }
 
 export async function confirmOwnAccount(db: SupabaseClient, workspaceId: string, transactionId: string, name: string) {

@@ -21,5 +21,5 @@ export function calibration(judged: boolean[]): Calibration {
   const accuracy = window.filter(Boolean).length / window.length;
   const mediumAllowed = accuracy >= MIN_ACCURACY;
   return { mediumAllowed, accuracy, judged: window.length,
-    reason: mediumAllowed ? null : `Only ${Math.floor(accuracy * 100)}% of the last ${window.length} AI labels you checked were right, so medium-confidence labels now wait for you; only high-confidence ones are applied` };
+    reason: mediumAllowed ? null : `Only ${Math.floor(accuracy * 100)}% of the last ${window.length} AI labels you checked were right, so medium-confidence labels are not applied now; only high-confidence ones are` };
 }

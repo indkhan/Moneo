@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { safely, type SafeState } from "@/lib/safe-action";
-import { answerQuestion, confirmLabels, dismissQuestion, removeMemory, setMemory, undoAnswer, undoLabels } from "@/lib/organize/owner";
+import { confirmLabels, removeMemory, setMemory, undoAnswer, undoLabels } from "@/lib/organize/owner";
 
 const choice = z.union([z.uuid(), z.literal("")]).transform(value => value || null);
 const done = (tab: string, params: Record<string, string | number> = {}): never => {
@@ -13,26 +13,10 @@ const done = (tab: string, params: Record<string, string | number> = {}): never 
   redirect(`/money/organize?${new URLSearchParams({ tab, ...Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])) })}`);
 };
 
-async function answer(form: FormData) {
-  const { supabase } = await requireWorkspace();
-  const input = z.object({ question: z.uuid(), identity: z.uuid(), category: choice, merchant: choice }).parse(Object.fromEntries(form));
-  if (!input.category && !input.merchant) throw new Error("Choose a category or a merchant");
-  const result = await answerQuestion(supabase, { questionId: input.question, identityId: input.identity, categoryId: input.category, merchantId: input.merchant });
-  done("needs", { labelled: result.applied });
-}
-export const answerSafely = async (_state: SafeState, form: FormData) => safely(form, answer);
-
-async function dismiss(form: FormData) {
-  const { supabase } = await requireWorkspace();
-  await dismissQuestion(supabase, z.uuid().parse(form.get("question")));
-  done("needs");
-}
-export const dismissSafely = async (_state: SafeState, form: FormData) => safely(form, dismiss);
-
 async function undoAnswerAction(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   await undoAnswer(supabase, workspace.id, z.uuid().parse(form.get("batch")));
-  done("needs", { undoneAnswer: 1 });
+  done("memory", { undoneAnswer: 1 });
 }
 export const undoAnswerSafely = async (_state: SafeState, form: FormData) => safely(form, undoAnswerAction);
 

@@ -22,14 +22,14 @@ function input(): OrganizeInput {
   };
 }
 
-it("ends every row with a label or a question: skipped answers are asked again once, then become questions", async () => {
+it("never turns a row into a question: skipped answers are asked again once, then the rows stay unlabelled", async () => {
   const prompts: string[] = [];
   const ask = vi.fn(async ({ prompt }: AskRequest) => {
     prompts.push(prompt);
     const { items } = JSON.parse(prompt.slice(prompt.indexOf("{"))) as { items: { ref: string; who: { name: string } }[] };
     const retry = prompt.startsWith("Your last answer");
     return { answers: items.flatMap(item => {
-      const answer = { ref: item.ref, decision: "label", category: "c1", newCategory: null, merchant: item.who.name, confidence: 90, reason: "Supermarket", question: null };
+      const answer = { ref: item.ref, category: "c1", newCategory: null, merchant: item.who.name, confidence: 90, reason: "Supermarket" };
       if (item.who.name === "Northstar Market") return [answer];
       if (item.who.name === "Bistro Vela") return retry ? [{ ...answer, category: "c2", confidence: 70 }] : [];
       if (item.who.name === "Glanzwerk") return [{ ...answer, category: "c99" }];
@@ -40,23 +40,22 @@ it("ends every row with a label or a question: skipped answers are asked again o
 
   expect(ask).toHaveBeenCalledTimes(2);
   const decided = new Map(result.decided.flatMap(item => item.rows.map(row => [row.id, item.decision] as const)));
-  expect(result.decided.flatMap(item => item.rows).length).toBe(8);
-  expect(decided.size).toBe(8);
+  expect(result.decided.flatMap(item => item.rows).length).toBe(6);
+  expect(decided.size).toBe(6);
   expect(result.left).toEqual([]);
+  expect(result.unsure.map(row => row.id).sort()).toEqual([id(4), id(5)]);
   expect(decided.get(id(6))).toMatchObject({ kind: "label", source: "rule", categoryId: dining });
   expect(decided.get(id(7))).toMatchObject({ kind: "label", source: "memory", categoryId: dining });
   expect(decided.get(id(8))).toMatchObject({ kind: "label", source: "system", categoryId: groceries, merchantName: "Freshkorb" });
   expect(decided.get(id(1))).toMatchObject({ kind: "label", source: "ai", categoryId: groceries, merchantName: "Northstar Market", confidence: 90 });
   expect(decided.get(id(2))).toBe(decided.get(id(1)));
   expect(decided.get(id(3))).toMatchObject({ kind: "label", categoryId: dining, confidence: 70 });
-  expect(decided.get(id(4))).toMatchObject({ kind: "question" });
-  expect(decided.get(id(5))).toMatchObject({ kind: "question" });
   expect(JSON.parse(prompts[0].slice(prompts[0].indexOf("{"))).items).toHaveLength(4);
   expect(JSON.parse(prompts[1].slice(prompts[1].indexOf("{"))).items.map((item: { who: { name: string } }) => item.who.name).sort()).toEqual(["Bistro Vela", "Glanzwerk", "Mystery Shop"]);
   expect(prompts.join("\n")).not.toMatch(/DE89370400440532013000|0532013000/);
 });
 
-it("without a model, rows nobody else could decide wait for the next run instead of becoming questions", async () => {
+it("without a model, rows nobody else could decide wait for the next run", async () => {
   const result = await organize(input(), null);
   expect(result.decided.flatMap(item => item.rows.map(row => row.id)).sort()).toEqual([id(6), id(7), id(8)]);
   expect(result.left.map(row => row.id).sort()).toEqual([id(1), id(2), id(3), id(4), id(5)]);

@@ -20,30 +20,6 @@ export async function loadNames(db: SupabaseClient, workspaceId: string) {
   return { categoryList, merchantList, categories: new Map(categoryList.map(row => [row.id, row.name])), merchants: new Map(merchantList.map(row => [row.id, row.name])) };
 }
 
-export type Question = { id: string; identityId: string | null; identityName: string | null; question: string; createdBy: string; transactionIds: string[]; rows: Row[]; blank: number };
-
-export async function loadOpenQuestions(db: SupabaseClient, workspaceId: string, limit = 50, showRows = 6): Promise<Question[]> {
-  const questions = ok(await db.from("organize_questions").select("id, identity_id, question, created_by, transaction_ids").eq("workspace_id", workspaceId).eq("status", "open")
-    .order("created_at").limit(limit)) as { id: string; identity_id: string | null; question: string; created_by: string; transaction_ids: string[] }[];
-  if (!questions.length) return [];
-  const rowIds = [...new Set(questions.flatMap(item => item.transaction_ids))];
-  const identityIds = [...new Set(questions.map(item => item.identity_id).filter((id): id is string => !!id))];
-  const [rows, identities] = await Promise.all([
-    Promise.all(Array.from({ length: Math.ceil(rowIds.length / 200) }, (_, index) =>
-      db.from("transactions").select(COLUMNS).eq("workspace_id", workspaceId).in("id", rowIds.slice(index * 200, (index + 1) * 200)))).then(parts => parts.flatMap(part => ok(part) as Row[])),
-    identityIds.length ? db.from("organize_identities").select("id, display_name").eq("workspace_id", workspaceId).in("id", identityIds) : Promise.resolve({ data: [], error: null }),
-  ]);
-  const byId = new Map(rows.map(row => [row.id, row]));
-  const names = new Map((ok(identities) as { id: string; display_name: string }[]).map(row => [row.id, row.display_name]));
-  return questions.map(item => {
-    const own = item.transaction_ids.map(id => byId.get(id)).filter((row): row is Row => !!row).sort((a, b) => b.posted_on.localeCompare(a.posted_on));
-    const shared = new Set(own.map(row => row.identity_id));
-    const identityId = item.identity_id ?? (shared.size === 1 ? [...shared][0] : null);
-    return { id: item.id, identityId, identityName: identityId ? names.get(identityId) ?? null : null, question: item.question, createdBy: item.created_by,
-      transactionIds: item.transaction_ids, rows: own.slice(0, showRows), blank: own.filter(row => !row.category_id).length };
-  });
-}
-
 export type Answered = { id: string; question: string; identityName: string | null; batchId: string; applied: number };
 
 export async function loadRecentAnswers(db: SupabaseClient, workspaceId: string, limit = 5): Promise<Answered[]> {
@@ -120,10 +96,4 @@ export async function loadAiCreated(db: SupabaseClient, workspaceId: string) {
     db.from("merchants").select("id, name, owner_touched").eq("workspace_id", workspaceId).eq("created_by", "ai").order("name").limit(200),
   ]);
   return { categories: ok(categories) as { id: string; name: string; owner_touched: boolean }[], merchants: ok(merchants) as { id: string; name: string; owner_touched: boolean }[] };
-}
-
-export async function countNeedsYou(db: SupabaseClient, workspaceId: string) {
-  const { data, error } = await db.from("organize_questions").select("transaction_ids").eq("workspace_id", workspaceId).eq("status", "open").limit(1000);
-  if (error) throw new Error(error.message);
-  return { questions: data?.length ?? 0, rows: new Set((data ?? []).flatMap(item => item.transaction_ids as string[])).size };
 }
