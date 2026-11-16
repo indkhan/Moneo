@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { transcribeWithFallback } from "./choose";
 import type { BatchSpeechEngine } from "./engine";
-import { localSpeech, type SpeechModelRunner } from "./local";
+import { localSpeech, type SpeechModelJob, type SpeechModelRunner } from "./local";
 import { localModel } from "./local-models";
 
 const audio = { samples: new Int16Array([0, 16384, -16384, 32767, 0, 0]), sampleRate: 24000 };
@@ -20,7 +20,7 @@ function modelFolder(name: string, type = "whisper", weights = ["encoder_model_q
   for (const file of weights) writeFileSync(path.join(folder, "onnx", file), "weights");
   return folder;
 }
-const runner = (result: string | Error) => ({ transcribe: vi.fn(async () => { if (result instanceof Error) throw result; return result; }) }) satisfies SpeechModelRunner;
+const runner = (result: string | Error) => ({ transcribe: vi.fn(async (_job: SpeechModelJob) => { if (result instanceof Error) throw result; return result; }) }) satisfies SpeechModelRunner;
 const run = (ref: string | null, model: SpeechModelRunner) => transcribeWithFallback({ chosen: "local", engines: { local: localSpeech(ref, model), openai }, audio, hints });
 
 beforeEach(() => { home = mkdtempSync(path.join(tmpdir(), "moneo-speech-")); vi.stubEnv("MONEO_DATA_DIR", home); });

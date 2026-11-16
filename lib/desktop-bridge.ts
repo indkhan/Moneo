@@ -39,3 +39,13 @@ export async function desktopUpdate(action: "status" | "check" | "install"): Pro
   if (!response.ok) throw new Error(`The desktop app answered ${response.status}`);
   return updateStatus.parse(await response.json());
 }
+
+const chosenFolder = z.object({ path: z.string().min(1).nullable() });
+
+export async function desktopChooseFolder(): Promise<string | null> {
+  const url = bridge();
+  if (!url) return null;
+  const response = await fetch(`${url}/choose-folder`, { method: "POST", signal: AbortSignal.timeout(10 * 60_000) });
+  if (!response.ok) throw new Error(`The desktop app answered ${response.status}`);
+  return chosenFolder.parse(await response.json()).path;
+}
