@@ -7,7 +7,7 @@ import { GET, POST } from "./route";
 const fixture = vi.hoisted(() => ({ denied: false }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => { if (fixture.denied) throw new Error("Unauthorized"); return {}; } }));
 
-const download = vi.fn(async () => new Response(null, { status: 503 }));
+const download = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }));
 const post = (body: unknown) => POST(new Request("http://localhost/api/voice/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
 let home: string;
 beforeEach(() => { home = mkdtempSync(path.join(tmpdir(), "moneo-models-route-")); vi.stubEnv("MONEO_DATA_DIR", home); vi.stubGlobal("fetch", download); vi.spyOn(console, "warn").mockImplementation(() => {}); });
