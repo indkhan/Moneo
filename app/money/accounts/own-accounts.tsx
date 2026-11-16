@@ -5,7 +5,7 @@ import { addOwnAccountSafely, findTransfersSafely, removeOwnAccountSafely } from
 
 const field = "min-h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm";
 const quiet = "min-h-9 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground";
-type Identifier = { id: string; account_id: string | null; iban: string; label: string };
+type Identifier = { id: string; account_id: string | null; iban: string | null; label: string };
 
 function resultText(transfers?: string) {
   const [linked, marked, skipped] = (transfers ?? "").split("-").map(Number);
@@ -29,8 +29,8 @@ export function OwnAccounts({ identifiers, banked, accounts, transfers }: {
     <ul className="divide-y divide-border text-sm">
       {banked.map(item => <li key={item.iban} className="flex flex-wrap items-center justify-between gap-2 py-2"><span>{item.name} · {maskAccountNumber(item.iban)}</span><span className="text-muted-foreground">From your bank connection</span></li>)}
       {identifiers.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span>{item.label} · {maskAccountNumber(item.iban)} <span className="text-muted-foreground">· {name(item.account_id)}</span></span>
-        <SafeForm action={removeOwnAccountSafely}><input type="hidden" name="id" value={item.id} /><button aria-label={`Remove ${item.label} ${maskAccountNumber(item.iban)}`} className={quiet}>Remove</button></SafeForm>
+        <span>{item.label} · {item.iban ? maskAccountNumber(item.iban) : "matched by name"} <span className="text-muted-foreground">· {name(item.account_id)}</span></span>
+        <SafeForm action={removeOwnAccountSafely}><input type="hidden" name="id" value={item.id} /><button aria-label={`Remove ${item.label} ${item.iban ? maskAccountNumber(item.iban) : "matched by name"}`} className={quiet}>Remove</button></SafeForm>
       </li>)}
     </ul>
     <SafeForm action={addOwnAccountSafely} className="flex flex-wrap items-end gap-2">
