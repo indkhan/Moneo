@@ -68,7 +68,7 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     finally { setLoadingOlder(false); }
   }
 
-  function onStart(_id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { live.current = { question, attachments, tools: [], spoken }; setPending(live.current); }
+  function onStart(_id: string, question: string, attachments: ChatAttachment[], spoken: boolean, regenerating = false) { live.current = { question, attachments, tools: [], spoken, regenerating }; setPending(live.current); }
   function onEvent(_id: string, event: ChatStreamEvent) {
     if (!live.current) return;
     const before = live.current;
@@ -82,9 +82,9 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     if (!result) return;
     const now = new Date().toISOString();
     setMessages(current => [...current,
-      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken: finished?.spoken },
+      ...(result.regenerates ? [] : [{ id: `local-${crypto.randomUUID()}`, role: "user" as const, content: question.trim(), created_at: now, attachments, spoken: finished?.spoken }]),
       ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
-      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan }]);
+      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, answer_of: result.regenerates ?? result.requestId, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan }]);
     router.refresh();
   }
 

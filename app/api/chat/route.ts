@@ -19,6 +19,7 @@ import { netWorthInput, readNetWorth } from "@/lib/finance/net-worth-source";
 import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
+import { replayableHistory } from "@/lib/ai/replayable-history";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
@@ -56,6 +57,7 @@ const inputSchema = z.object({
   conversationId: z.uuid(),
   requestId: z.uuid(),
   message: z.string().trim().min(1).max(4000),
+  regenerates: z.uuid().optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional(),
 }).strict();
@@ -68,11 +70,11 @@ export async function POST(request: Request) {
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
   if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or Claude, or add an API key under Settings → AI access." }, { status: 503 });
-  const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
+  const { conversationId, requestId, message, regenerates, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   const modelPromise = awaitedLater(modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat"));
-  const historyPromise = awaitedLater(Promise.resolve(supabase.from("messages").select("role, content, context, attachments, request_id")
+  const historyPromise = awaitedLater(Promise.resolve(supabase.from("messages").select("role, content, context, attachments, request_id, answer_of")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19)));
   const existing = await supabase.from("conversations").select("id, deleted_at, artifact_id, title_settled").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
@@ -83,14 +85,14 @@ export async function POST(request: Request) {
     if (error && error.code !== "23505") return Response.json({ error: "Conversation unavailable" }, { status: 403 });
   }
   const claim = await supabase.rpc("start_chat_request", {
-    p_request_id: requestId, p_conversation_id: conversationId, p_message: message, p_context: capturedContext ?? {},
+    p_request_id: requestId, p_conversation_id: conversationId, p_message: message, p_context: capturedContext ?? {}, ...(regenerates && { p_regenerates: regenerates }),
   });
   if (claim.error) return Response.json({ error: claim.error.message }, { status: 400 });
   if (!claim.data.started) {
     if (claim.data.status === "completed") return Response.json({ conversationId, answer: claim.data.answer });
     return Response.json({ error: `Request is ${claim.data.status}`, status: claim.data.status }, { status: 409 });
   }
-  if (attachments.length) {
+  if (attachments.length && !regenerates) {
     const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
       .eq("request_id", requestId).eq("role", "user");
     if (saved.error) console.error("saving chat attachments failed", saved.error);
@@ -125,7 +127,7 @@ export async function POST(request: Request) {
   const replaceable = ADDS_TO_RUNNING.test(message) ? undefined
     : runningTasks.at(-1) ?? (lastAnswered?.requestId && lastAnswered.requestId !== requestId ? { requestId: lastAnswered.requestId, text: lastAnswered.text } : undefined);
   const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
-  const replayed = (history ?? []).filter(item => !running.has(item.request_id)).reverse().map(item => item.context?.via === "call" ? { ...item, context: withoutCallBrief(item.context) } : item);
+  const replayed = replayableHistory(history ?? [], regenerates).filter(item => !running.has(item.request_id)).reverse().map(item => item.context?.via === "call" ? { ...item, context: withoutCallBrief(item.context) } : item);
   const textMessages = [...replayed, submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)

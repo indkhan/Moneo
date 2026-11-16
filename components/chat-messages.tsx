@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AiToolActivity, type ToolStep } from "./ai-tool-activity";
 import type { HistoryMessage } from "@/lib/ai/conversation-history";
 import type { FollowUp } from "@/lib/ai/follow-ups";
@@ -9,7 +9,7 @@ import Link from "next/link";
 import { ChevronRight, FileText, ListChecks, LoaderCircle, Mic, Sparkle } from "lucide-react";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 import { VoiceCallCard } from "./voice-call-card";
-import { MessageActions, resendQuestion } from "./message-actions";
+import { MessageActions, answerGroups, resendQuestion } from "./message-actions";
 
 export const DRAFT_EVENT = "moneo-chat-draft";
 function FollowUps({ items, compact }: { items: FollowUp[]; compact: boolean }) {
@@ -44,7 +44,7 @@ const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiM
 
 export type ChatItem = Omit<HistoryMessage, "tools"> & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
 export const RESUMED_RUN: PendingExchange = { question: "", tools: [] };
-export type PendingExchange = { question: string; spoken?: boolean; attachments?: ChatAttachment[]; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[] };
+export type PendingExchange = { question: string; spoken?: boolean; attachments?: ChatAttachment[]; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[]; regenerating?: boolean };
 
 function Spoken({ show }: { show?: boolean }) {
   return show ? <><Mic className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" aria-hidden="true" /><span className="sr-only">Spoken: </span></> : null;
@@ -53,12 +53,21 @@ function Spoken({ show }: { show?: boolean }) {
 export function ChatMessages({ messages, pending, compact = false }: { messages: ChatItem[]; pending?: PendingExchange | null; compact?: boolean }) {
   const bubble = `ml-auto w-fit max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[18px_18px_4px_18px] bg-input ${compact ? "px-3.5 py-2 text-sm" : "px-[18px] py-3.5 text-[15px]"}`;
   const files = useMemo(() => [...messages.flatMap(item => item.attachments ?? []), ...(pending?.attachments ?? [])], [messages, pending?.attachments]);
+  const [picked, setPicked] = useState<Record<string, number>>({});
+  const groups = answerGroups(messages);
+  const shownGroups = pending?.regenerating && groups.at(-1)?.[0].answer_of ? groups.slice(0, -1) : groups;
   const assistant = (body: React.ReactNode) => <div className="min-w-0"><p className="mb-2 flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Moneo</p>{body}</div>;
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
-    {messages.map((item, index) => <article key={item.id}>
+    {shownGroups.map((group, position) => {
+      const pickKey = `${group[0].id}:${group.length}`;
+      const item = group[picked[pickKey] ?? group.length - 1];
+      const index = messages.indexOf(item);
+      const lastGroup = position === shownGroups.length - 1;
+      return <article key={group[0].id}>
       <time className="sr-only" dateTime={item.created_at} suppressHydrationWarning>{new Date(item.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
-      {item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} files={files} /><MessageActions content={item.content} model={item.model} resend={index === messages.length - 1 && !pending ? resendQuestion(messages, index) : null} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
-    </article>)}
+      {item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} files={files} /><MessageActions content={item.content} model={item.model} resend={lastGroup && !pending ? resendQuestion(messages, index) : null} version={{ index: group.indexOf(item), count: group.length, onChange: next => setPicked(current => ({ ...current, [pickKey]: next })) }} />{lastGroup && item === group.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
+    </article>;
+    })}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
       {pending.question && <div><MessageFiles files={pending.attachments} /><p className={bubble}><Spoken show={pending.spoken} />{pending.question}</p></div>}
       {pending.steers?.map((steer, index) => <p key={index} className={bubble}>{steer}</p>)}
