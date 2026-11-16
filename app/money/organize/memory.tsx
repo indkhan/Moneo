@@ -14,7 +14,7 @@ export function Memory({ entries, categories, merchants, aiCategories, aiMerchan
     <ul className="mt-1 flex flex-wrap gap-1.5 text-sm">{items.map(item => <li key={item.id} className="rounded-full border border-border px-2.5 py-1">{item.name}{item.owner_touched && <span className="text-muted-foreground"> · you use it</span>}</li>)}</ul>
   </div>;
   return <div className="space-y-6">
-    {entries.length === 0 ? <Empty>No payees remembered yet. When you answer a question, what you said is kept here and used for every future payment from them.</Empty>
+    {entries.length === 0 ? <Empty>No payees remembered yet. When you tell the assistant what a payee is, it is kept here and used for every future payment from them.</Empty>
       : <ul aria-label="Remembered payees" className="space-y-3">{entries.map(entry => {
         const summary = [name(entry.categoryId, categories), name(entry.merchantId, merchants), entry.purpose].filter(Boolean).join(" · ");
         return <li key={entry.id}><section aria-label={`Memory for ${entry.identityName}`} className={card}>
