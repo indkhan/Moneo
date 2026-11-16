@@ -65,7 +65,7 @@ export function formatInputAmount(amountMinor: bigint | string | number, currenc
 
 export function formatCompactMoney(amountMinor: bigint | string | number, currencyCode: string, locale?: string): string {
   const format = new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode, currencyDisplay: "code", notation: "compact", maximumFractionDigits: 1 });
-  return format.format(formatInputAmount(amountMinor, currencyCode) as unknown as number);
+  return format.format(formatInputAmount(amountMinor, currencyCode) as `${number}`).replace(/\s/g, " ");
 }
 
 export function minorFromMajor(major: number, currencyCode: string): bigint {
