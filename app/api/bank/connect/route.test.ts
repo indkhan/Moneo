@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
 import { EnableBankingError, enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", async original => ({ ...await original<typeof import("@/lib/bank/enable-banking")>(), enableBankingClient: vi.fn(), enableBankingConfigured: vi.fn() }));
-vi.mock("@/lib/bank/server", async original => ({ ...await original<typeof import("@/lib/bank/server")>(), serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", async original => ({ ...await original<typeof import("@/lib/service-db")>(), serviceDb: vi.fn() }));
 
 const startAuthorization = vi.fn();
 beforeEach(() => {

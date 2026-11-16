@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { checkEnableBankingCredentials, EnableBankingError } from "@/lib/bank/enable-banking";
-import { enableBankingErrorMessage, serviceDb } from "@/lib/bank/server";
+import { enableBankingErrorMessage } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { removeServiceKeys, saveServiceKeys } from "@/lib/service-keys";
 
 const bodySchema = z.object({

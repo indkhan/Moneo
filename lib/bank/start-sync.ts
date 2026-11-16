@@ -1,6 +1,6 @@
 import { start } from "workflow/api";
 import type { PsuContext } from "@/lib/bank/enable-banking";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { claimBankSync, releasedLease } from "@/lib/bank/sync-lease";
 import { syncBankConnection } from "@/workflows/bank-sync";
 

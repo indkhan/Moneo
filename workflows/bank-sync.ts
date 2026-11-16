@@ -6,7 +6,7 @@ import { start } from "workflow/api";
 import { EnableBankingError, enableBankingClient, type BankTransaction, type EnableBankingClient, type PsuContext } from "@/lib/bank/enable-banking";
 import { bankRawRows } from "@/lib/bank/normalize";
 import { bankObservation, bankStatement } from "@/lib/bank/statement";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { claimBankSync, holdBankSync, releasedLease } from "@/lib/bank/sync-lease";
 import { ALIGNED_SPACING_MS, accountDue } from "@/lib/bank/sync-state";
 import { loadWorkspaceSettings } from "@/lib/settings";

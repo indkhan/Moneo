@@ -8,8 +8,8 @@ vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({ returnValue: Promis
 vi.mock("@/workflows/bank-sync", () => ({ syncBankConnection: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", () => ({ enableBankingConfigured: async () => true }));
 const leased = new Set<string>();
-vi.mock("@/lib/bank/server", () => ({ psuFrom: () => ({ ip: "127.0.0.1", userAgent: "test" }),
-  serviceDb: () => ({ rpc: async (_name: string, args: { p_connection_id: string }) => ({ data: !leased.has(args.p_connection_id), error: null }) }) }));
+vi.mock("@/lib/bank/server", () => ({ psuFrom: () => ({ ip: "127.0.0.1", userAgent: "test" }) }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: () => ({ rpc: async (_name: string, args: { p_connection_id: string }) => ({ data: !leased.has(args.p_connection_id), error: null }) }) }));
 vi.mock("@/lib/scalable/server", () => ({ scalableConfigured: () => true }));
 vi.mock("@/lib/scalable/sync", () => ({ syncScalable: vi.fn(async () => ({})) }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w" }, supabase: { from: (table: string) => {
