@@ -3,6 +3,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid; blocked_acc
 begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   insert into public.accounts(workspace_id,name,currency_code) values(workspace,'Original','EUR') returning id into account;
   insert into public.accounts(workspace_id,name,currency_code) values(workspace,'Pending account','EUR') returning id into blocked_account;
   insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status) values(workspace,blocked_account,'2026-10-01','Pending debit',-100,'EUR','pending');

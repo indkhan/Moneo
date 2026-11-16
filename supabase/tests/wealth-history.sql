@@ -3,6 +3,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid:=gen_random_
 begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Wealth cash','EUR');
   record:=jsonb_build_object('kind','holding','name','Exact holding','currency_code','EUR','quantity_text','90071992547409.93','unit_price_text','1','amount_minor','9007199254740993','cost_basis_minor','9007199254740000','as_of','2026-10-02','linked_account_id',null,'payment_account_id',null,'annual_rate_text',null,'monthly_payment_minor',null,'next_payment_on',null,'payment_assumption_id',null,'payment_transaction_id',null);

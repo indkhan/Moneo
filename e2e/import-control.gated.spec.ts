@@ -24,7 +24,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
   try {
     const ready=await db`select to_regprocedure('public.control_import(uuid,text,uuid)') is not null as ready`;
     expect(ready[0].ready,"051 must be deployed; a missing required gate is not a pass").toBe(true);
-    await db`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspace},'{}') on conflict(workspace_id) do update set ai_data_scopes='{}'`;
+    await db`insert into public.workspace_settings(workspace_id,timezone,ai_data_scopes) values(${workspace},'Europe/Berlin','{}') on conflict(workspace_id) do update set ai_data_scopes='{}'`;
     const cookies=new Map<string,string>();
     const auth=createServerClient(url,process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,{cookies:{getAll:()=>[...cookies].map(([name,value])=>({name,value})),setAll:values=>values.forEach(({name,value})=>cookies.set(name,value))}});
     expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();

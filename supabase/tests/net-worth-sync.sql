@@ -4,6 +4,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; bank uuid:=gen_random_uui
 begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   insert into public.bank_connections(id,workspace_id,aspsp_name,aspsp_country,status,session_id_encrypted,valid_until) values(bank,workspace,'Test Bank','DE','active','sealed',now()+interval '30 days');
 
   -- A balance lands even for an account no import has created yet, and repeats aren't saved twice.

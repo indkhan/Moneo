@@ -3,6 +3,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; cash uuid:=gen_random_uui
 begin
   insert into auth.users(id,email) values(actor,'qa-delete-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   insert into public.accounts(id,workspace_id,name,currency_code) values(cash,workspace,'Source','EUR'),(other,workspace,'Other','EUR');
   result:=public.create_manual_transaction(cash,'2026-10-01','Legacy original expense','-10000','posted',null,'',gen_random_uuid()); expense:=(result->>'id')::uuid;

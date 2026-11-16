@@ -54,6 +54,7 @@ try {
   });
   created = true;
   const [{ id: workspace }] = await db.unsafe(`select id from ${schema}.workspaces where owner_id=$1`, [actor]);
+  await db.unsafe(`insert into ${schema}.workspace_settings(workspace_id,timezone) values($1,'Europe/Berlin')`, [workspace]);
   const [{ today }] = await db`select (clock_timestamp() at time zone 'Europe/Berlin')::date::text today`;
   for (const balanceFirst of [true, false]) {
     const account = randomUUID(), goal = randomUUID(), baseline = randomUUID(), balanceRequest = randomUUID(), reserveRequest = randomUUID();

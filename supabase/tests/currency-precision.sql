@@ -3,6 +3,7 @@ declare actor uuid:=gen_random_uuid(); workspace uuid; currency text; digits int
 begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
+  insert into public.workspace_settings(workspace_id,timezone) values(workspace,'Europe/Berlin');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   if public.currency_minor_digits('ZZZ') is not null then raise exception 'Unknown currency precision guessed'; end if;
   foreach currency in array array['AFN','COP','HUF','IDR','MGA','IQD','CLF','JPY'] loop
