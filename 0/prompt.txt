@@ -1,0 +1,49 @@
+[File: Waldhausweg 3.m4a; ref=file_4922cdbb-0b6f-4d51-bfdf-93f85a9304f3] [File: Waldhausweg 2.m4a; ref=file_6f1a9a80-fc79-42c6-b646-02e994ccc1a3] 
+
+this are the 2 files asked in the last session one with my own open things and otehr things is the whole questionare being asked use bnoth and continue ont he research pick it up where it was and all things are if any question ask me 
+
+
+ First give me, in detail, where the progress is in this whole thing. What are the different sections and all of those things, in concise and simple words, so that I know where this branch is right now and then so that I can guide it ahead?
+
+<t3_context version="1">
+<context kind="file" id="file_4922cdbb-0b6f-4d51-bfdf-93f85a9304f3">
+name: Waldhausweg 3.m4a
+mimeType: audio/x-m4a
+sizeBytes: 1505977
+attachmentId: 7cdcb490-27f2-485c-a7fe-b12221028748-1c573888-5e9d-45af-b533-30848edf3e1a-m4a
+</context>
+<context kind="file" id="file_6f1a9a80-fc79-42c6-b646-02e994ccc1a3">
+name: Waldhausweg 2.m4a
+mimeType: audio/x-m4a
+sizeBytes: 1365942
+attachmentId: 7cdcb490-27f2-485c-a7fe-b12221028748-fb01a150-1345-442c-a2a3-1c878397c50d-m4a
+</context>
+</t3_context>
+
+[Attached file "Waldhausweg 3.m4a" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\7cdcb490-27f2-485c-a7fe-b12221028748-1c573888-5e9d-45af-b533-30848edf3e1a-m4a.m4a]
+
+[Attached file "Waldhausweg 2.m4a" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\7cdcb490-27f2-485c-a7fe-b12221028748-fb01a150-1345-442c-a2a3-1c878397c50d-m4a.m4a]
+
+---
+
+<task-notification>
+<task-id>bskb4hlbq</task-id>
+<tool-use-id>toolu_01FtKE8NyXJegFM1TTx9gjnM</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ccf816f539b7556e\2abf0484-5d45-49d9-8fd6-279861df8ce0\tasks\bskb4hlbq.output</output-file>
+<status>failed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-846dd64c-f0b28664becb1320/research/voice-duplex/experiments/expF &amp;&amp; for c in call2 call3; do D=~/moneo-voice-tests/$c; python -I split.py $D/recording.m4a $D &gt; $D/split.log 2&gt;&amp;1 &amp;&amp; python -I reference.py $D &gt; $D/reference.log 2&gt;&amp;1; done; tail -3 ~/moneo-voice-tests/call*/split.log; tail -2 ~/moneo-voice-tests/call*/reference.log" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bz0y76m8l</task-id>
+<tool-use-id>toolu_01E4nqYCrN9cxw2QHKSpVKjU</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ccf816f539b7556e\2abf0484-5d45-49d9-8fd6-279861df8ce0\tasks\bz0y76m8l.output</output-file>
+<status>completed</status>
+<summary>Background command "P=/c/Users/mgsuk/AppData/Local/Temp/claude/ccf816f539b7556e/84c9502f-eb89-46cc-b4c6-818cd19ea24b/scratchpad/venv/Scripts/python.exe; cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-846dd64c-f0b28664becb1320/research/voice-duplex/experiments/expF &amp;&amp; for c in call3 call2; do D=~/moneo-voice-tests/$c; $P -I reference.py $D &gt; $D/reference.log 2&gt;&amp;1; $P -I transcribe.py $D &gt; $D/transcribe.log 2&gt;&amp;1; done; cat ~/moneo-voice-tests/call3/reference.log | grep -v Warn" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Just to be sure, when I am talking, and I say one thing, for example, can you check all my transaction of this month? And then I say, can you also check the transaction of last month, so it will open a new session which shows, okay, like that the chat model is going for this new thing as well, right? If whistle gets that match, and the other model gets that much, we can go to other models as well, and last time I read that Astra, the open air model, was able to take a open source model and change its weights.  So you can change its way, you can find unit, you can do whatever you want, the whole web is there, you can go, download data, say, download model, do anything you want. I actually don't have many to add for GPT live so we have to see another way.  Other speakers, I can get that I can tell a few of my friends to do it.  Can you just make it a bit more detailed #um?  You know what I mean. So that it has multiturn communication as well, for example, asking for something then changing it or asking for something and then asking for the second thing.  And all of that and the interrupting thing and all of that.  For the fourth question, do as you like this is completely your research.
