@@ -1,0 +1,58 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #246 in Moneo: in the full `npm test` run, lib/cron.test.ts ("every scheduled job refuses a caller without the cron secret") and sometimes other tests time out at 5,000 ms, though they pass when run on their own. Find the root cause (likely heavy import or startup cost in the cron route sweep) and fix it at the earliest wrong boundary. Don't raise timeouts, skip tests, drop route coverage, or turn off isolation. Follow the issue's acceptance criteria exactly, and show the measurements (before/after, focused vs full suite) in the PR.
+
+## Rules for every child
+- Repo: Moneo (indkhan/Moneo). Read AGENTS.md first and follow it exactly (no comments in code, surgical changes, tests only for real behaviour, hit every surface, desktop + source install both work).
+- Read the full GitHub issue first: `gh issue view <n> --comments`. Recheck the current tree before changing anything; reproduce first.
+- Work only in your own worktree. Create a branch `t3/issue-<n>-<short-slug>` from current `origin/main` (`git fetch origin && git switch -c <branch> origin/main`). Commit each step in plain language, ending each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- Other agents are working in parallel on other issues against the SAME shared moneo-qa test backend and QA app port 3100. So: never run `npm run qa:reset`, never `docker compose -p moneo-qa down`, never touch the owner's backend (.env, port 3000, Docker project `moneo`). Set up the state your test needs with disposable users or rows you create and remove. If port 3100 is already serving another checkout, wait and retry later; never kill a process you didn't start.
+- Mock AI, bank and Scalable. No real paid calls.
+- Before finishing: `npm test`, `npm run lint`, `npm run typecheck`; plus `npm run build` for app/config changes; for UI changes use the verify-ui skill (light/dark/mobile screenshots) and attach the evidence to the PR.
+- Push and open a PR to `main` with `gh pr create`, body: what changed and why, `Closes #<n>`, how it was verified. End the PR body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge. Don't create a new GitHub issue unless work is truly deferred.
+- If a decision is genuinely ambiguous beyond what's written here, pick the option that best fits AGENTS.md, note it in the PR body, and continue.
+- Final line of your reply: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b93mq7bm1</task-id>
+<tool-use-id>toolu_01KtfQjyXzSDCDZajHULBR7j</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\52c37bcbd4cffe07\6ca37242-0373-46af-b82d-36d31a499bbc\tasks\b93mq7bm1.output</output-file>
+<status>killed</status>
+<summary>Background command "cmd //c "robocopy %TEMP%\\empty-246 node_modules /MIR /NFL /NDL /NJH /NJS /NP" &gt;/dev/null; rmdir node_modules &amp;&amp; echo removed; ls -d node_modules 2&gt;&amp;1" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bn5jzhrt1</task-id>
+<tool-use-id>toolu_01JBzCCoAiiDgkA4vXiKGU4J</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\52c37bcbd4cffe07\6ca37242-0373-46af-b82d-36d31a499bbc\tasks\bn5jzhrt1.output</output-file>
+<status>completed</status>
+<summary>Background command "for i in $(seq 1 55); do [ -e node_modules ] || { echo gone; break; }; sleep 10; done; ls -d node_modules 2&gt;&amp;1 | head -1" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>barb8khjj</task-id>
+<tool-use-id>toolu_01QTY91bGCYvkf1Cd9Zo2qNg</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\52c37bcbd4cffe07\6ca37242-0373-46af-b82d-36d31a499bbc\tasks\barb8khjj.output</output-file>
+<status>failed</status>
+<summary>Background command "mkdir -p "$TEMP/empty-246"; cmd //c "robocopy %TEMP%\\empty-246 node_modules /MIR /NFL /NDL /NJH /NJS /NP" &gt;/dev/null; rmdir node_modules &amp;&amp; echo removed; ls -d node_modules 2&gt;&amp;1" failed with exit code 2</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bpqsmdtqa</task-id>
+<tool-use-id>toolu_01L4en6YTgECH8fu5YLq5oGu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\52c37bcbd4cffe07\6ca37242-0373-46af-b82d-36d31a499bbc\tasks\bpqsmdtqa.output</output-file>
+<status>completed</status>
+<summary>Background command "rm lib/zz-probe.test.ts lib/zz-probe2.test.ts; S="C:/Users/mgsuk/AppData/Local/Temp/claude/52c37bcbd4cffe07/6ca37242-0373-46af-b82d-36d31a499bbc/scratchpad"; (time npm test -- --reporter=verbose) &gt; "$S/full-after-1.log" 2&gt;&amp;1; tail -12 "$S/full-after-1.log"; grep -E "cron.test|FAIL|Timeout|timed out" "$S/full-after-1.log" | head -20" completed (exit code 0)</summary>
+</task-notification>
