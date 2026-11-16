@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { minorDigits } from "@/lib/finance/fx";
 import type { ScalableMcp } from "./client";
 import { scalableConfigured } from "./server";

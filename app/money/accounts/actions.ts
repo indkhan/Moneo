@@ -17,6 +17,7 @@ import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { closingAnswerSchema, closingPlan } from "@/lib/finance/account-closing";
 import { stableId } from "@/lib/import/row";
 
+const transfersPageLinksThemOnRequest = () => undefined;
 const version = z.coerce.number().int().min(1).max(2147483646);
 const accountType = z.enum(accountTypes);
 
@@ -86,7 +87,7 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
         if (linked.error) throw new Error(linked.error.message);
       }
     }
-    if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id).catch(() => undefined);
+    if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id).catch(transfersPageLinksThemOnRequest);
     const fresh = await supabase.from("accounts").select("version").eq("id", accountId).single();
     if (fresh.error) throw new Error(fresh.error.message);
     const { error } = await supabase.rpc("edit_money_metadata", { p_entity_type: "account", p_id: accountId, p_expected_version: fresh.data.version, p_patch: { archived: true }, p_request_id: stableId(`${requestId}:archive`) });

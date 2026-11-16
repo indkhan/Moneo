@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { start } from "workflow/api";
 import { enableBankingClient, EnableBankingError, type BankTransaction, type PsuContext } from "@/lib/bank/enable-banking";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { claimBankSync } from "@/lib/bank/sync-lease";
 import { importFile } from "@/workflows/import-file";
 import { startSyncAgentRun } from "@/lib/import/follow-up";
@@ -9,7 +9,7 @@ import { retryFirstBankSync, syncBankConnection } from "./bank-sync";
 
 vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/import-file", () => ({ importFile: vi.fn() }));
-vi.mock("@/lib/bank/server", () => ({ serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", () => ({ serviceDb: vi.fn() }));
 vi.mock("@/lib/import/follow-up", () => ({ startSyncAgentRun: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", async original => ({ ...await original<typeof import("@/lib/bank/enable-banking")>(), enableBankingClient: vi.fn() }));
 

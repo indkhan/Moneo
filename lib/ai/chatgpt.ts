@@ -5,6 +5,7 @@ import { z } from "zod";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 import { serviceKey } from "@/lib/service-keys";
 
+const remoteRevokeIsBestEffort = () => undefined;
 const AUTH = "https://auth.openai.com/api/accounts";
 const RESOURCE = "https://api.openai.com/v1";
 const SCOPE = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
@@ -90,7 +91,7 @@ export async function signOut() {
   const state = await load();
   if (state.account?.tokens.refreshToken) {
     await fetch(`${AUTH}/oauth/revoke`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ token: state.account.tokens.refreshToken, token_type_hint: "refresh_token", client_id: state.account.clientId }) }).catch(() => undefined);
+      body: new URLSearchParams({ token: state.account.tokens.refreshToken, token_type_hint: "refresh_token", client_id: state.account.clientId }) }).catch(remoteRevokeIsBestEffort);
   }
   await save({ ...state, account: null, source: state.source === "claude" ? "claude" : "api_key" });
 }

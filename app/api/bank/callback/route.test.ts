@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { start } from "workflow/api";
 import { requireWorkspace } from "@/lib/auth";
 import { enableBankingClient } from "@/lib/bank/enable-banking";
-import { serviceDb } from "@/lib/bank/server";
+import { serviceDb } from "@/lib/service-db";
 import { decryptToken } from "@/lib/bank/token-crypto";
 import { GET } from "./route";
 
@@ -11,7 +11,7 @@ vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/bank-sync", () => ({ syncBankConnection: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/bank/enable-banking", () => ({ enableBankingClient: vi.fn() }));
-vi.mock("@/lib/bank/server", async original => ({ ...await original<typeof import("@/lib/bank/server")>(), serviceDb: vi.fn() }));
+vi.mock("@/lib/service-db", async original => ({ ...await original<typeof import("@/lib/service-db")>(), serviceDb: vi.fn() }));
 
 const state = "6f1c1f8e-4c39-4b55-8a3e-0c7a9d1b2c3d";
 const connectionId = "0b8f6c1e-2d3a-4e5f-9a8b-7c6d5e4f3a2b";

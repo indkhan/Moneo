@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const body = await request.text();
   if (new TextEncoder().encode(body).length > MAX_RECORD_BYTES) return Response.json({ error: "Call record is too large" }, { status: 413 });
   let json: unknown = null;
-  try { json = JSON.parse(body); } catch {}
+  try { json = JSON.parse(body); } catch { json = null; }
   const parsed = callRecordSchema.safeParse(json);
   if (!parsed.success) return Response.json({ error: "Invalid call record" }, { status: 400 });
   const { id, conversationId, durationSeconds, transcript, tasks } = parsed.data;
