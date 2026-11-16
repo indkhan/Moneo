@@ -1,0 +1,50 @@
+Act as the implementation sub-agent for this task.
+
+Moneo issue #227: configurable speech-to-text for the CHAT MIC only. Voice calls and GPT-Live stay untouched. **PR 1 is merged** (#267): it added the engine contract in `lib/ai/speech/`, `POST /api/voice/transcribe` for batch engines, the fallback to OpenAI with a `fellBack` note, and Settings → Voice → "Speech to text", stored as `workspace_settings.speech_engine`. Read that code first. You build **PR 2: the "On this computer" engine.**
+
+The owner agreed this design:
+- **Runtime.** transformers.js (`@huggingface/transformers`) with onnxruntime-node, running on the Moneo server in a worker thread so requests stay responsive. Load the model on first use and unload it after an idle timeout. Pass the vocabulary hints from `lib/ai/voice-vocabulary.ts` as the prompt or initial text, where the model supports it.
+- **Suggested models in Settings,** each with size, languages and speed: Moonshine Base (~60 MB, English, very fast), Whisper Base (~150 MB, multilingual incl. German), Whisper Small (~500 MB, multilingual, best quality) and Distil-Whisper (English).
+  - Each one has a **Download** button. It saves the model into Moneo's data folder (desktop: under `MONEO_DESKTOP_HOME` / the app data dir; source install: a git-ignored `.data/` path) and shows progress.
+  - A **Choose file…** option takes a model the owner already has. On desktop this is a native dialog through `lib/desktop-bridge.ts` and `desktop/src/bridge.ts`. On the source install it's a path field.
+  - A **Try it** button: say a sentence and see the text.
+- **Audio stays on the machine.** It works from the phone too, because the model runs on the computer.
+- **Fallback.** If the model is missing or fails and an OpenAI key exists, PR 1's rule applies: use OpenAI and show the note.
+- **Desktop.** Add the native module to `electron-builder.config.cjs`, add the models folder to backup and restore only if that's appropriate (models are re-downloadable, so probably exclude them and say why), and check whether `fetch-backend.mjs` needs changes. See AGENTS.md → Desktop app.
+  - Files read at runtime by a dynamic path need `/*turbopackIgnore: true*/`.
+  - Keep the security fuses.
+  - The Desktop workflow must pass on all four platforms. Apple Silicon runners are scarce: if a job is cancelled for lack of a runner, rerun it with `gh run rerun <id> --failed` once the run has finished.
+- **Source install.** It must work with plain `npm ci`. Update README.md (how to download and choose a model) and `.env.example` if you add a variable.
+- **Reset all data** clears the engine choice but never deletes model files.
+- **Tests.** Engine selection with a fake model runner, the download manager (fake fetch, resume or verify by size/hash), and route behaviour. Never download a real model in `npm test`. A real-model check can be a manual script you run once and report.
+- **Not in this PR:** live words while speaking. That's PR 4, stacked later.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 227 --comments` and PR #267.
+- Branch `t3/issue-227-local-engine` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command or CI run is still going.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The QA app on port 3100 and the moneo-qa backend are shared:
+  - never run `npm run qa:reset` or `docker compose -p moneo-qa down`;
+  - never touch the owner's backend;
+  - revert any migration you apply to QA.
+- Never test against the owner's installed desktop app. Set `MONEO_DESKTOP_HOME` to a scratch folder.
+- Any migration needs a unique prefix later than the newest file in supabase/migrations on origin/main.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test`, `npm run build` and `npm run check:bundle`.
+- Use the verify-ui skill for Settings (light/dark/mobile). Link the screenshots in the PR body from a commit, then remove them from the branch.
+- Push and open a PR to `main`. The body says "Part 2 of #227" (don't close the issue) and ends with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bg278vsqi</task-id>
+<tool-use-id>toolu_01MSzJJXGmMphtB9qP2f33X2</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\c3ba53e7d289f9cd\ffdbf6e9-df8d-4fbb-8ee7-f4b5988820e9\tasks\bg278vsqi.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci 2&gt;&amp;1 | tail -5" completed (exit code 0)</summary>
+</task-notification>
