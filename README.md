@@ -70,7 +70,7 @@ Go to **Settings → Keys and connections → AI access** and choose one:
 
 In Settings ? AI and your data, type or choose one default model for all AI tasks (GPT-6 Luna by default with OpenAI). Turn on ?Customize by task? for individual overrides; turning it off clears those overrides when you save. Model IDs are saved without a provider call, so unavailable models report an error when used. Claude-only installs use a Claude default.
 
-Voice calls and dictation need the OpenAI API key. An OpenRouter key is optional (for other models).
+Voice calls and dictation need the OpenAI API key. Settings → Voice chooses the speech-to-text engine for the chat microphone; OpenAI is the only one you can pick so far, and it is also the fallback when a chosen engine can't run. An OpenRouter key is optional (for other models).
 
 #### 6. Add your money
 

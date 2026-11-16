@@ -115,7 +115,7 @@ async function spendingByDay(context: Context, input: ChartDataInput, code: stri
 }
 
 async function balanceSeries(context: Context, dates: string[], today: string) {
-  const evidence = await loadBalanceEvidence(context.supabase, context.workspace.id);
+  const evidence = await loadBalanceEvidence(context.supabase, context.workspace.id, new Date().toISOString());
   const timeZone = context.workspace.timezone;
   const past = netWorthSeries({ dates: dates.filter(date => date < today), timeZone, accountIds: new Set(evidence.accounts.map(account => account.id)),
     archivedOn: archiveDates(evidence.accounts, timeZone), snapshots: evidence.snapshots, ledger: evidence.ledger, valuations: [] });

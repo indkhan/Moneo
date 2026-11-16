@@ -40,6 +40,7 @@ import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live
 import { titleChatTurn } from "@/lib/ai/chat-title";
 import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
 import { ownerBrief } from "@/lib/ai/owner-brief";
+import { awaitedLater } from "@/lib/awaited-later";
 import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
 import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
 
@@ -49,6 +50,7 @@ function withoutCharts(content: string) {
 
 export const maxDuration = 300;
 const TITLE_WAIT_MS = 2000;
+const streamEndsWhenTheClientLeaves = () => undefined;
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -69,12 +71,10 @@ export async function POST(request: Request) {
   const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
-  const modelPromise = modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat");
-  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments, request_id")
+  const modelPromise = awaitedLater(modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat"));
+  const historyPromise = awaitedLater(Promise.resolve(supabase.from("messages").select("role, content, context, attachments, request_id")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
-    .order("created_at", { ascending: false }).limit(19));
-  modelPromise.catch(() => {});
-  historyPromise.catch(() => {});
+    .order("created_at", { ascending: false }).limit(19)));
   const existing = await supabase.from("conversations").select("id, deleted_at, artifact_id, title_settled").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
   if (existing.error) throw existing.error;
   if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
@@ -95,11 +95,9 @@ export async function POST(request: Request) {
       .eq("request_id", requestId).eq("role", "user");
     if (saved.error) console.error("saving chat attachments failed", saved.error);
   }
-  const conversationFiles = conversationAttachments(supabase, workspace.id, conversationId);
-  conversationFiles.catch(() => {});
+  const conversationFiles = awaitedLater(conversationAttachments(supabase, workspace.id, conversationId));
   const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
-  const briefingPromise = artifactId ? artifactBriefing(supabase, workspace.id, artifactId) : null;
-  briefingPromise?.catch(() => {});
+  const briefingPromise = artifactId ? awaitedLater(artifactBriefing(supabase, workspace.id, artifactId)) : null;
   async function writeChatTitle() {
     if (artifactId) return null;
     const viaCall = capturedContext?.via === "call";
@@ -394,12 +392,12 @@ ${artifactBrief}` : ""}`,
     requireAiScope(current.settings, ...readScopes);
     const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [moneoToolName(toolResult.toolName)] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
-    emit({ type: "answer", conversationId, answer, toolsUsed, followUps });
+    emit({ type: "answer", conversationId, answer, toolsUsed, followUps, model: model.modelId });
     const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer,
       p_usage: reportedUsage(model.modelId, usage), p_tool_calls: toolCalls });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return [{ status: finished.data, error: `Request is ${finished.data}` }, 409];
-    return [{ conversationId, answer, toolsUsed, followUps }, 200];
+    return [{ conversationId, answer, toolsUsed, followUps, model: model.modelId }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
     await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
@@ -409,7 +407,7 @@ ${artifactBrief}` : ""}`,
   if (!streaming) { const run = complete(() => {}); after(() => Promise.all([run, chatTitle])); const [body, status] = await run; return Response.json(body, { status }); }
   const encoder = new TextEncoder();
   return new Response(new ReadableStream({ start(controller) {
-    const write = (event: ChatStreamEvent) => { try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch {} };
+    const write = (event: ChatStreamEvent) => { try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { streamEndsWhenTheClientLeaves(); } };
     write({ type: "started" });
     void chatTitle.then(title => { if (title) write({ type: "title", title }); });
     const run = complete(write);
@@ -417,7 +415,7 @@ ${artifactBrief}` : ""}`,
     void run.then(async ([body, status]) => {
       await Promise.race([chatTitle, new Promise(resolve => setTimeout(resolve, TITLE_WAIT_MS))]);
       write({ type: "result", status, body });
-      try { controller.close(); } catch {}
+      try { controller.close(); } catch { streamEndsWhenTheClientLeaves(); }
     });
   } }), { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 }

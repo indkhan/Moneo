@@ -42,7 +42,7 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL an
     const asOf = "2026-10-06T14:00:00.000Z";
     async function parity(expected: string | null) {
       const [sql] = await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`;
-      const ts = resolveBalances([account], [snapshot], effective, asOf)[0].balance;
+      const ts = resolveBalances([account], [snapshot], effective, asOf, "Europe/Berlin")[0].balance;
       expect(sql.evidence).toMatchObject({ status: ts.status, amount_minor: ts.amount_minor, estimated_amount_minor: ts.estimated_amount_minor });
       expect(ts.amount_minor).toBe(expected);
     }

@@ -74,7 +74,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   const sourceMetadataPromise = evidence?.sourceMetadata ?? loadSourceCoverageMetadata(supabase, workspace.id, evidence?.canReadImports ?? true);
   const [balanceEvidence, wealth, preferencesResult,
     allocations, assumptions, rates, recurringSeries, settlements, sourceMetadata] = await Promise.all([
-      evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id),
+      evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()),
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       allRows(supabase.from("goal_allocations").select("id, goal_id, account_id, amount_minor::text, version").eq("workspace_id", workspace.id).order("id")),

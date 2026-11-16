@@ -1,23 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { minorDigits } from "@/lib/finance/fx";
+import { formatMoney, minorFromMajor } from "@/lib/finance/format";
 
 type Series = { name: string; values: (number | null)[]; color?: string };
-export type CardChartProps = { type: "line" | "area" | "bar" | "hbar" | "donut" | "sparkline"; labels: string[]; series: Series[]; stacked?: boolean; axis?: boolean; currency?: string; minor?: boolean; height?: number; className?: string; style?: React.CSSProperties };
+export type CardChartProps = { type: "line" | "area" | "bar" | "hbar" | "donut" | "sparkline"; labels: string[]; series: Series[]; stacked?: boolean; axis?: boolean; currency?: string; minor?: boolean; locale?: string; height?: number; className?: string; style?: React.CSSProperties };
 
 const PALETTE = ["var(--color-brand)", "var(--color-ai)", "var(--color-chart-out)", "var(--color-warning)", "var(--color-chart-input)", "var(--color-success)", "var(--color-danger)", "var(--color-muted-foreground)"];
 const W = 600;
 
-export function format(value: number | null | undefined, currency?: string, minor?: boolean) {
-  if (value === null || value === undefined) return "–";
-  if (currency && minor) value = value / 10 ** minorDigits(currency);
-  return currency ? new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2 }).format(value)
-    : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+export function format(value: number | null | undefined, currency?: string, minor?: boolean, locale?: string) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "–";
+  if (!currency) return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+  return formatMoney(minor ? BigInt(Math.round(value)) : minorFromMajor(value, currency), currency, locale);
 }
 
-export function CardChart({ type, labels, series, stacked, axis, currency, minor, height, className, style }: CardChartProps) {
-  const shown = (value: number | null | undefined) => format(value, currency, minor);
+export function CardChart({ type, labels, series, stacked, axis, currency, minor, locale, height, className, style }: CardChartProps) {
+  const shown = (value: number | null | undefined) => format(value, currency, minor, locale);
   const [active, setActive] = useState<number | null>(null);
   const colors = series.map((item, index) => item.color ?? PALETTE[index % PALETTE.length]);
   const count = Math.max(labels.length, ...series.map(item => item.values.length));

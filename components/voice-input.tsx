@@ -42,9 +42,12 @@ export function VoiceInput({ onSend, onDone, disabled = false, compact = false }
     {needsKey && <VoiceKeyToast onDismiss={() => setNeedsKey(false)} />}
     {voice.error && !active && <p role="alert" className="absolute bottom-full left-0 mb-2 flex max-w-full items-center gap-2 rounded-lg border border-danger/30 bg-danger-soft py-1 pr-1 pl-3 text-xs text-danger shadow-sm">
       {voice.error}<button type="button" onClick={voice.cancel} aria-label="Dismiss" className="grid size-7 place-items-center rounded-md hover:bg-danger/10"><X className="size-3.5" aria-hidden="true" /></button></p>}
+    {voice.note && !active && <p role="status" className="absolute bottom-full left-0 mb-2 flex max-w-full items-center gap-2 rounded-lg border border-border bg-card py-1 pr-1 pl-3 text-xs text-muted-foreground shadow-sm">
+      {voice.note}<button type="button" onClick={voice.cancel} aria-label="Dismiss" className="grid size-7 place-items-center rounded-md hover:bg-muted"><X className="size-3.5" aria-hidden="true" /></button></p>}
     {active && <div role="group" aria-label="Voice message" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); voice.cancel(); } }}
       className="absolute inset-0 z-10 flex min-h-28 flex-col gap-2 rounded-2xl border border-ai-border bg-card p-2.5 shadow-[0_0_0_3px_var(--color-ai-soft)]">
       <p ref={words} aria-live="polite" className={`min-h-0 flex-1 overflow-y-auto px-1 whitespace-pre-wrap ${compact ? "text-sm" : "text-[15px]"} ${voice.text ? "" : "text-muted-foreground"}`}>{voice.text || label}</p>
+      {voice.note && <p role="status" className="px-1 text-xs text-muted-foreground">{voice.note}</p>}
       <div className="flex items-center gap-2">
         <span className="flex items-center gap-2 pl-1" aria-hidden="true"><span className={`size-2 rounded-full bg-danger ${status === "recording" ? "motion-safe:animate-pulse" : "opacity-40"}`} />
           <span className="flex h-6 items-center gap-[3px]">{[0.45, 0.7, 1, 0.8, 0.55, 0.35].map((scale, index) =>

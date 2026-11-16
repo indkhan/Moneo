@@ -42,5 +42,9 @@ export const requireWorkspace = cache(async () => {
   }
   const { workspace_settings: stored, ...workspace } = data as typeof data & { workspace_settings: unknown };
   const settings = readSettings(stored);
+  if (!stored) {
+    const saved = await supabase.from("workspace_settings").upsert({ workspace_id: workspace.id, timezone: settings.timezone }, { onConflict: "workspace_id", ignoreDuplicates: true });
+    if (saved.error) console.warn("[workspace-access] settings-not-saved", saved.error.code);
+  }
   return { supabase, user, settings, workspace: { ...workspace, timezone: settings.timezone, locale: settings.locale, settings } };
 });

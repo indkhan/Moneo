@@ -24,7 +24,7 @@ afterEach(() => vi.useRealTimers());
 it("reuses the page's in-flight evidence without scanning the ledger and wealth again", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
   const { supabase, workspace } = await requireWorkspace();
-  const balanceEvidence = Promise.resolve(await loadBalanceEvidence(supabase, workspace.id));
+  const balanceEvidence = Promise.resolve(await loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()));
   const queries = vi.spyOn(supabase, "from");
   const result = await evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence, wealth: Promise.resolve([]) });
   expect(result.input.missingInputs).not.toContain("balance:00000000-0000-4000-8000-000000000001:stale");

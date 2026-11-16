@@ -1,5 +1,6 @@
 import { app, Menu, nativeImage, Tray } from "electron";
 import { iconPath } from "./app-window";
+import { setStartAtLogin, startsAtLogin } from "./login-item";
 
 export type TrayActions = {
   open(): void;
@@ -11,9 +12,6 @@ export type TrayActions = {
 };
 
 let tray: Tray | undefined;
-
-export const startsAtLogin = () => app.getLoginItemSettings({ args: ["--hidden"] }).openAtLogin;
-export const openedAtLogin = () => process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAtLogin === true;
 
 export function createTray(actions: TrayActions) {
   const size = process.platform === "darwin" ? 18 : 16;
@@ -30,7 +28,7 @@ export function createTray(actions: TrayActions) {
     {
       label: "Start Moneo when I sign in", type: "checkbox", checked: startsAtLogin(),
       click: item => {
-        app.setLoginItemSettings({ openAtLogin: item.checked, args: ["--hidden"] });
+        setStartAtLogin(item.checked);
         tray?.setContextMenu(build());
       },
     },

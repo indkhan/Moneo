@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeMissingInputs, describeOutdated, formatMoney, formatInputAmount } from "./format";
+import { describeMissingInputs, describeOutdated, formatCompactMoney, formatMoney, formatInputAmount, minorFromMajor } from "./format";
 
 describe("formatMoney", () => {
   it("uses locale grouping and decimals without rounding exact accounting units or changing form serialization", () => {
@@ -89,6 +89,26 @@ describe("formatInputAmount", () => {
 
   it("formats safe numeric input amounts returned by PostgREST", () => {
     expect(formatInputAmount(350000, "EUR")).toBe("3500.00");
+  });
+});
+
+describe("formatCompactMoney", () => {
+  it("abbreviates from the exact decimal, so amounts beyond float precision and negatives stay right", () => {
+    expect(formatCompactMoney(123456789n, "EUR", "en-US")).toBe("EUR 1.2M");
+    expect(formatCompactMoney(-123456789n, "EUR", "en-US")).toBe("-EUR 1.2M");
+    expect(formatCompactMoney(9007199254740993n, "EUR", "en-US")).toBe("EUR 90.1T");
+    expect(formatCompactMoney(123456n, "KWD", "en-US")).toBe("KWD 123.5");
+    expect(formatCompactMoney(1234567n, "JPY", "en-US")).toBe("JPY 1.2M");
+  });
+});
+
+describe("minorFromMajor", () => {
+  it("turns a major-unit number into exact minor units for each decimal count", () => {
+    expect(minorFromMajor(400, "EUR")).toBe(40000n);
+    expect(minorFromMajor(0.29, "EUR")).toBe(29n);
+    expect(minorFromMajor(-123.456, "KWD")).toBe(-123456n);
+    expect(minorFromMajor(12345, "JPY")).toBe(12345n);
+    expect(() => minorFromMajor(1e25, "EUR")).toThrow();
   });
 });
 

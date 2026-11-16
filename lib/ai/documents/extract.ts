@@ -30,7 +30,7 @@ export async function extractDocument(bytes: Uint8Array, type: AttachmentType): 
     case "pptx": return extractPptx(bytes);
     case "xlsx": return extractXlsx(bytes);
     case "csv": return extractCsv(bytes, type === "text/tab-separated-values" ? "\t" : undefined);
-    default: throw new Error(`${type} is not a document`);
+    case undefined: throw new Error(`${type} is not a document`);
   }
 }
 

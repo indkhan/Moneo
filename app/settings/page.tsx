@@ -22,7 +22,7 @@ export const metadata = { title: "Settings" };
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
-  ["updates", "App updates"], ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
+  ["updates", "App updates"], ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["voice", "Voice"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
   ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
 ] as const;
 

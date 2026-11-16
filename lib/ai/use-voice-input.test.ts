@@ -64,6 +64,26 @@ describe("voice input state machine", () => {
     expect(failing.finished).toEqual([["done", "eggs"]]);
   });
 
+  it("shows the reason when the recording could not be transcribed and nothing was heard", async () => {
+    const h = harness();
+    h.recording.stop.mockRejectedValueOnce(new Error("Local speech isn't available."));
+    await recordingNow(h);
+    await h.voice.send();
+    expect(h.finished).toEqual([]);
+    expect(h.voice.state).toMatchObject({ status: "idle", error: "Local speech isn't available." });
+  });
+
+  it("keeps the fallback note while recording and after the words are sent, until dismissed", async () => {
+    const h = harness();
+    await recordingNow(h);
+    h.handlers.onNote("Used OpenAI instead.");
+    expect(h.voice.state.note).toBe("Used OpenAI instead.");
+    await h.voice.send();
+    expect(h.voice.state).toMatchObject({ status: "idle", note: "Used OpenAI instead." });
+    h.voice.cancel();
+    expect(h.voice.state.note).toBe("");
+  });
+
   it("sends nothing when nothing was heard", async () => {
     const h = harness({ stopWith: "" });
     await recordingNow(h);

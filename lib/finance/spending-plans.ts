@@ -12,7 +12,7 @@ export type SpendingPlanTransaction = {
   refundOfCurrencyCode?: string | null;
 };
 
-export function monthPrefix(today = new Date(), timeZone = "Europe/Berlin"): string {
+export function monthPrefix(today: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en", { timeZone, year: "numeric", month: "2-digit" }).formatToParts(today);
   return `${parts.find(part => part.type === "year")!.value}-${parts.find(part => part.type === "month")!.value}`;
 }

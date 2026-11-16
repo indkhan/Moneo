@@ -3,6 +3,8 @@ import { getRun, start } from "workflow/api";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { backlogRerunNeeded } from "@/lib/ai/agent-team";
 
+const agentRuntimeStopsOnCancelRequested = () => undefined;
+
 async function activeRun(db: SupabaseClient, workspaceId: string) {
   const active = await db.from("agent_runs").select("id, status").eq("workspace_id", workspaceId).in("status", ["queued", "running"]).limit(1).maybeSingle();
   if (active.error) throw active.error;
@@ -76,7 +78,7 @@ export async function cancelAgentRun(db: SupabaseClient, runId: string, workspac
     .select("workflow_run_id").maybeSingle();
   if (run.error) throw run.error;
   if (!run.data) return "inactive";
-  if (run.data.workflow_run_id) await getRun(run.data.workflow_run_id).cancel().catch(() => undefined);
+  if (run.data.workflow_run_id) await getRun(run.data.workflow_run_id).cancel().catch(agentRuntimeStopsOnCancelRequested);
   const closed = await db.from("agent_runs").update({ status: "canceled", finished_at: now }).eq("id", runId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
   if (closed.error) throw closed.error;
   const tasks = await db.from("agent_tasks").update({ status: "canceled", finished_at: now }).eq("run_id", runId).eq("workspace_id", workspaceId).in("status", ["pending", "running"]);

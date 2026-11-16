@@ -16,6 +16,7 @@ import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { closingAnswerSchema, closingPlan } from "@/lib/finance/account-closing";
 import { stableId } from "@/lib/import/row";
 
+const transfersPageLinksThemOnRequest = () => undefined;
 const version = z.coerce.number().int().min(1).max(2147483646);
 const accountType = z.enum(accountTypes);
 
@@ -23,7 +24,7 @@ export async function editAccount(_state: { error?: string }, form: FormData): P
   try {
   const { supabase, workspace } = await requireWorkspace();
   if (form.get("operation") === "archive") {
-    const evidence = await loadBalanceEvidence(supabase, workspace.id);
+    const evidence = await loadBalanceEvidence(supabase, workspace.id, new Date().toISOString());
     const account = resolveBalances(evidence.accounts.filter(row => row.id === form.get("accountId")), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
     if (account?.balance.status === "ambiguous") throw new Error("Settle this account's balance before archiving it");
     if (account && BigInt(account.balance.amount_minor ?? "0") !== 0n) throw new Error("This account still holds money. Say what happens to it first.");
@@ -49,7 +50,7 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
     const { supabase, workspace } = await requireWorkspace();
     const requestId = z.uuid().parse(form.get("requestId"));
     const answer = closingAnswerSchema.parse({ outcome: form.get("outcome"), ...(form.get("targetAccountId") ? { targetAccountId: form.get("targetAccountId") } : {}) });
-    const evidence = await loadBalanceEvidence(supabase, workspace.id);
+    const evidence = await loadBalanceEvidence(supabase, workspace.id, new Date().toISOString());
     const account = resolveBalances(evidence.accounts.filter(row => row.id === accountId), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone)[0];
     if (!account || account.archived_at) throw new Error("Account not found");
     if (account.balance.amount_minor === null) throw new Error("Settle this account's balance before archiving it");
@@ -85,7 +86,7 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
         if (linked.error) throw new Error(linked.error.message);
       }
     }
-    if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id).catch(() => undefined);
+    if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id).catch(transfersPageLinksThemOnRequest);
     const fresh = await supabase.from("accounts").select("version").eq("id", accountId).single();
     if (fresh.error) throw new Error(fresh.error.message);
     const { error } = await supabase.rpc("edit_money_metadata", { p_entity_type: "account", p_id: accountId, p_expected_version: fresh.data.version, p_patch: { archived: true }, p_request_id: stableId(`${requestId}:archive`) });

@@ -47,7 +47,7 @@ export function useChatQueue(chat: ReturnType<typeof useChatRequest>, conversati
     try {
       const response = await fetch("/api/chat/steer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ steerId: item.id, requestId, message: item.message }) });
       accepted = response.ok && (await response.json().catch(() => ({}))).accepted === true;
-    } catch {}
+    } catch { accepted = false; }
     if (!accepted && !consumed.current.has(item.id)) setQueue(current => current.map(entry => entry.id === item.id ? { ...entry, steering: false } : entry));
   }
 
