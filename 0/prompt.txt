@@ -1,0 +1,30 @@
+Act as the implementation sub-agent for this task.
+
+Finish GitHub issue #235 in Moneo: explicit time-zone parameters and deterministic finance clocks. Meet every acceptance criterion in the issue, including running the suite under both TZ=UTC and TZ=Europe/Berlin.
+
+## RESUME: most of the work is already done
+The previous agent crashed (API error) while running typecheck. Its uncommitted changes are in the worktree `C:/Users/mgsuk/.t3/worktrees/Moneo/t3-1cee99a2-6c194efe260290ed` (branch `t3/issue-235-time-zones`). They touch lib/settings.ts, lib/auth.ts, lib/finance/calendar.ts, balances, review, recurring-occurrences, spending-plans, lib/import/csv.ts and row.ts, workflows/bank-sync.ts, app/settings/form.tsx, eslint.config.mjs, AGENTS.md and their tests. That agent already merged in the earlier work from `t3/required-time-zone`.
+1. Read it read-only: `git -C <path> diff` and `git -C <path> status`.
+2. Bring it into your own checkout: `git -C <path> diff HEAD > <scratch>/235.patch`, then `git apply --3way` onto a branch `t3/issue-235-tz` from current `origin/main` (main has moved: PRs #247, #248 and #249 merged). Copy any untracked files too. Never modify, reset or delete the old worktree.
+3. **Commit right away** once the patch applies, so it can't be lost again, and commit after each later step.
+4. Continue: get typecheck, lint and tests green, then verify against the issue's criteria.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 235 --comments`.
+- End each commit message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- Other agents share the moneo-qa backend and QA port 3100:
+  - never `npm run qa:reset`, never `docker compose -p moneo-qa down`;
+  - never touch the owner's backend (.env, port 3000, project `moneo`);
+  - if 3100 is busy, wait and retry, and never kill a process you didn't start.
+- If `npm ci` stalls, retry once with `--prefer-offline`.
+- `lib/cron.test.ts` times out under load and is being fixed separately (#246). Report that timeout, but don't change it.
+- If you add a migration, give it a unique timestamp prefix later than `202611160041`.
+- Before finishing:
+  - `npm test` under both TZ=UTC and TZ=Europe/Berlin;
+  - `npm run lint`, `npm run typecheck` and `npm run build`;
+  - the verify-ui skill for the Settings change. Upload screenshots to the PR if you can (`.qa/` is git-ignored); if you can't, say so.
+- Push and open a PR to `main` (`Closes #235`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
