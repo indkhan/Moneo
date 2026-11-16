@@ -5,18 +5,13 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { loadRawContext, type RawContext } from "@/lib/bank/raw-context";
+import { normalizeIban } from "@/lib/iban";
 import { wealthAmount } from "./wealth";
 import { closingMovedTo } from "./account-closing";
 import type { BankLeg } from "./transit";
 
 export const MATCH_DAYS = 3;
 const CLOSING_MATCH_DAYS = 30;
-const IBAN = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$/;
-
-export function normalizeIban(value: string) {
-  const iban = value.replace(/\s/g, "").toUpperCase();
-  return IBAN.test(iban) ? iban : null;
-}
 
 export function sourceIbans(row: unknown) {
   if (!row || typeof row !== "object") return [];

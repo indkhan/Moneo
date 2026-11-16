@@ -98,6 +98,14 @@ it("syncing the same bank data twice adds no second import", async () => {
   expect(tables.bank_connections[0]).toMatchObject({ status: "active", last_error: null });
 });
 
+it("marks a transfer to an own account whose declared IBAN is spaced and contains the letter s", async () => {
+  tables.own_account_identifiers.push({ workspace_id: "w1", iban: "ES91 2100 0418 4502 0005 1332" });
+  bank.bookedTransactions.mockResolvedValue([
+    { ...tx("b", "2026-10-02", "7.25"), bank_transaction_code: { code: "TRANSFER" }, creditor: { name: "Savings" }, creditor_account: { iban: "ES9121000418450200051332" } }]);
+  await sync();
+  expect(tables.bank_transaction_raw.map(row => row.own_account)).toEqual([true]);
+});
+
 it("stores the bank's full data once per CSV row, and a repeated window adds none", async () => {
   bank.bookedTransactions.mockResolvedValue([
     { ...tx("b", "2026-10-02", "7.25"), bank_transaction_code: { code: "TRANSFER" }, creditor: { name: "Savings" }, creditor_account: { iban: "NL91 ABNA 0417 1643 00" } },
