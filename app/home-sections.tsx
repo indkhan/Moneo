@@ -4,7 +4,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { displayFormat } from "@/lib/display-format";
 import { formatMoney } from "@/lib/finance/format";
-import { minorDigits } from "@/lib/finance/fx";
 import { CashFlowView } from "./cash-flow-view";
 
 type SectionProps = { db: SupabaseClient; workspaceId: string; currency: string; today: string; locale: string };
@@ -27,7 +26,7 @@ export async function CashFlowPanel({ db, workspaceId, currency, today, locale }
   const months = data.months.map((month, index) => ({ ...month, label: monthName(month.from, locale, "short"), name: monthName(month.from, locale),
     incomeMinor: data.trend[index].incomeMinor, spendingMinor: data.trend[index].spendingMinor }));
   return <section id="cash-flow" aria-label="Cash flow" className={card}>
-    <CashFlowView months={months} scale={10 ** minorDigits(currency)} categoryNames={Object.fromEntries(data.categoryNames)} merchantNames={Object.fromEntries(data.merchantNames)} currency={currency} locale={locale} ask={ask} />
+    <CashFlowView months={months} categoryNames={Object.fromEntries(data.categoryNames)} merchantNames={Object.fromEntries(data.merchantNames)} currency={currency} locale={locale} ask={ask} />
   </section>;
 }
 
