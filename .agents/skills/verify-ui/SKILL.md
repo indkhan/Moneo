@@ -13,7 +13,7 @@ Everything here runs against the QA app on http://localhost:3100. Never use port
 
 `npm run setup -- --qa`, then `npm run qa:auth`, then `npm run qa:server` in the background. It is ready when `curl -s -o /dev/null -w "%{http_code}" -H "x-moneo-test: 1" http://localhost:3100/api/health` prints 401 or 200.
 
-If port 3100 is already taken, another checkout's QA app owns it and serves that checkout's code. Do not kill it. Start this checkout's app on a free port and point the tools at it with `E2E_BASE_URL=http://localhost:<port>`.
+If port 3100 is already taken, another checkout's QA app owns it and serves that checkout's code. Do not kill it. Start this checkout's app on a free port with `QA_PORT=<port> npm run qa:server` and point the tools at it with `E2E_BASE_URL=http://localhost:<port>`.
 
 ## 2. Doctor
 
@@ -54,7 +54,33 @@ Add a new spec only when no existing journey can take the check (AGENTS.md Tests
 
 ## 5. Hand over
 
-Put before and after side by side in the PR description for each page that visibly changed, with one line on what to look at. Attach the video for a flow. Upload by dragging the files into the PR on GitHub, or ask the owner to if you cannot; `.qa/` is git-ignored, so never commit them. Say which pages you covered, what changed in each and what you could not capture and why. If nothing visibly changed, say so and attach nothing.
+The pictures go in the PR description itself, so the owner sees them on GitHub. A path to `.qa/` is not evidence: it is git-ignored and exists only on this machine. Never commit them to the PR's branch either.
+
+1. Open the PR first to get its number.
+2. Push the files to their own branch, `pr-assets/<pr>`, which holds nothing else. The repo is public, so QA data only:
+
+   ```sh
+   git worktree add --orphan -b pr-assets/<pr> .qa/pr-assets
+   cp -r .qa/shots/before .qa/shots/after .qa/pr-assets/
+   git -C .qa/pr-assets add -A
+   git -C .qa/pr-assets commit -m "Screenshots for #<pr> (QA data)"
+   git -C .qa/pr-assets push origin pr-assets/<pr>
+   git worktree remove .qa/pr-assets
+   ```
+
+   To add more later, check the branch out again with `git worktree add .qa/pr-assets pr-assets/<pr>`.
+3. Embed them with `gh pr edit <pr> --body-file <file>`, before and after side by side in a table, one row per page and view that visibly changed, with one line on what to look at:
+
+   ```markdown
+   | Before | After |
+   | --- | --- |
+   | ![Home, dark, before](https://raw.githubusercontent.com/indkhan/Moneo/pr-assets/<pr>/before/home-dark.png) | ![Home, dark, after](https://raw.githubusercontent.com/indkhan/Moneo/pr-assets/<pr>/after/home-dark.png) |
+   ```
+
+4. **A flow:** GitHub plays a GIF inline but not a video from a branch. If `ffmpeg` is installed, turn the recording into a GIF and embed it: `ffmpeg -i video.webm -vf "fps=10,scale=900:-1" flow.gif`. Otherwise embed a screenshot of each key state. Either way, push the recording too (`video.webm` from `test-results/`) and link it.
+5. Open the PR on GitHub and check that every image shows.
+
+Say which pages you covered, what changed in each and what you could not capture and why. If nothing visibly changed, say so and attach nothing.
 
 ## 6. Clean up
 
