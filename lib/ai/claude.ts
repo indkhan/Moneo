@@ -17,7 +17,7 @@ export function claudeExecutable(): string | null {
     try {
       const file = require.resolve(/*turbopackIgnore: true*/ `${name}/claude${process.platform === "win32" ? ".exe" : ""}`);
       if (existsSync(/*turbopackIgnore: true*/ file)) return file;
-    } catch {}
+    } catch { continue; }
   }
   return null;
 }

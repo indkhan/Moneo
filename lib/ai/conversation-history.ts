@@ -1,6 +1,7 @@
 import type { ChatAttachment } from "./chat-attachments";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { awaitedLater } from "@/lib/awaited-later";
 import { isSpoken } from "./voice-context";
 import { callStubs, loadCalls, type CallCard } from "./voice-call-history";
 
@@ -98,8 +99,7 @@ async function savedActivity(supabase: SupabaseClient, workspace: string, reques
 export async function loadConversationHistory(supabase: SupabaseClient, workspace: string, requested?: string, threadsBefore?: string, messagesBefore?: string) {
   before(messagesBefore);
   if (requested && requested !== "new" && !z.uuid().safeParse(requested).success) throw new Error("Conversation unavailable");
-  const explicit = requested && requested !== "new" ? loadConversation(supabase, workspace, requested, messagesBefore) : null;
-  explicit?.catch(() => {});
+  const explicit = requested && requested !== "new" ? awaitedLater(loadConversation(supabase, workspace, requested, messagesBefore)) : null;
   const { threads, threadsCursor } = await loadThreads(supabase, workspace, threadsBefore);
   const conversation = await explicit;
   return { threads, threadsCursor, selected: conversation?.selected ?? null, messages: conversation?.messages ?? [], messagesCursor: conversation?.messagesCursor ?? null, running: conversation?.running ?? null };

@@ -100,6 +100,7 @@ async function runProposals(db: Db, runId: string, workspaceId: string) {
 }
 
 const MODEL_BUDGET_CEILING = 200;
+const originalErrorIsRethrownBelow = () => undefined;
 const SOURCE: Record<Source, string> = { ai: "AI organizer", rule: "Your rule", memory: "Your confirmed payee", system: "The bank's own data" };
 
 async function askModel(model: Awaited<ReturnType<typeof modelForSettings>>, { system, prompt, tools }: AskRequest) {
@@ -336,7 +337,7 @@ export async function runAgent(runId: string, workspaceId: string, agent: Exclud
   } catch (error) {
     const canceled = error instanceof RunInactive;
     if (!canceled && retryTransient && isTransientDbError(error)) {
-      await report(context, { type: "note", text: "The database did not answer; trying again shortly" }).catch(() => undefined);
+      await report(context, { type: "note", text: "The database did not answer; trying again shortly" }).catch(originalErrorIsRethrownBelow);
       throw error;
     }
     await report(context, { type: "note", text: canceled ? "Stopped" : `Failed: ${error instanceof Error ? error.message : String(error)}` },

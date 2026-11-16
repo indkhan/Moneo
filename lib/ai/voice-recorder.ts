@@ -2,6 +2,7 @@ export type VoiceRecording = { stop: () => Promise<string>; cancel: () => void }
 export type VoiceHandlers = { onText: (text: string) => void; onLevel: (level: number) => void; onError: (error: Error) => void };
 
 const RATE = 24000;
+const notRunningIsReportedBelow = () => undefined;
 type RealtimeEvent = { type: string; item_id?: string; delta?: string; transcript?: string; error?: { message?: string } };
 const str = (value: unknown) => typeof value === "string" ? value : undefined;
 function realtimeEvent(data: unknown): RealtimeEvent | null {
@@ -45,7 +46,7 @@ export async function startVoiceRecording({ onText, onLevel, onError }: VoiceHan
     throw new Error("Voice input isn't supported in this browser.");
   const audio = new AudioContext();
   const microphone = navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-  const resumed = audio.resume().catch(() => {});
+  const resumed = audio.resume().catch(notRunningIsReportedBelow);
   let stream: MediaStream;
   try { stream = await microphone; } catch (cause) { void audio.close(); throw micError(cause); }
   const release = () => { stream.getTracks().forEach(track => track.stop()); if (audio.state !== "closed") void audio.close(); };

@@ -104,9 +104,11 @@ const hardCodedAddress = [
 ];
 
 const unexplainedIgnoredFailure = {
-  selector: ":matches(CatchClause > BlockStatement[body.length=0], CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement[body.length=0])",
-  message: "A workflow that ignores a failure must say what handles it instead. Call a function named for that reason, as workflows/bank-sync.ts does (catch { hourlyBacklogCheckPicksUpTheRows(); }), or record the failure (AGENTS.md How to work, \"Fix the class\").",
+  selector: ":matches(CatchClause > BlockStatement[body.length=0], CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression) > BlockStatement[body.length=0], CallExpression[callee.property.name='catch'] > ArrowFunctionExpression[body.type='Identifier'][body.name='undefined'], CallExpression[callee.property.name='then'][arguments.length=2] > :matches(ArrowFunctionExpression, FunctionExpression):last-child > BlockStatement[body.length=0])",
+  message: "Ignoring a failure must say what handles it instead. Return an actionable failure, record the outcome, or call a function named for that reason, as workflows/bank-sync.ts does (catch { hourlyBacklogCheckPicksUpTheRows(); }) (AGENTS.md How to work, \"Fix the class\").",
 };
+
+const typedAsyncFiles = ["lib/**/*.ts", "lib/**/*.tsx", "workflows/**/*.ts", "app/**/actions.ts", "app/**/*-actions.ts", "app/**/*-action.ts", "app/**/route.ts"];
 
 const isTest = file => /\.(test|spec)\.tsx?$/.test(file);
 const under = (file, folder) => file === folder || file.startsWith(`${folder}/`);
@@ -204,9 +206,23 @@ export default defineConfig([
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress] },
   },
   {
-    files: ["workflows/**"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    files: ["workflows/**", ...typedAsyncFiles],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts"],
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, unexplainedIgnoredFailure] },
+  },
+  {
+    files: ["lib/env.ts"],
+    rules: { "no-restricted-syntax": ["error", unexplainedIgnoredFailure] },
+  },
+  {
+    files: typedAsyncFiles,
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
+    },
   },
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],
