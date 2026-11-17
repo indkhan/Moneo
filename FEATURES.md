@@ -94,6 +94,9 @@ Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voic
 | --- | --- | --- |
 | `/api/voice/call` | POST | `app/api/voice/call/route.ts` |
 | `/api/voice/calls` | POST | `app/api/voice/calls/route.ts` |
+| `/api/voice/models` | GET, POST | `app/api/voice/models/route.ts` |
+| `/api/voice/models/folder` | POST | `app/api/voice/models/folder/route.ts` |
+| `/api/voice/models/try` | POST | `app/api/voice/models/try/route.ts` |
 | `/api/voice/sample` | GET | `app/api/voice/sample/route.ts` |
 | `/api/voice/session` | POST | `app/api/voice/session/route.ts` |
 | `/api/voice/transcribe` | POST | `app/api/voice/transcribe/route.ts` |
@@ -225,6 +228,9 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/sync/open` | POST | `app/api/sync/open/route.ts` |
 | `/api/voice/call` | POST | `app/api/voice/call/route.ts` |
 | `/api/voice/calls` | POST | `app/api/voice/calls/route.ts` |
+| `/api/voice/models` | GET, POST | `app/api/voice/models/route.ts` |
+| `/api/voice/models/folder` | POST | `app/api/voice/models/folder/route.ts` |
+| `/api/voice/models/try` | POST | `app/api/voice/models/try/route.ts` |
 | `/api/voice/sample` | GET | `app/api/voice/sample/route.ts` |
 | `/api/voice/session` | POST | `app/api/voice/session/route.ts` |
 | `/api/voice/transcribe` | POST | `app/api/voice/transcribe/route.ts` |
