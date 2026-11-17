@@ -12,8 +12,8 @@ These are defaults. The developer's instructions override them; if a rule confli
 
 - **Local-first.** Everything listens on `127.0.0.1`; optional phone access is Tailscale forwarding to it (`lib/phone-access.ts`). Data leaves the machine only for services the owner set up (AI provider, Enable Banking, Scalable). New features must work fully offline from the cloud except those calls.
 - **One owner, no accounts.** The proxy signs the owner in automatically; there is no sign-up or sign-in screen. Private access from the owner's own Tailscale devices needs no login; anything public must add one first.
-- **Financial truth comes from code and data, never from AI guesses.** Money is integer minor units (`bigint`) with an explicit currency. The AI explains and proposes; every write it suggests is a card the owner accepts.
-- **AI organization labels are the one exception to cards.** The organizer applies high- and medium-confidence category and merchant labels itself, marked as AI (`organized_by = 'ai'`), listed with every other AI decision and undoable; they never become owner rules or owner corrections. Every other AI write is a card.
+- **Financial truth comes from code and data, never from AI guesses.** Money is integer minor units (`bigint`) with an explicit currency. The AI explains and proposes.
+- **AI writes that change money are cards.** Whether it comes from chat, a voice call or an agent, an AI write that changes money (transactions, amounts, balances, dates, accounts, transfers, splits, goals, budgets, plans, scenarios or owner rules) is a card the owner accepts. AI writes that only describe money or the owner, such as the organizer's category and merchant labels (`organized_by = 'ai'`) and AI memory, are saved by the AI, marked as AI, listed with every other AI decision and undoable; they never become owner rules or owner corrections.
 - **History is kept.** Preserve source records, corrections, history and undo when changing financial data flows.
 - **Open source.** No secrets, private statements or personal data in the repo (`npm run check:privacy` runs before tests and lint).
 
