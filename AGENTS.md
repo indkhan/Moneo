@@ -56,7 +56,7 @@ Use npm (`package-lock.json` is authoritative).
 - Backend: `npm run setup` (writes `.env` secrets, starts Docker, applies migrations, creates the owner; safe to rerun)
 - Dev: `npm run dev` (http://localhost:3000)
 - Unit: `npm test` · Lint: `npm run lint` · Build: `npm run build` · Bundle budget: `npm run check:bundle` (after a build)
-- Database: `npm run test:db` (needs the backend from `npm run setup`)
+- Database: `npm run test:db` (needs the backend from `npm run setup`) · `npm run db:types` regenerates `lib/database.types.ts` after a migration (needs the test backend)
 - E2E: `npm run test:e2e` (see `e2e/README.md`)
 - Desktop: `node scripts/desktop/fetch-backend.mjs --platform <win-x64|mac-arm64|mac-x64|linux-x64>` once, then `npm run desktop:build`, `npm run desktop:dev`, `npm run desktop:dist` and `npm run desktop:smoke` (drives the packaged app)
 - Desktop release: push a `v*` tag matching `desktop/package.json`, then publish the drafted release (`desktop/README.md` → Releasing). Never tag or publish unasked.
@@ -123,6 +123,7 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | Every code path returns; overrides are marked; no switch fall-through | `tsconfig.json` |
 | A stored preference this version cannot read never blocks sign-in | `lib/settings.test.ts` |
 | The assistant's system prompt does not grow by special cases | budget in `lib/ai/provider.test.ts` |
+| `lib/database.types.ts` is generated from the migrations; the typed clients (`serviceDb()`, `createClient()`, `Db`) check every query against it | `npm run db:types` and the CI job `database`, which fails when the file differs from a fresh generation |
 | `lib/schema.ts` matches the migrated database; app and database agree on currency minor units; SQL conflicts are never raised as `40001` | `lib/schema.live.test.ts` (`npm run test:db`, CI job `database`) |
 | No secrets, statements or personal data in the repo | `npm run check:privacy` (runs before test and lint) |
 | A page's JavaScript stays within its size budget | `npm run check:bundle` |
@@ -142,7 +143,7 @@ Each outside service sends the browser back to a different address. Keep these i
 
 ## Database changes
 
-Add a new ordered migration in `supabase/migrations/` and keep `lib/schema.ts` aligned. Never rewrite an applied migration. `npm run setup` applies pending ones and records them in `supabase_migrations.schema_migrations`. For other Supabase CLI commands use `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`).
+Add a new ordered migration in `supabase/migrations/`, keep `lib/schema.ts` aligned and run `npm run db:types`. Never rewrite an applied migration. `npm run setup` applies pending ones and records them in `supabase_migrations.schema_migrations`. For other Supabase CLI commands use `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`).
 
 ## Tests
 

@@ -2219,14 +2219,14 @@ isOneToOne: false
                   ]
                 },"workspace_settings": {
                   Row: {
-                    "ai_data_scopes": (string)[],"ai_models": NonNullable<Json>,"artifact_scalable_data": string,"locale": string,"muted_insight_types": (string)[],"speech_engine": string,"summary_cadence": string,"summary_time": string,"theme": string,"timezone": string,"uncategorized_skipped_at": string | null,"updated_at": string,"voice": string,"workspace_id": string
+                    "ai_data_scopes": (string)[],"ai_models": NonNullable<Json>,"artifact_scalable_data": string,"locale": string,"muted_insight_types": (string)[],"speech_engine": string,"speech_local_model": string | null,"summary_cadence": string,"summary_time": string,"theme": string,"timezone": string,"uncategorized_skipped_at": string | null,"updated_at": string,"voice": string,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone": string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id": string
+                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone": string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id": string
                   }
                   Update: {
-                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone"?: string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id"?: string
+                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone"?: string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id"?: string
                   }
                   Relationships: [
                     {
