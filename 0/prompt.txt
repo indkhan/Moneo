@@ -1,0 +1,40 @@
+Act as the implementation sub-agent for this task.
+
+Moneo issue #227: configurable speech-to-text for the CHAT MIC only. Voice calls stay untouched. PR 1 (#267, engine contract, batch route, fallback, Settings → Voice → Speech to text) and PR 2 (#282, the "On this computer" local engine) are merged; read that code first. You build **PR 3: the OpenRouter engine.**
+
+**Engine**
+- The owner picks an OpenRouter model that accepts audio input. Build the dropdown from OpenRouter's models API, filtered to `input_modalities` that include audio. Use the owner's existing OpenRouter key (`openrouter_api_key` through lib/service-keys and lib/ai/keys).
+- On Send/Done, the batch route sends the recording (WAV or base64 `input_audio`) with a short instruction to return a plain transcript only. Pass the vocabulary hints from `lib/ai/speech/hints.ts`.
+- No OpenRouter key, or an empty model list: the option shows why it can't be used.
+- The existing fallback rule applies: if OpenRouter fails and an OpenAI key exists, use OpenAI and show the note.
+
+**Settings**
+- Make "OpenRouter" selectable in the Speech to text section (it currently shows "coming soon").
+- Store the chosen model like the other speech settings. Reset all data clears it.
+- If you need a migration, give it a unique prefix later than the newest file in supabase/migrations on origin/main, keep lib/schema.ts aligned, and make sure it runs on the desktop's Postgres.
+
+**Docs:** README.md.
+
+**Tests:** mock OpenRouter fetch. Cover engine selection, the request shape, fallback, and model-list filtering. No real calls.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 227 --comments`.
+- Branch `t3/issue-227-openrouter-engine` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command or CI run is still going.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The QA app on port 3100 and the moneo-qa backend are shared:
+  - never `npm run qa:reset` or `docker compose -p moneo-qa down`;
+  - never touch the owner's backend;
+  - revert any migration you apply to QA.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test` and `npm run build`.
+- Run the verify-ui skill on Settings (light/dark/mobile). Link the screenshots in the PR body from a commit, then remove them from the branch.
+- Push and open a PR to `main`. The body says "Part 3 of #227" (don't close the issue) and ends with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+Continue where you left off.
