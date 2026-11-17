@@ -46,7 +46,7 @@ async function loadAllUncategorized(supabase: Awaited<ReturnType<typeof requireW
     const page = await supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code, merchants(name)").eq("workspace_id", workspaceId).eq("status", "posted").is("category_id", null).neq("kind", "transfer")
       .order("posted_on", { ascending: false }).order("id", { ascending: false }).range(offset, offset + PAGE - 1);
     if (page.error) throw new Error(page.error.message);
-    rows.push(...(page.data as unknown as UncategorizedRow[]));
+    rows.push(...page.data);
     if (page.data.length < PAGE) return rows;
   }
 }

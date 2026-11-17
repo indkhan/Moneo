@@ -125,7 +125,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
   const saved = homeLayout(layout.data);
   if (!saved) throw new Error("Dashboard preferences are invalid; try again");
-  const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row as unknown as HomeCardRow & { artifact_id: string }]));
+  const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row]));
   const ordered = saved.items.filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
   const shared: QueryShared = {};
   const keys = [...new Set([...ordered, ...[...cards.keys()].map(id => `card:${id}`), ...Object.keys(BUILTIN_WIDGETS)])];
