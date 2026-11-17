@@ -68,7 +68,25 @@ export async function startVoiceRecording(handlers: VoiceHandlers): Promise<Voic
   let plan: SessionPlan;
   try { plan = await openSession(); } catch (cause) { microphone.release(); throw cause; }
   if (plan.fellBack) handlers.onNote("Your chosen speech-to-text engine isn't available, so Moneo used OpenAI.");
-  return plan.mode === "live" ? transcribe(microphone, Promise.resolve(new WebSocket(plan.url, ["realtime", `openai-insecure-api-key.${plan.token}`])), handlers) : recordBatch(microphone, handlers);
+  if (plan.mode === "live") return transcribe(microphone, Promise.resolve(new WebSocket(plan.url, ["realtime", `openai-insecure-api-key.${plan.token}`])), handlers);
+  return recordBatch(microphone, handlers.onLevel, async samples => {
+    const body = await uploadSpeech("/api/voice/transcribe", samples);
+    if (body.fellBack === true) handlers.onNote("Your chosen speech-to-text engine didn't work, so Moneo used OpenAI.");
+    return body.text;
+  });
+}
+
+export async function startModelTrial(model: string, onLevel: (level: number) => void): Promise<VoiceRecording> {
+  if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || !window.AudioContext) throw new Error("Voice input isn't supported in this browser.");
+  const microphone = await openMicrophone();
+  return recordBatch(microphone, onLevel, async samples => (await uploadSpeech(`/api/voice/models/try?model=${encodeURIComponent(model)}`, samples)).text);
+}
+
+async function uploadSpeech(path: string, samples: Int16Array<ArrayBuffer>): Promise<{ text: string; fellBack?: unknown }> {
+  const response = await fetch(`${path}${path.includes("?") ? "&" : "?"}rate=${RATE}`, { method: "POST", headers: { "Content-Type": "audio/pcm" }, body: samples });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || typeof body?.text !== "string") throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
+  return body;
 }
 
 async function openSession(): Promise<SessionPlan> {
@@ -148,7 +166,7 @@ function transcribe({ audio, stream, release }: Microphone, connecting: Promise<
   };
 }
 
-function recordBatch({ audio, stream, release }: Microphone, { onLevel, onNote }: VoiceHandlers): VoiceRecording {
+function recordBatch({ audio, stream, release }: Microphone, onLevel: (level: number) => void, upload: (samples: Int16Array<ArrayBuffer>) => Promise<string>): VoiceRecording {
   const chunks: Int16Array[] = [];
   const source = audio.createMediaStreamSource(stream);
   const processor = audio.createScriptProcessor(4096, 1, 1);
@@ -170,12 +188,7 @@ function recordBatch({ audio, stream, release }: Microphone, { onLevel, onNote }
       end();
       const samples = new Int16Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
       chunks.reduce((offset, chunk) => { samples.set(chunk, offset); return offset + chunk.length; }, 0);
-      if (!samples.length) return "";
-      const response = await fetch(`/api/voice/transcribe?rate=${RATE}`, { method: "POST", headers: { "Content-Type": "audio/pcm" }, body: samples });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !str(body?.text)) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
-      if (body.fellBack === true) onNote("Your chosen speech-to-text engine didn't work, so Moneo used OpenAI.");
-      return body.text;
+      return samples.length ? upload(samples) : "";
     },
   };
 }

@@ -8,6 +8,7 @@ const RETURN_PATH = /^\/(import\?(bank|scalable)=(connected|error|invalid)(#scal
 export type BridgeHandlers = {
   onReturn(path: string): Promise<void>;
   update: { status(): UpdateStatus; check(): Promise<UpdateStatus>; install(): Promise<UpdateStatus> };
+  chooseFolder(): Promise<string | null>;
 };
 
 export async function startBridge(handlers: BridgeHandlers) {
@@ -26,6 +27,7 @@ export async function startBridge(handlers: BridgeHandlers) {
       if (route === "GET /update") return json(200, handlers.update.status());
       if (route === "POST /update/check") return json(200, await handlers.update.check());
       if (route === "POST /update/install") return json(200, await handlers.update.install());
+      if (route === "POST /choose-folder") return json(200, { path: await handlers.chooseFolder() });
       return json(404);
     } catch { return json(503); }
   });
