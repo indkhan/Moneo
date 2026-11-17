@@ -7,7 +7,8 @@ const status: UpdateStatus = { current: "0.1.0", state: "available", latest: "0.
 it("does only what Moneo's server asks, on fixed routes and Moneo's own connection results", async () => {
   const onReturn = vi.fn(async () => {});
   const update = { status: vi.fn(() => status), check: vi.fn(async () => status), install: vi.fn(async () => status) };
-  const bridge = await startBridge({ onReturn, update });
+  const chooseFolder = vi.fn(async () => "/Users/owner/Models/whisper-small");
+  const bridge = await startBridge({ onReturn, update, chooseFolder });
   const post = (path: string, headers: Record<string, string> = {}) => fetch(`${bridge.url}/return`, { method: "POST", headers: { "x-moneo-return": path, ...headers } });
   try {
     const base = bridge.url.slice(0, bridge.url.lastIndexOf("/"));
@@ -30,5 +31,10 @@ it("does only what Moneo's server asks, on fixed routes and Moneo's own connecti
     expect(await (await fetch(`${bridge.url}/update`)).json()).toEqual(status);
     expect((await fetch(`${bridge.url}/update/install`, { method: "POST" })).status).toBe(200);
     expect(update.install).toHaveBeenCalledTimes(1);
+
+    expect((await fetch(`${bridge.url}/choose-folder`)).status).toBe(404);
+    expect((await fetch(`${bridge.url}/choose-folder`, { method: "POST", headers: { origin: "https://example.com" } })).status).toBe(403);
+    expect(chooseFolder).not.toHaveBeenCalled();
+    expect(await (await fetch(`${bridge.url}/choose-folder`, { method: "POST" })).json()).toEqual({ path: "/Users/owner/Models/whisper-small" });
   } finally { bridge.close(); }
 });

@@ -8,12 +8,14 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   allowedDevOrigins: ["**.ts.net"],
   experimental: { staleTimes: { dynamic: 30, static: 30 }, proxyClientMaxBodySize: "26mb" },
-  serverExternalPackages: ["quickjs-emscripten-core", "@jitl/quickjs-wasmfile-release-sync", "ai-sdk-provider-claude-code", "@anthropic-ai/claude-agent-sdk", "unpdf", "@napi-rs/canvas"],
+  serverExternalPackages: ["quickjs-emscripten-core", "@jitl/quickjs-wasmfile-release-sync", "ai-sdk-provider-claude-code", "@anthropic-ai/claude-agent-sdk", "unpdf", "@napi-rs/canvas", "@huggingface/transformers"],
   ...(desktop && {
     output: "standalone" as const,
     outputFileTracingIncludes: {
       "/*": ["node_modules/echarts/dist/echarts.min.js", "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/**/*", "node_modules/@workflow/*/package.json",
-        `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}*/**/*`],
+        `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}*/**/*`,
+        "node_modules/onnxruntime-node/package.json", "node_modules/onnxruntime-node/dist/**/*", `node_modules/onnxruntime-node/bin/napi-v6/${process.platform}/${process.arch}/*`,
+        "node_modules/onnxruntime-common/package.json", "node_modules/onnxruntime-common/dist/cjs/**/*"],
     },
   }),
 };
