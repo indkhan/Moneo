@@ -6,6 +6,7 @@ import { Providers } from "@/components/providers";
 import { AppShell, type ShellData } from "@/components/app-shell";
 import { SyncOnOpen } from "@/components/sync-on-open";
 import { ServiceWorker } from "@/components/service-worker";
+import { PendingCallRecords } from "@/components/pending-call-records";
 import { cookies } from "next/headers";
 import { ThemePreference } from "@/components/theme-preference";
 import { hasSupabase } from "@/lib/env";
@@ -41,6 +42,12 @@ async function WorkspaceTheme({ fallback }: { fallback: Theme }) {
   return <ThemePreference preference={theme} />;
 }
 
+async function CallRecordSync() {
+  let workspaceId: string;
+  try { workspaceId = (await requireWorkspace()).workspace.id; } catch { return null; }
+  return <PendingCallRecords workspaceId={workspaceId} />;
+}
+
 async function loadShellData(): Promise<ShellData> {
   try {
     const { supabase, workspace } = await requireWorkspace();
@@ -65,6 +72,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         {hasSupabase() ? <Suspense fallback={<ThemePreference preference={theme} />}><WorkspaceTheme fallback={theme} /></Suspense> : <ThemePreference preference={theme} />}
         {hasSupabase() && <SyncOnOpen />}
+        {hasSupabase() && <Suspense fallback={null}><CallRecordSync /></Suspense>}
         <ServiceWorker />
         <Providers><AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell></Providers>
       </body>

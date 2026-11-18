@@ -88,7 +88,7 @@ The voice call hands every request to the same chat (`/api/chat`), so these are 
 | `related_rows` | organizer (internal) | Other payments whose description shares words with an item's payee, labelled by the owner or not… | `lib/organize/organizer.ts` |
 
 ## Voice
-Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-vocabulary.ts`.
+Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-record-queue.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-vocabulary.ts`.
 
 | Route | Methods | File |
 | --- | --- | --- |

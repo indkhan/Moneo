@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       instructions: VOICE_INSTRUCTIONS, voice: settings.voice,
       providerOptions: { openai: { delegation: { type: "client" }, input: seedInput(history) } },
     } });
-    return Response.json({ sdp: session.sdp, sessionId: session.sessionId });
+    return Response.json({ sdp: session.sdp, sessionId: session.sessionId, workspaceId: workspace.id });
   } catch (error) {
     console.error("voice session failed", error);
     return Response.json({ error: "Could not start the call" }, { status: 502 });
