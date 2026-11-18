@@ -3,6 +3,7 @@ import { toolResultReceipt } from "./tool-evidence";
 import { buildPlanningReview, buildReviewEvidence } from "./review";
 import { resolveBalances } from "./balances";
 import { wealthEvidence } from "./wealth";
+import { defined } from "@/lib/testing";
 const context = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" };
 it.each(["manual", "manual reviewed"])("discloses %s provenance when publishing only a derived booked balance", provenance => {
   const accounts = [{ id: "cash", name: "Cash", currency_code: "EUR" }];
@@ -15,7 +16,7 @@ it.each(["manual", "manual reviewed"])("discloses %s provenance when publishing 
   ] as const) {
     const receipt = toolResultReceipt(name, {}, result, context, ["accounts"]);
     for (const id of ids) {
-      const metric = receipt.metrics.find(metric => metric.id === id)!;
+      const metric = defined(receipt.metrics.find(metric => metric.id === id));
       expect(metric).toMatchObject({ valueMinor: "500", period: { from: "2026-10-01", to: "2026-10-01" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"]) });
     }
   }
@@ -24,7 +25,7 @@ it("requires aggregate net worth to disclose its own currency's included manual 
   const wealth = [{ id: "manual", name: "Asset", amount_minor: "1000", currency_code: "EUR", as_of: "2026-10-01", linked_account_id: null }];
   const result = { netWorth: { EUR: "1500", USD: "200" }, accountBalanceTotals: { EUR: "500" }, planning: { wealth: wealthEvidence(wealth, "2026-10-01") } };
   const receipt = toolResultReceipt("reviews_investigate", {}, result, context, ["accounts", "planning"]);
-  const metric = receipt.metrics.find(metric => metric.id === "netWorth.EUR")!;
+  const metric = defined(receipt.metrics.find(metric => metric.id === "netWorth.EUR"));
   expect(metric.qualifiers).toContain("manual_evidence");
   expect(receipt.metrics.find(metric => metric.id === "netWorth.USD")?.qualifiers).not.toContain("manual_evidence");
   expect(receipt.metrics.find(metric => metric.id === "accountBalanceTotals.EUR")?.qualifiers).not.toContain("manual_evidence");
@@ -36,10 +37,10 @@ it("propagates manual booked-balance provenance into account and net-worth aggre
 it("discloses the real goal remainder's manual savings date and target assumption", () => {
   const planning = buildPlanningReview({ today: "2026-10-01", goals: [{ id: "goal", name: "Goal", currency_code: "EUR", target_minor: "10000", recorded_saved_minor: "2500", saved_as_of: "2026-01-01", planned_monthly_minor: "0", contribution_starts_on: null, target_date: null, status: "active" }], allocations: [], budgets: [], transactions: [], categories: [] });
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-01", to: "2026-09-30" }, planning }, context, ["planning"]);
-  const remaining = receipt.metrics.find(metric => metric.id.endsWith("remainingMinor"))!;
+  const remaining = defined(receipt.metrics.find(metric => metric.id.endsWith("remainingMinor")));
   expect(remaining).toMatchObject({ valueMinor: "7500", period: { from: "2026-01-01", to: "2026-01-01" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot", "assumption"]) });
   expect(remaining.calculation).toContain("savedAsOf");
-  const target = receipt.metrics.find(metric => metric.id.endsWith("targetMinor"))!;
+  const target = defined(receipt.metrics.find(metric => metric.id.endsWith("targetMinor")));
   expect(target.qualifiers).toContain("assumption");
   expect(target.qualifiers).not.toContain("manual_evidence");
   expect(target.period).toEqual({ from: "2026-07-01", to: "2026-09-30" });
@@ -50,16 +51,16 @@ it("retains every query input/result and derives only exact typed monetary facts
   expect(receipt.query.result).toEqual(result);
   expect(receipt.query.input).toEqual({ from: result.from, to: result.to, currencyCode: "EUR" });
   expect(receipt.metrics).toContainEqual(expect.objectContaining({ label: "Spending", valueMinor: result.spendingMinor, period: { from: result.from, to: result.to }, qualifiers: ["partial_classification"] }));
-  expect(receipt.sources[0].record).toEqual(result);
+  expect(defined(receipt.sources[0]).record).toEqual(result);
 });
 it("preserves unresolved source posting uncertainty without calling its amount spending", () => {
   const receipt = toolResultReceipt("transactions_search", { query: "transfer" }, [{ id: "00000000-0000-4000-8000-000000000002", posted_on: "2026-09-01", amount_minor: "-25", currency_code: "EUR", kind: "ordinary", classificationStatus: "unresolved", review_reasons: ["source_transfer"], effectiveRows: [] }], context, ["transactions"]);
   expect(receipt.metrics[0]).toMatchObject({ label: "Recorded source posting", qualifiers: ["unresolved_included", "source_posting"] });
-  expect(receipt.metrics[0].label).not.toBe("Spending");
+  expect(defined(receipt.metrics[0]).label).not.toBe("Spending");
 });
 it("keeps an ambiguous JPY snapshot separate from the EUR account currency", () => {
   const receipt = toolResultReceipt("accounts_getBalances", {}, [{ currency_code: "EUR", balance: { amount_minor: null, snapshot_amount_minor: "100", snapshot_currency_code: "JPY", status: "ambiguous", as_of: "2026-09-01T00:00:00Z", warnings: ["Snapshot currency differs from account currency"] } }], context, ["accounts"]);
-  const snapshot = receipt.metrics.find(metric => metric.label === "Dated recorded balance")!;
+  const snapshot = defined(receipt.metrics.find(metric => metric.label === "Dated recorded balance"));
   expect(snapshot).toMatchObject({ currency: "JPY", valueMinor: "100", qualifiers: expect.arrayContaining(["ambiguous_evidence", "dated_snapshot"]) });
   expect(snapshot.qualifiers).not.toContain("manual_evidence");
 });
@@ -76,24 +77,24 @@ it("uses actual balance clocks, workspace calendar dates and manual wealth dates
 it("labels effective components separately from their canonical parent", () => {
   const result = [{ id: "parent", amountBasis: "canonical_parent", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-07", effectiveRows: [{ id: "component", parent_transaction_id: "parent", amount_minor: "-100", currency_code: "EUR" }] }, { id: "other", amountBasis: "canonical_parent", amount_minor: "-50", currency_code: "EUR", posted_on: "2026-10-07" }];
   const receipt = toolResultReceipt("transactions_search", {}, result, context, ["transactions"]);
-  expect(receipt.metrics[1].label).toContain("component");
+  expect(defined(receipt.metrics[1]).label).toContain("component");
 });
 it("distinguishes effective detail records from their canonical parent", () => {
   const receipt = toolResultReceipt("finance_detail", {}, { transaction: { id: "parent", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-07" }, effectiveRows: [{ id: "component", parentId: "parent", amountMinor: "-100", currency: "EUR", date: "2026-10-07" }] }, context, ["transactions"]);
-  expect(receipt.metrics[1].label).toContain("component");
-  expect(receipt.metrics[1].aggregation?.parents).toEqual(["parent"]);
+  expect(defined(receipt.metrics[1]).label).toContain("component");
+  expect(defined(receipt.metrics[1]).aggregation?.parents).toEqual(["parent"]);
 });
 it("retains unavailable inputs as receipt limitations", () => {
   const receipt = toolResultReceipt("forecast_evaluate", {}, { status: "unavailable", missingInputs: ["Current booked balance for Checking is unavailable", "Current booked balance for Checking is unavailable"] }, context, ["accounts", "planning"]);
   expect(receipt.limitations?.map(limit => limit.message)).toEqual(["Current booked balance for Checking is unavailable"]);
   const cashflow = toolResultReceipt("analytics_cashflow", {}, { unavailable: "Some transactions require currency conversion" }, context, ["transactions"]);
-  expect(cashflow.limitations?.[0].message).toBe("Some transactions require currency conversion");
+  expect(defined(cashflow.limitations?.[0]).message).toBe("Some transactions require currency conversion");
 });
 it("retains forward review forecast horizons and limiting dates", () => {
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-10", to: "2026-10-07" }, planning: { forecast: { evaluatedOn: "2026-10-07", horizonDays: 90, currency: "EUR", available: { status: "available", amountMinor: "100", limitingDate: "2026-11-01" } } } }, context, ["accounts", "transactions", "planning"]);
   expect(receipt.metrics[0]).toMatchObject({ period: { from: "2026-10-07", to: "2027-01-04" }, qualifiers: expect.arrayContaining(["assumption"]) });
-  expect(receipt.metrics[0].calculation).toContain("2026-11-01");
-  expect(receipt.metrics[0].label).toBe("Conditional aggregate headroom");
+  expect(defined(receipt.metrics[0]).calculation).toContain("2026-11-01");
+  expect(defined(receipt.metrics[0]).label).toBe("Conditional aggregate headroom");
 });
 it("keeps direct review cashflow and typed budget classification exclusions on zero-valued measures", () => {
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-09-01", to: "2026-09-30" }, cashflow: { EUR: { spendingMinor: "0", incomeMinor: "0", netMinor: "0", excludedReviewRows: 1, partial: true } }, planning: { budgets: [{ currency: "EUR", month: "2026-09", spentMinor: "0", partial: true, classificationPartial: true, limitation: "Current-month financial classification needs review" }] } }, context, ["accounts", "transactions", "planning"]);
@@ -107,7 +108,7 @@ it("exposes per-currency review totals without inventing a display-currency net 
 });
 it("retains forecast horizons, budget month scopes and dated manual savings instead of borrowing the review period", () => {
   const forecast = toolResultReceipt("forecast_evaluate", {}, { currencyCode: "EUR", period: { from: "2026-10-01", to: "2026-10-30" }, expectedMinor: "10" }, context, ["accounts", "transactions", "planning"]);
-  expect(forecast.metrics[0].period).toEqual({ from: "2026-10-01", to: "2026-10-30" });
+  expect(defined(forecast.metrics[0]).period).toEqual({ from: "2026-10-01", to: "2026-10-30" });
   const review = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-01", to: "2026-09-30" }, planning: { budgets: [{ currency: "EUR", month: "2026-09", spentMinor: "25" }], goals: [{ currency: "EUR", recordedSavedMinor: "30", savedAsOf: "2026-08-05" }] } }, context, ["accounts", "transactions", "planning"]);
   expect(review.metrics.find(metric => metric.label === "Booked budget spending")?.period).toEqual({ from: "2026-09-01", to: "2026-09-30" });
   expect(review.metrics.find(metric => metric.label === "Dated recorded savings")).toMatchObject({ valueMinor: "30", period: { from: "2026-08-05", to: "2026-08-05" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"]) });

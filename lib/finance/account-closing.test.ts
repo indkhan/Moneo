@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { closingMovedTo, closingPlan, closingTargets } from "./account-closing";
+import { defined } from "@/lib/testing";
 
 const uuid = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
 const account = { id: uuid(1), name: "Old bank", type: "checking", currency_code: "EUR" };
@@ -15,7 +16,7 @@ describe("closing a balance", () => {
 
   it("moves the money in two equal rows, so the total can't change", () => {
     const plan = closingPlan(account, 5000n, { outcome: "moved", targetAccountId: savings.id }, [account, savings]);
-    expect(plan.out.amountMinor + plan.into!.amountMinor).toBe(0n);
+    expect(plan.out.amountMinor + defined(plan.into).amountMinor).toBe(0n);
     expect(plan).toMatchObject({ out: { amountMinor: -5000n }, into: { amountMinor: 5000n }, target: { id: savings.id }, createCash: false });
     expect(closingPlan(account, -5000n, { outcome: "moved", targetAccountId: savings.id }, [account, savings])).toMatchObject({ out: { amountMinor: 5000n }, into: { amountMinor: -5000n } });
     expect(() => closingPlan(account, 5000n, { outcome: "moved", targetAccountId: dollars.id }, [account, dollars])).toThrow("Choose another EUR");

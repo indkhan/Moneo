@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePlanForWorkspace } from "./model";
+import { defined } from "@/lib/testing";
 
 it("keeps goal allocation identity and uses only FX rates available on each event date", async () => {
   const tables: Record<string, unknown[]> = {
@@ -27,7 +28,7 @@ it("keeps goal allocation identity and uses only FX rates available on each even
   }), wealth: Promise.resolve([]) };
   const result = await evaluatePlanForWorkspace(supabase, { id: "synthetic", display_currency: "EUR", timezone: "Europe/Berlin" }, 3, undefined, evidence);
   expect(result.sourceCoverage).toMatchObject({ unresolvedSourceRows: 1, scope: { from: "2026-10-07", to: "2026-10-10" }, totalsAreBounds: false });
-  expect(result.input.events[0].expectedMinor).toBe(-100000n);
+  expect(defined(result.input.events[0]).expectedMinor).toBe(-100000n);
   expect(result.liquidity).toMatchObject({ currencyCode: "EUR", accounts: [
     { accountId: "checking", amountMinor: -90000n, protectedMinor: 0n, limitingDate: "2026-10-08" },
     { accountId: "savings", amountMinor: 9007199254730993n, protectedMinor: 10000n },

@@ -3,6 +3,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {DEFAULT_SETTINGS, requireAiScope} from "@/lib/workspace-settings";
 import {resolveReviewRequest} from "./review-request";
 import {gatherReviewInvestigation} from "./review-gather";
+import { defined } from "@/lib/testing";
 const fixture = vi.hoisted(() => ({load: vi.fn(), settings: vi.fn(), persist: vi.fn(), forecast: vi.fn()}));
 vi.mock("./tools", async original => ({...await original<typeof import("./tools")>(), evaluateForecast: fixture.forecast}));
 vi.mock("./investigation-reader", () => ({loadInvestigationDataset: fixture.load}));
@@ -19,17 +20,17 @@ const options = () => ({workspaceId, settings: fixture.settings, requireScopes: 
 it("reads the frozen dates once, retains exact full receipts and checkpoints only after persistence", async () => {
   const dependencies = options();
   const progress = await gatherReviewInvestigation(request, dependencies);
-  expect(fixture.load.mock.calls[0][0].period).toEqual(request.query.period);
-  expect(fixture.persist.mock.calls[0][1].metrics[0].valueMinor).toBe("9007199254740993");
-  expect(fixture.persist.mock.invocationCallOrder[0]).toBeLessThan(dependencies.checkpoint.mock.invocationCallOrder[1]);
-  expect(progress.queries[0].receiptId).toBe(fixture.persist.mock.calls[0][1].id);
+  expect(defined(fixture.load.mock.calls[0])[0].period).toEqual(request.query.period);
+  expect(defined(fixture.persist.mock.calls[0])[1].metrics[0].valueMinor).toBe("9007199254740993");
+  expect(fixture.persist.mock.invocationCallOrder[0]).toBeLessThan(defined(dependencies.checkpoint.mock.invocationCallOrder[1]));
+  expect(defined(progress.queries[0]).receiptId).toBe(defined(fixture.persist.mock.calls[0])[1].id);
   expect(dependencies.client.mock.calls.some(call => call[0] instanceof AbortSignal)).toBe(true);
 });
 it("withholds newly revoked source scopes and retains an explicit unavailable section", async () => {
   fixture.settings.mockResolvedValueOnce(DEFAULT_SETTINGS).mockResolvedValue({...DEFAULT_SETTINGS, ai_data_scopes: ["accounts", "transactions"]});
   const progress = await gatherReviewInvestigation(request, options());
   expect(fixture.persist).not.toHaveBeenCalled();
-  expect(progress.queries[0].status).toBe("unavailable");
+  expect(defined(progress.queries[0]).status).toBe("unavailable");
   expect(progress.limitations.join(" ")).toContain("unavailable");
 });
 it("includes requested planning as a spent bounded read with retained missing-input evidence", async () => {
@@ -37,11 +38,11 @@ it("includes requested planning as a spent bounded read with retained missing-in
   const dependencies = options();
   const progress = await gatherReviewInvestigation(selected, dependencies);
   expect(fixture.forecast).toHaveBeenCalledOnce();
-  expect(fixture.forecast.mock.calls[0][0]).toEqual({horizonDays: 30});
+  expect(defined(fixture.forecast.mock.calls[0])[0]).toEqual({horizonDays: 30});
   expect(progress.queries).toHaveLength(2);
-  expect(progress.queries[1].status).toBe("completed");
-  expect(fixture.persist.mock.calls[1][1].scopes).toContain("planning");
-  expect(fixture.persist.mock.calls[1][1].limitations[0].message).toBe("estimated spending account");
+  expect(defined(progress.queries[1]).status).toBe("completed");
+  expect(defined(fixture.persist.mock.calls[1])[1].scopes).toContain("planning");
+  expect(defined(fixture.persist.mock.calls[1])[1].limitations[0].message).toBe("estimated spending account");
   const resumed = await gatherReviewInvestigation(selected, dependencies, progress);
   expect(resumed.queries).toHaveLength(2);
   expect(fixture.forecast).toHaveBeenCalledOnce();
@@ -49,8 +50,8 @@ it("includes requested planning as a spent bounded read with retained missing-in
 it("does not expand the frozen read scopes when optional import access is later enabled", async () => {
   const frozen = {...request, allowedScopes: ["accounts", "transactions"] as ["accounts", "transactions"]};
   await gatherReviewInvestigation(frozen, options());
-  expect(fixture.load.mock.calls[0][2]).toEqual({canReadImports: false});
-  expect(fixture.persist.mock.calls[0][1].scopes).toEqual(["accounts", "transactions"]);
+  expect(defined(fixture.load.mock.calls[0])[2]).toEqual({canReadImports: false});
+  expect(defined(fixture.persist.mock.calls[0])[1].scopes).toEqual(["accounts", "transactions"]);
 });
 it("reports requested planning left unexplored when the query budget is spent", async () => {
   const progress = await gatherReviewInvestigation({...request, includePlanning: true}, options());
@@ -69,7 +70,7 @@ it("uses explicitly chosen forecast inputs and never widens captured optional im
   const selected = resolveReviewRequest({...request, planningViews: [{view: "forecast", input: {horizonDays: 7, accountId: workspaceId}}],
     allowedScopes: ["accounts", "transactions", "planning"], budget: {...request.budget, maxQueries: 2}}, "2026-10-07");
   await gatherReviewInvestigation(selected, options());
-  expect(fixture.forecast.mock.calls[0][0]).toEqual({horizonDays: 7, accountId: workspaceId});
-  expect(fixture.forecast.mock.calls[0][1].settings.ai_data_scopes).not.toContain("imports");
-  expect(fixture.persist.mock.calls[1][1].scopes).toEqual(["accounts", "transactions", "planning"]);
+  expect(defined(fixture.forecast.mock.calls[0])[0]).toEqual({horizonDays: 7, accountId: workspaceId});
+  expect(defined(fixture.forecast.mock.calls[0])[1].settings.ai_data_scopes).not.toContain("imports");
+  expect(defined(fixture.persist.mock.calls[1])[1].scopes).toEqual(["accounts", "transactions", "planning"]);
 });

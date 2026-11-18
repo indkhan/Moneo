@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate, calendarDayBoundary, reviewedLocalTimestamp } from "./calendar";
+import { defined } from "@/lib/testing";
 
 const accounts = [{ id: "cash", name: "Cash", currency_code: "EUR" }];
 const snapshot = { id: "snapshot", account_id: "cash", amount_minor: "10000", currency_code: "EUR", as_of: "2026-09-28T12:00:00Z", provenance: "manual" };
@@ -27,9 +28,9 @@ it("loads active additional fees exactly once while retaining canonical source b
   };
   const evidence = await loadBalanceEvidence({ from } as unknown as SupabaseClient, "workspace", now);
   expect(evidence.ledger.map(row => row.amount_minor)).toEqual(["-1350", "-1275"]);
-  expect(canonical[0].amount_minor).toBe("-1250");
-  expect(evidence.ledger[0].source_transaction_ids).toEqual(["source"]);
-  expect(resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, now, "Europe/Berlin")[0].balance)
+  expect(defined(canonical[0]).amount_minor).toBe("-1250");
+  expect(defined(evidence.ledger[0]).source_transaction_ids).toEqual(["source"]);
+  expect(defined(resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, now, "Europe/Berlin")[0]).balance)
     .toMatchObject({ amount_minor: "8725", status: "current", reconciled_rows: 1 });
 });
 
@@ -38,30 +39,30 @@ describe("evidenced account balances", () => {
     const dated = { ...snapshot, as_of: "2026-10-01T08:00:00Z", boundary_kind: "after_transaction", source_transaction_id: "source" };
     const included = { ...transaction, posted_on: "2026-10-01", posted_at: dated.as_of, source_transaction_ids: ["source"] };
     const later = { ...transaction, id: "later", posted_on: "2026-10-01", posted_at: "2026-10-01T10:00:00Z" };
-    expect(resolveBalances(accounts, [dated], [included, later], now, "Europe/Berlin")[0].balance).toMatchObject({ amount_minor: "8750", reconciled_rows: 1, status: "current" });
-    expect(resolveBalances(accounts, [dated], [included, { ...later, posted_at: dated.as_of }], now, "Europe/Berlin")[0].balance?.status).toBe("ambiguous");
+    expect(defined(resolveBalances(accounts, [dated], [included, later], now, "Europe/Berlin")[0]).balance).toMatchObject({ amount_minor: "8750", reconciled_rows: 1, status: "current" });
+    expect(defined(resolveBalances(accounts, [dated], [included, { ...later, posted_at: dated.as_of }], now, "Europe/Berlin")[0]).balance?.status).toBe("ambiguous");
   });
   it("flags a balance typed in today that was not confirmed to include today's postings", () => {
     const typed = { ...snapshot, as_of: "2026-10-01T11:00:00Z", boundary_kind: "date_only", actor_id: "user" };
     const earlier = { ...transaction, posted_on: "2026-10-01", posted_at: "2026-10-01T09:00:00Z" };
-    expect(resolveBalances(accounts, [typed], [earlier], now, "Europe/Berlin")[0].balance).toMatchObject({ amount_minor: "10000", status: "current", unconfirmed_rows: 1,
+    expect(defined(resolveBalances(accounts, [typed], [earlier], now, "Europe/Berlin")[0]).balance).toMatchObject({ amount_minor: "10000", status: "current", unconfirmed_rows: 1,
       warnings: ["Not confirmed to include today's posting; confirm today's activity when you set the balance"] });
-    expect(resolveBalances(accounts, [{ ...typed, actor_id: null }], [earlier], now, "Europe/Berlin")[0].balance).toMatchObject({ unconfirmed_rows: 0, warnings: [] });
-    expect(resolveBalances(accounts, [typed], [], now, "Europe/Berlin")[0].balance).toMatchObject({ unconfirmed_rows: 0, warnings: [] });
+    expect(defined(resolveBalances(accounts, [{ ...typed, actor_id: null }], [earlier], now, "Europe/Berlin")[0]).balance).toMatchObject({ unconfirmed_rows: 0, warnings: [] });
+    expect(defined(resolveBalances(accounts, [typed], [], now, "Europe/Berlin")[0]).balance).toMatchObject({ unconfirmed_rows: 0, warnings: [] });
   });
   it("labels old snapshots stale, uses them plus reconciled only later posted dates", () => {
-    const [balance] = resolveBalances(accounts, [snapshot], [transaction,
+    const balance = defined(resolveBalances(accounts, [snapshot], [transaction,
       { ...transaction, id: "pending", status: "pending", amount_minor: "-500" },
-      { ...transaction, id: "future", posted_on: "2026-10-02", amount_minor: "100000" }], now, "Europe/Berlin");
+      { ...transaction, id: "future", posted_on: "2026-10-02", amount_minor: "100000" }], now, "Europe/Berlin")[0]);
     expect(balance.balance).toMatchObject({ amount_minor: "8750", snapshot_amount_minor: "10000", estimated_amount_minor: "8750",
       as_of: snapshot.as_of, status: "stale", reconciled_rows: 1 });
   });
   it("excludes future snapshots", () => {
-    expect(resolveBalances(accounts, [{ ...snapshot, as_of: "2026-10-02T00:00:00Z" }], [], now, "Europe/Berlin")[0].balance?.status).toBe("missing");
+    expect(defined(resolveBalances(accounts, [{ ...snapshot, as_of: "2026-10-02T00:00:00Z" }], [], now, "Europe/Berlin")[0]).balance?.status).toBe("missing");
   });
   it("settles two different balances of one moment with the most recently recorded one, and says so", () => {
     const older = { ...snapshot, id: "older", created_at: "2026-09-30T10:00:00Z" }, newer = { ...snapshot, id: "newer", amount_minor: "11000", created_at: "2026-09-30T11:00:00Z" };
-    for (const order of [[older, newer], [newer, older]]) expect(resolveBalances(accounts, order, [], now, "Europe/Berlin")[0].balance)
+    for (const order of [[older, newer], [newer, older]]) expect(defined(resolveBalances(accounts, order, [], now, "Europe/Berlin")[0]).balance)
       .toMatchObject({ amount_minor: "11000", snapshot_amount_minor: "11000", snapshot_valid: true, status: "stale", warnings: [expect.stringContaining("most recently recorded")],
         conflicts: [{ amount_minor: "10000", recorded_at: older.created_at }] });
   });
@@ -69,31 +70,31 @@ describe("evidenced account balances", () => {
     const closing = { ...snapshot, boundary_kind: "date_only" };
     const copies = [{ ...closing, id: "a", source_transaction_id: "row-1", provenance: "import:a:row:1", created_at: "2026-09-30T10:00:00Z" },
       { ...closing, id: "b", source_transaction_id: "row-2", provenance: "import:b:row:9", created_at: "2026-09-30T11:00:00Z" }];
-    for (const order of [copies, [...copies].reverse()]) expect(resolveBalances(accounts, order, [], now, "Europe/Berlin")[0].balance)
+    for (const order of [copies, [...copies].reverse()]) expect(defined(resolveBalances(accounts, order, [], now, "Europe/Berlin")[0]).balance)
       .toMatchObject({ amount_minor: "10000", status: "stale", warnings: [], conflicts: [], provenance: "import:b:row:9" });
   });
   it("keeps after-transaction boundaries meaningful: the same amount at another boundary is still a conflict", () => {
     const after = (id: string, source: string, created_at: string) => ({ ...snapshot, id, boundary_kind: "after_transaction", source_transaction_id: source, created_at });
-    expect(resolveBalances(accounts, [after("a", "row-1", "2026-09-30T10:00:00Z"), after("b", "row-2", "2026-09-30T11:00:00Z")], [], now, "Europe/Berlin")[0].balance)
+    expect(defined(resolveBalances(accounts, [after("a", "row-1", "2026-09-30T10:00:00Z"), after("b", "row-2", "2026-09-30T11:00:00Z")], [], now, "Europe/Berlin")[0]).balance)
       .toMatchObject({ conflicts: [{ amount_minor: "10000" }], warnings: [expect.stringContaining("most recently recorded")] });
-    expect(resolveBalances(accounts, [{ ...snapshot, id: "a", created_at: "2026-09-30T11:00:00Z" }, after("b", "row-2", "2026-09-30T10:00:00Z")], [], now, "Europe/Berlin")[0].balance.conflicts).toHaveLength(1);
+    expect(defined(resolveBalances(accounts, [{ ...snapshot, id: "a", created_at: "2026-09-30T11:00:00Z" }, after("b", "row-2", "2026-09-30T10:00:00Z")], [], now, "Europe/Berlin")[0]).balance.conflicts).toHaveLength(1);
   });
   it("treats same-day date-only rows as included and refuses unsafe numeric database values", () => {
     const today = { ...snapshot, as_of: "2026-10-01T08:00:00Z" };
-    expect(resolveBalances(accounts, [today], [], now, "Europe/Berlin")[0].balance?.amount_minor).toBe("10000");
-    expect(resolveBalances(accounts, [today], [{ ...transaction, posted_on: "2026-10-01" }], now, "Europe/Berlin")[0].balance)
+    expect(defined(resolveBalances(accounts, [today], [], now, "Europe/Berlin")[0]).balance?.amount_minor).toBe("10000");
+    expect(defined(resolveBalances(accounts, [today], [{ ...transaction, posted_on: "2026-10-01" }], now, "Europe/Berlin")[0]).balance)
       .toMatchObject({ amount_minor: "10000", status: "current" });
-    expect(resolveBalances(accounts, [{ ...today, amount_minor: Number.MAX_SAFE_INTEGER + 1 }], [], now, "Europe/Berlin")[0].balance)
+    expect(defined(resolveBalances(accounts, [{ ...today, amount_minor: Number.MAX_SAFE_INTEGER + 1 }], [], now, "Europe/Berlin")[0]).balance)
       .toMatchObject({ amount_minor: null, status: "ambiguous" });
-    expect(resolveBalances(accounts, [{ ...today, currency_code: "USD" }], [], now, "Europe/Berlin")[0].balance?.status).toBe("ambiguous");
+    expect(defined(resolveBalances(accounts, [{ ...today, currency_code: "USD" }], [], now, "Europe/Berlin")[0]).balance?.status).toBe("ambiguous");
   });
   it("counts same-day rows timed after a balance observed during that day", () => {
     const observed = { ...snapshot, as_of: "2026-10-01T08:00:00Z" };
     const spent = { ...transaction, posted_on: "2026-10-01", posted_at: "2026-10-01T09:00:00Z" };
-    expect(resolveBalances(accounts, [observed], [spent], now, "Europe/Berlin")[0].balance?.amount_minor).toBe("8750");
-    expect(resolveBalances(accounts, [observed], [{ ...spent, posted_at: "2026-10-01T07:00:00Z" }], now, "Europe/Berlin")[0].balance?.amount_minor).toBe("10000");
+    expect(defined(resolveBalances(accounts, [observed], [spent], now, "Europe/Berlin")[0]).balance?.amount_minor).toBe("8750");
+    expect(defined(resolveBalances(accounts, [observed], [{ ...spent, posted_at: "2026-10-01T07:00:00Z" }], now, "Europe/Berlin")[0]).balance?.amount_minor).toBe("10000");
     const dated = { ...snapshot, as_of: calendarDayBoundary("2026-09-29", "Europe/Berlin") };
-    expect(resolveBalances(accounts, [dated], [{ ...spent, posted_on: "2026-09-29", posted_at: "2026-09-29T09:00:00Z" }], now, "Europe/Berlin")[0].balance?.amount_minor).toBe("10000");
+    expect(defined(resolveBalances(accounts, [dated], [{ ...spent, posted_on: "2026-09-29", posted_at: "2026-09-29T09:00:00Z" }], now, "Europe/Berlin")[0]).balance?.amount_minor).toBe("10000");
   });
 });
 

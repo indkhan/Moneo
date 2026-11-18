@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { brokerShownOn, matchTransfers, transitOn, type BankLeg, type BrokerTransfer } from "./transit";
+import { defined } from "@/lib/testing";
 
 const transfer = (provider_id: string, amount: number, on_date: string, over: Partial<BrokerTransfer> = {}): BrokerTransfer => ({ provider_id, type: amount > 0 ? "DEPOSIT" : "WITHDRAWAL", amount_minor: String(amount), currency_code: "EUR", on_date, occurred_at: `${on_date}T09:00:00Z`, status: "SETTLED", returns_provider_id: null, ...over });
 const leg = (id: string, amount: number, postedOn: string, over: Partial<BankLeg> = {}): BankLeg => ({ id, accountId: "bank", amountMinor: BigInt(amount), currencyCode: "EUR", postedOn, transferId: null, provesBroker: true, ownAccount: false, ...over });
@@ -31,7 +32,7 @@ describe("a transfer between tracked accounts", () => {
 
   it("leaves a linked pair's fee as a real change, and doesn't compare currencies", () => {
     const { windows } = run([], [leg("a", -50000, "2026-08-15", { transferId: "b", provesBroker: false }), leg("b", 49500, "2026-08-17", { transferId: "a", accountId: "other", provesBroker: false })]);
-    expect(windows[0].amountMinor).toBe(49500n);
+    expect(defined(windows[0]).amountMinor).toBe(49500n);
     expect(run([], [leg("a", -50000, "2026-08-15", { transferId: "b", provesBroker: false }), leg("b", 58000, "2026-08-17", { transferId: "a", currencyCode: "USD", provesBroker: false })]).windows).toEqual([]);
   });
 });

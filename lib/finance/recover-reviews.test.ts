@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { start } from "workflow/api";
 import { dispatchFinancialReview, recoverFinancialReviews } from "./start-review";
+import { defined } from "@/lib/testing";
 
 const state = vi.hoisted(() => ({ job: { id: "job", workspace_id: "workspace", status: "queued", stage: "queued", workflow_run_id: null as string | null, created_at: new Date().toISOString(), dispatched_at: new Date().toISOString() as string | null, updated_at: "2026-01-01T00:00:00Z", cancel_requested: false }, runtime: "running", exists: true, scheduled: false, unavailable: false, cancelFails: false, cancelAcknowledged: true, activeStep: false, canceledAt: new Date() }));
 vi.mock("workflow/runtime", () => ({ getWorld: () => ({ steps: { list: async () => ({ data: state.activeStep ? [{ status: "running" }] : [], hasMore: false }) } }) }));
@@ -121,11 +122,11 @@ it("rotates 25 broken runtime candidates so the next scan reaches a healthy orph
         then: (resolve: (value: unknown) => void) => { if (update) for (const job of selected()) Object.assign(job, update); resolve({ error: null }); } };
       return query;
     },
-    rpc: async (_name: string, args: Record<string, unknown>) => { const job = jobs.find(row => row.id === args.p_job_id)!; job.workflow_run_id = args.p_run_id; job.updated_at = new Date().toISOString(); return { data: true, error: null }; },
+    rpc: async (_name: string, args: Record<string, unknown>) => { const job = defined(jobs.find(row => row.id === args.p_job_id)); job.workflow_run_id = args.p_run_id; job.updated_at = new Date().toISOString(); return { data: true, error: null }; },
   } as unknown as SupabaseClient;
   expect(await recoverFinancialReviews(boundary)).toMatchObject({ scanned: 25, errors: 25, remaining: 1 });
   expect(await recoverFinancialReviews(boundary)).toMatchObject({ recovered: 1, errors: 24 });
-  expect(jobs[25].workflow_run_id).toBe("run"); expect(start).toHaveBeenCalledTimes(1);
+  expect(defined(jobs[25]).workflow_run_id).toBe("run"); expect(start).toHaveBeenCalledTimes(1);
 });
 
 it("does not acknowledge runtime cancellation while its active provider step is still settling", async () => {

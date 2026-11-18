@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { summarizeSpending, type SpendingRow } from "@/lib/finance/dashboard-spending";
+import { defined } from "@/lib/testing";
 
 const row = (id: string, posted_on: string, amount_minor: string, extra: Partial<SpendingRow> = {}): SpendingRow => ({
   id, account_id: "a", posted_on, amount_minor, currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [], category_id: "food", merchant_id: "shop", ...extra });
@@ -33,7 +34,7 @@ it("totals income per month and ranks where it came from, leaving transfers out"
     row("5", "2026-02-01", "300000", { category_id: "salary", merchant_id: "employer" }),
   ], [], "EUR", "2026-03-31");
   expect(summary.trend.slice(-2).map(month => [month.incomeMinor, month.spendingMinor])).toEqual([[300000n, 0n], [305000n, 2000n]]);
-  const march = summary.months[5];
+  const march = defined(summary.months[5]);
   expect(march.incomeCategories.map(group => [group.id, group.incomeMinor])).toEqual([["salary", 300000n], ["interest", 5000n]]);
   expect(march.incomeMerchants.map(group => group.id)).toEqual(["employer", "bank"]);
   expect(march.categories.map(group => group.id)).toEqual(["food"]);

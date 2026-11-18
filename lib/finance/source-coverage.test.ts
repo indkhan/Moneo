@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { buildSourceCoverage, loadSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "./source-coverage";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { defined } from "@/lib/testing";
 
 const scope = { from: "2026-10-01", to: "2026-10-31", currencyCode: "EUR" };
 const rows = [{ account_id: "a", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] }];
@@ -19,7 +20,7 @@ it("does not call an accepted exact total complete while an overlap observation 
 });
 
 it("keeps unknown source scope, import lifecycle, undo and row exclusions explicit", () => {
-  const result = buildSourceCoverage(scope, [...rows, { ...rows[0], status: "pending" }, { ...rows[0], kind: "transfer" }, { ...rows[0], review_reasons: ["source_type"] }],
+  const result = buildSourceCoverage(scope, [...rows, { ...defined(rows[0]), status: "pending" }, { ...defined(rows[0]), kind: "transfer" }, { ...defined(rows[0]), review_reasons: ["source_type"] }],
     [...imports, { id: "running", status: "running", total_rows: 10 }, { id: "failed", status: "failed", total_rows: 4 }, { id: "undone", status: "undone", total_rows: 1 }],
     [source("new"), { ...source("review"), posted_on: null }, { ...source("review"), posted_on: "2026-09-01" }, { ...source("review"), import_id: "undone" }]);
   expect(result).toMatchObject({ unresolvedSourceRows: 1, unknownSourceScopeRows: 1, undoneSourceRows: 1,
@@ -29,17 +30,17 @@ it("keeps unknown source scope, import lifecycle, undo and row exclusions explic
 });
 
 it("distinguishes resolved rejected observations and deliberate nonfinancial row exclusions from unresolved review", () => {
-  const rejected = buildSourceCoverage(scope, rows, [{ ...imports[0], total_rows: 1 }], [source("rejected")]);
+  const rejected = buildSourceCoverage(scope, rows, [{ ...defined(imports[0]), total_rows: 1 }], [source("rejected")]);
   expect(sourceCoverageNeedsReview(rejected)).toBe(false);
-  const excluded = buildSourceCoverage(scope, rows, [{ ...imports[0], total_rows: 1 }], [{ ...source("rejected"), posted_on: null, currency_code: null, account_id: null, review_reasons: ["excluded_by_review"] }]);
+  const excluded = buildSourceCoverage(scope, rows, [{ ...defined(imports[0]), total_rows: 1 }], [{ ...source("rejected"), posted_on: null, currency_code: null, account_id: null, review_reasons: ["excluded_by_review"] }]);
   expect(excluded).toMatchObject({ intentionallyExcludedSourceRows: 1, unknownSourceScopeRows: 0, unresolvedSourceRows: 0 });
   expect(sourceCoverageNeedsReview(excluded)).toBe(false);
 });
 
 it("keeps balance activity separate from spending eligibility and uses the reviewed destination scope", () => {
   const coverage = buildSourceCoverage({ ...scope, accountId: "reviewed", ledgerBasis: "balance_activity" },
-    [{ ...rows[0], account_id: "reviewed", kind: "transfer", review_reasons: ["source_type"] }],
-    [{ ...imports[0], total_rows: 1 }], [{ ...source("accepted"), resolved_account_id: "reviewed" }]);
+    [{ ...defined(rows[0]), account_id: "reviewed", kind: "transfer", review_reasons: ["source_type"] }],
+    [{ ...defined(imports[0]), total_rows: 1 }], [{ ...source("accepted"), resolved_account_id: "reviewed" }]);
   expect(coverage).toMatchObject({ includedRows: 1, exclusions: { transfer: 0, classification: 0 }, observedSourceRows: 1,
     scope: { accountId: "reviewed", ledgerBasis: "balance_activity" } });
 });

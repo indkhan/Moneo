@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { evaluatePlanForWorkspace } from "./model";
 import type { BalanceSnapshot, BalanceTransaction } from "./balances";
 import type { OccurrenceSettlement } from "./recurring-occurrences";
+import { defined } from "@/lib/testing";
 const assumption = { id: "assumption", name: "Monthly", source: "recurring_confirmed", recurring_evidence_eligible: false, account_id: "cash", amount_minor: "100000", currency_code: "EUR", cadence: "monthly", starts_on: "2026-10-06", ends_on: null, enabled: true };
 const posting = { id: "observed", account_id: "cash", amount_minor: "100000", currency_code: "EUR", posted_on: "2026-10-06", posted_at: "2026-10-06T08:00:00Z", status: "posted", source_transaction_ids: ["source"], kind: "ordinary", review_reasons: [] };
 const snapshot = { account_id: "cash", amount_minor: "200000", currency_code: "EUR", as_of: "2026-10-06T08:00:00Z", provenance: "statement", boundary_kind: "after_transaction", source_transaction_id: "source" };
@@ -30,11 +31,11 @@ it.each([100000n, -100000n])("does not repeat a confirmed observed anchor (%s)",
   const result = await evaluateFixture({ ...assumption, amount_minor: amount.toString() }, [{ ...posting, amount_minor: amount.toString() }]);
   expect(result.input.events.map(event => event.date)).toEqual(["2026-11-06"]);
   expect(result.forecast.status).toBe("available");
-  if (result.forecast.status === "available") expect(result.forecast.days[0].expectedMinor).toBe(200000n);
+  if (result.forecast.status === "available") expect(defined(result.forecast.days[0]).expectedMinor).toBe(200000n);
 });
 it("reconciles a posting absent from the snapshot once before suppressing its anchor", async () => {
   const result = await evaluateFixture(assumption, [posting], { ...snapshot, amount_minor: "100000", as_of: "2026-10-06T07:00:00Z", source_transaction_id: "earlier" }, [], 1);
-  expect(result.input.accounts[0].balanceMinor).toBe(200000n);
+  expect(defined(result.input.accounts[0]).balanceMinor).toBe(200000n);
   expect(result.input.events).toEqual([]);
   expect(result.available).toMatchObject({ status: "available", amountMinor: 200000n });
 });
@@ -52,12 +53,12 @@ it.each(["pending", "posted"])("adds only a partial %s obligation remainder afte
   const result = await evaluateFixture(rent, [{ ...partial, status }], { ...snapshot, as_of: "2026-10-06T07:00:00Z", source_transaction_id: "earlier" }, [association], 1);
   expect(result.input.events).toMatchObject([{ expectedMinor: -6000n }]);
   expect(result.forecast.status).toBe("available");
-  if (result.forecast.status === "available") expect(result.forecast.days[0].expectedMinor).toBe(190000n);
+  if (result.forecast.status === "available") expect(defined(result.forecast.days[0]).expectedMinor).toBe(190000n);
 });
 it("keeps a linked late future posting and removes the duplicate scheduled full obligation", async () => {
   const result = await evaluateFixture(rent, [{ ...partial, posted_on: "2026-10-08", posted_at: "2026-10-08T08:00:00Z" }], snapshot, [{ ...association, completes_occurrence: true }], 3);
   expect(result.input.events).toMatchObject([{ date: "2026-10-08", expectedMinor: -4000n }]);
-  expect(result.input.accounts[0].balanceMinor).toBe(200000n);
+  expect(defined(result.input.accounts[0]).balanceMinor).toBe(200000n);
 });
 it("restores an overdue explicitly undone obligation", async () => {
   const result = await evaluateFixture({ ...rent, starts_on: "2026-09-06" }, [partial], snapshot, [{ ...association, scheduled_on: "2026-09-06", undone_at: "2026-10-06T10:00:00Z" }], 1);
@@ -113,7 +114,7 @@ it.each(["amount","date","cadence","invalidated evidence"])("keeps %s override i
   const observed={...posting,posted_on:"2026-03-30",posted_at:"2026-03-30T08:00:00Z",amount_minor:"-10000"};
   const result=await evaluateFixture(item,[observed],{...snapshot,as_of:observed.posted_at},[],3,"2026-03-30T12:00:00Z",fault!=="invalidated evidence");
   expect(result.input.events).toHaveLength(1);
-  expect(result.input.events[0].expectedMinor).toBe(BigInt(item.amount_minor));
+  expect(defined(result.input.events[0]).expectedMinor).toBe(BigInt(item.amount_minor));
 });
 it.each(["pending", "transfer", "review", "after as-of"])("does not fulfill a toggled schedule with %s source evidence", async fault => {
   const item = {...assumption, source: "user", amount_minor: "-10000", starts_on: "2026-03-31", schedule_anchor_on: "2026-01-31", recurring_evidence_eligible: true};

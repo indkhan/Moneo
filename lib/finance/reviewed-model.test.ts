@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { evaluatePlanForWorkspace } from "./model";
 import { coveredTransaction, type BalanceTransaction } from "./balances";
+import { defined } from "@/lib/testing";
 afterEach(() => vi.useRealTimers());
 it("funds forecast from reviewed cash with later postings, pending holds and reservations consumed once", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-06T14:00:00Z"));
@@ -17,7 +18,7 @@ it("funds forecast from reviewed cash with later postings, pending holds and res
   const result = await evaluatePlanForWorkspace({ from } as unknown as Parameters<typeof evaluatePlanForWorkspace>[0],
     { id: "synthetic", display_currency: "EUR", timezone: "Europe/Berlin" }, 2, undefined,
     { balanceEvidence: Promise.resolve({ ...evidence, ledger: evidence.ledger.map(row => ({ ...row, source_transaction_ids: [] })) }), wealth: Promise.resolve([]) });
-  expect(result.input.accounts[0].balanceMinor).toBe(9750n);
+  expect(defined(result.input.accounts[0]).balanceMinor).toBe(9750n);
   expect(result.available).toMatchObject({ status: "available", amountMinor: 8650n });
 });
 
@@ -34,6 +35,6 @@ it.each(["0", "500", "2000"])("deducts only the pending remainder after a %s min
   const result = await evaluatePlanForWorkspace({ from } as unknown as Parameters<typeof evaluatePlanForWorkspace>[0],
     { id: "synthetic", display_currency: "EUR", timezone: "Europe/Berlin" }, 2, undefined,
     { balanceEvidence: Promise.resolve({ accounts: [account], ledger, snapshots: [{ account_id: account.id, amount_minor: "8000", currency_code: "EUR", as_of: "2026-10-07T10:00:00Z", provenance: "manual", boundary_kind: "reviewed_activity", covered_transactions: [] }], asOf: "2026-10-07T12:00:00Z" }), wealth: Promise.resolve([]) });
-  expect(result.input.accounts[0].pendingHoldMinor).toBe(2000n - BigInt(released));
+  expect(defined(result.input.accounts[0]).pendingHoldMinor).toBe(2000n - BigInt(released));
   expect(result.available).toMatchObject({ status: "available", amountMinor: 6000n + BigInt(released) });
 });

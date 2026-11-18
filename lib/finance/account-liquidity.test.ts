@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as calculations from "./calculations";
+import { defined } from "@/lib/testing";
 
 const input: calculations.ForecastInput = {
   startDate: "2026-10-07", horizonDays: 3, currencyCode: "EUR",
@@ -26,12 +27,12 @@ describe("account liquidity", () => {
     expect(calculations.accountLiquidity({ ...input, scenarioEvents })).toMatchObject({
       aggregate: { amountMinor: 60000n }, accounts: [{ accountId: "checking", shortfallMinor }, { accountId: "savings" }],
     });
-    expect(input.accounts[0].balanceMinor).toBe(10000n);
+    expect(defined(input.accounts[0]).balanceMinor).toBe(10000n);
   });
   it("retains reservations, minimums and pending holds on their own accounts", () => {
     const result = calculations.accountLiquidity({ ...input, accounts: [
-      { ...input.accounts[0], availableMinor: 9000n, pendingHoldMinor: 1000n, minimumMinor: 2000n },
-      { ...input.accounts[1], reservedMinor: 30000n, safetyBufferMinor: 1000n },
+      { ...defined(input.accounts[0]), availableMinor: 9000n, pendingHoldMinor: 1000n, minimumMinor: 2000n },
+      { ...defined(input.accounts[1]), reservedMinor: 30000n, safetyBufferMinor: 1000n },
     ] });
     expect(result).toMatchObject({ accounts: [
       { accountId: "checking", amountMinor: -43000n, protectedMinor: 2000n },
@@ -39,7 +40,7 @@ describe("account liquidity", () => {
     ] });
   });
   it("does not infer FX or accept invalid funding", () => {
-    expect(calculations.accountLiquidity({ ...input, accounts: [{ ...input.accounts[0], currencyCode: "USD" }] })).toEqual({ status: "unavailable", missingInputs: ["fx:checking"] });
+    expect(calculations.accountLiquidity({ ...input, accounts: [{ ...defined(input.accounts[0]), currencyCode: "USD" }] })).toEqual({ status: "unavailable", missingInputs: ["fx:checking"] });
     expect(() => calculations.internalFundingEvents({ date: "2026-02-30", fromAccountId: "savings", toAccountId: "checking", amountMinor: 1n })).toThrow();
     expect(() => calculations.internalFundingEvents({ date: input.startDate, fromAccountId: "checking", toAccountId: "checking", amountMinor: 1n })).toThrow();
   });

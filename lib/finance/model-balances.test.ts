@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { evaluatePlanForWorkspace } from "./model";
 import { requireWorkspace } from "@/lib/auth";
 import { loadBalanceEvidence } from "./balances";
+import { defined } from "@/lib/testing";
 
 const fixture = vi.hoisted(() => ({ asOf: "2026-09-28T12:00:00Z", allocations: 0, pending: false, includeAssumptions: false, debt: false, archived: false, preferences: null as null | { currency_code: string; safety_buffer_minor: string; daily_spending_minor: string; uncertainty_bps: number; spending_account_id: string | null; spending_starts_on: string | null; version: number } }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" },
@@ -46,7 +47,7 @@ it("funds a forecast from an older balance plus later recorded activity", async 
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
   const result = await evaluatePlan(30);
-  expect(result.input.accounts[0].balanceMinor).not.toBeNull();
+  expect(defined(result.input.accounts[0]).balanceMinor).not.toBeNull();
   expect(result.input.missingInputs).not.toContain("balance:00000000-0000-4000-8000-000000000001:stale");
 });
 
@@ -67,7 +68,7 @@ it("uses an exact current balance and Berlin calendar date", async () => {
   fixture.asOf = "2026-09-30T22:15:00Z";
   const result = await evaluatePlan(30);
   expect(result.input.startDate).toBe("2026-10-01");
-  expect(result.input.accounts[0].balanceMinor).toBe(10000n);
+  expect(defined(result.input.accounts[0]).balanceMinor).toBe(10000n);
   expect(result.available).toMatchObject({ status: "available", amountMinor: 10000n });
   fixture.asOf = "2026-09-28T12:00:00Z";
 });
@@ -116,6 +117,6 @@ it("keeps archived account evidence while excluding its cash and surfacing linke
 it("includes reservations beyond the Supabase first-page limit", async () => {
   fixture.allocations = 1001;
   try {
-    expect((await evaluatePlan()).input.accounts[0].reservedMinor).toBe(10999n);
+    expect(defined((await evaluatePlan()).input.accounts[0]).reservedMinor).toBe(10999n);
   } finally { fixture.allocations = 0; }
 });

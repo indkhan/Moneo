@@ -3,6 +3,7 @@ import { cashWithdrawals } from "./own-transfers";
 import { findExchanges, findOwnTransfers, ownNameSuggestions, sourceIbans, uncertainPairs, withBankContext, type TransferCandidate } from "./own-transfers";
 import { normalizeIban } from "@/lib/iban";
 import type { RawContext } from "@/lib/bank/raw-context";
+import { defined } from "@/lib/testing";
 
 const CURRENT = "DE89370400440532013000", SAVINGS = "DE02120300000000202051", ELSEWHERE = "DE75512108001245126199";
 const row = (id: string, accountId: string, amount: bigint, postedOn = "2026-10-01", extra: Partial<TransferCandidate> = {}): TransferCandidate =>
@@ -151,7 +152,7 @@ describe("bank context", () => {
     expect(findOwnTransfers(rows, own).pairs).toEqual([]);
     expect(uncertainPairs(rows)).toEqual([{ outId: "rent", inId: "salary" }]);
     expect(uncertainPairs([...rows, row("gift", "other", 50000n, "2026-10-02")])).toEqual([]);
-    expect(uncertainPairs([rows[0], { ...rows[1], raw: ctx({ counterparty_iban: "DE44500105175407324931", counterparty_name: "Example Employer" }) }])).toEqual([]);
+    expect(uncertainPairs([defined(rows[0]), { ...defined(rows[1]), raw: ctx({ counterparty_iban: "DE44500105175407324931", counterparty_name: "Example Employer" }) }])).toEqual([]);
   });
 
   it("pairs a leg whose bank context names an own IBAN, and marks an unpaired top-up as a transfer", () => {

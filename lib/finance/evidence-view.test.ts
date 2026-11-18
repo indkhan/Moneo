@@ -3,6 +3,7 @@ import { aiScopeGuard, DEFAULT_SETTINGS, type WorkspaceSettings } from "@/lib/wo
 import type { GuardedFinanceContext } from "./finance-context";
 import { createEvidenceReceipt } from "./evidence-receipts";
 import { readEvidenceView } from "./evidence-view";
+import { defined } from "@/lib/testing";
 const fixture = vi.hoisted(() => ({ load: vi.fn(), cashflow: vi.fn(), forecast: vi.fn() }));
 vi.mock("./evidence-receipts", async original => ({ ...await original<typeof import("./evidence-receipts")>(), loadEvidenceReceipt: fixture.load }));
 vi.mock("./tools", async original => ({ ...await original<typeof import("./tools")>(), cashflow: fixture.cashflow, evaluateForecast: fixture.forecast }));
@@ -14,13 +15,13 @@ it("loads actual owned calculations and support and marks changed evidence stale
   const { toolResultReceipt } = await import("./tool-evidence");
   const saved = toolResultReceipt("analytics_cashflow", {}, result, { workspaceId, timezone: "UTC", fetchedAt: "2026-10-01T00:00:00Z" }, ["transactions"]);
   fixture.load.mockResolvedValue(saved); fixture.cashflow.mockResolvedValue(result);
-  const view = await readEvidenceView(context, saved.id, saved.metrics[0].id);
+  const view = await readEvidenceView(context, saved.id, defined(saved.metrics[0]).id);
   expect(view?.freshness.status).toBe("current");
   expect(view?.metric?.valueMinor).toBe("25");
-  expect(view?.supportingRecords[0].record).toEqual(result);
+  expect(defined(view?.supportingRecords[0]).record).toEqual(result);
   fixture.cashflow.mockResolvedValue({ ...result, spendingMinor: "26" });
   expect((await readEvidenceView(context, saved.id))?.freshness.status).toBe("stale");
-  expect(saved.metrics[0].valueMinor).toBe("25");
+  expect(defined(saved.metrics[0]).valueMinor).toBe("25");
 });
 it("withholds revoked or missing receipts and never substitutes a nonexistent metric", async () => {
   const saved = createEvidenceReceipt({ workspaceId, fetchedAt: "2026-10-01T00:00:00Z", scopes: ["transactions"], query: { kind: "tool" }, sourceVersion: "v1", calculationVersion: "v1", sources: [], metrics: [] });
@@ -54,7 +55,7 @@ it("replays bounded selected goal evidence and detects changes to dated manual s
   expect((await readEvidenceView(scoped, saved.id))?.freshness.status).toBe("current");
   current = {...goal, version: 2};
   expect((await readEvidenceView(scoped, saved.id))?.freshness.status).toBe("stale");
-  expect(saved.sources[0].record).toEqual({goals: [goal]});
+  expect(defined(saved.sources[0]).record).toEqual({goals: [goal]});
   current = {...goal, recorded_saved_minor: "26"};
   expect((await readEvidenceView(scoped, saved.id))?.freshness.status).toBe("stale");
   expect(saved.metrics.find(metric => metric.id.endsWith("recorded_saved_minor"))).toMatchObject({valueMinor: "25", period: {from: "2026-09-01", to: "2026-09-01"}, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"])});

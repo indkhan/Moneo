@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkProperty, fc } from "@/lib/property-check";
 import { calendarDate, calendarDayBoundary, reviewedLocalTimestamp } from "./calendar";
+import { defined } from "@/lib/testing";
 
 const HOUR = 3_600_000;
 const zones = fc.constantFrom("UTC", "Europe/Amsterdam", "America/New_York", "America/St_Johns", "Asia/Kolkata", "Australia/Lord_Howe", "Pacific/Auckland");
@@ -47,7 +48,7 @@ describe("calendar days in an explicit time zone", () => {
       expect(Date.parse(calendarDayBoundary(`${year + 1}-01-01`, zone)) - start).toBe((isLeap(year) ? 366 : 365) * 24 * HOUR);
       const starts: number[] = [];
       for (let ms = day(year, 1, 1); ms <= day(year + 1, 1, 1); ms += 24 * HOUR) starts.push(Date.parse(calendarDayBoundary(iso(ms), zone)));
-      const lengths = starts.slice(1).map((end, index) => end - starts[index]);
+      const lengths = starts.slice(1).map((end, index) => end - defined(starts[index]));
       expect(lengths.filter(length => length === 23 * HOUR)).toHaveLength(1);
       expect(lengths.filter(length => length === 25 * HOUR)).toHaveLength(1);
       expect(lengths).toHaveLength(isLeap(year) ? 366 : 365);
@@ -66,10 +67,10 @@ describe("calendar days in an explicit time zone", () => {
 
   it("wall clock times that never happen or happen twice are refused, not guessed", () => {
     checkProperty("clock changes are never guessed", fc.property(years, year => {
-      const newYorkSpring = sundays(year, 3)[1];
-      const newYorkAutumn = sundays(year, 11)[0];
-      const amsterdamSpring = sundays(year, 3).at(-1)!;
-      const amsterdamAutumn = sundays(year, 10).at(-1)!;
+      const newYorkSpring = defined(sundays(year, 3)[1]);
+      const newYorkAutumn = defined(sundays(year, 11)[0]);
+      const amsterdamSpring = defined(sundays(year, 3).at(-1));
+      const amsterdamAutumn = defined(sundays(year, 10).at(-1));
       expect(() => reviewedLocalTimestamp(`${year}-03-${pad(newYorkSpring)}T02:30:00`, "America/New_York")).toThrow("ambiguous or nonexistent");
       expect(() => reviewedLocalTimestamp(`${year}-11-${pad(newYorkAutumn)}T01:30:00`, "America/New_York")).toThrow("ambiguous or nonexistent");
       expect(() => reviewedLocalTimestamp(`${year}-03-${pad(amsterdamSpring)}T02:30:00`, "Europe/Amsterdam")).toThrow("ambiguous or nonexistent");

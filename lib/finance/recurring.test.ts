@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectRecurring, type RecurringTransaction } from "./recurring";
+import { defined } from "@/lib/testing";
 
 function transaction(overrides: Partial<RecurringTransaction> & { id: string }): RecurringTransaction {
   return {
@@ -15,7 +16,7 @@ function transaction(overrides: Partial<RecurringTransaction> & { id: string }):
 describe("detectRecurring", () => {
   it("keeps long bank descriptions within a usable label length", () => {
     const description = "Lebara Germany Limited SEPA-BASISLASTSCHRIFT ".repeat(10);
-    const [series] = detectRecurring(["2026-01-02", "2026-02-02", "2026-03-02"].map((date, index) => transaction({ id: `l${index}`, date, description })));
+    const series = defined(detectRecurring(["2026-01-02", "2026-02-02", "2026-03-02"].map((date, index) => transaction({ id: `l${index}`, date, description })))[0]);
     expect(series.label.length).toBeLessThanOrEqual(120);
     expect(description.startsWith(series.label)).toBe(true);
   });
@@ -35,7 +36,7 @@ describe("detectRecurring", () => {
       transaction({ id: "twice", date: "2026-01-06", description: "Coffee", amountMinor: -300n }),
     ]);
     expect(result).toHaveLength(2);
-    const monthly = result.find((series) => series.cadence === "monthly")!;
+    const monthly = defined(result.find((series) => series.cadence === "monthly"));
     expect(monthly).toMatchObject({
       label: "ACME RENT",
       accountId: "checking",
@@ -46,7 +47,7 @@ describe("detectRecurring", () => {
       occurrences: 3,
     });
     expect(monthly.confidence).toBeGreaterThanOrEqual(0.6);
-    const weekly = result.find((series) => series.cadence === "weekly")!;
+    const weekly = defined(result.find((series) => series.cadence === "weekly"));
     expect(weekly.transactionIds).toEqual(["w1", "w2", "w3", "w4", "w5", "w6"]);
     expect(weekly.amountMinMinor).toBe(-2100n);
     expect(weekly.amountMaxMinor).toBe(-2000n);

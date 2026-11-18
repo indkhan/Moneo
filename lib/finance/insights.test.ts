@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accountShortfalls, buildInsights, defaultInsightPreferences, DEFAULT_INSIGHT_PREFERENCES, type InsightInput } from "./insights";
 import { buildSourceCoverage } from "./source-coverage";
+import { defined } from "@/lib/testing";
 
 const base: InsightInput = { today: "2026-10-02", currency: "EUR", transactions: [], categories: [], budgets: [], recurring: [], obligations: [], goals: [], wealth: [], missingInputs: [], available: null };
 describe("deterministic evidence-backed insights", () => {
@@ -19,7 +20,7 @@ describe("deterministic evidence-backed insights", () => {
   });
   it("supports each requested type from credible dated evidence without cross-currency guessing", () => {
     const transactions = Array.from({ length: 10 }, (_, index) => ({ id: `prior${index}`, parent_transaction_id: `prior${index}`, amount_minor: "-1000", currency_code: "EUR", account_id: "account", status: "posted", kind: "ordinary", review_reasons: [], posted_on: "2026-09-30", category_id: "food", merchant_id: null }));
-    transactions.push({ ...transactions[0], id: "large", parent_transaction_id: "large", amount_minor: "-30000", posted_on: "2026-10-02" });
+    transactions.push({ ...defined(transactions[0]), id: "large", parent_transaction_id: "large", amount_minor: "-30000", posted_on: "2026-10-02" });
     const insights = buildInsights({ ...base, transactions, categories: [{ id: "food", name: "Food" }],
       budgets: [{ id: "budget", name: "Food", currency: "EUR", spentMinor: "30000", allowanceMinor: "20000", partial: false }],
       recurring: [{ id: "series", label: "Subscription", evidence_invalidated: true }],
@@ -38,9 +39,9 @@ describe("deterministic evidence-backed insights", () => {
   });
   it("deduplicates unchanged evidence but permits renewed insight after a correction and honors mute/relevance limits", () => {
     const input = { ...base, available: { amountMinor: "-100", limitingDate: "2026-10-03" } };
-    const first = buildInsights(input, DEFAULT_INSIGHT_PREFERENCES)[0];
-    expect(buildInsights(input, DEFAULT_INSIGHT_PREFERENCES)[0].key).toBe(first.key);
-    expect(buildInsights({ ...input, available: { ...input.available, amountMinor: "-200" } }, DEFAULT_INSIGHT_PREFERENCES)[0].key).not.toBe(first.key);
+    const first = defined(buildInsights(input, DEFAULT_INSIGHT_PREFERENCES)[0]);
+    expect(defined(buildInsights(input, DEFAULT_INSIGHT_PREFERENCES)[0]).key).toBe(first.key);
+    expect(defined(buildInsights({ ...input, available: { ...input.available, amountMinor: "-200" } }, DEFAULT_INSIGHT_PREFERENCES)[0]).key).not.toBe(first.key);
     expect(buildInsights(input, DEFAULT_INSIGHT_PREFERENCES, ["cash_shortfall"])).toEqual([]);
     expect(buildInsights({ ...base, missingInputs: ["one", "two"] }, { ...DEFAULT_INSIGHT_PREFERENCES, max_items: 1 })).toHaveLength(1);
   });
@@ -63,9 +64,9 @@ describe("deterministic evidence-backed insights", () => {
     const dismissed = buildInsights(input, { ...DEFAULT_INSIGHT_PREFERENCES, max_items: 20 }).map(item => item.key);
     const next = buildInsights(input, { ...DEFAULT_INSIGHT_PREFERENCES, max_items: 1 }, [], dismissed);
     expect(next).toHaveLength(1);
-    expect(dismissed).not.toContain(next[0].key);
+    expect(dismissed).not.toContain(defined(next[0]).key);
     const recurring = { id: "old-series", label: "Old recurring", evidence_invalidated: true, evidence: [{ id: "old-row", posted_on: "2025-01-01", amount_minor: "-1000" }] };
-    const first = buildInsights({ ...base, recurring: [recurring] }, DEFAULT_INSIGHT_PREFERENCES)[0];
+    const first = defined(buildInsights({ ...base, recurring: [recurring] }, DEFAULT_INSIGHT_PREFERENCES)[0]);
     expect(buildInsights({ ...base, recurring: [{ ...recurring, evidence: [{ ...recurring.evidence[0], amount_minor: "-2000" }] }] }, DEFAULT_INSIGHT_PREFERENCES, [], [first.key])).toHaveLength(1);
   });
 });
@@ -78,10 +79,10 @@ it("flags an account that runs short and suggests a move from the account with t
     { accountId: "savings", amountMinor: 20000n, shortfallMinor: 0n, firstShortfallDate: null },
   ], names);
   expect(shortfalls).toEqual([{ accountId: "main", name: "N26 Main", shortfallMinor: "30000", date: "2026-11-03", donor: { accountId: "holiday", name: "Holiday reserve", spareMinor: "100000" } }]);
-  const [insight] = buildInsights({ ...base, locale: "en-GB", accountShortfalls: shortfalls }, DEFAULT_INSIGHT_PREFERENCES);
+  const insight = defined(buildInsights({ ...base, locale: "en-GB", accountShortfalls: shortfalls }, DEFAULT_INSIGHT_PREFERENCES)[0]);
   expect(insight).toMatchObject({ type: "cash_shortfall", title: "N26 Main runs short", href: "/plan?account=main",
     move: { fromAccountId: "holiday", toAccountId: "main", amountMinor: "30000", date: "2026-11-03" } });
   expect(insight.detail).toContain("Moving EUR 300.00 from Holiday reserve, which has EUR 1,000.00 to spare, would cover it.");
-  expect(accountShortfalls([{ accountId: "main", amountMinor: -30000n, shortfallMinor: 30000n, firstShortfallDate: "2026-11-03" },
-    { accountId: "savings", amountMinor: 20000n, shortfallMinor: 0n, firstShortfallDate: null }], names)[0].donor).toBeNull();
+  expect(defined(accountShortfalls([{ accountId: "main", amountMinor: -30000n, shortfallMinor: 30000n, firstShortfallDate: "2026-11-03" },
+    { accountId: "savings", amountMinor: 20000n, shortfallMinor: 0n, firstShortfallDate: null }], names)[0]).donor).toBeNull();
 });

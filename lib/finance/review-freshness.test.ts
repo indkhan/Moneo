@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { compareReviewEvidence, reviewFreshness } from "./review-freshness";
 import { aiScopeGuard, settingsSchema } from "@/lib/workspace-settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { defined } from "@/lib/testing";
 
 const fixture = vi.hoisted(() => ({ load: vi.fn(), view: vi.fn() }));
 vi.mock("./review-loader", () => ({ loadFinancialReviewEvidence: fixture.load }));
@@ -9,7 +10,7 @@ vi.mock("./evidence-view", () => ({readEvidenceView: fixture.view}));
 const evidence = { period: { from: "2026-07-05", to: "2026-10-02" }, accounts: [{ balanceMinor: "9007199254740993", evaluatedAt: "2026-10-02T10:00:00Z", asOf: "2026-10-02T09:00:00Z" }], planning: { goals: [{ targetMinor: "10000", targetDate: "2026-12-01" }] } };
 
 it("ignores evaluation-clock and object-key order changes but preserves exact dated financial facts", () => {
-  expect(compareReviewEvidence(evidence, { planning: evidence.planning, accounts: [{ asOf: evidence.accounts[0].asOf, evaluatedAt: "2026-10-02T11:00:00Z", balanceMinor: "9007199254740993" }], period: evidence.period }).status).toBe("current");
+  expect(compareReviewEvidence(evidence, { planning: evidence.planning, accounts: [{ asOf: defined(evidence.accounts[0]).asOf, evaluatedAt: "2026-10-02T11:00:00Z", balanceMinor: "9007199254740993" }], period: evidence.period }).status).toBe("current");
   for (const changed of [
     { ...evidence, accounts: [{ ...evidence.accounts[0], balanceMinor: "9007199254740992" }] },
     { ...evidence, accounts: [{ ...evidence.accounts[0], asOf: "2026-10-01T09:00:00Z" }] },

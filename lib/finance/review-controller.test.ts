@@ -2,6 +2,7 @@ import {describe, expect, it, vi} from "vitest";
 import {investigate, type InvestigationRow, type InvestigationSpec} from "./investigation";
 import {resolveReviewRequest} from "./review-request";
 import {runReviewInvestigation} from "./review-controller";
+import { defined } from "@/lib/testing";
 
 const request = (budget = {}) => resolveReviewRequest({version: 1, question: "Explain September spending changes", query: {version: 1, period: {from: "2026-09-01", to: "2026-09-30"}, comparison: {from: "2026-08-01", to: "2026-08-31"}, groupBy: ["merchant"]}, budget}, "2026-10-07");
 const context = {workspaceId: "11111111-1111-4111-8111-111111111111", capturedAt: "2026-10-07T12:00:00Z"};
@@ -25,8 +26,8 @@ describe("bounded read-only investigation controller", () => {
     }});
     expect(queries).toHaveLength(2);
     expect(queries[1]).toEqual({...queries[0], groupBy: []});
-    expect(progress.queries[1].receiptId).toBe("aggregate");
-    expect(progress.queries[1].result?.groups.find(group => group.currency === "EUR")?.currentMinor).toBe("9007199254740994");
+    expect(defined(progress.queries[1]).receiptId).toBe("aggregate");
+    expect(defined(progress.queries[1]).result?.groups.find(group => group.currency === "EUR")?.currentMinor).toBe("9007199254740994");
     expect(progress.limitations.join(" ")).toContain("Detailed grouping was unavailable");
   });
   it("retains bounded progress for many long group labels without repeating the full query or every group on each drilldown", async () => {
@@ -39,16 +40,16 @@ describe("bounded read-only investigation controller", () => {
       expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThan(262144);
     }});
     expect(progress.queries).toHaveLength(12);
-    expect(progress.queries[1].result?.groups).toHaveLength(1);
-    expect(progress.queries[0].query).toEqual({page: {size: 10, period: "both"}});
+    expect(defined(progress.queries[1]).result?.groups).toHaveLength(1);
+    expect(defined(progress.queries[0]).query).toEqual({page: {size: 10, period: "both"}});
   });
   it("drills into the largest exact decline and gives each currency a turn without comparing their units", async () => {
     read.mockClear();
     const progress = await runReviewInvestigation(request({maxQueries: 3}), {read});
     expect(read).toHaveBeenCalledTimes(3);
-    expect(read.mock.calls[1][0].page.groupKey).toContain("decline");
-    expect(read.mock.calls[2][0].page.groupKey).toContain("USD");
-    expect(progress.queries[0].result?.groups.find(group => group.key.includes("decline"))?.deltaMinor).toBe("-9007199254740993");
+    expect(defined(read.mock.calls[1])[0].page.groupKey).toContain("decline");
+    expect(defined(read.mock.calls[2])[0].page.groupKey).toContain("USD");
+    expect(defined(progress.queries[0]).result?.groups.find(group => group.key.includes("decline"))?.deltaMinor).toBe("-9007199254740993");
     expect(progress.request.question).toBe("Explain September spending changes");
     expect(progress.limitations.join(" ")).toContain("Causal explanations are unproven");
   });
@@ -58,7 +59,7 @@ describe("bounded read-only investigation controller", () => {
     const progress = await runReviewInvestigation(request({maxQueries: 2, maxSupportRecords: 2}), {read, checkpoint: async value => {saved.push(value.queries.length);}});
     expect(saved[0]).toBe(1);
     expect(progress.supportRecords).toBeLessThanOrEqual(2);
-    expect(read.mock.calls[0][0].page.size).toBe(2);
+    expect(defined(read.mock.calls[0])[0].page.size).toBe(2);
     const count = read.mock.calls.length;
     const resumed = await runReviewInvestigation(progress.request, {read}, progress);
     expect(read.mock.calls.length).toBe(count);
@@ -71,7 +72,7 @@ describe("bounded read-only investigation controller", () => {
       return {result: investigate(query, rows, context), receiptId: "retained"};
     }});
     expect(progress.queries.map(query => query.status)).toEqual(["completed", "unavailable"]);
-    expect(progress.queries[0].receiptId).toBe("retained");
+    expect(defined(progress.queries[0]).receiptId).toBe("retained");
     expect(progress.limitations.join(" ")).toContain("unavailable");
   });
   it("a durable elapsed deadline prevents further reads and cancellation reaches the active transport", async () => {

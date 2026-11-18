@@ -6,6 +6,7 @@ import { loadFinancialReviewEvidence } from "./review-loader";
 import { compareReviewEvidence, reviewFreshness } from "./review-freshness";
 import type { Db } from "@/lib/database";
 import { aiScopeGuard, settingsSchema, type AiDataScope } from "@/lib/workspace-settings";
+import { defined } from "@/lib/testing";
 
 const fixture = vi.hoisted(() => ({ rate: "1", snapshotVersion: 1, revision: 1, revisionTable: "", reads: [] as string[] }));
 const requireWorkspace = async () => ({
@@ -41,7 +42,7 @@ it("retains original forecast evidence and marks rounding-invisible rate and sna
   const changed = await evaluateForecast({ horizonDays: 2 }, context);
   expect(changed.expectedMinor).toBe(first.expectedMinor);
   expect(evidenceFreshness(receipt, toolSourceVersion(changed), receipt.calculationVersion).status).toBe("stale");
-  expect(receipt.sources[0].record).toMatchObject({ calculationEvidence: { source: {
+  expect(defined(receipt.sources[0]).record).toMatchObject({ calculationEvidence: { source: {
     balances: { snapshots: [{ currency_code: "USD", amount_minor: "1", version: 1 }] },
     conversions: expect.arrayContaining([expect.objectContaining({ input: expect.objectContaining({ from: "USD", to: "EUR", amountMinor: "1", rate: "1" }), result: expect.objectContaining({ rate: { numerator: "1", denominator: "1" } }) })]),
   } } });
@@ -69,7 +70,7 @@ it.each([false, true])("keeps source-only balance revisions stale in saved summa
   expect(compareReviewEvidence(saved, later).status).toBe("current");
   fixture.snapshotVersion = 2;
   const current = await reviewEvidence(supabase, workspace, settings);
-  expect(current.accounts[0].balanceMinor).toBe(first.accounts[0].balanceMinor);
+  expect(defined(current.accounts[0]).balanceMinor).toBe(defined(first.accounts[0]).balanceMinor);
   expect(toolSourceVersion(current)).not.toBe(toolSourceVersion(first));
   expect(compareReviewEvidence(saved, current).status).toBe("stale");
   expect((await reviewFreshness(supabase, workspace, saved, settings, aiScopeGuard(settings), new Date())).status).toBe("stale");
