@@ -20,12 +20,14 @@
     "qa:nightly": "node scripts/nightly-e2e.mjs",
     "qa:shots": "node scripts/qa-screenshots.mjs",
     "check:privacy": "node scripts/check-private-data.mjs",
+    "feature-map": "node scripts/feature-map.mjs",
+    "check:features": "node scripts/feature-map.mjs --check",
     "desktop:build": "node scripts/desktop/build.mjs",
     "desktop:dev": "node scripts/desktop/build.mjs --main && electron desktop",
     "desktop:dist": "electron-builder --projectDir desktop --config electron-builder.config.cjs",
     "desktop:smoke": "node scripts/desktop/package-smoke.mjs",
     "pretest": "npm run check:privacy",
-    "prelint": "npm run check:privacy"
+    "prelint": "npm run check:privacy && npm run check:features"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.96",
@@ -91,6 +93,7 @@
     "esbuild": "0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.8",
+    "fast-check": "4.10.2",
     "postcss": "^8.5.32",
     "postgres": "3.4.9",
     "tailwindcss": "^4.3.3",

@@ -10,7 +10,7 @@ The owner decides whether the behaviour is right, so the chart is in their words
 ## Steps
 
 1. **Write the rules first.** List what must always hold, in sentences the owner would agree with: "an order is sent at most once", "undo puts back exactly what the import added", "nothing is written until the card is accepted". These are what the chart is checked against.
-2. **Find where the state lives.** Usually a status column in `lib/schema.ts` (and its check constraint in `supabase/migrations/`), a union type, or a workflow in `workflows/`. List every value it can take.
+2. **Find where the state lives.** `FEATURES.md` lists the flow's pages, chat tools, workflows and undo paths. Usually a status column in `lib/schema.ts` (and its check constraint in `supabase/migrations/`), a union type, or a workflow in `workflows/`. List every value it can take.
 3. **Find every transition.** Grep for each write to that status and each place it is compared. For each one record: from, to, what triggers it and the file and line.
 4. **Walk it for holes.** Answer each from the code:
    - Is every state reachable, and can every state that is not final be left?
