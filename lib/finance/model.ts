@@ -12,13 +12,15 @@ import { evidenceFingerprint } from "./evidence-receipts";
 
 type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean; source?: string; schedule_anchor_on?: string | null };
 
-export function expandSchedule(item: Scheduled, start: string, days: number, uncertaintyBps = 1000): ForecastEvent[] {
+type ScheduledEvent = ForecastEvent & { conservativeMinor: bigint; optimisticMinor: bigint };
+
+export function expandSchedule(item: Scheduled, start: string, days: number, uncertaintyBps = 1000): ScheduledEvent[] {
   if (item.enabled === false || !item.account_id) return [];
   const anchor = item.schedule_anchor_on ?? item.starts_on;
   const first = new Date(`${anchor}T00:00:00Z`);
   const horizon = new Date(`${start}T00:00:00Z`);
   const end = new Date(horizon.getTime() + days * 86400000);
-  const events: ForecastEvent[] = [];
+  const events: ScheduledEvent[] = [];
   const elapsedDays = Math.max(0, Math.floor((horizon.getTime() - first.getTime()) / 86400000));
   let firstIndex = 0;
   if (item.cadence === "daily") firstIndex = elapsedDays;
@@ -128,13 +130,13 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
         if (Date.parse(`${movement.date}T00:00:00Z`) >= horizonEnd) return [];
         const cases = forecastCases(movement.amountMinor, movement.observed ? 0 : preferences.uncertainty_bps);
         const expectedMinor = convert(cases.expectedMinor, item.currency_code, movement.date);
-        const conservativeMinor = convert(cases.conservativeMinor!, item.currency_code, movement.date);
-        const optimisticMinor = convert(cases.optimisticMinor!, item.currency_code, movement.date);
+        const conservativeMinor = convert(cases.conservativeMinor, item.currency_code, movement.date);
+        const optimisticMinor = convert(cases.optimisticMinor, item.currency_code, movement.date);
         if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:assumption:${item.account_id}`); return []; }
         return [{ ...event, date: movement.date, expectedMinor, conservativeMinor, optimisticMinor, source: "confirmed" as const, name: item.name }];
       });
       const cv = (amount: bigint) => convert(amount, item.currency_code, event.date);
-      const expectedMinor = cv(event.expectedMinor), conservativeMinor = cv(event.conservativeMinor!), optimisticMinor = cv(event.optimisticMinor!);
+      const expectedMinor = cv(event.expectedMinor), conservativeMinor = cv(event.conservativeMinor), optimisticMinor = cv(event.optimisticMinor);
       if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:assumption:${item.account_id}`); return []; }
       return [{ ...event, expectedMinor, conservativeMinor, optimisticMinor, source: "confirmed" as const, name: item.name }];
     });
@@ -148,11 +150,11 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     events.push({ date: repayment.date, accountId: repayment.accountId, expectedMinor: amount, conservativeMinor: amount, optimisticMinor: amount, source: "debt", name: "Debt repayment" });
   }
   if (BigInt(preferences.daily_spending_minor) > 0n) {
-    if (!preferences.spending_account_id || !accountIds.has(preferences.spending_account_id)) missingInputs.push("estimated spending account");
-    else for (const event of expandSchedule({ account_id: preferences.spending_account_id, currency_code: preferences.currency_code, amount_minor: (-BigInt(preferences.daily_spending_minor)).toString(), cadence: "daily", starts_on: preferences.spending_starts_on!, ends_on: null }, startDate, horizonDays, preferences.uncertainty_bps)) {
+    if (!preferences.spending_account_id || !preferences.spending_starts_on || !accountIds.has(preferences.spending_account_id)) missingInputs.push("estimated spending account");
+    else for (const event of expandSchedule({ account_id: preferences.spending_account_id, currency_code: preferences.currency_code, amount_minor: (-BigInt(preferences.daily_spending_minor)).toString(), cadence: "daily", starts_on: preferences.spending_starts_on, ends_on: null }, startDate, horizonDays, preferences.uncertainty_bps)) {
       const expectedMinor = convert(event.expectedMinor, preferences.currency_code, event.date);
-      const conservativeMinor = convert(event.conservativeMinor!, preferences.currency_code, event.date);
-      const optimisticMinor = convert(event.optimisticMinor!, preferences.currency_code, event.date);
+      const conservativeMinor = convert(event.conservativeMinor, preferences.currency_code, event.date);
+      const optimisticMinor = convert(event.optimisticMinor, preferences.currency_code, event.date);
       if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) missingInputs.push("fx:estimated spending");
       else events.push({ ...event, expectedMinor, conservativeMinor, optimisticMinor, source: "estimated", name: "Additional variable spending" });
     }
@@ -172,7 +174,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     scenarioEvents = (overrides ?? []).flatMap(item => item.account_id && accountIds.has(item.account_id)
       ? expandSchedule({ ...item, amount_minor: item.amount_delta_minor }, startDate, horizonDays, preferences.uncertainty_bps).flatMap(event => {
         const cv = (amount: bigint) => convert(amount, item.currency_code, event.date);
-        const expectedMinor = cv(event.expectedMinor), conservativeMinor = cv(event.conservativeMinor!), optimisticMinor = cv(event.optimisticMinor!);
+        const expectedMinor = cv(event.expectedMinor), conservativeMinor = cv(event.conservativeMinor), optimisticMinor = cv(event.optimisticMinor);
         if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:scenario:${item.id}`); return []; }
         return [{ ...event, expectedMinor, conservativeMinor, optimisticMinor, source: "scenario" as const, name: item.name }];
       }) : []);

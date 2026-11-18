@@ -58,7 +58,8 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
     if (row.reviewReasons?.length || !["ordinary", "refund", "transfer"].includes(row.kind)) { exclude("classification-review"); incomplete = true; continue; }
     if (row.kind === "transfer") { exclude("transfer"); continue; }
     add(perCurrency[row.currencyCode] ??= empty(), row.amountMinor, row.kind);
-    const parent = parents.get(row.parentTransactionId ?? row.id)!;
+    const parent = parents.get(row.parentTransactionId ?? row.id);
+    if (!parent) throw new Error("Missing canonical parent evidence");
     const parentAmountBasis = parent.amount !== null ? "canonical-record" as const : parent.kinds.size === 1 ? "effective-components" as const : "unavailable" as const;
     const evidence = { id: row.id, parentTransactionId: row.parentTransactionId, parentAmountMinor: (parent.amount ?? (parent.kinds.size === 1 ? parent.effectiveAmount : null))?.toString() ?? null, parentAmountBasis, sourcePostings: row.sourcePostings.sort((a, b) => a.id.localeCompare(b.id)), accountId: row.accountId, kind: row.kind, version: row.version, postedOn: row.postedOn, originalAmountMinor: row.amountMinor.toString(), originalCurrencyCode: row.currencyCode };
     if (options.view === "original") {
@@ -80,7 +81,7 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
     }
     const converted = conversion.converted.amountMinor;
     add(available, converted, row.kind);
-    postings.push({ ...evidence, reportingAmountMinor: converted.toString(), rate: { id: sameCurrency ? null : rate!.id, source: conversion.source, date: conversion.date, numerator: conversion.rate.numerator.toString(), denominator: conversion.rate.denominator.toString() }, rounding: {
+    postings.push({ ...evidence, reportingAmountMinor: converted.toString(), rate: { id: sameCurrency ? null : rate?.id ?? null, source: conversion.source, date: conversion.date, numerator: conversion.rate.numerator.toString(), denominator: conversion.rate.denominator.toString() }, rounding: {
       scaledNumerator: (row.amountMinor * conversion.rate.numerator * 10n ** BigInt(minorDigits(options.currencyCode))).toString(),
       scaledDenominator: (conversion.rate.denominator * 10n ** BigInt(minorDigits(row.currencyCode))).toString(), roundedMinor: converted.toString(),
     } });

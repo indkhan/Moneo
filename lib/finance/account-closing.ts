@@ -25,7 +25,7 @@ export function closingPlan(account: Account, balanceMinor: bigint, answer: Clos
     if (!target) throw new Error(`Choose another ${account.currency_code} account`);
   } else {
     const cash = targets.filter(other => other.type === "cash");
-    target = answer.targetAccountId ? cash.find(other => other.id === answer.targetAccountId) ?? null : cash.length === 1 ? cash[0] : null;
+    target = answer.targetAccountId ? cash.find(other => other.id === answer.targetAccountId) ?? null : cash.length === 1 ? cash[0] ?? null : null;
     if (!target && (answer.targetAccountId || cash.length > 1)) throw new Error("Choose a Cash account");
     createCash = !target;
   }

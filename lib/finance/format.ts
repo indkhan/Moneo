@@ -29,16 +29,17 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function describeMissingInputs(keys: string[], names: Map<string, string> = new Map()): string[] {
   const label = (ref: string) => names.get(ref) ?? (uuid.test(ref) ? "An account" : ref);
   const describe = (key: string): string => {
-    const named = /^(.+) for (.+)$/.exec(key);
-    if (named) return `${describe(named[1]).replace(/^(An account|A balance)/, named[2])}`;
+    const [, subject, replacement] = /^(.+) for (.+)$/.exec(key) ?? [];
+    if (subject !== undefined && replacement !== undefined) return `${describe(subject).replace(/^(An account|A balance)/, replacement)}`;
     const [kind, ...rest] = key.split(":");
-    if (kind === "balance" || kind === "available-balance") return !rest[1] || rest[1] === "missing" ? `${label(rest[0])} needs a current balance` : rest[1] === "stale" ? `${label(rest[0])} has an out-of-date balance` : `${label(rest[0])} balance is ${rest.slice(1).join(":")}`;
+    const part = (index: number) => rest[index] ?? "";
+    if (kind === "balance" || kind === "available-balance") return !part(1) || part(1) === "missing" ? `${label(part(0))} needs a current balance` : part(1) === "stale" ? `${label(part(0))} has an out-of-date balance` : `${label(part(0))} balance is ${rest.slice(1).join(":")}`;
     if (kind === "rate") return `An account needs a ${rest.join(":").replace("->", " to ")} exchange rate`;
-    if (kind === "currency") return `Currency ${rest[0]} is not supported`;
-    if (kind === "fx") return rest.length > 1 && rest[0] !== "scenario" ? `${label(rest[1])} needs an exchange rate` : "An exchange rate is missing";
-    if (kind === "valuation") return `${names.get(rest[0]) ?? "A valuation"} is dated in the future`;
+    if (kind === "currency") return `Currency ${part(0)} is not supported`;
+    if (kind === "fx") return rest.length > 1 && part(0) !== "scenario" ? `${label(part(1))} needs an exchange rate` : "An exchange rate is missing";
+    if (kind === "valuation") return `${names.get(part(0)) ?? "A valuation"} is dated in the future`;
     if (kind === "debt") return `A debt ${rest.slice(1).join(":") || "needs repayment terms"}`;
-    if (kind === "occurrence") return `${rest[0]} on ${rest[1]}: evidence changed, review the association`;
+    if (kind === "occurrence") return `${part(0)} on ${part(1)}: evidence changed, review the association`;
     return key;
   };
   return [...new Set(keys.map(describe))];

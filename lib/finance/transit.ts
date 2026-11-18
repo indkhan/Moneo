@@ -52,8 +52,8 @@ export function matchTransfers({ transfers, legs, firstReal, reads, complete, co
   const transfersFor = (leg: BankLeg) => open.filter(transfer => fits(leg, transfer));
   const ambiguous = (transfer: BrokerTransfer) => legsFor(transfer).length > 1 || legsFor(transfer).some(leg => transfersFor(leg).length > 1);
   for (const transfer of open) {
-    if (ambiguous(transfer) || !legsFor(transfer).length) continue;
-    const leg = legsFor(transfer)[0];
+    const [leg] = legsFor(transfer);
+    if (ambiguous(transfer) || !leg) continue;
     paired.add(leg.id); seenBroker.add(transfer.provider_id);
     const made = window({ date: shown(transfer), signed: BigInt(transfer.amount_minor) }, { date: leg.postedOn }, abs(leg.amountMinor), { currencyCode: leg.currencyCode, kind: "matched", broker: true, accounts: [leg.accountId], key: `matched:${transfer.provider_id}` });
     if (made) windows.push(made);

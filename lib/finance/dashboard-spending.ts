@@ -19,13 +19,14 @@ function total(rows: SpendingRow[], rates: ExpenditureRate[], currencyCode: stri
 }
 
 export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[], currencyCode: string, today: string) {
-  const [year, month, date] = today.split("-").map(Number);
-  const trend = Array.from({ length: MONTHS }, (_, index) => {
-    const offset = MONTHS - 1 - index;
+  const [year = NaN, month = NaN, date = NaN] = today.split("-").map(Number);
+  const monthTotal = (offset: number) => {
     const from = day(year, month - 1 - offset, 1), to = min(day(year, month - offset, 0), today);
     return { month: from.slice(0, 7), from, to, ...total(rows, rates, currencyCode, from, to) };
-  });
-  const thisMonth = trend[MONTHS - 1];
+  };
+  const earlier = Array.from({ length: MONTHS - 1 }, (_, index) => monthTotal(MONTHS - 1 - index));
+  const thisMonth = monthTotal(0);
+  const trend = [...earlier, thisMonth];
   const lastFrom = day(year, month - 2, 1), lastTo = min(day(year, month - 2, date), day(year, month - 1, 0));
   const lastMonthToDate = { from: lastFrom, to: lastTo, ...total(rows, rates, currencyCode, lastFrom, lastTo) };
   const top = (key: "category_id" | "merchant_id", from: string, to: string, metric: "spendingMinor" | "incomeMinor" = "spendingMinor") => {
@@ -40,14 +41,16 @@ export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[],
       .sort((a, b) => a[metric] === b[metric] ? 0 : a[metric] < b[metric] ? 1 : -1)
       .slice(0, 5);
   };
-  const months = trend.map(({ month, from, to }) => ({ month, from, to, categories: top("category_id", from, to), merchants: top("merchant_id", from, to),
-    incomeCategories: top("category_id", from, to, "incomeMinor"), incomeMerchants: top("merchant_id", from, to, "incomeMinor") }));
-  const { categories, merchants } = months[MONTHS - 1];
+  const monthDetail = ({ month, from, to }: typeof thisMonth) => ({ month, from, to, categories: top("category_id", from, to), merchants: top("merchant_id", from, to),
+    incomeCategories: top("category_id", from, to, "incomeMinor"), incomeMerchants: top("merchant_id", from, to, "incomeMinor") });
+  const current = monthDetail(thisMonth);
+  const months = [...earlier.map(monthDetail), current];
+  const { categories, merchants } = current;
   return { currencyCode, trend, thisMonth, lastMonthToDate, months, categories, merchants };
 }
 
 export const loadHomeSpending = cache(async (db: Db, workspaceId: string, currencyCode: string, today: string) => {
-  const [year, month] = today.split("-").map(Number);
+  const [year = NaN, month = NaN] = today.split("-").map(Number);
   const from = day(year, month - MONTHS, 1);
   async function loadRows() {
     const rows = await allPages<SpendingRow>((start, end, count) => db.from("effective_transactions")

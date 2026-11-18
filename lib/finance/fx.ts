@@ -5,8 +5,9 @@ export const supportedCurrencies = () => Object.keys(accountingDigits);
 
 export function minorDigits(currencyCode: string): number {
   const code = currencyCode.trim().toUpperCase();
-  if (!Object.hasOwn(accountingDigits, code)) throw new Error(`Invalid currency code: ${currencyCode}`);
-  return accountingDigits[code];
+  const digits = Object.hasOwn(accountingDigits, code) ? accountingDigits[code] : undefined;
+  if (digits === undefined) throw new Error(`Invalid currency code: ${currencyCode}`);
+  return digits;
 }
 
 export type ExactRate = { numerator: bigint; denominator: bigint } | string;

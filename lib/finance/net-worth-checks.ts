@@ -13,19 +13,21 @@ const abs = (value: bigint) => value < 0n ? -value : value;
 export function bankBalanceFindings(accounts: { id: string; name: string; currency_code: string }[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], timeZone: string, locale?: string): Discrepancy[] {
   const findings: Discrepancy[] = [];
   for (const account of accounts) {
-    const closing = new Map<string, BalanceSnapshot>();
+    const closing = new Map<string, { type: string; row: BalanceSnapshot }>();
     for (const row of snapshots) {
-      if (row.account_id !== account.id || row.undone_at || !row.balance_type || !BOOKED_BALANCE_TYPES.has(row.balance_type) || (row.boundary_kind ?? "date_only") !== "date_only") continue;
+      const type = row.balance_type;
+      if (row.account_id !== account.id || row.undone_at || !type || !BOOKED_BALANCE_TYPES.has(type) || (row.boundary_kind ?? "date_only") !== "date_only") continue;
       if (calendarDate(new Date(Date.parse(row.as_of) - 1).toISOString(), timeZone) === calendarDate(row.as_of, timeZone)) continue;
-      const key = `${row.balance_type}:${calendarDate(row.as_of, timeZone)}`, prior = closing.get(key);
-      if (!prior || (row.created_at ?? "") > (prior.created_at ?? "")) closing.set(key, row);
+      const key = `${type}:${calendarDate(row.as_of, timeZone)}`, prior = closing.get(key);
+      if (!prior || (row.created_at ?? "") > (prior.row.created_at ?? "")) closing.set(key, { type, row });
     }
     const byType = new Map<string, BalanceSnapshot[]>();
-    for (const row of closing.values()) byType.set(row.balance_type!, [...(byType.get(row.balance_type!) ?? []), row]);
+    for (const { type, row } of closing.values()) byType.set(type, [...(byType.get(type) ?? []), row]);
     for (const rows of byType.values()) {
       rows.sort((a, b) => Date.parse(a.as_of) - Date.parse(b.as_of));
       for (let index = 1; index < rows.length; index++) {
         const before = rows[index - 1], after = rows[index];
+        if (!before || !after) continue;
         const from = calendarDate(before.as_of, timeZone), to = calendarDate(after.as_of, timeZone);
         const moved = ledger.reduce((sum, row) => {
           if (row.account_id !== account.id || row.status !== "posted" || row.currency_code !== after.currency_code) return sum;
@@ -113,6 +115,7 @@ export async function loadImportStates(db: Db, workspaceId: string) {
 }
 
 export function checksNotice(findings: { title: string }[]) {
-  if (!findings.length) return null;
-  return findings.length === 1 ? findings[0].title : `${findings.length} things in your numbers don't add up.`;
+  const [only] = findings;
+  if (!only) return null;
+  return findings.length === 1 ? only.title : `${findings.length} things in your numbers don't add up.`;
 }

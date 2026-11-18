@@ -33,9 +33,8 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     return result;
   }
   const budgets = input.scopes.includes("planning") ? await rows<Parameters<typeof buildPlanningReview>[0]["budgets"][number]>("spending_plans", "id, category_id, currency_code, limit_minor::text, enabled, rollover, rollover_from, version") : [];
-  const historyStart = budgets.filter(budget => budget.enabled && budget.rollover && budget.rollover_from &&
-    Date.parse(`${to.slice(0, 7)}-01T00:00:00Z`) - Date.parse(`${budget.rollover_from}T00:00:00Z`) <= 3660 * 86400000)
-    .map(budget => budget.rollover_from!).sort()[0];
+  const historyStart = budgets.flatMap(budget => budget.enabled && budget.rollover && budget.rollover_from &&
+    Date.parse(`${to.slice(0, 7)}-01T00:00:00Z`) - Date.parse(`${budget.rollover_from}T00:00:00Z`) <= 3660 * 86400000 ? [budget.rollover_from] : []).sort()[0];
   const transactions = await rows<ReviewTransaction & { tags: string[]; event_name: string | null; version: number; description: string }>("effective_transactions", "id, account_id, parent_transaction_id, amount_minor::text, currency_code, status, kind, review_reasons, posted_on, category_id, merchant_id, refund_of_id, tags, event_name, version, description", historyStart && historyStart < comparisonFrom ? historyStart : comparisonFrom);
   const [categories, merchants] = await Promise.all([rows<{ id: string; name: string }>("categories", "id, name"), rows<{ id: string; name: string }>("merchants", "id, name")]);
   const refunds = [...new Set(transactions.flatMap(row => row.refund_of_id ? [row.refund_of_id] : []))];
@@ -71,7 +70,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
   const fullCalculationEvidence = JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input, forecastSource: plan.calculationEvidence }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
   const worth = netWorthModel(await loadNetWorthEvidence(db, { id: workspace.id, timezone: input.timezone }, { balances: Promise.resolve(balances) }));
   const [lastDay] = worth.points([to > worth.today ? worth.today : to]);
-  return { ...base, accountBalanceTotals: base.netWorth, netWorth: Object.fromEntries([...netWorth(lastDay)].map(([currency, amount]) => [currency, amount.toString()])), investigation, queryInvestigation,
+  return { ...base, accountBalanceTotals: base.netWorth, netWorth: lastDay ? Object.fromEntries([...netWorth(lastDay)].map(([currency, amount]) => [currency, amount.toString()])) : {}, investigation, queryInvestigation,
     calculationEvidence: fullCalculationEvidence, sourceVersion: toolSourceVersion(fullCalculationEvidence),
     planning: JSON.parse(JSON.stringify(planning, (_key, value) => typeof value === "bigint" ? value.toString() : value)) as Record<string, unknown> };
 }

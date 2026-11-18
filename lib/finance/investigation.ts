@@ -22,10 +22,10 @@ export function resolveInvestigation(input: unknown, entities: InvestigationEnti
     if (!filter) continue;
     for (const operation of ["include", "exclude"] as const) {
       filter[operation] = filter[operation]?.map(ref => {
-        const matches = entities[key].filter(e => "id" in ref ? e.id === ref.id : normalized(e.name) === normalized(ref.name));
-        if (!matches.length) throw new Error(`Unknown owned ${key}: ${"id" in ref ? ref.id : ref.name}`);
-        if (matches.length !== 1) throw new Error(`Ambiguous ${key}: ${"name" in ref ? ref.name : ref.id}; choose an ID from the owned entity list`);
-        return { id: matches[0].id };
+        const [match, ...others] = entities[key].filter(e => "id" in ref ? e.id === ref.id : normalized(e.name) === normalized(ref.name));
+        if (!match) throw new Error(`Unknown owned ${key}: ${"id" in ref ? ref.id : ref.name}`);
+        if (others.length) throw new Error(`Ambiguous ${key}: ${"name" in ref ? ref.name : ref.id}; choose an ID from the owned entity list`);
+        return { id: match.id };
       });
     }
   }
@@ -68,6 +68,10 @@ function metricValue(row: InvestigationRow, metric: InvestigationSpec["metric"])
   if (metric === "income") return row.kind !== "refund" && amount > 0n ? amount : 0n;
   return row.kind === "refund" || amount < 0n ? -amount : 0n;
 }
+export function investigationSpan(spec: InvestigationSpec) {
+  const periods = spec.comparison ? [spec.period, spec.comparison] : [spec.period];
+  return { from: periods.map(period => period.from).sort()[0] ?? spec.period.from, to: periods.map(period => period.to).sort().at(-1) ?? spec.period.to };
+}
 export function investigationGroup(row: InvestigationRow, dimensions: InvestigationSpec["groupBy"]) {
   return Object.fromEntries(dimensions.map(d => [d,
     d === "account" ? row.accountId : d === "category" ? row.categoryId : d === "merchant" ? row.merchantId :
@@ -79,8 +83,7 @@ export type InvestigationContext = { workspaceId: string; capturedAt: string; so
 function allocatedReporting(rows: InvestigationRow[], spec: InvestigationSpec, rates: ExpenditureRate[]) {
   if (spec.currencyPolicy.mode !== "base") return null;
   if (spec.statuses.some(s => s !== "posted") || spec.classifications !== "resolved" || spec.kinds.includes("transfer")) throw new Error("Base currency accounting requires posted, resolved ordinary/refund records; use original currency for provisional or transfer analysis");
-  const from = [spec.period.from, spec.comparison?.from].filter((v): v is string => Boolean(v)).sort()[0];
-  const to = [spec.period.to, spec.comparison?.to].filter((v): v is string => Boolean(v)).sort().at(-1)!;
+  const { from, to } = investigationSpan(spec);
   const report = reportExpenditure(rows.map(r => ({ id: r.id, parentTransactionId: r.parentId, accountId: r.accountId,
     amountMinor: BigInt(r.amountMinor), currencyCode: r.currency, postedOn: r.date, status: r.status, kind: r.kind, reviewReasons: r.reviewReasons, version: r.version })), rates, { view: "base", currencyCode: spec.currencyPolicy.currency, from, to });
   const allocated = new Map<string, string | null>();
