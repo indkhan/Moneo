@@ -5,6 +5,7 @@ import { serviceClient, serviceDb } from "@/lib/service-db";
 import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
 import { stableId } from "@/lib/import/row";
 import { linkOwnTransfers } from "@/lib/finance/own-transfers";
+import { loadWorkspaceSettings } from "@/lib/settings";
 import { resolveNewIdentities } from "@/lib/organize/resolve";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
@@ -38,7 +39,7 @@ async function linkOwnTransfersStep(workspaceId: string) {
   if (!config) return;
   const db = serviceClient(config.url, config.key);
   try { await resolveNewIdentities(db, workspaceId); } catch (error) { console.error("Identities were not resolved", error); }
-  try { await linkOwnTransfers(db, workspaceId); } catch (error) { console.error("Own-account transfers were not linked", error); }
+  try { const { locale, timezone } = await loadWorkspaceSettings(db, workspaceId); await linkOwnTransfers(db, workspaceId, { locale, timezone, now: new Date() }); } catch (error) { console.error("Own-account transfers were not linked", error); }
 }
 
 async function startAgentTeam(importId: string, workspaceId: string) {

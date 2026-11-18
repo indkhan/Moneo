@@ -1,9 +1,8 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { INSIGHT_TYPES } from "@/lib/insight-types";
 
 export const AI_DATA_SCOPES = ["accounts", "transactions", "planning", "imports"] as const;
-export const INSIGHT_TYPES = ["spending_changes", "budget_pressure", "unusual_activity", "recurring_changes", "upcoming_obligations",
-  "cash_shortfall", "goal_progress", "asset_debt", "data_quality"] as const;
 export type AiDataScope = typeof AI_DATA_SCOPES[number];
 export const AI_AGENTS = {
   chat: { label: "Chat assistant", model: "gpt-6-luna", claude: "claude-opus-5-5" },

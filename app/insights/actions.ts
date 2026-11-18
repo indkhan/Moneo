@@ -2,7 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { INSIGHT_TYPES, settingsSchema } from "@/lib/settings";
+import { INSIGHT_TYPES } from "@/lib/insight-types";
+import { settingsSchema } from "@/lib/settings";
 import { insightPreferencesSchema } from "@/lib/finance/insights";
 import { parseManualAmount } from "@/lib/finance/transaction-input";
 

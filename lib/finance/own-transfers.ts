@@ -3,7 +3,6 @@ import type { Db } from "@/lib/database";
 import { z } from "zod";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
-import { loadWorkspaceSettings } from "@/lib/settings";
 import { loadRawContext, type RawContext } from "@/lib/bank/raw-context";
 import { normalizeIban } from "@/lib/iban";
 import { wealthAmount } from "./wealth";
@@ -12,6 +11,8 @@ import type { BankLeg } from "./transit";
 
 export const MATCH_DAYS = 3;
 const CLOSING_MATCH_DAYS = 30;
+
+export type TransferContext = { locale: string; timezone: string; now: Date };
 
 export function sourceIbans(row: unknown) {
   if (!row || typeof row !== "object") return [];
@@ -227,13 +228,12 @@ async function loadLegs(db: Db, workspaceId: string): Promise<Leg[]> {
 export const ownTransferPayloadSchema = z.union([z.object({ transactionId: z.uuid(), name: z.string().trim().min(1).max(120) }).strict(),
   z.object({ transactionId: z.uuid(), pairWith: z.uuid() }).strict()]);
 
-async function proposeOwnNames(db: Db, workspaceId: string, rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts) {
+async function proposeOwnNames(db: Db, workspaceId: string, rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts, locale: string) {
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").limit(5000);
   if (known.error) throw new Error(known.error.message);
   const answered = new Set((known.data ?? []).map(row => String(row.conflict_key).replace(/^own_transfer:/, "")));
   const found = ownNameSuggestions(rows, seen, own, answered);
   if (!found.length) return 0;
-  const { locale } = await loadWorkspaceSettings(db, workspaceId);
   const byId = new Map(rows.map(row => [row.id, row]));
   const cards = found.map(({ transactionId, name }) => {
     const row = byId.get(transactionId)!, money = formatMoney(row.amountMinor < 0n ? -row.amountMinor : row.amountMinor, row.currencyCode, locale);
@@ -248,12 +248,11 @@ async function proposeOwnNames(db: Db, workspaceId: string, rows: TransferCandid
   return data?.length ?? 0;
 }
 
-async function proposeCashWithdrawals(db: Db, workspaceId: string, rows: TransferCandidate[]) {
-  const { locale, timezone } = await loadWorkspaceSettings(db, workspaceId);
+async function proposeCashWithdrawals(db: Db, workspaceId: string, rows: TransferCandidate[], { locale, timezone, now }: TransferContext) {
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "cash_withdrawal").limit(5000);
   if (known.error) throw new Error(known.error.message);
   const answered = new Set((known.data ?? []).map(row => String(row.conflict_key).replace(/^cash_withdrawal:/, "")));
-  const found = cashWithdrawals(rows, calendarDate(new Date(), timezone), answered);
+  const found = cashWithdrawals(rows, calendarDate(now, timezone), answered);
   if (!found.length) return 0;
   const cards = found.map(row => {
     const amount = -row.amountMinor, money = formatMoney(amount, row.currencyCode, locale);
@@ -268,14 +267,13 @@ async function proposeCashWithdrawals(db: Db, workspaceId: string, rows: Transfe
   return data?.length ?? 0;
 }
 
-async function proposePairs(db: Db, workspaceId: string, pairs: { outId: string; inId: string }[], byId: Map<string, TransferCandidate>, accounts: { id: string; name: string }[]) {
+async function proposePairs(db: Db, workspaceId: string, pairs: { outId: string; inId: string }[], byId: Map<string, TransferCandidate>, accounts: { id: string; name: string }[], locale: string) {
   if (!pairs.length) return 0;
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").limit(5000);
   if (known.error) throw new Error(known.error.message);
   const answered = new Set((known.data ?? []).map(row => String(row.conflict_key)));
   const fresh = pairs.filter(pair => !answered.has(`own_transfer:${pair.outId}:${pair.inId}`));
   if (!fresh.length) return 0;
-  const { locale } = await loadWorkspaceSettings(db, workspaceId);
   const name = (id: string) => accounts.find(account => account.id === id)?.name ?? "another account";
   const cards = fresh.map(({ outId, inId }) => {
     const out = byId.get(outId)!, into = byId.get(inId)!, money = formatMoney(-out.amountMinor, out.currencyCode, locale);
@@ -308,7 +306,7 @@ function ownAccountIds(rows: TransferCandidate[]) {
   return new Map([...ids].filter((entry): entry is [string, string] => entry[1] !== null));
 }
 
-export async function linkOwnTransfers(db: Db, workspaceId: string) {
+export async function linkOwnTransfers(db: Db, workspaceId: string, context: TransferContext) {
   const [own, rows, legs, transfers, scalable] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId),
     loadRows(db, workspaceId, "transfer"), db.from("scalable_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "active")]);
   if (scalable.error) throw new Error(scalable.error.message);
@@ -347,14 +345,14 @@ export async function linkOwnTransfers(db: Db, workspaceId: string) {
     handled.add(id);
   }
   const unproven = uncertainPairs(rows.filter(row => !handled.has(row.id)));
-  const pairCards = await proposePairs(db, workspaceId, unproven, byId, accounts ?? []);
+  const pairCards = await proposePairs(db, workspaceId, unproven, byId, accounts ?? [], context.locale);
   for (const pair of unproven) { handled.add(pair.outId); handled.add(pair.inId); }
-  const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own);
-  const cashCards = await proposeCashWithdrawals(db, workspaceId, [...rows.filter(row => !handled.has(row.id) || named.some(item => item.transactionId === row.id && item.account === "cash")), ...transfers]);
+  const suggested = await proposeOwnNames(db, workspaceId, rows.filter(row => !handled.has(row.id)), [...rows, ...transfers], own, context.locale);
+  const cashCards = await proposeCashWithdrawals(db, workspaceId, [...rows.filter(row => !handled.has(row.id) || named.some(item => item.transactionId === row.id && item.account === "cash")), ...transfers], context);
   return { linked, marked, skipped, suggested: suggested + pairCards, cashCards };
 }
 
-export async function confirmOwnAccount(db: Db, workspaceId: string, transactionId: string, name: string) {
+export async function confirmOwnAccount(db: Db, workspaceId: string, transactionId: string, name: string, context: TransferContext) {
   const [own, rows] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId)]);
   const target = rows.find(row => row.id === transactionId);
   if (!target) throw new Error("This transaction was removed");
@@ -369,7 +367,7 @@ export async function confirmOwnAccount(db: Db, workspaceId: string, transaction
   } else if (saved.error) throw new Error(saved.error.message);
   const marked = await db.rpc("mark_own_account_transfer", { p_transaction_id: transactionId, p_expected_version: target.version, p_identifier_id: identifierId ?? null });
   if (marked.error) throw new Error(marked.error.message);
-  const linked = await linkOwnTransfers(db, workspaceId);
+  const linked = await linkOwnTransfers(db, workspaceId, context);
   const open = await db.from("agent_proposals").select("id, payload").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").in("status", ["proposed", "failed"]).limit(5000);
   if (open.error) throw new Error(open.error.message);
   const asked = new Map((open.data ?? []).flatMap(row => {

@@ -52,14 +52,14 @@ it.skipIf(!enabled)("one yes to an old account marks every payment with it, now 
     await db`insert into public.agent_proposals(workspace_id,agent,kind,conflict_key,title,payload)
       values(${workspace},'chat','own_transfer',${`own_transfer:${second}`},'Usman Khan: your own account?',${db.json({ transactionId: second, name: "Usman Khan" })})`;
 
-    await confirmOwnAccount(supabase, workspace, first, "Usman Khan");
+    await confirmOwnAccount(supabase, workspace, first, "Usman Khan", { locale: "en-GB", timezone: "UTC", now: new Date() });
     expect((await states([first, second, third, stranger])).map(item => item.kind)).toEqual(["transfer", "transfer", "transfer", "ordinary"]);
     const [identifier] = await db<{ id: string; iban: string; confirmed: boolean; account_id: string | null }[]>`select id, iban, confirmed, account_id from public.own_account_identifiers where workspace_id=${workspace}`;
     expect(identifier).toMatchObject({ iban: OLD_ACCOUNT, confirmed: true, account_id: null });
     expect((await db`select status from public.agent_proposals where workspace_id=${workspace}`)[0].status).toBe("accepted");
 
     const later = await payment("2026-04-01", "Usman Khan", OLD_ACCOUNT);
-    await linkOwnTransfers(supabase, workspace);
+    await linkOwnTransfers(supabase, workspace, { locale: "en-GB", timezone: "UTC", now: new Date() });
     expect((await states([later]))[0].kind).toBe("transfer");
 
     const { data: reverted, error } = await supabase.rpc("undo_own_account_confirmation", { p_identifier_id: identifier.id });
@@ -74,7 +74,7 @@ it.skipIf(!enabled)("remembers an old account that carries no IBAN by its name, 
   const { db, supabase, workspace, payment, states, cleanup } = await fixture();
   try {
     const first = await payment("2026-03-01", "Usman Khan"), second = await payment("2026-03-02", "USMAN  KHAN"), other = await payment("2026-03-03", "Landlord");
-    await confirmOwnAccount(supabase, workspace, first, "Usman Khan");
+    await confirmOwnAccount(supabase, workspace, first, "Usman Khan", { locale: "en-GB", timezone: "UTC", now: new Date() });
     expect((await states([first, second, other])).map(item => item.kind)).toEqual(["transfer", "transfer", "ordinary"]);
     expect(await db`select name_key, iban from public.own_account_identifiers where workspace_id=${workspace}`).toEqual([{ name_key: "usman khan", iban: null }]);
   } finally { await cleanup(); }
