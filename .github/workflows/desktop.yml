@@ -33,7 +33,7 @@ permissions:
 jobs:
   cache:
     name: cache ${{ matrix.id }}
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/t3/speed-up-ci'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     strategy:
@@ -52,8 +52,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: actions/cache@v4
+        id: modules
+        with:
+          path: node_modules
+          key: modules-${{ matrix.id }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci
       - uses: actions/cache@v4
         with:
           path: desktop/.cache
@@ -95,10 +100,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+
+      - uses: actions/cache/restore@v4
+        id: modules
+        with:
+          path: node_modules
+          key: modules-${{ matrix.id }}-${{ hashFiles('package-lock.json') }}
 
       # No setup-go: fetch-backend.mjs downloads its own pinned Go toolchain into desktop/.cache.
-      - run: npm ci
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci
 
       - uses: actions/cache/restore@v4
         with:
