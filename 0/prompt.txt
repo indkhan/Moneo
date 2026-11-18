@@ -1,0 +1,41 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #234 in Moneo: centralize and validate application environment access.
+
+The owner chose typed Zod accessors in `lib/env.ts` plus a lint ban:
+- **Recount first.** The issue's 135 `process.env` reads across 42 files are historical. Classify them as runtime settings, public build-time values, optional integrations, or test overrides.
+- **Accessors.** Add small typed accessors in `lib/env.ts`, validated with Zod at the right boundary. Error messages name the invalid variable but never print secret values.
+- **Optional providers.** A missing AI, bank or Scalable variable must not stop the app starting or working offline.
+- **Desktop.** Desktop runtime settings stay runtime values, read at runtime via `MONEO_DESKTOP_*`. No local address may be baked into a build; `desktop:build` checks this.
+- **Migrate callers.** Move application code to the accessors.
+- **Lint.** Add a lint rule (`no-restricted-properties` or `no-restricted-syntax`) that rejects `process.env` outside `lib/env.ts`. Exempt, with explicit file globs: setup scripts (`scripts/`), Electron bootstrap (`desktop/`), Next config, instrumentation where Next requires it, and tests. The lint message says to use `lib/env.ts`.
+- **AGENTS.md.** Add a rules-table row.
+- **Tests.** Cover missing, malformed and valid configuration without reading the owner's `.env`. Use `vi.stubEnv`.
+- **Size.** If the full migration is too big for one reviewable PR, deliver the accessors, the lint rule (with a temporary allowlist of the unmigrated files) and the migration of `lib/`, and list the rest.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 234`.
+- Branch `t3/issue-234-env-access` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command or CI run is still going.** Wait in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- Shared test backend: never run `npm run qa:reset` or `docker compose -p moneo-qa down`, and never touch the owner's backend.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test` and `npm run build`.
+- The PR touches `next.config.ts` or `package*.json` only if needed. If it does, the Desktop workflow runs; check that it passes.
+- Push and open a PR to `main` (`Closes #234`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+Continue where you left off.
+
+---
+
+Continue where you left off. Your last turn was cut short, so a command or other action it started may have finished or may still be running. Before you repeat one that changes state, confirm it did not take effect and is not still running; if you cannot tell, say so instead of repeating it.
+
+---
+
+You were interrupted. Continue #234 from where you stopped: your uncommitted changes are still in your worktree. Merge origin/main in first (resolve conflicts keeping main's changes), finish, commit, push and open the PR. Run `npm run lint`, `npm run typecheck` and `npm test` yourself and quote their last lines. Never kill a process you didn't start. Don't end your turn while a command is still running. Final line: PR <full URL>, head <SHA>.
