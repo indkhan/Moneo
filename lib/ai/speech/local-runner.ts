@@ -30,6 +30,7 @@ export function createWorkerRunner(spawn: () => Worker, idleMs = IDLE_UNLOAD_MS)
   }
 
   return {
+    idle: () => pending.size === 0,
     transcribe(job: SpeechModelJob) {
       clearTimeout(idle);
       const id = nextId++;
