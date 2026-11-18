@@ -1,0 +1,75 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7RD16R7YJTBKY9HQAY5BFYE",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-268-swallowed-failures",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/agents/runs/[id]/route.ts",
+    "app/api/analysis/route.ts",
+    "app/api/bank/connect/route.ts",
+    "app/api/bank/credentials/route.ts",
+    "app/api/chat/route.ts",
+    "app/api/chat/steer/route.ts",
+    "app/api/conversations/[id]/route.ts",
+    "app/api/conversations/[id]/title/route.test.ts",
+    "app/api/conversations/[id]/title/route.ts",
+    "app/api/imports/[id]/control/route.ts",
+    "app/api/voice/call/route.ts",
+    "app/api/voice/models/route.ts",
+    "app/api/voice/session/route.ts",
+    "app/home-review-actions.ts",
+    "app/import/[id]/review/page.tsx",
+    "app/insights/briefing.test.tsx",
+    "app/insights/panel.test.ts",
+    "app/insights/panel.tsx",
+    "app/money/organization/page.test.tsx",
+    "app/money/organization/page.tsx",
+    "app/page.tsx",
+    "app/settings/page.tsx",
+    "app/waiting-for-you.test.tsx",
+    "app/waiting-for-you.tsx",
+    "lib/ai/agent-runtime.ts",
+    "lib/ai/chatgpt.ts",
+    "lib/ai/home-review.ts",
+    "lib/ai/open-proposals.ts",
+    "lib/ai/speech/hints.ts",
+    "lib/ai/use-voice-call.ts",
+    "lib/finance/dashboard-spending.ts",
+    "lib/json-body.ts",
+    "lib/organize/load.ts",
+    "lib/scalable/client.ts",
+    "lib/scalable/orders.ts",
+    "workflows/agent-team.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 68,
+    "cache_creation_tokens": 59376,
+    "cache_read_tokens": 4021866,
+    "output_tokens": 19576,
+    "api_call_count": 34
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
