@@ -11,14 +11,14 @@ export async function synthesizeReview(progress: ReviewProgress, input: Input, d
   dependencies.signal?.throwIfAborted();
   const remaining = progress.request.budget.maxDurationMs - ((dependencies.now ?? Date.now)() - progress.startedAt);
   const limitation = progress.synthesisAttempted ? "Model attempt budget already spent; retained supported measures are shown."
-    : remaining <= 0 ? "Investigation time budget reached; retained supported measures are shown."
-    : !input ? "Model input budget reached; retained supported measures are shown." : null;
+    : remaining <= 0 ? "Investigation time budget reached; retained supported measures are shown." : null;
   if (limitation) return {text: null, limitation};
+  if (!input) return {text: null, limitation: "Model input budget reached; retained supported measures are shown."};
   const reserved = {...progress, synthesisAttempted: true};
   if (!await dependencies.reserve(reserved)) return {text: null, limitation: "Model attempt budget already spent; retained supported measures are shown."};
   const timeLeft = progress.request.budget.maxDurationMs - ((dependencies.now ?? Date.now)() - progress.startedAt);
   if (timeLeft <= 0) return {text: null, limitation: "Investigation time budget reached; retained supported measures are shown."};
-  const result = await dependencies.generate({...input!, maxOutputTokens: progress.request.budget.maxOutputTokens, maxRetries: 0,
+  const result = await dependencies.generate({...input, maxOutputTokens: progress.request.budget.maxOutputTokens, maxRetries: 0,
     abortSignal: AbortSignal.any([...(dependencies.signal ? [dependencies.signal] : []), AbortSignal.timeout(timeLeft)])});
   return {text: result.text, limitation: result.finishReason === "length" ? "Incomplete review: the provider reached its output limit. Further findings may be missing." : null};
 }

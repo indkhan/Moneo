@@ -87,9 +87,9 @@ export function buildReviewEvidence(accounts: Account[], snapshots: BalanceSnaps
   const worth: Record<string, string | null> = {};
   for (const currency of currencies) {
     const relevant = transactions.filter(transaction => transaction.currency_code === currency);
-    if (relevant.length) {
-      const totals = summarizeCashflow(relevant.map(transaction => ({ amountMinor: BigInt(transaction.amount_minor), currencyCode: currency,
-        status: transaction.status as CashflowTransaction["status"], kind: transaction.kind as CashflowTransaction["kind"], reviewReasons: transaction.review_reasons })), currency)!;
+    const totals = relevant.length ? summarizeCashflow(relevant.map(transaction => ({ amountMinor: BigInt(transaction.amount_minor), currencyCode: currency,
+      status: transaction.status as CashflowTransaction["status"], kind: transaction.kind as CashflowTransaction["kind"], reviewReasons: transaction.review_reasons })), currency) : null;
+    if (totals) {
       cashflow[currency] = { incomeMinor: totals.incomeMinor.toString(), spendingMinor: totals.spendingMinor.toString(), netMinor: totals.netMinor.toString(),
         ...(totals.excludedReviewRows ? { excludedReviewRows: totals.excludedReviewRows, partial: true } : {}) };
     }

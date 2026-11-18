@@ -152,9 +152,12 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
     if (amount <= 0n) throw new Error("Invalid verified additional fee");
     additionalFees.set(fee.transaction_id, (additionalFees.get(fee.transaction_id) ?? 0n) + amount);
   }
-  return { accounts, snapshots, ledger: ledger.map(row => ({ ...row,
-    pending_released_minor: (released.get(row.id) ?? 0n).toString(),
-    canonical_amount_minor: row.amount_minor,
-    amount_minor: additionalFees.has(row.id) ? (exactMinor(row.amount_minor) - additionalFees.get(row.id)!).toString() : row.amount_minor,
-    source_transaction_ids: row.transaction_sources?.map(source => source.source_transaction_id) ?? [] })), asOf };
+  return { accounts, snapshots, ledger: ledger.map(row => {
+    const additionalFee = additionalFees.get(row.id);
+    return { ...row,
+      pending_released_minor: (released.get(row.id) ?? 0n).toString(),
+      canonical_amount_minor: row.amount_minor,
+      amount_minor: additionalFee === undefined ? row.amount_minor : (exactMinor(row.amount_minor) - additionalFee).toString(),
+      source_transaction_ids: row.transaction_sources?.map(source => source.source_transaction_id) ?? [] };
+  }), asOf };
 }

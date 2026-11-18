@@ -27,10 +27,13 @@ export function buildSourceCoverage(scope: CoverageScope, rows: EffectiveRow[], 
   const states: Record<string, number> = {};
   for (const item of imports ?? []) states[item.status] = (states[item.status] ?? 0) + 1;
   const undone = new Set((imports ?? []).filter(item => item.status === "undone").map(item => item.id));
-  const inScope = (row: SourceRow) => (!row.posted_on || row.posted_on >= scope.from && row.posted_on <= scope.to) &&
-    (!scope.currencyCode || !row.currency_code || row.currency_code === scope.currencyCode) &&
-    (!scope.accountId || !(row.resolved_account_id ?? row.account_id) || (row.resolved_account_id ?? row.account_id) === scope.accountId) &&
-    (!scope.accountIds || !(row.resolved_account_id ?? row.account_id) || scope.accountIds.includes((row.resolved_account_id ?? row.account_id)!));
+  const inScope = (row: SourceRow) => {
+    const account = row.resolved_account_id ?? row.account_id;
+    return (!row.posted_on || row.posted_on >= scope.from && row.posted_on <= scope.to) &&
+      (!scope.currencyCode || !row.currency_code || row.currency_code === scope.currencyCode) &&
+      (!scope.accountId || !account || account === scope.accountId) &&
+      (!scope.accountIds || !account || scope.accountIds.includes(account));
+  };
   const relevant = (sources ?? []).filter(inScope);
   const active = relevant.filter(row => !undone.has(row.import_id));
   const intentionallyExcluded = (row: SourceRow) => row.status === "rejected" && row.review_reasons?.includes("excluded_by_review");
@@ -47,6 +50,7 @@ export function buildSourceCoverage(scope: CoverageScope, rows: EffectiveRow[], 
   if ((imports ?? []).some(item => !["completed", "undone"].includes(item.status))) limitations.push("import_processing_incomplete");
   if (unobservedWorkspaceRows) limitations.push("import_rows_not_observed; period/account relevance unknown");
   const dates = active.flatMap(row => row.posted_on ? [row.posted_on] : []).sort();
+  const earliestPosting = dates[0], latestPosting = dates.at(-1);
   return { scope: { ...scope, accountScope: scope.accountId ? "selected_account" : scope.accountIds ? "selected_accounts" : "workspace_accepted_accounts" },
     acceptedEffectiveRows: effectiveRows.length, includedRows, exclusions, lifecycleExclusionsKnown: true,
     rowCountScope: balanceActivity ? "posted ledger activity in the dated balance period; snapshot boundaries are evaluated separately" : "cashflow eligibility in the period across all categories; category subtotals have separate attribution",
@@ -61,7 +65,7 @@ export function buildSourceCoverage(scope: CoverageScope, rows: EffectiveRow[], 
     unobservedWorkspaceSourceRows: unavailable ? null : unobservedWorkspaceRows,
     knownAcceptedAccountIds: [...new Set(effectiveRows.flatMap(row => row.account_id ? [row.account_id] : []))].sort(),
     knownAcceptedCurrencies: [...new Set(effectiveRows.map(row => row.currency_code))].sort(),
-    observedPostingRange: dates.length ? { from: dates[0], to: dates.at(-1)! } : null,
+    observedPostingRange: earliestPosting !== undefined && latestPosting !== undefined ? { from: earliestPosting, to: latestPosting } : null,
     importStatuses: unavailable ? null : states, importStatusScope: "workspace; period/account relevance can be unknown",
     statementIntervals: null, reconciledThrough: null, financialCompleteness: "unknown" as const,
     limitations, totalsAreBounds: false as const };

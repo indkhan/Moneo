@@ -25,10 +25,11 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
     for (const limitation of receipt.limitations ?? []) {
       let target = context.evidenceReceipts.find(item => item.id === receipt.id);
       if (!target) {target = {id: receipt.id, fetchedAt: receipt.fetchedAt, metrics: [], limitations: []}; context.evidenceReceipts.push(target);}
-      target.limitations!.push(limitation);
+      const targetLimitations = target.limitations ??= [];
+      targetLimitations.push(limitation);
       if (!fits()) {
-        target.limitations!.pop();
-        if (!target.limitations!.length) context.evidenceReceipts.splice(context.evidenceReceipts.indexOf(target), 1);
+        targetLimitations.pop();
+        if (!targetLimitations.length) context.evidenceReceipts.splice(context.evidenceReceipts.indexOf(target), 1);
         break boundedLimitations;
       }
     }

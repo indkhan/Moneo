@@ -147,7 +147,8 @@ export async function evaluateForecast(input: unknown, context: FinanceContext) 
       ...(forecast.status === "unavailable" ? forecast.missingInputs : []),
       ...(available.status === "unavailable" ? available.missingInputs : []),
     ])] };
-  const last = forecast.days.at(-1)!;
+  const last = forecast.days.at(-1);
+  if (!last) throw new Error("The forecast has no days");
   const liquidity = accountLiquidity(assumptions);
   if (liquidity.status === "unavailable") return { ...liquidity, sourceCoverage: plan.sourceCoverage, sourceVersion: plan.sourceVersion, calculationEvidence };
   const account = args.accountId ? liquidity.accounts.find(account => account.accountId === args.accountId) : undefined;
