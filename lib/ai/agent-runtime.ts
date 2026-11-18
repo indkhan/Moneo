@@ -130,6 +130,7 @@ async function withNewCategories(context: Context, categories: Map<string, strin
   return labels.filter(item => !item.categoryId && !item.merchantId && !item.merchantName);
 }
 
+const runOrganizesWithRulesAloneWithoutModel = () => null;
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 const rowCount = (items: { rows: unknown[] }[]) => items.reduce((sum, item) => sum + item.rows.length, 0);
 
@@ -166,7 +167,7 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
   const previous = checked(await db.from("agent_runs").select("organize_after").eq("workspace_id", workspace.id).neq("id", runId)
     .order("created_at", { ascending: false }).limit(1).maybeSingle()) as { organize_after: string | null } | null;
   const pausedUntil = previous?.organize_after && Date.parse(previous.organize_after) > Date.now() ? previous.organize_after : null;
-  const model = run.model_status === "available" && !pausedUntil ? await modelForSettings(context.settings, "agents").catch(() => null) : null;
+  const model = run.model_status === "available" && !pausedUntil ? await modelForSettings(context.settings, "agents").catch(runOrganizesWithRulesAloneWithoutModel) : null;
   const ask: Ask | null = model && (async request => {
     try { await activeRun(db, runId, workspace.id); } catch (error) { if (error instanceof RunInactive) throw new StopWork("The run was stopped"); throw error; }
     if (!checked(await db.rpc("reserve_agent_model_call", { p_run_id: runId, p_workspace_id: workspace.id }))) throw new StopWork("The model budget for this run is spent");
@@ -213,7 +214,7 @@ async function recurring(context: Context) {
 
 async function anomaly(context: Context) {
   await report(context, { type: "step", text: "Comparing the last 13 months for duplicates, fees and outliers" });
-  const loans = await loadLoanPayoutIds(context.db, context.workspace.id).catch(() => new Set<string>());
+  const loans = await loadLoanPayoutIds(context.db, context.workspace.id);
   const rows = (await loadLedger(context.db, context.workspace.id, daysBefore(context.today, 400))).filter(row => !loans.has(row.id));
   await report(context, { type: "tool", text: `anomalyFindings over ${rows.length} postings` });
   const findings = anomalyFindings(rows, context.today, context.workspace.locale);

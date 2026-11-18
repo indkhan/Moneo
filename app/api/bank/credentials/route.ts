@@ -6,6 +6,7 @@ import { enableBankingErrorMessage } from "@/lib/bank/server";
 import { serviceDb } from "@/lib/service-db";
 import { removeServiceKeys, saveServiceKeys } from "@/lib/service-keys";
 import { hasBankTokenKey } from "@/lib/env";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 const bodySchema = z.object({
   appId: z.string().trim().min(1, "Enter the App ID").max(200),
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!hasBankTokenKey()) return NextResponse.json({ error: "Moneo isn't set up yet. Run npm run setup, then restart Moneo." }, { status: 503 });
-  const body = bodySchema.safeParse(await request.json().catch(() => null));
+  const body = bodySchema.safeParse(await jsonBodyOrNull(request));
   if (!body.success) return NextResponse.json({ error: body.error.issues[0].message }, { status: 400 });
   const { appId, privateKey } = body.data;
   try { await checkEnableBankingCredentials({ appId, privateKey }); } catch (error) {

@@ -12,7 +12,7 @@ function readSkippedAt(value: unknown) {
 }
 
 export async function loadHomeReview(supabase: SupabaseClient, workspaceId: string): Promise<HomeReview> {
-  const loans = await loadLoanPayoutIds(supabase, workspaceId).catch(() => new Set<string>());
+  const loans = await loadLoanPayoutIds(supabase, workspaceId);
   const uncategorizedSince = (since: string | null) => {
     let count = supabase.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "posted").is("category_id", null).neq("kind", "transfer");
     if (since) count = count.gt("created_at", since);

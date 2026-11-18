@@ -34,9 +34,11 @@ export const viewport: Viewport = {
 
 type Theme = "light" | "dark" | "system";
 
+const themeStaysAtFallbackWithoutWorkspace = () => undefined;
+
 async function WorkspaceTheme({ fallback }: { fallback: Theme }) {
   let theme = fallback;
-  try { theme = (await requireWorkspace()).settings.theme; } catch {}
+  try { theme = (await requireWorkspace()).settings.theme; } catch { themeStaysAtFallbackWithoutWorkspace(); }
   return <ThemePreference preference={theme} />;
 }
 

@@ -27,7 +27,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on',{count:'exact'}).eq('workspace_id',workspace.id).neq('status','voided').neq('kind','transfer');
  query=query.or(cursor?`and(or(merchant_id.is.null,category_id.is.null),or(posted_on.lt.${cursor.date},and(posted_on.eq.${cursor.date},id.lt.${cursor.id})))`:'merchant_id.is.null,category_id.is.null');
  if(importId)query=query.eq('transaction_sources.source_transactions.import_id',importId);
- const loans=await loadLoanPayoutIds(supabase,workspace.id).catch(()=>new Set<string>());
+ const loans=await loadLoanPayoutIds(supabase,workspace.id);
  if(loans.size)query=query.not('id','in',`(${[...loans].join(',')})`);
  const [queue,merchants,categories,rules,reviews,selectedReview]=await Promise.all([
   query.order('posted_on',{ascending:false}).order('id',{ascending:false}).limit(51),

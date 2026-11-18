@@ -5,11 +5,12 @@ import { z } from "zod";
 import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { IouCard } from "./iou-card";
 
+const cardRendersNothingForUnreadableSource = () => undefined;
 const idsSchema = z.array(z.uuid()).min(2).max(50);
 
 export function ProposalGroup({ source }: { source: string }) {
   let ids: string[] | null = null;
-  try { ids = idsSchema.parse(JSON.parse(source)); } catch {}
+  try { ids = idsSchema.parse(JSON.parse(source)); } catch { cardRendersNothingForUnreadableSource(); }
   const [accounts, setAccounts] = useState<Record<string, string | undefined>>({});
   const [round, setRound] = useState(0);
   const [error, setError] = useState<string>();

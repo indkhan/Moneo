@@ -80,9 +80,11 @@ async function finishStep(runId: string, workspaceId: string, error?: string) {
   return finishRun(runId, workspaceId, error);
 }
 
+const runStartsWithoutWaitingWhenSyncStateIsUnknown = () => false;
+
 async function syncingStep(workspaceId: string) {
   "use step";
-  return banksSyncing(workspaceId).catch(() => false);
+  return banksSyncing(workspaceId).catch(runStartsWithoutWaitingWhenSyncStateIsUnknown);
 }
 
 async function rerunStep(workspaceId: string, trigger: "import" | "sync") {

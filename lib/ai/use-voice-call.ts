@@ -27,6 +27,7 @@ function level(analyser: AnalyserNode | null, buffer: Uint8Array<ArrayBuffer>) {
 
 const sessionAlreadyClosed = () => undefined;
 const screenMayStillSleep = () => undefined;
+const localAbortStopsTheAnswerWhenServerIsUnreachable = () => null;
 const trace = process.env.NODE_ENV === "production" ? undefined : (message: string) => console.info(`[call ${new Date().toISOString().slice(11, 23)}] ${message}`);
 
 class Connection {
@@ -158,7 +159,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     controller.cancel(requestId);
     if (!running) return;
     for (let attempt = 0; attempt < 10; attempt++) {
-      const response = await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }) }).catch(() => null);
+      const response = await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }) }).catch(localAbortStopsTheAnswerWhenServerIsUnreachable);
       if (response?.status !== 404) break;
       await new Promise(resolve => setTimeout(resolve, 100));
     }

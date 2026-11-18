@@ -274,12 +274,12 @@ export default defineConfig([
   {
     files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts", "lib/finance/format.ts", "lib/schema.ts", "lib/import/csv.ts", "workflows/**"],
-    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney] },
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney, unexplainedIgnoredFailure] },
   },
   {
     files: ["app/**", "components/**"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "app/api/**", ...typedAsyncFiles, ...serverActionFilesWithTimers],
-    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney, rawTimer] },
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney, rawTimer, unexplainedIgnoredFailure] },
   },
   {
     files: ["lib/schema.ts", "lib/import/csv.ts"],

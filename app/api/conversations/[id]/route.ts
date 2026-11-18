@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { conversationTitleSchema, loadConversation } from "@/lib/ai/conversation-history";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 type Context = { params: Promise<{ id: string }> };
 const headers = { "Cache-Control": "no-store" };
@@ -27,7 +28,7 @@ export async function PATCH(request: Request, route: Context) {
   const found = await owned(route);
   if (found instanceof Response) return found;
   const { id, context } = found;
-  const parsed = z.object({ title: conversationTitleSchema }).strict().safeParse(await request.json().catch(() => null));
+  const parsed = z.object({ title: conversationTitleSchema }).strict().safeParse(await jsonBodyOrNull(request));
   if (!parsed.success) return Response.json({ error: "Enter a title of 1 to 120 characters" }, { status: 400 });
   const result = await context.supabase.from("conversations").update({ title: parsed.data.title, title_settled: true })
     .eq("workspace_id", context.workspace.id).eq("id", id).is("deleted_at", null).select("id,title,created_at").maybeSingle();

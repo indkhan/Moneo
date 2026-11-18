@@ -7,6 +7,7 @@ import { startFinancialReview } from "@/lib/finance/start-review";
 import {reviewRequestSchema, resolveReviewRequest} from "@/lib/finance/review-request";
 import {calendarDate} from "@/lib/finance/calendar";
 import { serviceRoleConfig } from "@/lib/env";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 export async function GET() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!serviceRoleConfig() || !(await aiConfigured()))
     return Response.json({ error: "Financial review service is not configured" }, { status: 503 });
-  const parsed = z.object({ requestId: z.uuid(), investigation: reviewRequestSchema.optional() }).strict().safeParse(await request.json().catch(() => null));
+  const parsed = z.object({ requestId: z.uuid(), investigation: reviewRequestSchema.optional() }).strict().safeParse(await jsonBodyOrNull(request));
   if (!parsed.success) return Response.json({ error: "Provide a valid review request ID and bounded investigation scope" }, { status: 400 });
   const specification = resolveReviewRequest({...parsed.data.investigation ?? {version: 1, question: "Review my finances"}, allowedScopes: context.settings.ai_data_scopes}, calendarDate(new Date(), context.settings.timezone));
   try { requireAiScope(context.settings, "accounts", "transactions", ...(specification.includePlanning ? ["planning" as const] : [])); }

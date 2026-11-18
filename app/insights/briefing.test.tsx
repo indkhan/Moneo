@@ -16,7 +16,7 @@ vi.mock("@/lib/finance/insights", async original => ({ ...await original<typeof 
 beforeEach(() => { fixture.insights = []; fixture.wording = new Map(); });
 
 const db = { from: () => {
-  const query = { select: () => query, eq: () => query, order: () => query, lte: () => query, gte: () => query, in: () => query,
+  const query = { select: () => query, eq: () => query, is: () => query, limit: () => query, order: () => query, lte: () => query, gte: () => query, in: () => query,
     range: async () => ({ data: [], error: null }), maybeSingle: async () => ({ data: null, error: null }) };
   return query;
 } } as unknown as SupabaseClient;

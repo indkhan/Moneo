@@ -6,11 +6,12 @@ import { decideAgentProposals, loadAgentProposals } from "@/lib/ai/agent-actions
 import { agentDecisionSchema } from "@/lib/ai/agent-findings";
 
 type Row = Awaited<ReturnType<typeof loadAgentProposals>>[number];
+const cardRendersNothingForUnreadableSource = () => undefined;
 const label = { proposed: "Open", failed: "Failed", applying: "Applying", accepted: "Accepted", rejected: "Dismissed" } as Record<string, string>;
 
 export function DecisionCard({ source }: { source: string }) {
   let request: ReturnType<typeof agentDecisionSchema.parse> | null = null;
-  try { request = agentDecisionSchema.parse(JSON.parse(source)); } catch {}
+  try { request = agentDecisionSchema.parse(JSON.parse(source)); } catch { cardRendersNothingForUnreadableSource(); }
   const ids = request?.ids.join(",");
   const [rows, setRows] = useState<Row[]>();
   const [error, setError] = useState<string>();
