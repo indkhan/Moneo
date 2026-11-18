@@ -228,7 +228,7 @@ export default defineConfig([
   { linterOptions: { reportUnusedDisableDirectives: "error" } },
   {
     files: ["app/**", "components/**", "lib/**", "workflows/**", "proxy.ts", "instrumentation-node.ts"],
-    ignores: ["**/*.test.ts", "**/*.test.tsx", "**/*.live.test.ts", "lib/env.ts"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "**/*.live.test.ts", "lib/env.ts", "lib/property-check.ts"],
     rules: { "moneo/no-process-env": "error" },
   },
   {
