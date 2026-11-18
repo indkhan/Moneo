@@ -29,7 +29,7 @@ It fails with the reason when the app is not worth driving:
 
 ## 3. Drive
 
-1. **List the pages.** Every route the change can affect, including the ones AGENTS.md "Hit every surface" names.
+1. **List the pages.** Every route the change can affect, including the ones AGENTS.md "Hit every surface" names. `FEATURES.md` shows a feature's pages, widgets, chat tools and voice routes together.
 2. **Set up the state.** If a page needs data, create it the way the nearest spec in `e2e/` does. An empty page proves an empty page.
 3. **Before.** With the change set aside (a temporary commit on another branch, or `git worktree add` of the base):
    `npm run qa:shots -- before home money/transactions`
