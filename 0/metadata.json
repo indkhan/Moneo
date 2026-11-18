@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7R6TZ5DW98PKWX38T3Y2CS5",
+  "session_id": "323a62d1-0986-4e40-8cb7-6392ed0a0f13",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T20:51:13.5358333Z",
+  "branch": "t3/issue-243-indexed-access",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/bank/return-listener.test.ts",
+    "lib/bank/statement.test.ts",
+    "lib/bank/statement.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "ba15477cbef0",
+  "checkpoint_transcript_start": 153,
+  "transcript_lines_at_start": 153,
+  "compact_transcript_start": 19,
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 4098,
+    "cache_read_tokens": 417637,
+    "output_tokens": 2803,
+    "api_call_count": 5
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
