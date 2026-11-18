@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>bgrcdi883</task-id>
+<tool-use-id>toolu_014CavwLrutw16f4wnWMc2wr</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cd99c22620f0001f\dff5880a-0676-4e12-a7b1-79085b255c21\tasks\bgrcdi883.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for new CI run and print timings" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bc685p01k</task-id>
+<tool-use-id>toolu_01LXV5eNv5srEcvxzTpiM66M</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cd99c22620f0001f\dff5880a-0676-4e12-a7b1-79085b255c21\tasks\bc685p01k.output</output-file>
+<status>completed</status>
+<summary>Background command "Install dependencies locally to read Next docs" completed (exit code 0)</summary>
+</task-notification>
