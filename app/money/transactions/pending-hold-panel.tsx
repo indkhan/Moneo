@@ -8,7 +8,7 @@ export async function PendingHoldPanel({ transaction }: { transaction: PendingPo
     loadPendingResolutions(supabase, workspace.id, transaction.id).then(data => ({ data, error: null })).catch(() => ({ data: [], error: true })),
     supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text")
       .eq("workspace_id", workspace.id).eq("account_id", transaction.account_id).eq("currency_code", transaction.currency_code)
-      .eq("status", "posted").eq("kind", "ordinary").eq("review_reasons", "{}").is("transfer_id", null).is("refund_of_id", null)
+      .eq("status", "posted").eq("kind", "ordinary").filter("review_reasons", "eq", "{}").is("transfer_id", null).is("refund_of_id", null)
       .lt("amount_minor", 0).gte("posted_on", transaction.posted_on).order("posted_on", { ascending: false }).order("id").limit(100),
   ]);
   if (history.error || postings.error) return <p role="alert">Could not load pending settlement evidence. Retry before resolving this hold.</p>;

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTimeout } from "@/lib/use-timeout";
 
 export type HomeNotice = { text: string; href: string; action: string };
 
@@ -27,22 +28,16 @@ export function HomeNotices({ notices }: { notices: HomeNotice[] }) {
   const [shown, setShown] = useState<HomeNotice[]>([]);
   const signature = JSON.stringify(notices);
   useEffect(() => {
-    const current: HomeNotice[] = JSON.parse(signature);
-    const texts = current.map(notice => notice.text);
+    const texts = (JSON.parse(signature) as HomeNotice[]).map(notice => notice.text);
     writeSeen(readSeen().filter(text => texts.includes(text)));
-    const wait = setTimeout(() => {
-      const { fresh, seen } = nextNotices(current, readSeen());
-      if (!fresh.length) return;
-      writeSeen(seen);
-      setShown(fresh);
-    }, WAIT_MS);
-    return () => clearTimeout(wait);
   }, [signature]);
-  useEffect(() => {
-    if (!shown.length) return;
-    const hide = setTimeout(() => setShown([]), SHOW_MS);
-    return () => clearTimeout(hide);
-  }, [shown]);
+  useTimeout(() => {
+    const { fresh, seen } = nextNotices(JSON.parse(signature), readSeen());
+    if (!fresh.length) return;
+    writeSeen(seen);
+    setShown(fresh);
+  }, WAIT_MS, signature);
+  useTimeout(() => setShown([]), shown.length ? SHOW_MS : null, shown);
   if (!shown.length) return null;
   return <div role="status" className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-50 flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2 lg:bottom-6 lg:right-6">
     {shown.map(notice => <div key={notice.text} className="flex items-start gap-1 rounded-xl border border-border bg-card py-1 pl-4 pr-1 text-sm shadow-lg">

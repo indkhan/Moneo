@@ -3,6 +3,7 @@
 import { Check, Circle, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { usePolling } from "@/lib/use-polling";
 import { Button } from "@/components/button";
 import { BankCredentialsForm, type BankCredentials } from "@/components/bank-credentials";
 
@@ -99,7 +100,6 @@ export function ConnectedBanks() {
   const [banks, setBanks] = useState<Bank[] | null>(null);
   const [bank, setBank] = useState("");
   const [requested, setRequested] = useState<Record<string, number>>({});
-  const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(() => fetchConnections().then(setData, () => setError("Connected banks are unavailable.")), []);
   useEffect(() => {
@@ -116,17 +116,11 @@ export function ConnectedBanks() {
     return () => { live = false; };
   }, []);
 
+  const [now, setNow] = useState(() => Date.now());
   const running = (connection: Connection) => connection.sync.running || (now - (requested[connection.id] ?? 0) < REQUEST_GRACE_MS
     && (!connection.last_synced_at || Date.parse(connection.last_synced_at) < requested[connection.id]));
-  const anyRunning = !!data?.connections.some(running);
-  useEffect(() => {
-    if (!anyRunning) return;
-    const timer = setInterval(() => {
-      setNow(Date.now());
-      if (!document.hidden) void fetchConnections().then(setData, () => undefined);
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [anyRunning]);
+  const syncing = !!data?.connections.some(running);
+  usePolling(() => { setNow(Date.now()); return fetchConnections().then(setData, () => undefined); }, 2000, syncing);
 
   async function act(key: string, run: () => Promise<Response>, done?: string) {
     setBusy(key); setError(null); setMessage(null);

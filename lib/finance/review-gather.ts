@@ -1,4 +1,4 @@
-import type {SupabaseClient} from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import {loadWorkspaceSettings, requireAiScope, type AiDataScope} from "@/lib/settings";
 import {investigate} from "./investigation";
 import {loadInvestigationDataset} from "./investigation-reader";
@@ -12,7 +12,7 @@ import {toolResultReceipt} from "./tool-evidence";
 import {loadReviewGoals} from "./review-planning";
 
 export async function gatherReviewInvestigation(request: ReviewRequest, dependencies: {
-  workspaceId: string; client: (signal?: AbortSignal) => SupabaseClient;
+  workspaceId: string; client: (signal?: AbortSignal) => Db;
   checkpoint: (progress: ReviewProgress) => Promise<void>; signal?: AbortSignal;
 }, previous?: ReviewProgress) {
   return runReviewInvestigation(request, {signal: dependencies.signal, checkpoint: dependencies.checkpoint,

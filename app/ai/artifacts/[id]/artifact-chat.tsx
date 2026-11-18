@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChatForm } from "@/components/chat-form";
 import { claimFirstPrompt } from "../actions";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "@/components/chat-messages";
-import { usePolling } from "@/lib/ai/use-polling";
+import { usePolling } from "@/lib/use-polling";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
@@ -48,11 +48,11 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
 
   const resuming = running && !pending;
   const [unreachable, setUnreachable] = useState(false);
-  usePolling(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => { if (!response.ok) throw new Error(); return response.json() as Promise<Loaded>; }).then(data => {
+  usePolling(signal => fetch(`/api/conversations/${conversationId}`, { cache: "no-store", signal }).then(response => { if (!response.ok) throw new Error(); return response.json() as Promise<Loaded>; }).then(data => {
     setUnreachable(false);
     if (data.running) return;
     setMessages(current => [...current.filter(message => !data.messages.some(item => item.id === message.id)), ...data.messages]); setRunning(null); router.refresh();
-  }).catch(() => setUnreachable(true)), 3000, !!resuming);
+  }).catch(() => { if (!signal.aborted) setUnreachable(true); }), 3000, !!resuming);
 
   async function loadOlder() {
     if (!older || loadingOlder) return;

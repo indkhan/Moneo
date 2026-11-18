@@ -139,7 +139,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
         const events = decisionEvents?.data?.filter(event => event.source_id === row.id) ?? [];
         const activeDecision = events.find(event => !event.undone_at);
         const interpreted = (row.normalized_row as { row?: { postedOn: string; description: string; amountMinor: string; currencyCode: string } } | null)?.row;
-        const links = row.transaction_sources as unknown as { transaction_id: string } | { transaction_id: string }[] | null;
+        const links = row.transaction_sources;
         const transactionId = (Array.isArray(links) ? links[0] : links)?.transaction_id;
         return <article key={row.id} className="space-y-2 rounded-lg border border-border p-4 text-sm">
           <h3 className="font-medium">Row {row.row_number} · {row.status === "rejected" ? "Rejected, not in your totals" : "Accepted"}</h3>
@@ -167,7 +167,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
     <section className="space-y-4" aria-label="Classification history"><h2 id="type-history" className="scroll-mt-20 text-sm font-medium">Transaction type history</h2>
       {reviewHistory.error && <p role="alert" className="text-sm text-danger">Could not load review history.</p>}
       {reviewHistory.data?.map(event => {
-        const transaction = event.transactions as unknown as { version: number; description: string; amount_minor: string; currency_code: string };
+        const transaction = event.transactions;
         const kind = (event.after as { kind?: string } | null)?.kind;
         return <article className="space-y-3 rounded-lg border border-border p-4 text-sm" key={event.id}><p className="break-words font-medium">{transaction.description} · {formatMoney(transaction.amount_minor, transaction.currency_code)}{kind ? ` · set to ${kind}` : ""}</p><p>Reviewed {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · undone" : ""}</p>
           {!event.undone && <ClassificationActions importId={id} transactionId={event.transaction_id} version={transaction.version} eventId={event.id} name={transaction.description} />}

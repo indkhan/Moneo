@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
+import { usePolling } from "@/lib/use-polling";
 import { displayFormat } from "@/lib/display-format";
 
 export type SummaryRun = { id: string; job_id: string; cadence: string; period_start: string; status: string; stage: string; error: string | null };
@@ -13,27 +14,22 @@ export function SummaryRuns({ initial, locale }: { initial: SummaryRun[]; locale
   const failures = useRef(0);
   const active = runs.some(run => ["queued", "running"].includes(run.status));
   const { date } = displayFormat(locale);
-  useEffect(() => {
-    if (!active) return;
-    let mounted = true;
-    const timer = setInterval(async () => {
-      let failed = false;
-      const updated = await Promise.all(runs.map(async run => {
-        if (!["queued", "running"].includes(run.status)) return run;
-        try {
-          const response = await fetch(`/api/analysis/${run.job_id}`);
-          if (!response.ok) { failed = true; return run; }
-          const job = await response.json();
-          return { ...run, status: job.status, stage: job.stage, error: job.error };
-        } catch { failed = true; return run; }
-      }));
-      if (!mounted) return;
-      failures.current = failed ? failures.current + 1 : 0;
-      setStale(failures.current >= STALE_AFTER_FAILED_POLLS);
-      setRuns(updated);
-    }, 5000);
-    return () => { mounted = false; clearInterval(timer); };
-  }, [runs, active]);
+  usePolling(async signal => {
+    let failed = false;
+    const updated = await Promise.all(runs.map(async run => {
+      if (!["queued", "running"].includes(run.status)) return run;
+      try {
+        const response = await fetch(`/api/analysis/${run.job_id}`, { signal });
+        if (!response.ok) { failed = true; return run; }
+        const job = await response.json();
+        return { ...run, status: job.status, stage: job.stage, error: job.error };
+      } catch { failed = true; return run; }
+    }));
+    if (signal.aborted) return;
+    failures.current = failed ? failures.current + 1 : 0;
+    setStale(failures.current >= STALE_AFTER_FAILED_POLLS);
+    setRuns(updated);
+  }, 5000, active);
   async function stop(jobId: string) {
     try {
       const response = await fetch(`/api/analysis/${jobId}`, { method: "DELETE" });

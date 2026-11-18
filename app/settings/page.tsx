@@ -16,6 +16,7 @@ import { parseUsageWindow } from "@/lib/ai/usage";
 import { desktopUpdate, isDesktop } from "@/lib/desktop-bridge";
 import { AppUpdate } from "./app-update";
 import { modelConnections } from "@/lib/ai/provider";
+import { cronSecret } from "@/lib/env";
 
 export const metadata = { title: "Settings" };
 
@@ -68,7 +69,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
           <details className="mt-2 text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">Weekly summaries are due on Monday and monthly ones on the first, in your timezone and at your preferred time. A daily check starts due summaries, so they can arrive a day late. Turn summaries off to stop future runs, or stop an active run below.</p></details>
-          {!process.env.CRON_SECRET && <p className="mt-3 text-sm text-warning">Automatic scheduling needs to be configured on the deployment. Your preference is saved.</p>}
+          {!cronSecret() && <p className="mt-3 text-sm text-warning">Automatic scheduling needs to be configured on the deployment. Your preference is saved.</p>}
           {runs ? <SummaryRuns initial={runs} locale={settings.locale} /> : <p role="alert" className="mt-3 text-sm text-danger">Scheduled status is unavailable. Try again later.</p>}
           <p className="mt-4 text-sm text-muted-foreground">Finished summaries appear in the Activity log. If one fails, run a new review from AI.</p>
         </section>

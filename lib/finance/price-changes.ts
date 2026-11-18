@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 
 type Charge = { amountMinor: bigint; currencyCode: string; postedOn: string };
 
@@ -10,7 +10,7 @@ export function latestPriceChange(charges: Charge[]) {
   return changeMinor === 0n ? null : { changeMinor, currencyCode: latest.currencyCode, since: latest.postedOn };
 }
 
-export async function loadPriceChanges(db: SupabaseClient, workspaceId: string) {
+export async function loadPriceChanges(db: Db, workspaceId: string) {
   const series = await db.from("recurring_series").select("id, assumption_id").eq("workspace_id", workspaceId).not("assumption_id", "is", null).limit(500);
   if (series.error) throw series.error;
   const assumptionIds = (series.data ?? []).map(row => row.assumption_id as string);

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { z } from "zod";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
@@ -153,7 +153,7 @@ export function ownNameSuggestions(rows: TransferCandidate[], seen: TransferCand
 
 const PAGE = 1000, MAX_ROWS = 5000;
 
-export async function loadOwnAccounts(db: SupabaseClient, workspaceId: string): Promise<OwnAccounts> {
+export async function loadOwnAccounts(db: Db, workspaceId: string): Promise<OwnAccounts> {
   const [identifiers, bank, accounts] = await Promise.all([
     db.from("own_account_identifiers").select("id, account_id, iban, name_key").eq("workspace_id", workspaceId),
     db.from("bank_connection_accounts").select("iban, account_name, currency_code").eq("workspace_id", workspaceId).not("iban", "is", null),
@@ -168,21 +168,18 @@ export async function loadOwnAccounts(db: SupabaseClient, workspaceId: string): 
   }
   for (const row of identifiers.data ?? []) {
     if (row.name_key) names.set(row.name_key, row.id);
-    else if (row.account_id) tracked.set(row.iban, row.account_id);
-    else untracked.set(row.iban, row.id);
+    else if (row.iban && row.account_id) tracked.set(row.iban, row.account_id);
+    else if (row.iban) untracked.set(row.iban, row.id);
   }
   return { tracked, untracked, names };
 }
-
-type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null; description: string; transfer_id: string | null; identity_id: string | null;
-  transaction_sources: { source_transactions: { original_row: unknown } | null }[] | null };
 
 const counterpartyOf = (row: unknown) => {
   const value = row && typeof row === "object" ? (row as { counterparty?: unknown }).counterparty : undefined;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 };
 
-async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary" | "transfer") {
+async function loadRows(db: Db, workspaceId: string, kind: "ordinary" | "transfer") {
   const rows: TransferCandidate[] = [];
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
     let query = db.from("transactions")
@@ -191,7 +188,7 @@ async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary
     if (kind === "ordinary") query = query.is("transfer_id", null).is("refund_of_id", null);
     const { data, error } = await query.order("posted_on", { ascending: false }).order("id").range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as unknown as Row[]) {
+    for (const row of data ?? []) {
       const reviewReasons = row.review_reasons ?? [];
       if (kind === "ordinary" && reviewReasons.some(reason => reason !== "source_transfer")) continue;
       const originals = (row.transaction_sources ?? []).map(source => source.source_transactions?.original_row);
@@ -203,9 +200,9 @@ async function loadRows(db: SupabaseClient, workspaceId: string, kind: "ordinary
   return rows;
 }
 
-export const loadTransferCandidates = (db: SupabaseClient, workspaceId: string) => loadRows(db, workspaceId, "ordinary");
+export const loadTransferCandidates = (db: Db, workspaceId: string) => loadRows(db, workspaceId, "ordinary");
 
-export async function loadTransferLegs(db: SupabaseClient, workspaceId: string): Promise<BankLeg[]> {
+export async function loadTransferLegs(db: Db, workspaceId: string): Promise<BankLeg[]> {
   const [rows, own, identifiers] = await Promise.all([loadRows(db, workspaceId, "transfer"), loadOwnAccounts(db, workspaceId),
     db.from("own_account_identifiers").select("iban, label").eq("workspace_id", workspaceId)]);
   if (identifiers.error) throw new Error(identifiers.error.message);
@@ -215,7 +212,7 @@ export async function loadTransferLegs(db: SupabaseClient, workspaceId: string):
     ownAccount: row.ibans.some(iban => own.tracked.has(iban) && own.tracked.get(iban) !== row.accountId) }));
 }
 
-async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]> {
+async function loadLegs(db: Db, workspaceId: string): Promise<Leg[]> {
   const legs: Leg[] = [];
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
     const { data, error } = await db.from("transactions")
@@ -231,7 +228,7 @@ async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]>
 export const ownTransferPayloadSchema = z.union([z.object({ transactionId: z.uuid(), name: z.string().trim().min(1).max(120) }).strict(),
   z.object({ transactionId: z.uuid(), pairWith: z.uuid() }).strict()]);
 
-async function proposeOwnNames(db: SupabaseClient, workspaceId: string, rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts, locale: string) {
+async function proposeOwnNames(db: Db, workspaceId: string, rows: TransferCandidate[], seen: TransferCandidate[], own: OwnAccounts, locale: string) {
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").limit(5000);
   if (known.error) throw new Error(known.error.message);
   const answered = new Set((known.data ?? []).map(row => String(row.conflict_key).replace(/^own_transfer:/, "")));
@@ -251,7 +248,7 @@ async function proposeOwnNames(db: SupabaseClient, workspaceId: string, rows: Tr
   return data?.length ?? 0;
 }
 
-async function proposeCashWithdrawals(db: SupabaseClient, workspaceId: string, rows: TransferCandidate[], { locale, timezone, now }: TransferContext) {
+async function proposeCashWithdrawals(db: Db, workspaceId: string, rows: TransferCandidate[], { locale, timezone, now }: TransferContext) {
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "cash_withdrawal").limit(5000);
   if (known.error) throw new Error(known.error.message);
   const answered = new Set((known.data ?? []).map(row => String(row.conflict_key).replace(/^cash_withdrawal:/, "")));
@@ -270,7 +267,7 @@ async function proposeCashWithdrawals(db: SupabaseClient, workspaceId: string, r
   return data?.length ?? 0;
 }
 
-async function proposePairs(db: SupabaseClient, workspaceId: string, pairs: { outId: string; inId: string }[], byId: Map<string, TransferCandidate>, accounts: { id: string; name: string }[], locale: string) {
+async function proposePairs(db: Db, workspaceId: string, pairs: { outId: string; inId: string }[], byId: Map<string, TransferCandidate>, accounts: { id: string; name: string }[], locale: string) {
   if (!pairs.length) return 0;
   const known = await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").limit(5000);
   if (known.error) throw new Error(known.error.message);
@@ -309,7 +306,7 @@ function ownAccountIds(rows: TransferCandidate[]) {
   return new Map([...ids].filter((entry): entry is [string, string] => entry[1] !== null));
 }
 
-export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string, context: TransferContext) {
+export async function linkOwnTransfers(db: Db, workspaceId: string, context: TransferContext) {
   const [own, rows, legs, transfers, scalable] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId),
     loadRows(db, workspaceId, "transfer"), db.from("scalable_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "active")]);
   if (scalable.error) throw new Error(scalable.error.message);
@@ -331,7 +328,7 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string, 
     const expectedVersion = byId.get(item.transactionId)!.version;
     const { error } = item.identifierId
       ? await db.rpc("mark_own_account_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_identifier_id: item.identifierId })
-      : await db.rpc("mark_own_iban_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_iban: item.iban });
+      : await db.rpc("mark_own_iban_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_iban: item.iban ?? null });
     if (error) skipped++; else marked++;
   }
   for (const item of named) {
@@ -355,7 +352,7 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string, 
   return { linked, marked, skipped, suggested: suggested + pairCards, cashCards };
 }
 
-export async function confirmOwnAccount(db: SupabaseClient, workspaceId: string, transactionId: string, name: string, context: TransferContext) {
+export async function confirmOwnAccount(db: Db, workspaceId: string, transactionId: string, name: string, context: TransferContext) {
   const [own, rows] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId)]);
   const target = rows.find(row => row.id === transactionId);
   if (!target) throw new Error("This transaction was removed");
@@ -368,7 +365,7 @@ export async function confirmOwnAccount(db: SupabaseClient, workspaceId: string,
     if (existing.error) throw new Error(existing.error.message);
     identifierId = existing.data.id;
   } else if (saved.error) throw new Error(saved.error.message);
-  const marked = await db.rpc("mark_own_account_transfer", { p_transaction_id: transactionId, p_expected_version: target.version, p_identifier_id: identifierId });
+  const marked = await db.rpc("mark_own_account_transfer", { p_transaction_id: transactionId, p_expected_version: target.version, p_identifier_id: identifierId ?? null });
   if (marked.error) throw new Error(marked.error.message);
   const linked = await linkOwnTransfers(db, workspaceId, context);
   const open = await db.from("agent_proposals").select("id, payload").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").in("status", ["proposed", "failed"]).limit(5000);

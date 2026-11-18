@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTimeout } from "@/lib/use-timeout";
 
 export async function syncIfVisible(refresh: () => void, failed: () => void = () => {}) {
   if (document.visibilityState !== "visible") return;
@@ -15,11 +16,7 @@ const SHOW_MS = 10_000;
 export function SyncOnOpen() {
   const router = useRouter();
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    if (!failed) return;
-    const hide = setTimeout(() => setFailed(false), SHOW_MS);
-    return () => clearTimeout(hide);
-  }, [failed]);
+  useTimeout(() => setFailed(false), failed ? SHOW_MS : null);
   useEffect(() => {
     const sync = () => void syncIfVisible(router.refresh, () => setFailed(true));
     sync();

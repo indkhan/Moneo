@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useNow } from "@/lib/use-now";
 import { AlertCircle, ArrowUp, Ban, CheckCircle2, Keyboard, Loader2, Mic, MicOff, PhoneOff, X } from "lucide-react";
 import { IouCard } from "@/components/iou-card";
 import { useVoiceCall } from "@/lib/ai/use-voice-call";
@@ -47,17 +48,10 @@ export function VoiceCall({ conversationId, onAnswer, onEnded, onClose }: { conv
   return <VoiceCallView call={useVoiceCall(conversationId, onAnswer, onEnded)} onClose={onClose} />;
 }
 
-function useElapsed(live: boolean) {
-  const [seconds, setSeconds] = useState<number | null>(null);
-  useEffect(() => {
-    if (!live) return;
-    const start = performance.now();
-    const tick = () => setSeconds(Math.floor((performance.now() - start) / 1000));
-    const timer = window.setInterval(tick, 1000);
-    const first = window.setTimeout(tick, 0);
-    return () => { window.clearInterval(timer); window.clearTimeout(first); };
-  }, [live]);
-  if (seconds === null) return "";
+function CallClock() {
+  const [startedAt] = useState(() => Date.now());
+  const now = useNow(1000);
+  const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
   const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds / 60) % 60;
   return `${hours ? `${hours}:${String(minutes).padStart(2, "0")}` : minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -72,14 +66,13 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
   const state: OrbState = call.status === "connecting" ? "connecting" : !live ? "idle" : call.talking ? "speaking" : call.thinking ? "thinking" : call.muted ? "muted" : "listening";
   const label = { connecting: "Connecting…", listening: "Listening", muted: "You're muted", thinking: "Working on it", speaking: "Moneo is talking", idle: call.status === "ended" ? "Call ended" : "Call dropped" }[state];
   const running = call.tasks.filter(task => task.status === "running");
-  const elapsed = useElapsed(live);
   const busy = call.tasks.length > 0 || call.cards.length > 0;
   const round = "grid size-16 place-items-center rounded-full transition-[background-color,transform] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-40";
 
   return <section role="dialog" aria-modal="true" aria-label="Voice call with Moneo" className="fixed inset-0 z-50 flex flex-col bg-background max-lg:bg-[radial-gradient(120%_55%_at_50%_0%,var(--color-ai-soft),var(--color-background)_75%)] lg:sticky lg:top-19 lg:z-auto lg:h-[calc(100dvh-4.75rem)]">
     <header className="flex items-center justify-between gap-3 border-b border-border px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 max-lg:flex-col max-lg:gap-1 max-lg:border-0 max-lg:pt-[calc(env(safe-area-inset-top)+2.5rem)] max-lg:pb-0 sm:px-8 lg:pt-3">
       <p className="font-display text-lg font-semibold max-lg:text-[32px] max-lg:leading-tight max-lg:tracking-tight"><span className="max-lg:hidden">Call with </span>Moneo</p>
-      <p aria-hidden="true" className="text-[15px] text-muted-foreground tabular-nums lg:hidden">{elapsed || label}</p>
+      <p aria-hidden="true" className="text-[15px] text-muted-foreground tabular-nums lg:hidden">{live ? <CallClock /> : label}</p>
       {live && <span className="max-lg:hidden inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success"><span className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" aria-hidden="true" />Live</span>}
     </header>
     <div ref={body} className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-y-auto px-4 sm:px-8">

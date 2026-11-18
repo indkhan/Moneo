@@ -3,11 +3,12 @@ import { enableBankingConfigured } from "@/lib/bank/enable-banking";
 import { serviceDb } from "@/lib/service-db";
 import { startBankSync } from "@/lib/bank/start-sync";
 import { ALIGNED_SPACING_MS, accountDue } from "@/lib/bank/sync-state";
+import { serviceRoleConfig } from "@/lib/env";
 
 export const maxDuration = 60;
 
 export const GET = cronRoute(async () => {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !(await enableBankingConfigured())) return Response.json({ error: "Bank sync unavailable" }, { status: 503 });
+  if (!serviceRoleConfig() || !(await enableBankingConfigured())) return Response.json({ error: "Bank sync unavailable" }, { status: 503 });
   const { data, error } = await serviceDb().from("bank_connection_accounts").select("connection_id, workspace_id, last_attempted_at, next_allowed_at, bank_connections!inner(status)")
     .eq("bank_connections.status", "active").order("connection_id").limit(1000);
   if (error) return Response.json({ error: "Bank connections unavailable" }, { status: 503 });

@@ -1,7 +1,7 @@
 "use workflow";
 
 import { createHash } from "node:crypto";
-import { serviceClient } from "@/lib/service-db";
+import { serviceClient, serviceDb } from "@/lib/service-db";
 import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
 import { stableId } from "@/lib/import/row";
 import { linkOwnTransfers } from "@/lib/finance/own-transfers";
@@ -9,6 +9,7 @@ import { loadWorkspaceSettings } from "@/lib/settings";
 import { resolveNewIdentities } from "@/lib/organize/resolve";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
+import { serviceRoleConfig } from "@/lib/env";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
@@ -34,16 +35,18 @@ export async function importFile(importId: string, workspaceId: string, rowCount
 
 async function linkOwnTransfersStep(workspaceId: string) {
   "use step";
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const config = serviceRoleConfig();
+  if (!config) return;
+  const db = serviceClient(config.url, config.key);
   try { await resolveNewIdentities(db, workspaceId); } catch (error) { console.error("Identities were not resolved", error); }
   try { const { locale, timezone } = await loadWorkspaceSettings(db, workspaceId); await linkOwnTransfers(db, workspaceId, { locale, timezone, now: new Date() }); } catch (error) { console.error("Own-account transfers were not linked", error); }
 }
 
 async function startAgentTeam(importId: string, workspaceId: string) {
   "use step";
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const config = serviceRoleConfig();
+  if (!config) return;
+  const db = serviceClient(config.url, config.key);
   try {
     const imported = checked(await db.from("imports").select("new_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number | null };
     if (imported.new_rows) await startAgentRun(db, workspaceId, { importId });
@@ -52,10 +55,9 @@ async function startAgentTeam(importId: string, workspaceId: string) {
 
 async function prepareImport(importId: string, workspaceId: string, rowCount: number, runVersion: number) {
   "use step";
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase import service is not configured");
-  const db = serviceClient(url, key);
+  const config = serviceRoleConfig();
+  if (!config) throw new Error("Supabase import service is not configured");
+  const db = serviceClient(config.url, config.key);
   const imported = checked(await db.from("imports").select("*").eq("id", importId).eq("workspace_id", workspaceId).single()) as { status: string; run_version: number; source_id?: string | null; route_accounts?: Record<string, string>; storage_path: string; file_hash: string; mapping: unknown };
   if (imported.status === "completed") return 0;
   if (!["queued", "running"].includes(imported.status) || imported.run_version !== runVersion) throw new Error("Import worker canceled or superseded");
@@ -84,9 +86,8 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
       if (!firstSource.account_id || !mapped[0]) throw new Error("Legacy import route evidence is unavailable");
       frozenAccounts.set(JSON.stringify([mapped[0].accountName, mapped[0].currencyCode]), firstSource.account_id);
       const byNumber = new Map(mapped.map(row => [row.rowNumber, row]));
-      type LegacySource = { row_number: number; transaction_sources: { transactions: { account_id: string } | null }[] | { transactions: { account_id: string } | null } | null };
       for (let offset = 0; ; offset += 500) {
-        const sources = checked(await db.from("source_transactions").select("row_number, transaction_sources(transactions(account_id))").eq("workspace_id", workspaceId).eq("import_id", importId).order("id").range(offset, offset + 499)) as unknown as LegacySource[];
+        const sources = checked(await db.from("source_transactions").select("row_number, transaction_sources(transactions(account_id))").eq("workspace_id", workspaceId).eq("import_id", importId).order("id").range(offset, offset + 499)) ?? [];
         for (const source of sources) {
           const mappedRow = byNumber.get(source.row_number);
           const links = Array.isArray(source.transaction_sources) ? source.transaction_sources : [source.transaction_sources];
@@ -127,7 +128,7 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
 
 async function processImportBatch(importId: string, workspaceId: string, offset: number, runVersion: number) {
   "use step";
-  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const db = serviceDb();
   for (let attempt = 0; attempt < 3; attempt++) {
     const candidates = checked(await db.rpc("import_batch_candidates", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_offset: offset }));
     const decisions = batchDecisions(candidateRowsSchema.parse(candidates));
@@ -139,12 +140,12 @@ async function processImportBatch(importId: string, workspaceId: string, offset:
 
 async function finishImport(importId: string, workspaceId: string, runVersion: number) {
   "use step";
-  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const db = serviceDb();
   return checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: null })) === "completed";
 }
 
 async function failImport(importId: string, workspaceId: string, error: string, runVersion: number) {
   "use step";
-  const db = serviceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const db = serviceDb();
   checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: error }));
 }

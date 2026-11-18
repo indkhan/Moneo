@@ -4,11 +4,12 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { scalableConfigured } from "@/lib/scalable/server";
 import { syncScalable } from "@/lib/scalable/sync";
+import { supabaseUrl } from "@/lib/env";
 
 export const maxDuration = 300;
 
 export const GET = cronRoute(async () => {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !scalableConfigured()) return Response.json({ error: "Scalable sync unavailable" }, { status: 503 });
+  if (!supabaseUrl() || !scalableConfigured()) return Response.json({ error: "Scalable sync unavailable" }, { status: 503 });
   const db = serviceDb();
   const { data, error } = await db.from("scalable_connections").select("id, workspace_id, last_synced_at").eq("status", "active").order("id").limit(100);
   if (error) return Response.json({ error: "Scalable connections unavailable" }, { status: 503 });

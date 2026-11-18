@@ -81,9 +81,10 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
       if ("pairWith" in payload) {
         const rows = await supabase.from("transactions").select("id, version").eq("workspace_id", workspace.id).in("id", [payload.transactionId, payload.pairWith]);
         const version = (id: string) => rows.data?.find(row => row.id === id)?.version;
-        if (rows.error || version(payload.transactionId) === undefined || version(payload.pairWith) === undefined) throw new Error("This transaction was removed");
-        const { error } = await supabase.rpc("link_transactions", { p_operation: "transfer", p_primary_id: payload.transactionId, p_expected_version: version(payload.transactionId),
-          p_other_id: payload.pairWith, p_other_version: version(payload.pairWith), p_fx_rate_id: null, p_fees: [], p_request_id: proposal.id });
+        const primaryVersion = version(payload.transactionId), otherVersion = version(payload.pairWith);
+        if (rows.error || primaryVersion === undefined || otherVersion === undefined) throw new Error("This transaction was removed");
+        const { error } = await supabase.rpc("link_transactions", { p_operation: "transfer", p_primary_id: payload.transactionId, p_expected_version: primaryVersion,
+          p_other_id: payload.pairWith, p_other_version: otherVersion, p_fx_rate_id: null, p_fees: [], p_request_id: proposal.id });
         if (error) throw new Error(error.message);
         return { href: `/money/transactions?transaction=${payload.transactionId}`, undo: "Undo from the transaction" };
       }

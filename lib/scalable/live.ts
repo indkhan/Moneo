@@ -11,7 +11,7 @@ export async function activeScalableConnection(workspaceId: string): Promise<{ i
   const { data, error } = await serviceDb().from("scalable_connections").select("id, trading_access").eq("workspace_id", workspaceId).eq("status", "active")
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (error) throw new Error(error.message);
-  return data ? { id: data.id, tradingAccess: data.trading_access ?? null } : null;
+  return data ? { id: data.id, tradingAccess: data.trading_access === "full" || data.trading_access === "read" ? data.trading_access : null } : null;
 }
 
 export async function tradingAccess(mcp: Pick<ScalableMcp, "listTools">): Promise<"full" | "read"> {

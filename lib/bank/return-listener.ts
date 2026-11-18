@@ -1,13 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:https";
 import path from "node:path";
-import { appUrl as defaultAppUrl } from "@/lib/env";
+import { appUrl as defaultAppUrl, dataDir } from "@/lib/env";
 
 export const BANK_RETURN_PORT = 3443;
 export const BANK_REDIRECT_URL = `https://localhost:${BANK_RETURN_PORT}/api/bank/callback`;
 const CALLBACK = "/api/bank/callback";
 
-export function certificatePaths(dir = process.env.MONEO_DATA_DIR ?? path.join(process.cwd(), ".data")) {
+export function certificatePaths(dir = dataDir()) {
   return { key: path.join(dir, "localhost-key.pem"), cert: path.join(dir, "localhost.pem") };
 }
 
