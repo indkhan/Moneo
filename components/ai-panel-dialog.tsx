@@ -7,7 +7,8 @@ import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useChatQueue } from "@/lib/ai/use-chat-queue";
-import { usePolling } from "@/lib/ai/use-polling";
+import { usePolling } from "@/lib/use-polling";
+import { useTimeout } from "@/lib/use-timeout";
 import { ChatComposer, withSpoken } from "./chat-composer";
 import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { useChatAttachments } from "@/lib/ai/use-chat-attachments";
@@ -80,20 +81,20 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       if (run === generation.current) setHistoryError(cause instanceof Error ? cause.message : "Could not load conversation");
     } finally { if (run === generation.current) setLoading(false); }
   }, []);
+  useTimeout(() => { void load(); }, open ? 0 : null);
   useEffect(() => {
     if (!open) return;
-    const timer = window.setTimeout(() => { void load(); }, 0);
     const changed = () => { void load(); };
     window.addEventListener("moneo-conversation-change", changed);
     const counter = generation;
-    return () => { window.clearTimeout(timer); ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
+    return () => { ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
   }, [open, load]);
   const end = useRef<HTMLDivElement>(null);
   const followOutput = useFollowOutput(end, [history.length, pending]);
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
-  usePolling(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => response.json())
+  usePolling(signal => fetch(`/api/conversations/${conversationId}`, { cache: "no-store", signal }).then(response => response.json())
     .then(result => { if (!result.running) void load(); }).catch(() => {}), 3000, open && running && !busy && !!conversationId);
   useEffect(() => {
     const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
