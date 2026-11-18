@@ -1,8 +1,13 @@
+export function datePart(parts: Intl.DateTimeFormatPart[], type: string): string {
+  const part = parts.find(item => item.type === type);
+  if (!part) throw new Error(`The formatted date has no ${type}`);
+  return part.value;
+}
+
 export function calendarDate(value: string | Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
     .formatToParts(new Date(value));
-  const part = (type: string) => parts.find(item => item.type === type)!.value;
-  return `${part("year")}-${part("month")}-${part("day")}`;
+  return `${datePart(parts, "year")}-${datePart(parts, "month")}-${datePart(parts, "day")}`;
 }
 
 export function reviewedLocalTimestamp(value: string, timeZone: string): string {
@@ -15,7 +20,7 @@ export function reviewedLocalTimestamp(value: string, timeZone: string): string 
   const formatter = new Intl.DateTimeFormat("en-CA", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const localWall = (instant: number) => {
     const parts = formatter.formatToParts(new Date(instant));
-    const part = (key: string) => Number(parts.find(item => item.type === key)!.value);
+    const part = (key: string) => Number(datePart(parts, key));
     return Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
   };
   const candidates = new Set<number>();
@@ -23,8 +28,9 @@ export function reviewedLocalTimestamp(value: string, timeZone: string): string 
     const candidate = wall - (localWall(probe) - probe);
     if (localWall(candidate) === wall) candidates.add(candidate);
   }
-  if (candidates.size !== 1) throw new Error("Source timestamp is ambiguous or nonexistent in the reviewed timezone");
-  return new Date([...candidates][0] + Number((match[7] ?? "").padEnd(3, "0"))).toISOString();
+  const [instant] = candidates;
+  if (candidates.size !== 1 || instant === undefined) throw new Error("Source timestamp is ambiguous or nonexistent in the reviewed timezone");
+  return new Date(instant + Number((match[7] ?? "").padEnd(3, "0"))).toISOString();
 }
 
 export function calendarDayBoundary(date: string, timeZone: string): string {

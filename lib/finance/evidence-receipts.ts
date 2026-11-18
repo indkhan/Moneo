@@ -83,7 +83,7 @@ function parseStoredReceipt(raw: unknown): EvidenceReceipt {
     return Object.fromEntries(Object.entries(entry).filter(([key]) => key !== "href"));
   });
   const receipt = createEvidenceReceipt(plain);
-  if (receipt.id !== stored.id || receipt.sources.some((source, index) => source.href !== (stored.sources as EvidenceReceipt["sources"])[index].href)) throw new Error("Receipt integrity mismatch");
+  if (receipt.id !== stored.id || receipt.sources.some((source, index) => source.href !== (stored.sources as EvidenceReceipt["sources"])[index]?.href)) throw new Error("Receipt integrity mismatch");
   return receipt;
 }
 export function evidenceFreshness(receipt: FinancialEvidenceReceipt, sourceVersion: string | null, calculationVersion: string) {

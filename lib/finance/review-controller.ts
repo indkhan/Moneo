@@ -24,18 +24,21 @@ type Dependencies = {
 const magnitude = (value: string) => {const n = BigInt(value); return n < 0n ? -n : n;};
 
 function materialGroups<T extends {currency: string; deltaMinor: string | null; key: string}>(groups: T[]) {
-  const currencies = new Map<string, T[]>();
+  const currencies = new Map<string, { group: T; size: bigint }[]>();
   for (const group of groups) {
-    if (group.deltaMinor === null || BigInt(group.deltaMinor) === 0n) continue;
+    if (group.deltaMinor === null) continue;
+    const size = magnitude(group.deltaMinor);
+    if (size === 0n) continue;
     const bucket = currencies.get(group.currency) ?? [];
-    bucket.push(group); currencies.set(group.currency, bucket);
+    bucket.push({ group, size }); currencies.set(group.currency, bucket);
   }
-  const buckets = [...currencies.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, bucket]) => bucket.sort((a, b) => {
-    const x = magnitude(a.deltaMinor!), y = magnitude(b.deltaMinor!);
-    return x > y ? -1 : x < y ? 1 : a.key.localeCompare(b.key);
-  }));
+  const buckets = [...currencies.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, bucket]) => bucket.sort((a, b) =>
+    a.size > b.size ? -1 : a.size < b.size ? 1 : a.group.key.localeCompare(b.group.key)).map(entry => entry.group));
   const result: T[] = [];
-  for (let index = 0; buckets.some(bucket => index < bucket.length); index++) for (const bucket of buckets) if (bucket[index]) result.push(bucket[index]);
+  for (let index = 0; buckets.some(bucket => index < bucket.length); index++) for (const bucket of buckets) {
+    const group = bucket[index];
+    if (group) result.push(group);
+  }
   return result;
 }
 

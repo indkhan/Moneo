@@ -13,9 +13,13 @@ export type CalculatedValue = { on_date: string; currency_code: string; total_mi
 
 const add = (map: Map<string, bigint>, currency: string, amount: bigint) => map.set(currency, (map.get(currency) ?? 0n) + amount);
 
+export function monthEndBefore(today: string, monthsBack: number): string {
+  const [year = NaN, month = NaN] = today.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1 - monthsBack, 0)).toISOString().slice(0, 10);
+}
+
 export function monthEnds(today: string, months: number): string[] {
-  const [year, month] = today.split("-").map(Number);
-  const dates = Array.from({ length: months }, (_, index) => new Date(Date.UTC(year, month - 1 - (months - 1 - index), 0)).toISOString().slice(0, 10));
+  const dates = Array.from({ length: months }, (_, index) => monthEndBefore(today, months - 1 - index));
   return [...dates, today];
 }
 
@@ -164,7 +168,10 @@ export function firstRealValue(valuations: Valuation[], knownIds: Set<string>, b
   const onDay = valuations.filter(row => knownIds.has(row.item_id) && !row.removed && row.as_of === before && row.currency_code === currency);
   if (!onDay.length) return null;
   const latest = new Map<string, Valuation>();
-  for (const row of onDay) if (!latest.has(row.item_id) || row.created_at >= latest.get(row.item_id)!.created_at) latest.set(row.item_id, row);
+  for (const row of onDay) {
+    const held = latest.get(row.item_id);
+    if (!held || row.created_at >= held.created_at) latest.set(row.item_id, row);
+  }
   return { date: before, minor: [...latest.values()].reduce((sum, row) => sum + BigInt(row.amount_minor), 0n) };
 }
 

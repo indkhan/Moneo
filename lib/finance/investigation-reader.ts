@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { allPages } from "@/lib/all-pages";
 import { perClient } from "@/lib/per-client";
-import { investigate, investigationIdentity, investigationSchema, resolveInvestigation, type InvestigationEntities, type InvestigationRow, type InvestigationSpec } from "./investigation";
+import { investigate, investigationIdentity, investigationSpan, investigationSchema, resolveInvestigation, type InvestigationEntities, type InvestigationRow, type InvestigationSpec } from "./investigation";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string } };
@@ -36,8 +36,7 @@ type Source = { id: string; import_id: string; status: string; review_reasons: s
 
 async function loadRows(context: Context, spec: InvestigationSpec, includeAll = false, canReadImports = true, withSources = canReadImports) {
   const { supabase, workspace } = context;
-  const from = [spec.period.from, spec.comparison?.from].filter((v): v is string => Boolean(v)).sort()[0];
-  const to = [spec.period.to, spec.comparison?.to].filter((v): v is string => Boolean(v)).sort().at(-1)!;
+  const { from, to } = investigationSpan(spec);
   const ledger = (count?: "exact") => {
     const query = supabase.from("effective_transactions")
       .select("id, parent_transaction_id, account_id, category_id, merchant_id, posted_on, amount_minor::text, currency_code, status, kind, tags, event_name, review_reasons, version, description, refund_of_id", counted(count))
@@ -59,7 +58,7 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
     categoryId: r.category_id, merchantId: r.merchant_id, date: r.posted_on, amountMinor: r.amount_minor, currency: r.currency_code,
     status: r.status, kind: r.kind, tags: r.tags ?? [], event: r.event_name, reviewReasons: r.review_reasons ?? [], version: r.version,
     description: r.description, refundOfId: r.refund_of_id, sourceVersions: byParent.get(r.parent_transaction_id) ?? [] }));
-  const refundIds = [...new Set(rows.filter(r => r.kind === "refund" && !r.categoryId && r.refundOfId).map(r => r.refundOfId!))];
+  const refundIds = [...new Set(rows.flatMap(r => r.kind === "refund" && !r.categoryId && r.refundOfId ? [r.refundOfId] : []))];
   for (let offset = 0; offset < refundIds.length; offset += 100) {
     const original = await supabase.from("transactions").select("id, category_id, version").eq("workspace_id", workspace.id).in("id", refundIds.slice(offset, offset + 100));
     if (original.error) throw original.error;

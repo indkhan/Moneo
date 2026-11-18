@@ -91,18 +91,20 @@ export type WealthItem = WealthValue & { kind: "holding" | "asset" | "debt"; qua
   payment_assumption_id: string | null; payment_transaction_id: string | null; version: number; removed_at: string | null; sourceCoverage?: SourceCoverage };
 
 export function wealthOverview(items: Pick<WealthItem, "id" | "name" | "kind" | "amount_minor" | "currency_code" | "as_of" | "removed_at">[]) {
-  const totals = new Map<string, bigint>();
+  const totals = new Map<string, { group: string; currencyCode: string; minor: bigint }>();
   const listed = items.filter(item => !item.removed_at).map(item => {
     const iou = parseIouName(item.name);
     const group = iou?.direction ?? item.kind;
     const key = `${group}:${item.currency_code}`;
-    totals.set(key, (totals.get(key) ?? 0n) + BigInt(item.amount_minor));
+    const total = totals.get(key) ?? { group, currencyCode: item.currency_code, minor: 0n };
+    total.minor += BigInt(item.amount_minor);
+    totals.set(key, total);
     return { id: item.id, group, name: item.name, ...(iou && { person: iou.person }), amountMinor: item.amount_minor,
       amountFormatted: formatMoney(item.amount_minor, item.currency_code), currencyCode: item.currency_code, asOf: item.as_of };
   });
   return {
     items: listed,
-    totals: [...totals].map(([key, minor]) => { const [group, currencyCode] = key.split(":"); return { group, currencyCode, amountMinor: minor.toString(), amountFormatted: formatMoney(minor, currencyCode) }; }),
+    totals: [...totals.values()].map(({ group, currencyCode, minor }) => ({ group, currencyCode, amountMinor: minor.toString(), amountFormatted: formatMoney(minor, currencyCode) })),
     groups: "lent: money the user lent to a person (an asset); borrowed: money the user owes a person (a debt); asset, holding, debt: other Wealth items.",
     link: "/money/wealth",
   };
@@ -133,7 +135,8 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
     if (!item.payment_account_id && !item.payment_assumption_id && !item.payment_transaction_id && item.monthly_payment_minor !== null && BigInt(item.monthly_payment_minor) === 0n) continue;
     const account = accounts.find(account => account.id === item.payment_account_id);
     if (!account || account.archived_at || !["checking", "savings", "cash", "wallet"].includes(account.type ?? "") || account.currency_code !== item.currency_code) { missing("liquid repayment account"); continue; }
-    if (!item.next_payment_on || !item.annual_rate_text || BigInt(item.monthly_payment_minor ?? "0") <= 0n) { missing("repayment assumptions"); continue; }
+    const monthlyPaymentMinor = BigInt(item.monthly_payment_minor ?? "0");
+    if (!item.next_payment_on || !item.annual_rate_text || monthlyPaymentMinor <= 0n) { missing("repayment assumptions"); continue; }
     const keys = [item.payment_assumption_id ? `assumption:${item.payment_assumption_id}` : null, item.payment_transaction_id ? `pending:${item.payment_transaction_id}` : null].filter((key): key is string => key !== null);
     if (keys.some(key => provenance.has(key))) { missing("duplicate repayment provenance"); continue; }
     keys.forEach(key => provenance.add(key));
@@ -144,10 +147,10 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
       }
     }
     let payments: ReturnType<typeof debtPayments>;
-    try { payments = carriedDebtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on, asOf: item.as_of }, today, days); }
+    try { payments = carriedDebtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text, monthlyPaymentMinor, nextPaymentOn: item.next_payment_on, asOf: item.as_of }, today, days); }
     catch { missing("repayment assumptions need update"); continue; }
     const pending = item.payment_transaction_id ? ledger.find(row => row.id === item.payment_transaction_id) : undefined;
-    if (item.payment_transaction_id && (!pending || BigInt(pending.pending_released_minor ?? "0") > 0n || pending.account_id !== account.id || pending.currency_code !== item.currency_code || pending.status !== "pending" || pending.posted_on !== item.next_payment_on || minor(pending.amount_minor) !== -BigInt(item.monthly_payment_minor!))) {
+    if (item.payment_transaction_id && (!pending || BigInt(pending.pending_released_minor ?? "0") > 0n || pending.account_id !== account.id || pending.currency_code !== item.currency_code || pending.status !== "pending" || pending.posted_on !== item.next_payment_on || minor(pending.amount_minor) !== -monthlyPaymentMinor)) {
       missing("pending repayment association changed"); continue;
     }
     if (pending && payments[0] && minor(pending.amount_minor) !== -payments[0].paymentMinor) { missing("pending repayment differs from final payoff"); continue; }
@@ -156,7 +159,8 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
     for (const payment of payments) {
       const matchingHolds = payment.date <= today ? ledger.filter(row => row.account_id === account.id && row.currency_code === item.currency_code && row.status === "pending" && BigInt(row.pending_released_minor ?? "0") < -minor(row.amount_minor) && row.posted_on === payment.date && minor(row.amount_minor) === -payment.paymentMinor) : [];
       if (matchingHolds.length) {
-        if (matchingHolds.length !== 1 || matchingHolds[0].id !== item.payment_transaction_id || BigInt(matchingHolds[0].pending_released_minor ?? "0") > 0n) missing("pending repayment needs association");
+        const [hold] = matchingHolds;
+        if (matchingHolds.length !== 1 || !hold || hold.id !== item.payment_transaction_id || BigInt(hold.pending_released_minor ?? "0") > 0n) missing("pending repayment needs association");
         continue;
       }
       itemEvents.push({ date: payment.date, accountId: account.id, currencyCode: item.currency_code, amountMinor: -payment.paymentMinor });

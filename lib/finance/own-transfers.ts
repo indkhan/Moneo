@@ -60,8 +60,9 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, le
   for (const out of outs) {
     const proven = ins.filter(into => !used.has(into.id) && matches(out, into) && (points(out, into.accountId) || points(into, out.accountId)))
       .sort((a, b) => days(out.postedOn, a.postedOn) - days(out.postedOn, b.postedOn) || a.id.localeCompare(b.id));
-    const tied = proven[1] && days(out.postedOn, proven[1].postedOn) === days(out.postedOn, proven[0].postedOn);
-    if (!used.has(out.id) && proven[0] && !tied) take(out, proven[0]);
+    const [nearest, runnerUp] = proven;
+    const tied = !!nearest && !!runnerUp && days(out.postedOn, runnerUp.postedOn) === days(out.postedOn, nearest.postedOn);
+    if (!used.has(out.id) && nearest && !tied) take(out, nearest);
   }
   const unpaired = (row: TransferCandidate, accountId: string) => !legs.some(other => other.id !== row.id && other.accountId === accountId
     && other.currencyCode === row.currencyCode && other.amountMinor === -row.amountMinor && days(row.postedOn, other.postedOn) <= MATCH_DAYS);
@@ -111,11 +112,12 @@ export function findExchanges(rows: TransferCandidate[]) {
   for (const leg of rows.filter(exchangeEvidence).sort((a, b) => a.id.localeCompare(b.id))) {
     if (used.has(leg.id)) continue;
     const others = rows.filter(other => !used.has(other.id) && fits(leg, other));
-    const back = others.length === 1 ? rows.filter(item => !used.has(item.id) && fits(others[0], item)) : [];
+    const [partner] = others;
+    const back = others.length === 1 && partner ? rows.filter(item => !used.has(item.id) && fits(partner, item)) : [];
     used.add(leg.id);
-    if (back.length === 1) {
-      used.add(others[0].id);
-      pairs.push(leg.amountMinor < 0n ? { outId: leg.id, inId: others[0].id } : { outId: others[0].id, inId: leg.id });
+    if (back.length === 1 && partner) {
+      used.add(partner.id);
+      pairs.push(leg.amountMinor < 0n ? { outId: leg.id, inId: partner.id } : { outId: partner.id, inId: leg.id });
     } else single.push(leg.id);
   }
   return { pairs, single };
@@ -128,7 +130,8 @@ export function uncertainPairs(rows: TransferCandidate[]) {
     && out.accountId !== into.accountId && days(out.postedOn, into.postedOn) <= MATCH_DAYS;
   return open.flatMap(out => {
     const ins = open.filter(into => matches(out, into));
-    return ins.length === 1 && open.filter(other => matches(other, ins[0])).length === 1 ? [{ outId: out.id, inId: ins[0].id }] : [];
+    const [only] = ins;
+    return ins.length === 1 && only && open.filter(other => matches(other, only)).length === 1 ? [{ outId: out.id, inId: only.id }] : [];
   });
 }
 

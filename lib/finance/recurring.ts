@@ -51,7 +51,9 @@ function amountFits(min: bigint, max: bigint) {
   return largest === 0n ? min === max : abs(max - min) * 100n <= largest * AMOUNT_TOLERANCE_PERCENT;
 }
 
-const cadences: {cadence: RecurringSeries["cadence"]; days?: number; months?: number; tolerance: number; minimum: number}[] = [
+type CadenceRule = {cadence: RecurringSeries["cadence"]; tolerance: number; minimum: number} & ({days: number} | {months: number});
+
+const cadences: CadenceRule[] = [
   {cadence: "weekly", days: 7, tolerance: 2, minimum: 6}, {cadence: "biweekly", days: 14, tolerance: 2, minimum: 5},
   {cadence: "monthly", months: 1, tolerance: 4, minimum: 3}, {cadence: "quarterly", months: 3, tolerance: 4, minimum: 3},
   {cadence: "yearly", months: 12, tolerance: 7, minimum: 3},
@@ -62,19 +64,19 @@ export function recurringDateTolerance(cadence: string): number {
 }
 
 type ParsedDate = {timestamp: number; year: number; month: number; day: number};
-function occurrenceIndex(anchor: ParsedDate, observed: ParsedDate, cadence: typeof cadences[number], expectedDates: Map<number, number>) {
-  if (cadence.days) {
+function occurrenceIndex(anchor: ParsedDate, observed: ParsedDate, cadence: CadenceRule, expectedDates: Map<number, number>) {
+  if ("days" in cadence) {
     const index = Math.round((observed.timestamp - anchor.timestamp) / (cadence.days * 86400000));
     return {index, difference: Math.abs(observed.timestamp - anchor.timestamp - index * cadence.days * 86400000) / 86400000};
   }
   const distance = (observed.year - anchor.year) * 12 + observed.month - anchor.month;
   let closest = {index: -1, difference: Infinity};
-  const approximate = Math.floor(distance / cadence.months!);
+  const approximate = Math.floor(distance / cadence.months);
   for (const index of [approximate - 1, approximate, approximate + 1]) {
     if (index < 0) continue;
     let expected = expectedDates.get(index);
     if (expected === undefined) {
-      const month = anchor.year * 12 + anchor.month + index * cadence.months!;
+      const month = anchor.year * 12 + anchor.month + index * cadence.months;
       const day = new Date(0);
       day.setUTCFullYear(Math.floor(month / 12), month % 12 + 1, 0);
       day.setUTCDate(Math.min(anchor.day, day.getUTCDate()));
@@ -116,22 +118,26 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
     for (const cadence of cadences) {
       const used = new Set<string>();
       for (let start = 0; start <= sorted.length - cadence.minimum; start++) {
-        if (used.has(sorted[start].id)) continue;
-        const rows = [sorted[start]];
+        const first = sorted[start];
+        const firstDate = first && dates.get(first.date);
+        if (!first || !firstDate || used.has(first.id)) continue;
+        const rows = [first];
         const expectedDates = new Map<number, number>();
         let previous = 0, missing = 0, difference = 0;
-        let min = sorted[start].amountMinor, max = min;
+        let min = first.amountMinor, max = min;
         for (let next = start + 1; next < sorted.length; next++) {
-          if (used.has(sorted[next].id)) continue;
-          const occurrence = occurrenceIndex(dates.get(sorted[start].date)!, dates.get(sorted[next].date)!, cadence, expectedDates);
+          const following = sorted[next];
+          const followingDate = following && dates.get(following.date);
+          if (!following || !followingDate || used.has(following.id)) continue;
+          const occurrence = occurrenceIndex(firstDate, followingDate, cadence, expectedDates);
           if (occurrence.index - previous > 3) break;
           if (occurrence.index <= previous || occurrence.difference > cadence.tolerance) continue;
-          const nextMin = sorted[next].amountMinor < min ? sorted[next].amountMinor : min;
-          const nextMax = sorted[next].amountMinor > max ? sorted[next].amountMinor : max;
+          const nextMin = following.amountMinor < min ? following.amountMinor : min;
+          const nextMax = following.amountMinor > max ? following.amountMinor : max;
           if (!amountFits(nextMin, nextMax)) continue;
           min = nextMin; max = nextMax;
           missing += occurrence.index - previous - 1; previous = occurrence.index;
-          difference += occurrence.difference; rows.push(sorted[next]);
+          difference += occurrence.difference; rows.push(following);
         }
         if (rows.length >= cadence.minimum && missing <= rows.length - cadence.minimum) {
           rows.forEach(row => used.add(row.id));
@@ -144,14 +150,16 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
     for (const candidate of candidates) {
       if (candidate.rows.some(row => assigned.has(row.id))) continue;
       const observed = candidate.rows;
-      const ordered = observed.length > 1000 ? [observed[0], ...observed.slice(-999)] : observed;
+      const ordered = observed.length > 1000 ? [...observed.slice(0, 1), ...observed.slice(-999)] : observed;
+      const [anchor] = ordered;
+      if (!anchor) continue;
       const selectedDates = new Set(ordered.map(row => row.date));
       const sameDateAlternatives = group.filter(row => selectedDates.has(row.date) &&
-        amountFits(row.amountMinor < ordered[0].amountMinor ? row.amountMinor : ordered[0].amountMinor,
-          row.amountMinor > ordered[0].amountMinor ? row.amountMinor : ordered[0].amountMinor)).length - ordered.length;
+        amountFits(row.amountMinor < anchor.amountMinor ? row.amountMinor : anchor.amountMinor,
+          row.amountMinor > anchor.amountMinor ? row.amountMinor : anchor.amountMinor)).length - ordered.length;
       observed.forEach(row => assigned.add(row.id));
-      let min = ordered[0].amountMinor;
-      let max = ordered[0].amountMinor;
+      let min = anchor.amountMinor;
+      let max = anchor.amountMinor;
       for (const item of ordered) {
         if (item.amountMinor < min) min = item.amountMinor;
         if (item.amountMinor > max) max = item.amountMinor;
@@ -159,7 +167,7 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
       if (!amountFits(min, max)) continue;
       const counts = new Map<string, number>();
       for (const item of ordered) counts.set(item.description.trim(), (counts.get(item.description.trim()) ?? 0) + 1);
-      let label = ordered[0].description.trim();
+      let label = anchor.description.trim();
       let best = 0;
       for (const [candidate, count] of counts) {
         if (count > best || (count === best && candidate < label)) {
@@ -172,16 +180,16 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
       series.push({
         cadence: candidate.cadence,
         label: label.slice(0, 120).trimEnd(),
-        accountId: ordered[0].accountId,
-        currencyCode: ordered[0].currencyCode,
+        accountId: anchor.accountId,
+        currencyCode: anchor.currencyCode,
         amountMinMinor: min,
         amountMaxMinor: max,
         transactionIds: ordered.map((item) => item.id),
         occurrences: ordered.length,
         confidence,
         missingPeriods: candidate.missing,
-        anchorDate: observed[0].date,
-        runAnchorId: observed[0].id,
+        anchorDate: anchor.date,
+        runAnchorId: anchor.id,
         observedOccurrences: observed.length,
         evidenceLimited: observed.length > ordered.length,
         sameDateAlternatives,

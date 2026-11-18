@@ -40,7 +40,7 @@ export function loanPayouts(loans: LoanStart[], transactions: IouTransaction[]) 
   const ids = new Set<string>();
   for (const loan of loans) {
     const signed = loan.direction === "lent" ? -loan.amountMinor : loan.amountMinor;
-    const first = loan.person.trim().split(/\s+/)[0];
+    const first = loan.person.trim().split(/\s+/)[0] ?? "";
     const match = transactions.find(row => !ids.has(row.id) && row.currency_code === loan.currencyCode && BigInt(row.amount_minor) === signed
       && dayGap(row.posted_on, loan.date) <= 10 && (mentions(row.description, loan.person) || mentions(row.description, first)));
     if (match) ids.add(match.id);

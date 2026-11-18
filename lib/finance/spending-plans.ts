@@ -1,3 +1,4 @@
+import { datePart } from "./calendar";
 import { sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";
 
 export type SpendingPlanTransaction = {
@@ -14,11 +15,11 @@ export type SpendingPlanTransaction = {
 
 export function monthPrefix(today: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en", { timeZone, year: "numeric", month: "2-digit" }).formatToParts(today);
-  return `${parts.find(part => part.type === "year")!.value}-${parts.find(part => part.type === "month")!.value}`;
+  return `${datePart(parts, "year")}-${datePart(parts, "month")}`;
 }
 
 export function nextMonthStart(month: string): string {
-  const [year, mon] = month.split("-").map(Number);
+  const [year = NaN, mon = NaN] = month.split("-").map(Number);
   return new Date(Date.UTC(year, mon, 1)).toISOString().slice(0, 10);
 }
 

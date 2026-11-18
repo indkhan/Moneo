@@ -1,8 +1,12 @@
 export type Balance = { amountMinor: bigint | null; currencyCode: string };
 
 export function netWorth(balances: Balance[], currencyCode: string): bigint | null {
-  if (balances.some(balance => balance.amountMinor === null || balance.currencyCode !== currencyCode)) return null;
-  return balances.reduce((total, balance) => total + balance.amountMinor!, 0n);
+  let total = 0n;
+  for (const balance of balances) {
+    if (balance.amountMinor === null || balance.currencyCode !== currencyCode) return null;
+    total += balance.amountMinor;
+  }
+  return total;
 }
 
 export type CashflowTransaction = {
@@ -83,6 +87,12 @@ function parseDate(date: string): number {
   return timestamp;
 }
 
+function openingBalance(account: ForecastAccount): bigint {
+  if (account.availableMinor != null) return account.availableMinor;
+  if (account.balanceMinor === null) throw new Error(`Missing balance: ${account.id}`);
+  return account.balanceMinor - (account.pendingHoldMinor ?? 0n);
+}
+
 export function forecastDaily(input: ForecastInput): ForecastResult {
   const start = parseDate(input.startDate);
   if (!Number.isSafeInteger(input.horizonDays) || input.horizonDays < 1 || input.horizonDays > 3660) throw new Error("Invalid forecast horizon");
@@ -103,18 +113,19 @@ export function forecastDaily(input: ForecastInput): ForecastResult {
   if (missingInputs.length) return { status: "unavailable", missingInputs };
 
   const balances = new Map<string, { expected: bigint; conservative: bigint; optimistic: bigint }>(input.accounts.map(account => {
-    const initial = account.availableMinor ?? account.balanceMinor! - (account.pendingHoldMinor ?? 0n);
+    const initial = openingBalance(account);
     return [account.id, { expected: initial, conservative: initial, optimistic: initial }];
   }));
   const conservativeByAccount = Object.fromEntries([...balances].map(([id, balance]) => [id, balance.conservative]));
-  for (const event of input.scenarioEvents ?? []) if (event.date === input.startDate) conservativeByAccount[event.accountId] += event.conservativeMinor ?? event.expectedMinor;
+  for (const event of input.scenarioEvents ?? []) if (event.date === input.startDate) conservativeByAccount[event.accountId] = (conservativeByAccount[event.accountId] ?? 0n) + (event.conservativeMinor ?? event.expectedMinor);
   const opening: ForecastOpening = { date: input.startDate, conservativeMinor: Object.values(conservativeByAccount).reduce((sum, amount) => sum + amount, 0n), conservativeByAccount };
   const days: ForecastDay[] = [];
   for (let offset = 0; offset < input.horizonDays; offset++) {
     const date = new Date(start + offset * 86400000).toISOString().slice(0, 10);
     for (const event of events) {
       if (event.date !== date) continue;
-      const balance = balances.get(event.accountId)!;
+      const balance = balances.get(event.accountId);
+      if (!balance) throw new Error(`Unknown account: ${event.accountId}`);
       balance.expected += event.expectedMinor;
       balance.conservative += event.conservativeMinor ?? event.expectedMinor;
       balance.optimistic += event.optimisticMinor ?? event.expectedMinor;
@@ -164,10 +175,11 @@ export function accountLiquidity(input: ForecastInput) {
   if (aggregate.status === "unavailable") return aggregate;
   const accounts = input.accounts.map(account => {
     const protectedMinor = (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n);
+    const conservative = (day: Pick<ForecastDay, "conservativeByAccount">) => day.conservativeByAccount[account.id] ?? 0n;
     const limitingDay = forecast.days.reduce<Pick<ForecastDay, "date" | "conservativeByAccount">>((lowest, day) =>
-      day.conservativeByAccount[account.id] < lowest.conservativeByAccount[account.id] ? day : lowest, forecast.opening);
-    const amountMinor = limitingDay.conservativeByAccount[account.id] - protectedMinor;
-    const firstShortfallDate = [forecast.opening, ...forecast.days].find(day => day.conservativeByAccount[account.id] < protectedMinor)?.date ?? null;
+      conservative(day) < conservative(lowest) ? day : lowest, forecast.opening);
+    const amountMinor = conservative(limitingDay) - protectedMinor;
+    const firstShortfallDate = [forecast.opening, ...forecast.days].find(day => conservative(day) < protectedMinor)?.date ?? null;
     return { accountId: account.id, amountMinor, protectedMinor, limitingDate: limitingDay.date,
       spendableMinor: amountMinor < aggregate.amountMinor ? amountMinor : aggregate.amountMinor,
       spendingLimitingDate: amountMinor <= aggregate.amountMinor ? limitingDay.date : aggregate.limitingDate,

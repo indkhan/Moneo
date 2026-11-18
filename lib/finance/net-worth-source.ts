@@ -1,6 +1,6 @@
 import type { Db } from "@/lib/database";
 import { allPages } from "@/lib/all-pages";
-import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, type NetWorthPoint } from "@/lib/finance/net-worth";
+import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEndBefore, netWorth, netWorthSeries, valuationHistory, type NetWorthPoint } from "@/lib/finance/net-worth";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
 import { calendarDate } from "./calendar";
 import { z } from "zod";
@@ -38,7 +38,11 @@ export function netWorthModel(evidence: NetWorthEvidence) {
   const firstReal = firstSyncedOn(valuations, scalable.knownIds);
   const reads = valuations.filter(row => scalable.knownIds.has(row.item_id) && row.created_at < "9999");
   const firstPosted = new Map<string, string>();
-  for (const row of balances.ledger) if (row.status === "posted" && (!firstPosted.has(row.account_id) || row.posted_on < firstPosted.get(row.account_id)!)) firstPosted.set(row.account_id, row.posted_on);
+  for (const row of balances.ledger) {
+    if (row.status !== "posted") continue;
+    const earliest = firstPosted.get(row.account_id);
+    if (earliest === undefined || row.posted_on < earliest) firstPosted.set(row.account_id, row.posted_on);
+  }
   const coveredFrom = [...firstPosted.values()].reduce<string | null>((latest, date) => latest === null || date > latest ? date : latest, null);
   const { windows, unresolved } = matchTransfers({ transfers: transfers.rows, legs, firstReal, reads, complete: transfers.complete, coveredFrom });
   const accounts = resolveBalances(balances.accounts, balances.snapshots, balances.ledger, balances.asOf, timeZone).filter(account => !account.archived_at);
@@ -51,7 +55,7 @@ export function netWorthModel(evidence: NetWorthEvidence) {
   const now = currentNetWorth(today, accounts, dated.included.map(valuation => ({ ...valuation, debt: kinds.get(valuation.id) === "debt" })), transitOn(windows, today));
   const movedOnBoundaryMinor = transfers.rows.filter(row => row.on_date === firstReal && row.status === "SETTLED" && !row.is_cancellation).reduce((sum, row) => sum + BigInt(row.amount_minor), 0n);
 
-  const monthSplit = (currency: string, base = monthEnds(today, 1)[0]) => {
+  const monthSplit = (currency: string, base = monthEndBefore(today, 0)) => {
     const [basePoint] = points([base]);
     if (!basePoint?.known) return null;
     const totalChangeMinor = (netWorth(now).get(currency) ?? 0n) - (netWorth(basePoint).get(currency) ?? 0n);
@@ -81,8 +85,8 @@ export function netWorthModel(evidence: NetWorthEvidence) {
     const atBase = basePoint.accountValues ?? new Map<string, bigint>();
     for (const account of balances.accounts) {
       if (account.currency_code !== currency || atBase.has(account.id)) continue;
-      const first = accountPoints.find(point => point.accountValues?.has(account.id));
-      if (first) newlyAddedMinor += first.accountValues!.get(account.id)!;
+      const firstValue = accountPoints.map(point => point.accountValues?.get(account.id)).find(value => value !== undefined);
+      if (firstValue !== undefined) newlyAddedMinor += firstValue;
       else if (account.archived_at === null || account.archived_at === undefined) { const live = accounts.find(item => item.id === account.id)?.balance.amount_minor; if (live) newlyAddedMinor += BigInt(live); }
     }
     const brokerCounted = !!firstReal && (firstReal <= base || portfolioBefore);
@@ -126,8 +130,8 @@ export function convertedNetWorth(model: NetWorthModel, rates: Rate[], displayCu
   };
   for (const account of model.accounts) {
     const { balance } = account;
-    if (balance.amount_minor === null) { missingInputs.push(`balance:${account.name}`); continue; }
-    add(BigInt(balance.amount_minor), balance.currency_code, calendarDate(balance.as_of!, model.timeZone), balance.provenance || "balance", account.name, "cash");
+    if (balance.amount_minor === null || balance.as_of === null) { missingInputs.push(`balance:${account.name}`); continue; }
+    add(BigInt(balance.amount_minor), balance.currency_code, calendarDate(balance.as_of, model.timeZone), balance.provenance || "balance", account.name, "cash");
   }
   missingInputs.push(...model.dated.missingInputs);
   for (const valuation of model.dated.included) add(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, model.kinds.get(valuation.id) === "debt" ? "debts" : "assets");
@@ -166,7 +170,7 @@ export async function readNetWorth({ supabase, workspace }: Reader, input: unkno
       ...(trend ? { trend } : {}) };
   }
   const [point] = model.points([on]);
-  if (!point.known) return { date: on, known: false, note: "Nothing is on record that far back: the history starts where account data starts.", link, ...(trend ? { trend } : {}) };
+  if (!point?.known) return { date: on, known: false, note: "Nothing is on record that far back: the history starts where account data starts.", link, ...(trend ? { trend } : {}) };
   const totals = netWorth(point);
   return { date: on, known: true, currencyCode: workspace.display_currency, amountMinor: (totals.get(workspace.display_currency) ?? 0n).toString(), amountFormatted: money(totals.get(workspace.display_currency) ?? 0n),
     otherCurrencies: [...totals].filter(([currency]) => currency !== workspace.display_currency).map(([currency, amount]) => ({ currencyCode: currency, amountFormatted: money(amount, currency) })),

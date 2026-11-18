@@ -20,11 +20,13 @@ export type Insight = { key: string; type: typeof INSIGHT_TYPES[number]; priorit
 export type AccountShortfall = { accountId: string; name: string; shortfallMinor: string; date: string; donor: { accountId: string; name: string; spareMinor: string } | null };
 
 export function accountShortfalls(accounts: { accountId: string; amountMinor: bigint; shortfallMinor: bigint; firstShortfallDate: string | null }[], names: Map<string, string>): AccountShortfall[] {
-  return accounts.filter(account => account.shortfallMinor > 0n && account.firstShortfallDate).map(account => {
+  return accounts.flatMap(account => {
+    const date = account.firstShortfallDate;
+    if (account.shortfallMinor <= 0n || !date) return [];
     const donor = accounts.filter(other => other.accountId !== account.accountId && other.amountMinor >= account.shortfallMinor)
       .sort((a, b) => a.amountMinor === b.amountMinor ? 0 : a.amountMinor < b.amountMinor ? 1 : -1)[0];
-    return { accountId: account.accountId, name: names.get(account.accountId) ?? "An account", shortfallMinor: account.shortfallMinor.toString(), date: account.firstShortfallDate!,
-      donor: donor ? { accountId: donor.accountId, name: names.get(donor.accountId) ?? "another account", spareMinor: donor.amountMinor.toString() } : null };
+    return [{ accountId: account.accountId, name: names.get(account.accountId) ?? "An account", shortfallMinor: account.shortfallMinor.toString(), date,
+      donor: donor ? { accountId: donor.accountId, name: names.get(donor.accountId) ?? "another account", spareMinor: donor.amountMinor.toString() } : null }];
   });
 }
 export type InsightInput = {
@@ -75,7 +77,9 @@ export function buildInsights(input: InsightInput, preferences: InsightPreferenc
   for (const row of reviewed.filter(row => row.posted_on >= new Date(Date.parse(`${input.today}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10))) {
     const peers = reviewed.filter(peer => peer.id !== row.id && peer.account_id === row.account_id && peer.currency_code === row.currency_code && peer.posted_on < row.posted_on).map(peer => -BigInt(peer.amount_minor)).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
     if (peers.length < 10 || row.currency_code !== preferences.currency_code) continue;
-    const median = peers.length % 2 ? peers[Math.floor(peers.length / 2)] : (peers[peers.length / 2 - 1] + peers[peers.length / 2] + 1n) / 2n;
+    const lowMiddle = peers[Math.floor((peers.length - 1) / 2)], highMiddle = peers[Math.floor(peers.length / 2)];
+    if (lowMiddle === undefined || highMiddle === undefined) continue;
+    const median = peers.length % 2 ? highMiddle : (lowMiddle + highMiddle + 1n) / 2n;
     const amount = -BigInt(row.amount_minor);
     if (median <= 0n || amount < median * 3n || amount - median < BigInt(preferences.minimum_change_minor)) continue;
     add("unusual_activity", row.id, [row.posted_on, row.amount_minor, row.currency_code, median.toString(), peers.length], "Large compared with recent account spending",

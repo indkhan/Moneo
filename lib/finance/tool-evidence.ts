@@ -60,6 +60,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
     if ((row.classificationStatus === "unresolved" || Array.isArray(row.review_reasons) && row.review_reasons.length || Array.isArray(row.reviewReasons) && row.reviewReasons.length) && !qualifiers.includes("unresolved_included")) qualifiers.push("unresolved_included");
     if (name === "forecast_evaluate" || path.includes("forecast") || path.includes("obligations")) { if (!qualifiers.includes("assumption")) qualifiers.push("assumption"); }
     for (const [key, child] of Object.entries(row)) {
+      const label = Object.hasOwn(labels, key) ? labels[key] : undefined;
       if ((key === "netWorth" || key === "accountBalanceTotals") && child && typeof child === "object") {
         for (const [code, amount] of Object.entries(child)) if (/^[A-Z]{3}$/.test(code) && (amount === null || typeof amount === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(amount))) {
           const accounts = Array.isArray(row.accounts) ? row.accounts.map(object) : [];
@@ -71,7 +72,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
             period: { from: period.to, to: period.to }, qualifiers: [...new Set([...qualifiers, "dated_snapshot" as const, ...(manual ? ["manual_evidence" as const] : [])])], sourceIds: [sourceId], calculation: `${name}: deterministic ${key} for ${code}; full dated account/wealth evidence is retained.` });
         }
       } else
-      if (Object.hasOwn(labels, key) && currency && (child === null || typeof child === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(child))) {
+      if (label !== undefined && currency && (child === null || typeof child === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(child))) {
         const snapshot = key === "snapshot_amount_minor" || key === "snapshotBalanceMinor";
         const bookedBalance = key === "balanceMinor" || key === "amount_minor" && path.includes("balance");
         const manualBalance = (snapshot || bookedBalance) && typeof row.provenance === "string" && /^manual\b/.test(row.provenance);
@@ -97,7 +98,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         const aggregateRows = name === "analytics_cashflow" && ["incomeMinor", "spendingMinor", "netMinor"].includes(key) && Array.isArray(retainedRows) ? retainedRows.map(object) : null;
         const aggregation = posting && postingId && parentId ? { kind: "signed-original", ids: [postingId], parents: [parentId], canonicalParents: component ? [] : [parentId] }
           : aggregateRows && aggregateRows.every(item => typeof item.id === "string") ? { kind: `${key.replace("Minor", "")}-${object(object(result).reporting).policy ? "base" : "original"}`, ids: aggregateRows.map(item => item.id as string), parents: [...new Set(aggregateRows.map(item => String(item.parent_transaction_id ?? item.id)))], canonicalParents: [] } : undefined;
-        metrics.push({ id: [...path, key].join(".") || key, label: key === "amountMinor" && path.includes("forecast") && path.includes("available") ? "Conditional aggregate headroom" : posting && component ? "Effective allocation component" : path.includes("wealth") && ["amountMinor", "amount_minor"].includes(key) ? "Dated manual wealth value" : key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency: metricCurrency, period: manualDate ? { from: manualDate, to: manualDate } : period, ...(aggregation ? { aggregation } : {}),
+        metrics.push({ id: [...path, key].join(".") || key, label: key === "amountMinor" && path.includes("forecast") && path.includes("available") ? "Conditional aggregate headroom" : posting && component ? "Effective allocation component" : path.includes("wealth") && ["amountMinor", "amount_minor"].includes(key) ? "Dated manual wealth value" : key === "amount_minor" && path.includes("balance") ? "Booked balance" : label, valueMinor: child as string | null, currency: metricCurrency, period: manualDate ? { from: manualDate, to: manualDate } : period, ...(aggregation ? { aggregation } : {}),
           qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}.${goalRemainder ? ` Goal target minus dated manual recorded savings (savedAsOf: ${manualDate ?? "unavailable"}); the target is an assumption and this remainder does not verify current savings or affordability.` : ""}${limitingDate ? ` Limiting date: ${limitingDate}.` : ""} Full query inputs, calculation output and supporting record evidence are retained below.` });
       } else if (key !== "calculationEvidence" && key !== "queryInvestigation" && key !== "investigation") walk(child, [...path, key], { currency: /^[A-Z]{3}$/.test(key) ? key : currency, period, qualifiers });
     }
