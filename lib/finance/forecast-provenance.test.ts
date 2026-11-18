@@ -5,7 +5,7 @@ import { evidenceFreshness } from "./evidence-receipts";
 import { loadFinancialReviewEvidence } from "./review-loader";
 import { compareReviewEvidence, reviewFreshness } from "./review-freshness";
 import type { Db } from "@/lib/database";
-import { aiScopeGuard, settingsSchema, type AiDataScope } from "@/lib/settings";
+import { aiScopeGuard, settingsSchema, type AiDataScope } from "@/lib/workspace-settings";
 
 const fixture = vi.hoisted(() => ({ rate: "1", snapshotVersion: 1, revision: 1, revisionTable: "", reads: [] as string[] }));
 const requireWorkspace = async () => ({

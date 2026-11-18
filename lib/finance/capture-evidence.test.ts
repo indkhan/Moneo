@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { aiScopeGuard, DEFAULT_SETTINGS, type WorkspaceSettings } from "@/lib/settings";
+import { aiScopeGuard, DEFAULT_SETTINGS, type WorkspaceSettings } from "@/lib/workspace-settings";
 import type { GuardedFinanceContext } from "./finance-context";
 import { captureToolEvidence } from "./capture-evidence";
 import { investigationSchema, type InvestigationRow } from "./investigation";

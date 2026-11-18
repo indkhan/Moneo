@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Db } from "@/lib/database";
-import type { WorkspaceSettings } from "@/lib/settings";
+import type { WorkspaceSettings } from "@/lib/workspace-settings";
 import { loadFinancialReviewEvidence } from "./review-loader";
 import {readEvidenceView} from "./evidence-view";
 import type {GuardedFinanceContext, ScopeGuard} from "./finance-context";

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Db } from "@/lib/database";
-import { AI_DATA_SCOPES } from "@/lib/settings";
+import { AI_DATA_SCOPES } from "@/lib/workspace-settings";
 import { minorDigits } from "./fx";
 
 export type FinancialEvidenceReceipt = {

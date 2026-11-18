@@ -1,5 +1,5 @@
 import type { Db } from "@/lib/database";
-import type { AiDataScope, WorkspaceSettings } from "@/lib/settings";
+import type { AiDataScope, WorkspaceSettings } from "@/lib/workspace-settings";
 
 export type FinanceContext = {
   supabase: Db;

@@ -2,7 +2,6 @@ import { expect, it, vi } from "vitest";
 import { evaluatePlanForWorkspace } from "./model";
 import type { BalanceSnapshot, BalanceTransaction } from "./balances";
 import type { OccurrenceSettlement } from "./recurring-occurrences";
-vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 const assumption = { id: "assumption", name: "Monthly", source: "recurring_confirmed", recurring_evidence_eligible: false, account_id: "cash", amount_minor: "100000", currency_code: "EUR", cadence: "monthly", starts_on: "2026-10-06", ends_on: null, enabled: true };
 const posting = { id: "observed", account_id: "cash", amount_minor: "100000", currency_code: "EUR", posted_on: "2026-10-06", posted_at: "2026-10-06T08:00:00Z", status: "posted", source_transaction_ids: ["source"], kind: "ordinary", review_reasons: [] };
 const snapshot = { account_id: "cash", amount_minor: "200000", currency_code: "EUR", as_of: "2026-10-06T08:00:00Z", provenance: "statement", boundary_kind: "after_transaction", source_transaction_id: "source" };

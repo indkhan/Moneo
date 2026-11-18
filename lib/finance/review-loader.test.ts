@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { loadFinancialReviewEvidence } from "./review-loader";
-import { DEFAULT_SETTINGS, type AiDataScope } from "@/lib/settings";
+import { DEFAULT_SETTINGS, type AiDataScope } from "@/lib/workspace-settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compareReviewEvidence } from "./review-freshness";
 

@@ -1,7 +1,6 @@
 import { expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePlanForWorkspace } from "./model";
-vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 
 it("keeps goal allocation identity and uses only FX rates available on each event date", async () => {
   const tables: Record<string, unknown[]> = {

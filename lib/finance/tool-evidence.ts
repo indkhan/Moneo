@@ -1,5 +1,5 @@
 import { createEvidenceReceipt, evidenceFingerprint, type EvidenceReceipt, type EvidenceReceiptInput } from "./evidence-receipts";
-import type { AiDataScope } from "@/lib/settings";
+import type { AiDataScope } from "@/lib/workspace-settings";
 import { calendarDate } from "./calendar";
 import { sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";
 import { z } from "zod";

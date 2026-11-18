@@ -1,6 +1,6 @@
 import {z} from "zod";
 import {investigationSchema} from "./investigation-schema";
-import {AI_DATA_SCOPES} from "@/lib/settings";
+import {AI_DATA_SCOPES} from "@/lib/workspace-settings";
 import {forecastInput} from "./forecast-schema";
 
 const planningViewSchema = z.discriminatedUnion("view", [

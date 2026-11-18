@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { aiScopeGuard, DEFAULT_SETTINGS, type WorkspaceSettings } from "@/lib/settings";
+import { aiScopeGuard, DEFAULT_SETTINGS, type WorkspaceSettings } from "@/lib/workspace-settings";
 import type { GuardedFinanceContext } from "./finance-context";
 import { createEvidenceReceipt } from "./evidence-receipts";
 import { readEvidenceView } from "./evidence-view";
