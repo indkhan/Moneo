@@ -1,5 +1,5 @@
 'use client';
-import { Fragment,useActionState,useEffect,useRef,useState} from 'react';
+import { Fragment,useActionState,useRef,useState} from 'react';
 import {createReview,applyReview,undoReview} from './actions';
 import {formatMoney} from '@/lib/finance/format';
 import type {OrganizationProposal} from '@/lib/import/organization';
@@ -60,8 +60,6 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
  const ruleKey=keys.size===1&&[...keys][0].length>=3?[...keys][0]:null;
  const unchecked=chosen.filter(item=>item.proposal.financialReviewRequired).length;
  const similarCount=(proposal:OrganizationProposal)=>{const key=JSON.stringify(suggestion(proposal));return items.filter(item=>JSON.stringify(suggestion(item.proposal))===key).length;};
- const selectAll=useRef<HTMLInputElement>(null);
- useEffect(()=>{if(selectAll.current)selectAll.current.indeterminate=selected.length>0&&selected.length<items.length;},[selected.length,items.length]);
  const noTarget=merchantValue==='keep'&&categoryValue==='keep';
  const created=[categoryName&&`category “${categoryName}”`,merchantName&&`merchant “${merchantName}”`].filter(Boolean).join(' and ');
  return <form action={action} className="rounded-xl border border-border bg-card">
@@ -70,7 +68,7 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
   <input type="hidden" name="merchant" value={merchantValue} /><input type="hidden" name="merchantName" value={merchantName} />
   <input type="hidden" name="category" value={categoryValue} /><input type="hidden" name="categoryName" value={categoryName} />
   <div id="organize-controls" className="flex scroll-mt-24 flex-wrap items-end gap-3 border-b border-border p-4">
-   <label className="flex min-h-10 items-center gap-2 text-sm"><input ref={selectAll} type="checkbox" checked={items.length>0&&selected.length===items.length} onChange={event=>toggle(items.map(item=>item.row.id),event.target.checked)} />{selected.length?`${selected.length} selected`:'Select all'}</label>
+   <label className="flex min-h-10 items-center gap-2 text-sm"><input ref={node=>{if(node)node.indeterminate=selected.length>0&&selected.length<items.length;}} type="checkbox" checked={items.length>0&&selected.length===items.length} onChange={event=>toggle(items.map(item=>item.row.id),event.target.checked)} />{selected.length?`${selected.length} selected`:'Select all'}</label>
    <label className="grid gap-1 text-xs text-muted-foreground">Category<input name="categorySearch" list="organize-categories" value={category} onChange={event=>{draftRevision.current++;setCategory(event.target.value);}} maxLength={100} placeholder="Keep current, or type a name" className={field} /></label>
    <label className="grid gap-1 text-xs text-muted-foreground">Merchant<input name="merchantSearch" list="organize-merchants" value={merchant} onChange={event=>{draftRevision.current++;setMerchant(event.target.value);}} maxLength={100} placeholder="Keep current, or type a name" className={field} /></label>
    <datalist id="organize-categories">{categories.map(target=><option key={target.id} value={target.name} />)}</datalist>

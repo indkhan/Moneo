@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { usePolling } from "@/lib/use-polling";
 import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/import/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
@@ -165,22 +166,17 @@ export default function ImportPage() {
       setHistoryState("loaded");
     }).catch(() => setHistoryState("failed"));
   }, []);
-  useEffect(() => {
-    if (!history.some((item) => active(item.status))) return;
-    const timer = setInterval(async () => {
-      if (document.hidden) return;
-      const requestOrder = ++historyRequest.current;
-      try {
-        const updates = await Promise.all(history.filter((item) => active(item.status)).map(async (item) => {
-          const response = await fetch(`/api/imports/${item.id}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
-          if (!response.ok) throw new Error("History unavailable");
-          return await response.json() as ImportStatus;
-        }));
-        mergeHistory(updates, requestOrder);
-      } catch { setHistoryState("failed"); }
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [history]);
+  usePolling(async (signal) => {
+    const requestOrder = ++historyRequest.current;
+    try {
+      const updates = await Promise.all(history.filter((item) => active(item.status)).map(async (item) => {
+        const response = await fetch(`/api/imports/${item.id}`, { cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
+        if (!response.ok) throw new Error("History unavailable");
+        return await response.json() as ImportStatus;
+      }));
+      mergeHistory(updates, requestOrder);
+    } catch { if (!signal.aborted) setHistoryState("failed"); }
+  }, 3000, history.some((item) => active(item.status)));
 
   async function inspect(target: File, corrected?: ImportMapping, workbookScope?: WorkbookScope) {
     setRowsReviewed(false);
