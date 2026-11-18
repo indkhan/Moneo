@@ -7,7 +7,7 @@ import { CashFlowPanel, Figure, RecentTransactions } from "./home-sections";
 import { SectionFallback, card } from "./section-fallback";
 import { Suspense, type ReactNode } from "react";
 import { BUILTIN_WIDGETS, cardIdFromKey, homeLayout, isBuiltinWidget, sizeOptions, widgetLabel, widgetSize } from "@/lib/finance/dashboard";
-import { CardSkeleton, HomeCard, type HomeCardRow } from "@/components/cards/home-card";
+import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { cardSize, type CardSize } from "@/lib/cards/sizes";
 import { HomeGrid } from "./home-grid";
 import { HomeNotices } from "./home-notices";

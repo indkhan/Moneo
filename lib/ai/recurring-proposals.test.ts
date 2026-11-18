@@ -6,7 +6,7 @@ function fakeDb(rows: Rows) {
   const inserts: { table: string; row: Record<string, unknown> }[] = [], calls: { name: string; args: Record<string, unknown> }[] = [];
   const from = (table: string) => {
     const query: Record<string, unknown> = {};
-    for (const name of ["select", "eq", "is", "in", "order", "limit", "or", "range"]) query[name] = () => query;
+    for (const name of ["select", "eq", "is", "in", "order", "limit", "or", "range", "filter", "overrideTypes"]) query[name] = () => query;
     query.maybeSingle = async () => ({ data: rows[table]?.[0] ?? null, error: null });
     const single = { select: () => ({ single: async () => ({ data: { id: "00000000-0000-4000-8000-000000000001" }, error: null }) }) };
     query.insert = (row: Record<string, unknown>) => { inserts.push({ table, row }); return single; };

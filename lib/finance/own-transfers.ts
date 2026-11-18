@@ -173,9 +173,6 @@ export async function loadOwnAccounts(db: Db, workspaceId: string): Promise<OwnA
   return { tracked, untracked, names };
 }
 
-type Row = { id: string; version: number; account_id: string; posted_on: string; amount_minor: string; currency_code: string; review_reasons: string[] | null; description: string; transfer_id: string | null; identity_id: string | null;
-  transaction_sources: { source_transactions: { original_row: unknown } | null }[] | null };
-
 const counterpartyOf = (row: unknown) => {
   const value = row && typeof row === "object" ? (row as { counterparty?: unknown }).counterparty : undefined;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;

@@ -10,9 +10,6 @@ export type TxRow = {
   id: string; posted_on: string; description: string; amount_minor: string; currency_code: string; account_id: string;
   merchant_id: string | null; version: number; status: "posted"; kind: "ordinary"; review_reasons: string[];
 };
-type Assumption = { id: string; name: string; amount_minor: string; cadence: string; starts_on: string; source: string; confirmed: boolean; enabled: boolean; removed_at: string | null; category: { name: string } | null };
-type Stored = { id: string; account_id: string; currency_code: string; cadence: string; status: string; label?: string; evidence_invalidated?: boolean; evidence_baseline?: unknown;
-  recurring_series_transactions?: { transaction_id: string }[]; assumption?: Assumption | Assumption[] | null };
 
 export function rankSuggestions<T extends { series: { label: string; currencyCode: string; occurrences: number; amountMinMinor: bigint; amountMaxMinor: bigint } }>(pending: T[]) {
   const spread = ({ series }: T) => {
