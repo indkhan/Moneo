@@ -9,7 +9,7 @@
     "check:bundle": "node scripts/check-bundle-size.mjs",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p desktop",
+    "typecheck": "tsc --noEmit && node scripts/typecheck-indexed.mjs && tsc --noEmit -p desktop",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
