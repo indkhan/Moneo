@@ -1,8 +1,8 @@
-import type { requireWorkspace } from "@/lib/auth";
+import type { FinanceContext } from "./finance-context";
 import { loadInvestigationDataset } from "./investigation-reader";
 import { evidenceFingerprint } from "./evidence-receipts";
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
-export async function retainToolSourceSupport(name: string, input: unknown, result: unknown, context: Awaited<ReturnType<typeof requireWorkspace>>, canReadImports: boolean): Promise<unknown> {
+export async function retainToolSourceSupport(name: string, input: unknown, result: unknown, context: FinanceContext, canReadImports: boolean): Promise<unknown> {
   const value = object(result), support = object(value.calculationEvidence), args = object(input);
   if (name !== "analytics_cashflow" || !Array.isArray(support.rows)) return result;
   const dataset = await loadInvestigationDataset({ version: 1, period: { from: value.from, to: value.to }, statuses: ["posted", "pending"], kinds: ["ordinary", "refund", "transfer"], classifications: "all", metric: "signed" }, context, { canReadImports });

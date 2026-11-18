@@ -1,8 +1,8 @@
 import type { Db } from "@/lib/database";
-import type { requireWorkspace } from "@/lib/auth";
+import type { GuardedFinanceContext } from "./finance-context";
 import type { EvidenceReceipt } from "./evidence-receipts";
 import { persistEvidenceReceipt, createEvidenceReceipt } from "./evidence-receipts";
-import { requireAiScope, type AiDataScope } from "@/lib/settings";
+import type { AiDataScope } from "@/lib/settings";
 import { toolResultReceipt } from "./tool-evidence";
 import { loadInvestigationDataset, investigationScenarioSchema } from "./investigation-reader";
 import { investigationReceipt } from "./investigation-receipt";
@@ -13,7 +13,7 @@ const scopesByTool: Record<string, AiDataScope[]> = {
   forecast_evaluate: ["accounts", "transactions", "planning"], finance_investigate: ["accounts", "transactions"], finance_entities: ["accounts", "transactions"], finance_detail: ["accounts", "transactions"], finance_scenario: ["accounts", "transactions"],
   reviews_investigate: ["accounts", "transactions"], reviews_start: ["accounts", "transactions"], imports_status: ["imports"], transactions_previewCategory: ["transactions"], transactions_setCategory: ["transactions"],
 };
-export async function captureToolEvidence(name: string, input: unknown, result: unknown, context: Awaited<ReturnType<typeof requireWorkspace>>, service: Db, actualReadScopes?: AiDataScope[]): Promise<EvidenceReceipt[]> {
+export async function captureToolEvidence(name: string, input: unknown, result: unknown, context: GuardedFinanceContext, service: Db, actualReadScopes?: AiDataScope[]): Promise<EvidenceReceipt[]> {
   const scopes = [...(scopesByTool[name] ?? ["accounts", "transactions"])];
   if (actualReadScopes) scopes.push(...actualReadScopes);
   else {
@@ -22,7 +22,7 @@ export async function captureToolEvidence(name: string, input: unknown, result: 
   }
   if (name === "finance_detail" && input && typeof input === "object" && "kind" in input && input.kind === "recurring") scopes.push("planning");
   const unique = [...new Set(scopes)];
-  requireAiScope(context.settings, ...unique);
+  context.requireScopes(...unique);
   const receipts: EvidenceReceipt[] = [];
   if (name === "finance_investigate") {
     receipts.push(investigationReceipt(await loadInvestigationDataset(input, context, { canReadImports: unique.includes("imports") }), unique));

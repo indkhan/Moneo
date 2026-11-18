@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { requireWorkspace } from "@/lib/auth";
+import type { GuardedFinanceContext } from "./finance-context";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { settingsSchema } from "@/lib/settings";
+import { aiScopeGuard, settingsSchema } from "@/lib/settings";
 import { listAccounts, listGoals } from "./tools";
 import { loadInvestigationEntities } from "./investigation-reader";
 import { captureToolEvidence } from "./capture-evidence";
@@ -30,7 +30,8 @@ it.each(["goals_list", "accounts_list", "finance_entities"])("retains actual sou
       then: (resolve: (value: ReturnType<typeof result>) => unknown) => { expect(filters.get("workspace_id")).toBe(workspaceId); return Promise.resolve(result()).then(resolve); } };
     return query;
   } } as unknown as SupabaseClient;
-  const context = { supabase: db, workspace: { id: workspaceId, timezone: "UTC" }, settings: settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", "planning"] }) } as Awaited<ReturnType<typeof requireWorkspace>>;
+  const settings = settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", "planning"] });
+  const context = { supabase: db, workspace: { id: workspaceId, timezone: "UTC" }, settings: settings, requireScopes: aiScopeGuard(settings) } as unknown as GuardedFinanceContext;
   const original = name === "goals_list" ? await listGoals(context) : name === "accounts_list" ? await listAccounts(context) : await loadInvestigationEntities(context);
   const [receipt] = await captureToolEvidence(name, {}, original, context, db);
   expect((await readEvidenceView(context, receipt.id))?.freshness.status).toBe("current");

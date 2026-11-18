@@ -1,8 +1,9 @@
 import { expect, it, vi } from "vitest";
+import type { FinanceContext } from "./finance-context";
 import { cashflow, searchTransactions, listAccounts, listGoals } from "./tools";
 
 const fixture = vi.hoisted(() => ({ tables: [] as string[], unresolvedTransfer: false }));
-vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", display_currency: "EUR" }, settings: { ai_data_scopes: [] }, supabase: {
+const freshContext = () => ({ workspace: { id: "w", display_currency: "EUR", timezone: "UTC" }, settings: { timezone: "UTC", ai_data_scopes: [] }, supabase: {
   rpc: async () => ({ data: [], error: null }),
   from: (table: string) => {
     fixture.tables.push(table);
@@ -16,12 +17,12 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
       limit: async () => ({ data: [{ id: "parent", amount_minor: "-9007199254740993" }], error: null }) };
     return query;
   },
-} }) }));
+} }) as unknown as FinanceContext;
 
 it("retains unresolved transfer uncertainty in tool totals and source coverage", async () => {
   fixture.unresolvedTransfer = true;
   try {
-    expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, undefined, false)).toMatchObject({
+    expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, freshContext(), false)).toMatchObject({
       spendingMinor: "9007199254740993", evidence: { excludedReviewRows: 2, partial: true, includedTransactionCount: 2 },
       sourceCoverage: { exclusions: { classification: 2, transfer: 0 } },
     });
@@ -30,26 +31,26 @@ it("retains unresolved transfer uncertainty in tool totals and source coverage",
 
 it("keeps non-AI finance reads usable with no AI scopes and exact canonical/effective semantics", async () => {
   fixture.tables.length = 0;
-  expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" })).toMatchObject({
+  expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, freshContext())).toMatchObject({
     spendingMinor: "9007199254740993", evidence: { transactionCount: 3, includedTransactionCount: 2, partial: true,
       limitation: "Some rows await classification review and are excluded." },
     calculationEvidence: { rows: [expect.objectContaining({ amount_minor: "-9007199254740000" }), expect.objectContaining({ amount_minor: "-993" }), expect.objectContaining({ review_reasons: ["source_transfer"] })] },
   });
-  expect(await searchTransactions({ query: "receipt" })).toMatchObject([{ id: "parent", amount_minor: "-9007199254740993", amountBasis: "canonical_parent", effectiveRows: [] }]);
+  expect(await searchTransactions({ query: "receipt" }, freshContext())).toMatchObject([{ id: "parent", amount_minor: "-9007199254740993", amountBasis: "canonical_parent", effectiveRows: [] }]);
   expect(fixture.tables).toEqual(["effective_transactions", "imports", "source_transactions", "transactions", "effective_transactions"]);
 });
 
 it("attaches unresolved source coverage without changing included exact money or reading revoked imports", async () => {
-  expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" })).toMatchObject({
+  expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, freshContext())).toMatchObject({
     spendingMinor: "9007199254740993", sourceCoverage: { unresolvedSourceRows: 1, includedRows: 2, totalsAreBounds: false },
   });
   fixture.tables.length = 0;
-  const result = await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, undefined, false);
+  const result = await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, freshContext(), false);
   expect(result).toMatchObject({ sourceCoverage: { observedSourceRows: null, financialCompleteness: "unknown" } });
   expect(fixture.tables).toEqual(["effective_transactions"]);
 });
 
 it("keeps ordinary account and goal lists usable after AI permission revocation", async () => {
-  expect(await listAccounts()).toEqual([{ id: "synthetic", name: "Synthetic record" }]);
-  expect(await listGoals()).toEqual([{ id: "synthetic", name: "Synthetic record" }]);
+  expect(await listAccounts(freshContext())).toEqual([{ id: "synthetic", name: "Synthetic record" }]);
+  expect(await listGoals(freshContext())).toEqual([{ id: "synthetic", name: "Synthetic record" }]);
 });

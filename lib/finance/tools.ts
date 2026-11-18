@@ -1,8 +1,8 @@
 import { allPages } from "@/lib/all-pages";
 import { z } from "zod";
 import { accountLiquidity, availableToSpend, forecastDaily, withInternalFunding, serializeAccountLiquidity, summarizeCashflow } from "./calculations";
-import { requireWorkspace } from "@/lib/auth";
-import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
+import { evaluatePlanForWorkspace } from "./model";
+import type { FinanceContext } from "./finance-context";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 import { expenditurePosting, reportExpenditure } from "./expenditure";
@@ -10,8 +10,6 @@ import { loadExpenditureRates } from "./expenditure-rates";
 import {forecastInput} from "./forecast-schema";
 import { loadWealthItems, wealthOverview } from "./wealth";
 export {forecastInput} from "./forecast-schema";
-
-type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
 const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/), view: z.enum(["original", "base"]).optional(), accountIds: z.array(z.uuid()).max(100).optional() });
 const minorAmount = z.string().regex(/^\d{1,18}$/);
@@ -21,25 +19,25 @@ const searchInput = z.object({
   minAmountMinor: minorAmount.optional(), maxAmountMinor: minorAmount.optional(),
   limit: z.number().int().min(1).max(50).default(20),
 }).strict();
-export async function listAccounts(context?: FinanceContext) {
-  const { supabase, workspace } = context ?? await requireWorkspace();
+export async function listAccounts(context: FinanceContext) {
+  const { supabase, workspace } = context;
   const { data, error } = await supabase.from("accounts").select("id, name, type, currency_code, version")
     .eq("workspace_id", workspace.id).order("name");
   if (error) throw error;
   return data;
 }
 
-export async function getBalances(context?: FinanceContext, canReadImports = true, retainSupport = false) {
-  const { supabase, workspace } = context ?? await requireWorkspace();
+export async function getBalances(context: FinanceContext, canReadImports = true, retainSupport = false) {
+  const { supabase, workspace } = context;
   const [evidence, sourceMetadata] = await Promise.all([loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports)]);
   return resolveBalances(evidence.accounts.filter(account => !account.archived_at), evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, sourceMetadata).map(account => retainSupport ? { ...account,
     calculationEvidence: { snapshots: evidence.snapshots.filter(snapshot => snapshot.account_id === account.id), ledger: evidence.ledger.filter(row => row.account_id === account.id) } } : account);
 }
 
-export async function cashflow(input: unknown, context?: FinanceContext, canReadImports = true) {
+export async function cashflow(input: unknown, context: FinanceContext, canReadImports = true) {
   const { from, to, currencyCode, view, accountIds } = periodInput.parse(input);
   if (from > to) throw new Error("From date is after to date");
-  const { supabase, workspace } = context ?? await requireWorkspace();
+  const { supabase, workspace } = context;
   function loadRows() {
     return allPages<{ id: string; parent_transaction_id: string; account_id: string; posted_on: string; version: number; amount_minor: string; currency_code: string; status: string; kind: string; review_reasons: string[] }>((start, end, count) => {
       const query = supabase.from("effective_transactions")
@@ -73,9 +71,9 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
   } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode, sourceCoverage, calculationEvidence: { rows } };
 }
 
-export async function searchTransactions(input: unknown, context?: FinanceContext) {
+export async function searchTransactions(input: unknown, context: FinanceContext) {
   const { query, from, to, minAmountMinor, maxAmountMinor, limit } = searchInput.parse(input);
-  const { supabase, workspace } = context ?? await requireWorkspace();
+  const { supabase, workspace } = context;
   const filtered = () => {
     let request = supabase.from("transactions")
       .select("id, account_id, category_id, merchant_id, posted_on, description, amount_minor::text, currency_code, status, kind, review_reasons, version")
@@ -124,13 +122,13 @@ export async function searchTransactions(input: unknown, context?: FinanceContex
   });
 }
 
-export async function listWealth(context?: FinanceContext) {
-  const { supabase, workspace } = context ?? await requireWorkspace();
+export async function listWealth(context: FinanceContext) {
+  const { supabase, workspace } = context;
   return wealthOverview(await loadWealthItems(supabase, workspace.id));
 }
 
-export async function listGoals(context?: FinanceContext) {
-  const { supabase, workspace } = context ?? await requireWorkspace();
+export async function listGoals(context: FinanceContext) {
+  const { supabase, workspace } = context;
   const { data, error } = await supabase.from("goals")
     .select("id, name, target_minor::text, currency_code, target_date, status, version")
     .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
@@ -138,9 +136,9 @@ export async function listGoals(context?: FinanceContext) {
   return data;
 }
 
-export async function evaluateForecast(input: unknown, context?: FinanceContext) {
+export async function evaluateForecast(input: unknown, context: FinanceContext) {
   const args = forecastInput.parse(input);
-  const plan = context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId, { canReadImports: context.settings.ai_data_scopes.includes("imports") }) : await evaluatePlan(args.horizonDays, args.scenarioId);
+  const plan = await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId, { canReadImports: context.settings.ai_data_scopes.includes("imports") });
   const assumptions = withInternalFunding(plan.input, (args.funding ?? []).map(funding => ({ ...funding, amountMinor: BigInt(funding.amountMinor) })));
   const forecast = forecastDaily(assumptions), available = availableToSpend(assumptions);
   const calculationEvidence = JSON.parse(JSON.stringify({ source: plan.calculationEvidence, input: assumptions, forecast, available }, (_key, value) => typeof value === "bigint" ? value.toString() : value));

@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { requireWorkspace } from "@/lib/auth";
 import { allPages } from "@/lib/all-pages";
 import { perClient } from "@/lib/per-client";
 import { investigate, investigationIdentity, investigationSchema, resolveInvestigation, type InvestigationEntities, type InvestigationRow, type InvestigationSpec } from "./investigation";
@@ -15,8 +14,8 @@ async function allRows<T>(query: (count?: "exact") => { range(from: number, to: 
   return result;
 }
 const counted = (count?: "exact") => count ? { count } : undefined;
-export async function loadInvestigationEntities(context?: Context): Promise<InvestigationEntities> {
-  const { supabase, workspace } = context ?? await requireWorkspace();
+export async function loadInvestigationEntities(context: Context): Promise<InvestigationEntities> {
+  const { supabase, workspace } = context;
   const [accounts, categories, merchants, labels] = await Promise.all([
     ...["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(count => supabase.from(table).select(table === "accounts" ? "id, name, version" : "id, name", counted(count)).eq("workspace_id", workspace.id).order("id"))),
     allRows<{ tags: string[]; event_name: string | null }>(count => supabase.from("transactions").select("tags, event_name", counted(count)).eq("workspace_id", workspace.id).order("id")),
@@ -72,8 +71,8 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
   return rows;
 }
 
-export async function loadInvestigationDataset(input: unknown, context?: Context, options: { canReadImports?: boolean; includeAll?: boolean; entities?: Promise<InvestigationEntities>; sourceVersions?: boolean } = {}) {
-  const ctx = context ?? await requireWorkspace();
+export async function loadInvestigationDataset(input: unknown, context: Context, options: { canReadImports?: boolean; includeAll?: boolean; entities?: Promise<InvestigationEntities>; sourceVersions?: boolean } = {}) {
+  const ctx = context;
   const entities = await (options.entities ?? loadInvestigationEntities(ctx));
   const spec = resolveInvestigation(input, entities);
   const canReadImports = options.canReadImports ?? true;
@@ -89,7 +88,7 @@ export async function loadInvestigationDataset(input: unknown, context?: Context
     rates: rates.map(r => ({ id: r.id, fromCurrency: r.from_currency, toCurrency: r.to_currency, rateText: r.rate_text, rateDate: r.rate_date, source: r.source })) },
     sourceRevision: investigationIdentity({ rows, metadata, rates, entities }) };
 }
-export async function runInvestigation(input: unknown, context?: Context, options: { canReadImports?: boolean; entities?: Promise<InvestigationEntities>; sourceVersions?: boolean } = {}) {
+export async function runInvestigation(input: unknown, context: Context, options: { canReadImports?: boolean; entities?: Promise<InvestigationEntities>; sourceVersions?: boolean } = {}) {
   const data = await loadInvestigationDataset(input, context, options);
   const result = investigate(data.spec, data.rows, data.context);
   return { ...result, sourceRevision: data.sourceRevision,
@@ -101,9 +100,9 @@ export const investigationScenarioSchema = z.object({ query: investigationSchema
   id: z.uuid(), amountMinor: minor.optional(), date: z.iso.date().optional(), categoryId: z.uuid().nullable().optional(),
 }).strict().refine(o => o.amountMinor !== undefined || o.date !== undefined || o.categoryId !== undefined, "Provide an override")).min(1).max(100) }).strict().refine(v => new Set(v.overrides.map(o => o.id)).size === v.overrides.length, "Duplicate override");
 
-export async function evaluateInvestigationScenario(input: unknown, context?: Context, options: { canReadImports?: boolean } = {}) {
+export async function evaluateInvestigationScenario(input: unknown, context: Context, options: { canReadImports?: boolean } = {}) {
   const args = investigationScenarioSchema.parse(input);
-  const ctx = context ?? await requireWorkspace();
+  const ctx = context;
   const entities = await loadInvestigationEntities(ctx);
   const spec = resolveInvestigation(args.query, entities);
   const dataset = await loadInvestigationDataset(spec, ctx, { ...options, includeAll: true });
@@ -124,9 +123,9 @@ export async function evaluateInvestigationScenario(input: unknown, context?: Co
 export const investigationDetailSchema = z.object({ kind: z.enum(["transaction", "recurring"]), id: z.uuid(),
   offset: z.number().int().min(0).max(MAX_ROWS).default(0), size: z.number().int().min(1).max(100).default(25) }).strict();
 
-export async function investigationDetail(input: unknown, context?: Context, options: { canReadImports?: boolean } = {}) {
+export async function investigationDetail(input: unknown, context: Context, options: { canReadImports?: boolean } = {}) {
   const args = investigationDetailSchema.parse(input);
-  const ctx = context ?? await requireWorkspace();
+  const ctx = context;
   if (args.kind === "transaction") {
     const result = await ctx.supabase.from("transactions").select("id, account_id, posted_on, description, amount_minor::text, currency_code, status, kind, category_id, merchant_id, tags, event_name, review_reasons, version, transfer_id, refund_of_id")
       .eq("workspace_id", ctx.workspace.id).eq("id", args.id).maybeSingle();

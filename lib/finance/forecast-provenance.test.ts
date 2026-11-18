@@ -4,11 +4,11 @@ import { toolResultReceipt, toolSourceVersion } from "./tool-evidence";
 import { evidenceFreshness } from "./evidence-receipts";
 import { loadFinancialReviewEvidence } from "./review-loader";
 import { compareReviewEvidence, reviewFreshness } from "./review-freshness";
-import { requireWorkspace } from "@/lib/auth";
-import { settingsSchema, type AiDataScope } from "@/lib/settings";
+import type { Db } from "@/lib/database";
+import { aiScopeGuard, settingsSchema, type AiDataScope } from "@/lib/settings";
 
 const fixture = vi.hoisted(() => ({ rate: "1", snapshotVersion: 1, revision: 1, revisionTable: "", reads: [] as string[] }));
-vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
+const requireWorkspace = async () => ({
   workspace: { id: "00000000-0000-4000-8000-000000000001", display_currency: "EUR", timezone: "UTC" },
   settings: settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", "planning"] }),
   supabase: { from: (table: string) => {
@@ -24,8 +24,8 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
       maybeSingle: async () => ({ data: null, error: null }),
       single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
     return query;
-  } },
-}) }));
+  } } as unknown as Db,
+});
 beforeEach(() => { fixture.rate = "1"; fixture.snapshotVersion = 1; fixture.revision = 1; fixture.revisionTable = ""; fixture.reads = []; vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z")); });
 afterEach(() => vi.useRealTimers());
 const receiptContext = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T12:00:00Z", timezone: "UTC" };
@@ -72,7 +72,7 @@ it.each([false, true])("keeps source-only balance revisions stale in saved summa
   expect(current.accounts[0].balanceMinor).toBe(first.accounts[0].balanceMinor);
   expect(toolSourceVersion(current)).not.toBe(toolSourceVersion(first));
   expect(compareReviewEvidence(saved, current).status).toBe("stale");
-  expect((await reviewFreshness(supabase, workspace, saved, settings, new Date())).status).toBe("stale");
+  expect((await reviewFreshness(supabase, workspace, saved, settings, aiScopeGuard(settings), new Date())).status).toBe("stale");
   expect(saved.accounts).toEqual(first.accounts);
   expect(fixture.reads).not.toContain("imports");
   expect(fixture.reads).not.toContain("source_transactions");
