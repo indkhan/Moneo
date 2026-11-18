@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7QR1H38Z2Y4DKRCEM65YFM2",
+  "session_id": "3343d0a6-17d6-4f8c-a774-97b85c72b421",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T16:33:43.7556582Z",
+  "branch": "t3/issue-234-env-access",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "eslint.config.mjs",
+    "lib/ai/speech/model-store.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "954bfb13dbd2",
+  "checkpoint_transcript_start": 403,
+  "transcript_lines_at_start": 403,
+  "compact_transcript_start": 52,
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 18841,
+    "cache_read_tokens": 5078177,
+    "output_tokens": 8830,
+    "api_call_count": 29
+  },
+  "redaction": {
+    "replacements": 12,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 8,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 4,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
