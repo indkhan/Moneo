@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bo85306ck</task-id>
+<tool-use-id>toolu_011wa4JkuGEC71wez2J6RC9J</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cd99c22620f0001f\dff5880a-0676-4e12-a7b1-79085b255c21\tasks\bo85306ck.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for both Desktop runs to finish" completed (exit code 0)</summary>
+</task-notification>
