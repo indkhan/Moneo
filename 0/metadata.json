@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7R5GZMT2YAM2W7Y2ZKSH29B",
+  "session_id": "30c8cba7-c8e7-4ff1-81e2-4c8d73cda3b0",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T20:28:19.1094543Z",
+  "branch": "t3/issue-287-data-trace",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "scripts/desktop/build.mjs"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "4efe50b259ff",
+  "checkpoint_transcript_start": 73,
+  "transcript_lines_at_start": 73,
+  "compact_transcript_start": 7,
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 10297,
+    "cache_read_tokens": 954199,
+    "output_tokens": 5206,
+    "api_call_count": 13
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
