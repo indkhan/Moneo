@@ -44,7 +44,7 @@ module.exports = {
     artifactName: "Moneo-Setup-${version}-${arch}.${ext}",
   },
   mac: {
-    target: [{ target: "dmg", arch: ["arm64", "x64"] }, { target: "zip", arch: ["arm64", "x64"] }],
+    target: ["dmg", "zip"],
     category: "public.app-category.finance",
     icon: "icons/icon.png",
     hardenedRuntime: true,
