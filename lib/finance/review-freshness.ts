@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
 import type { Db } from "@/lib/database";
-import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
+import type { WorkspaceSettings } from "@/lib/settings";
 import { loadFinancialReviewEvidence } from "./review-loader";
 import {readEvidenceView} from "./evidence-view";
-import type {requireWorkspace} from "@/lib/auth";
 import {z} from "zod";
 
+const COMPARISON_SCOPES = ["accounts", "transactions"] as const;
+
+type EvidenceViewContext = Parameters<typeof readEvidenceView>[0];
 export type ReviewFreshness = { status: "current" | "stale" | "unknown"; reason: string };
+const NOT_COMPARABLE: ReviewFreshness = { status: "unknown", reason: "Current evidence could not be compared. Check data access and financial inputs before relying on this historical review." };
 
 function fingerprint(value: unknown): string {
   function normalize(item: unknown): unknown {
@@ -26,13 +29,12 @@ export function compareReviewEvidence(saved: unknown, current: unknown): ReviewF
     : { status: "stale", reason: "Financial evidence, permissions or the review period have changed. Run a new review for current findings." };
 }
 
-export async function reviewFreshness(db: Db, workspace: { id: string; display_currency: string; timezone: string }, saved: unknown, suppliedSettings?: WorkspaceSettings): Promise<ReviewFreshness> {
+export async function reviewFreshness(db: Db, workspace: { id: string; display_currency: string; timezone: string }, saved: unknown, settings: WorkspaceSettings, now: Date): Promise<ReviewFreshness> {
   try {
-    const settings = suppliedSettings ?? await loadWorkspaceSettings(db, workspace.id);
-    requireAiScope(settings, "accounts", "transactions");
+    if (!COMPARISON_SCOPES.every(scope => settings.ai_data_scopes.includes(scope))) return NOT_COMPARABLE;
     if (saved && typeof saved === "object" && "reviewInvestigation" in saved) {
       const metadata = z.object({verification: z.object({receiptIds: z.array(z.uuid()).min(1).max(12)})}).parse(saved);
-      const context = {supabase: db, workspace, settings} as Awaited<ReturnType<typeof requireWorkspace>>;
+      const context = {supabase: db, workspace, settings} as EvidenceViewContext;
       const statuses: ReviewFreshness["status"][] = [];
       for (const id of new Set(metadata.verification.receiptIds)) {
         const view = await readEvidenceView(context, id);
@@ -42,8 +44,8 @@ export async function reviewFreshness(db: Db, workspace: { id: string; display_c
       if (statuses.includes("unknown")) return {status: "unknown", reason: "Some retained query evidence could not be checked with current access."};
       return {status: "current", reason: "Current source versions and calculation rules match each retained dated query."};
     }
-    return compareReviewEvidence(saved, await loadFinancialReviewEvidence(db, workspace, settings));
+    return compareReviewEvidence(saved, await loadFinancialReviewEvidence(db, workspace, {timezone: settings.timezone, scopes: settings.ai_data_scopes, now}));
   } catch {
-    return { status: "unknown", reason: "Current evidence could not be compared. Check data access and financial inputs before relying on this historical review." };
+    return NOT_COMPARABLE;
   }
 }

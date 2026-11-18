@@ -21,7 +21,7 @@ it("ignores evaluation-clock and object-key order changes but preserves exact da
 
 it("cannot claim freshness or read financial evidence when current scopes are revoked", async () => {
   fixture.load.mockClear();
-  const result = await reviewFreshness({} as SupabaseClient, { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, evidence, settingsSchema.parse({ ai_data_scopes: [] }));
+  const result = await reviewFreshness({} as SupabaseClient, { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, evidence, settingsSchema.parse({ ai_data_scopes: [] }), new Date());
   expect(result.status).toBe("unknown");
   expect(fixture.load).not.toHaveBeenCalled();
 });
@@ -33,8 +33,9 @@ it("compares verified snapshots without capture metadata while detecting source 
   expect(compareReviewEvidence(saved, { ...current, queryInvestigation: { ...current.queryInvestigation, sourceRevision: "v2" } }).status).toBe("stale");
 });
 
-it("preserves a historical review with unknown freshness when settings cannot be loaded", async () => {
-  const result = await reviewFreshness({ from: () => { throw new Error("database unavailable"); } } as unknown as SupabaseClient, { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, evidence);
+it("preserves a historical review with unknown freshness when current evidence cannot be loaded", async () => {
+  fixture.load.mockRejectedValueOnce(new Error("database unavailable"));
+  const result = await reviewFreshness({} as SupabaseClient, { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, evidence, settingsSchema.parse({}), new Date());
   expect(result.status).toBe("unknown");
 });
 it("checks each retained scoped receipt rather than substituting a rolling review window", async () => {
@@ -42,7 +43,7 @@ it("checks each retained scoped receipt rather than substituting a rolling revie
   const ids = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
   const saved = {reviewInvestigation: {request: {question: "Explain September"}}, verification: {receiptIds: ids}};
   fixture.view.mockResolvedValue({freshness: {status: "current", reason: "Exact query unchanged"}});
-  const check = () => reviewFreshness({} as SupabaseClient, {id: "w", display_currency: "EUR", timezone: "UTC"}, saved, settingsSchema.parse({}));
+  const check = () => reviewFreshness({} as SupabaseClient, {id: "w", display_currency: "EUR", timezone: "UTC"}, saved, settingsSchema.parse({}), new Date());
   expect((await check()).status).toBe("current");
   expect(fixture.view.mock.calls.map(call => call[1])).toEqual(ids);
   expect(fixture.load).not.toHaveBeenCalled();

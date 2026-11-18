@@ -22,7 +22,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
   }
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const { supabase, workspace } = context;
+  const { supabase, workspace, settings } = context;
   const { data: job, error: jobError } = await supabase
     .from("background_jobs")
     .select("id, status, stage, error, created_at, updated_at")
@@ -52,7 +52,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
         .maybeSingle()
     : { data: null, error: null };
   const evidence = analysis?.evidence as { period?: { from?: string; to?: string } } | null;
-  const freshness = analysis ? await reviewFreshness(supabase, workspace, analysis.evidence) : null;
+  const freshness = analysis ? await reviewFreshness(supabase, workspace, analysis.evidence, settings, new Date()) : null;
   const when = (iso: string) => new Date(iso).toLocaleString(workspace.locale, { timeZone: workspace.timezone });
   const STATE: Record<string, string> = { queued: "Waiting to start", running: "In progress", completed: "Finished", failed: "Did not finish", canceled: "Stopped" };
 

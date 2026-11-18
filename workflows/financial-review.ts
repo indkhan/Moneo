@@ -166,7 +166,8 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
     }
     const workspace = await db.from("workspaces").select("id, display_currency").eq("id", workspaceId).single();
     if (workspace.error) throw workspace.error;
-    const raw = await loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, settings);
+    reviewScopes(settings);
+    const raw = await loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, { timezone: settings.timezone, scopes: settings.ai_data_scopes, now: new Date() });
     const captureContext = { supabase: db, workspace: { ...workspace.data, id: workspaceId, timezone: settings.timezone }, settings } as Awaited<ReturnType<typeof requireWorkspace>>;
     const receipts = await captureToolEvidence("reviews_investigate", {}, raw, captureContext, db);
     const summary = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== "calculationEvidence")) as Omit<typeof raw, "calculationEvidence">;
