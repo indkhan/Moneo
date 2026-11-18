@@ -1,6 +1,7 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestQueryBuilder, SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Json, Database as Generated } from "@/lib/database.types";
+import type { SettlementReceipt } from "@/lib/finance/recurring-occurrences";
 
 export const jsonObject = z.record(z.string(), z.unknown());
 
@@ -15,14 +16,16 @@ type JsonReturns = {
   create_manual_transaction: { id: string | null };
 };
 
+type JsonColumns = { recurring_occurrence_settlements: { receipt: SettlementReceipt } };
+type RowFields<Table, Row> = Table extends keyof JsonColumns ? Omit<Row, keyof JsonColumns[Table]> & JsonColumns[Table] : Row;
 type FilledByTrigger = { spending_plans: "rollover_from" };
 type Optional<Fields, Keys> = Omit<Fields, Extract<keyof Fields, Keys>> & { [Key in Extract<keyof Fields, Keys>]?: Fields[Key] };
 type InsertFields<Table, Insert> = Table extends keyof FilledByTrigger ? Optional<WireFields<Insert>, FilledByTrigger[Table]> : WireFields<Insert>;
 
 type WithWireTypes<Schema> = {
   [Section in keyof Schema]: Section extends "Tables"
-    ? { [Table in keyof Schema[Section]]: Schema[Section][Table] extends { Insert: infer Insert; Update: infer Update }
-        ? Omit<Schema[Section][Table], "Insert" | "Update"> & { Insert: InsertFields<Table, Insert>; Update: WireFields<Update> }
+    ? { [Table in keyof Schema[Section]]: Schema[Section][Table] extends { Row: infer Row; Insert: infer Insert; Update: infer Update }
+        ? Omit<Schema[Section][Table], "Row" | "Insert" | "Update"> & { Row: RowFields<Table, Row>; Insert: InsertFields<Table, Insert>; Update: WireFields<Update> }
         : Schema[Section][Table] }
     : Section extends "Functions"
       ? { [Fn in keyof Schema[Section]]: Schema[Section][Fn] extends { Args: infer Args }
@@ -34,3 +37,13 @@ type WithWireTypes<Schema> = {
 export type Database = { public: WithWireTypes<Generated["public"]> };
 export type Db = SupabaseClient<Database>;
 export type { Json };
+
+type Schema = Database["public"];
+type Relations = Schema["Tables"] & Schema["Views"];
+type ReadRpc = "data_query" | "similar_transaction_ids";
+type ReadonlyClient = SupabaseClient<{ public: Omit<Schema, "Functions"> & { Functions: Pick<Schema["Functions"], ReadRpc> } }>;
+export type ReadonlyDb = {
+  from<Name extends string & keyof Relations>(relation: Name): Pick<PostgrestQueryBuilder<{ PostgrestVersion: "12" }, Schema, Relations[Name], Name>, "select">;
+  rpc: ReadonlyClient["rpc"];
+};
+export type WorkspaceRelation = { [Name in keyof Relations]: Relations[Name] extends { Row: { workspace_id: string | null } } ? Name : never }[keyof Relations] & string;
