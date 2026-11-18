@@ -1,3 +1,4 @@
+import type { ReadonlyDb } from "@/lib/database";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recurringCadences } from "@/lib/finance/cadences";
@@ -12,6 +13,7 @@ import { loadSuggestions, olderRuns, priceChanges, seriesDecision } from "@/lib/
 const supersededRunsAreAlreadyHiddenFromPending = () => undefined;
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
+type ReadonlyContext = Omit<Context, "supabase"> & { supabase: ReadonlyDb };
 
 export const recurringInputSchema = z.object({
   action: z.enum(["add", "change", "remove", "confirm"]).describe("add a new schedule, change or remove an existing one, or confirm a detected suggestion"),
@@ -35,7 +37,7 @@ export const recurringEditSchema = z.discriminatedUnion("action", [
 
 type Schedule = { id: string; name: string; amount_minor: string; currency_code: string; cadence: string; starts_on: string; schedule_anchor_on: string | null; account_id: string | null; category: { name: string } | null };
 
-async function activeSchedules({ supabase, workspace }: Context) {
+async function activeSchedules({ supabase, workspace }: ReadonlyContext) {
   const { data, error } = await supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, account_id, category:categories(name)")
     .eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", recurringCadences).order("name").limit(500).overrideTypes<Schedule[], { merge: false }>();
   if (error) throw new Error(error.message);
@@ -51,7 +53,7 @@ function pick<T extends { id: string; name: string }>(items: T[], target: string
   return found[0];
 }
 
-export async function listRecurring(context: Context) {
+export async function listRecurring(context: ReadonlyContext) {
   const today = calendarDate(new Date(), context.workspace.timezone);
   const money = (minor: string | bigint, currency: string) => formatMoney(minor, currency, context.workspace.locale);
   const [schedules, suggestions] = await Promise.all([activeSchedules(context), loadSuggestions(context.supabase, context.workspace)]);

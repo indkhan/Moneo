@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Db } from "@/lib/database";
+import type { Db, ReadonlyDb } from "@/lib/database";
 import { z } from "zod";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
@@ -153,7 +153,7 @@ export function ownNameSuggestions(rows: TransferCandidate[], seen: TransferCand
 
 const PAGE = 1000, MAX_ROWS = 5000;
 
-export async function loadOwnAccounts(db: Db, workspaceId: string): Promise<OwnAccounts> {
+export async function loadOwnAccounts(db: ReadonlyDb, workspaceId: string): Promise<OwnAccounts> {
   const [identifiers, bank, accounts] = await Promise.all([
     db.from("own_account_identifiers").select("id, account_id, iban, name_key").eq("workspace_id", workspaceId),
     db.from("bank_connection_accounts").select("iban, account_name, currency_code").eq("workspace_id", workspaceId).not("iban", "is", null),
@@ -179,7 +179,7 @@ const counterpartyOf = (row: unknown) => {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 };
 
-async function loadRows(db: Db, workspaceId: string, kind: "ordinary" | "transfer") {
+async function loadRows(db: ReadonlyDb, workspaceId: string, kind: "ordinary" | "transfer") {
   const rows: TransferCandidate[] = [];
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
     let query = db.from("transactions")
@@ -202,7 +202,7 @@ async function loadRows(db: Db, workspaceId: string, kind: "ordinary" | "transfe
 
 export const loadTransferCandidates = (db: Db, workspaceId: string) => loadRows(db, workspaceId, "ordinary");
 
-export async function loadTransferLegs(db: Db, workspaceId: string): Promise<BankLeg[]> {
+export async function loadTransferLegs(db: ReadonlyDb, workspaceId: string): Promise<BankLeg[]> {
   const [rows, own, identifiers] = await Promise.all([loadRows(db, workspaceId, "transfer"), loadOwnAccounts(db, workspaceId),
     db.from("own_account_identifiers").select("iban, label").eq("workspace_id", workspaceId)]);
   if (identifiers.error) throw new Error(identifiers.error.message);

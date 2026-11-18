@@ -1,7 +1,7 @@
-import type { Db } from "@/lib/database";
+import type { ReadonlyDb } from "@/lib/database";
 import type { ExpenditureOptions, ExpenditureRate } from "./expenditure";
 
-export async function loadExpenditureRates(db: Db, workspaceId: string, options: Pick<ExpenditureOptions, "currencyCode" | "from" | "to">): Promise<ExpenditureRate[]> {
+export async function loadExpenditureRates(db: ReadonlyDb, workspaceId: string, options: Pick<ExpenditureOptions, "currencyCode" | "from" | "to">): Promise<ExpenditureRate[]> {
   const rates: ExpenditureRate[] = [];
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await db.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source")

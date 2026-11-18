@@ -1,4 +1,4 @@
-import type { Db } from "@/lib/database";
+import type { Db, ReadonlyDb } from "@/lib/database";
 
 const ok = <T,>(result: { data: T | null; error: { message: string } | null }): T => { if (result.error) throw new Error(result.error.message); return result.data as T; };
 const COLUMNS = "id, description, amount_minor::text, currency_code, posted_on, category_id, merchant_id, identity_id, organized_by, ai_confidence, ai_reason, organize_op_id";
@@ -11,7 +11,7 @@ export const PAGE_SIZE = 50;
 export type Row = { id: string; description: string; amount_minor: string; currency_code: string; posted_on: string; category_id: string | null; merchant_id: string | null;
   identity_id: string | null; organized_by: string | null; ai_confidence: string | null; ai_reason: string | null; organize_op_id: string | null };
 
-export async function loadNames(db: Db, workspaceId: string) {
+export async function loadNames(db: ReadonlyDb, workspaceId: string) {
   const [categories, merchants] = await Promise.all([
     db.from("categories").select("id, name").eq("workspace_id", workspaceId).order("name").limit(501),
     db.from("merchants").select("id, name").eq("workspace_id", workspaceId).order("name").limit(501),
@@ -40,7 +40,7 @@ export async function loadRecentAnswers(db: Db, workspaceId: string, limit = 5):
 export type Decision = Row & { source: Source; opCreatedAt: string | null };
 export type RunGroup = { key: string; createdAt: string; opIds: string[] };
 
-export async function loadDecisions(db: Db, workspaceId: string, options: { source?: Source; page?: number; pageSize?: number } = {}) {
+export async function loadDecisions(db: ReadonlyDb, workspaceId: string, options: { source?: Source; page?: number; pageSize?: number } = {}) {
   const pageSize = options.pageSize ?? PAGE_SIZE, offset = (options.page ?? 0) * pageSize;
   const { data, error, count } = await db.from("transactions").select(COLUMNS, { count: "exact" }).eq("workspace_id", workspaceId).in("organized_by", options.source ? [options.source] : [...SOURCES])
     .order("posted_on", { ascending: false }).order("id", { ascending: false }).range(offset, offset + pageSize - 1);
@@ -69,7 +69,7 @@ export async function loadRunGroups(db: Db, workspaceId: string, limit = 5): Pro
 
 export type MemoryEntry = { id: string; identityId: string; identityName: string; categoryId: string | null; merchantId: string | null; purpose: string | null; source: string; covered: number; examples: string[] };
 
-export async function loadMemory(db: Db, workspaceId: string): Promise<MemoryEntry[]> {
+export async function loadMemory(db: ReadonlyDb, workspaceId: string): Promise<MemoryEntry[]> {
   const memory = ok(await db.from("organize_memory").select("id, identity_id, category_id, merchant_id, purpose, source, organize_identities(display_name)").eq("workspace_id", workspaceId)
     .order("updated_at", { ascending: false }).limit(500));
   if (!memory.length) return [];

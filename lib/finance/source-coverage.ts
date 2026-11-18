@@ -1,5 +1,5 @@
+import type { ReadonlyDb, WorkspaceRelation } from "@/lib/database";
 import { perClient } from "@/lib/per-client";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages } from "@/lib/all-pages";
 
 export type CoverageScope = { from: string; to: string; currencyCode?: string; accountId?: string; accountIds?: string[]; ledgerBasis?: "cashflow" | "balance_activity"; recordBasis?: "manual_wealth" | "manual_goals" };
@@ -76,15 +76,15 @@ export function sourceCoverageNeedsReview(coverage: SourceCoverage): boolean {
     Object.keys(coverage.importStatuses ?? {}).some(status => !["completed", "undone"].includes(status));
 }
 
-export async function loadSourceCoverage(db: SupabaseClient, workspaceId: string, scope: CoverageScope,
+export async function loadSourceCoverage(db: ReadonlyDb, workspaceId: string, scope: CoverageScope,
   rows: EffectiveRow[], canReadImports: boolean): Promise<SourceCoverage> {
   const metadata = await loadSourceCoverageMetadata(db, workspaceId, canReadImports);
   return buildSourceCoverage(scope, rows, metadata?.imports, metadata?.sources);
 }
 
-export const loadSourceCoverageMetadata = perClient(async (db: SupabaseClient, workspaceId: string, canReadImports: boolean) => {
+export const loadSourceCoverageMetadata = perClient(async (db: ReadonlyDb, workspaceId: string, canReadImports: boolean) => {
   if (!canReadImports) return undefined;
-  const all = <T>(table: string, columns: string) =>
+  const all = <T>(table: WorkspaceRelation, columns: string) =>
     allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));
   const [imports, sources] = await Promise.all([
     all<ImportRow>("imports", "id, status, total_rows"),

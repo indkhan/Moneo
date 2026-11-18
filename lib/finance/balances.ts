@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReadonlyDb, WorkspaceRelation } from "@/lib/database";
 import { allPages } from "@/lib/all-pages";
 import { calendarDate } from "./calendar";
 import { buildSourceCoverage, type loadSourceCoverageMetadata } from "./source-coverage";
@@ -129,10 +129,10 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
   }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources) }));
 }
 
-export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: string, asOf: string): Promise<{
+export async function loadBalanceEvidence(db: ReadonlyDb, workspaceId: string, asOf: string): Promise<{
   accounts: BalanceAccount[]; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; asOf: string;
 }> {
-  const rows = <T>(table: string, columns: string) =>
+  const rows = <T>(table: WorkspaceRelation, columns: string) =>
     allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));
   const [accounts, snapshots, ledger, fees, resolutions] = await Promise.all([
     rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at, version"),

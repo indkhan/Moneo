@@ -1,9 +1,9 @@
+import type { ReadonlyDb } from "@/lib/database";
 import { accountLiquidity, availableToSpend, forecastDaily, type ForecastEvent, type ForecastInput } from "./calculations";
 import { convertFx } from "./fx";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
 import { calendarDate } from "./calendar";
 import { buildDebtForecast, loadWealthItems } from "./wealth";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultForecastPreferences, forecastCases, forecastPreferencesSchema } from "./preferences";
 import { recurringDateTolerance } from "./recurring";
 import { reconcileOccurrence, settlementPosting, type OccurrenceSettlement } from "./recurring-occurrences";
@@ -53,7 +53,7 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
   return events;
 }
 
-export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, horizonDays = 30, scenarioId?: string,
+export async function evaluatePlanForWorkspace(supabase: ReadonlyDb, workspace: { id: string; display_currency: string; timezone: string }, horizonDays = 30, scenarioId?: string,
   evidence?: { balanceEvidence?: ReturnType<typeof loadBalanceEvidence>; wealth?: ReturnType<typeof loadWealthItems>; canReadImports?: boolean; sourceMetadata?: ReturnType<typeof loadSourceCoverageMetadata> }) {
   if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 365) throw new Error("Invalid forecast horizon");
   async function allRows<T>(query: { range(from: number, to: number): PromiseLike<{ data: T[] | null; error: unknown }> }) {

@@ -1,4 +1,4 @@
-import type { Db } from "@/lib/database";
+import type { ReadonlyDb } from "@/lib/database";
 import { allPages } from "@/lib/all-pages";
 import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, loadScalableHistory, loadWealthEvents, monthEnds, netWorth, netWorthSeries, valuationHistory, type NetWorthPoint } from "@/lib/finance/net-worth";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
@@ -13,7 +13,7 @@ import { loadWealthItems, wealthEvidence } from "./wealth";
 
 type Workspace = { id: string; timezone: string };
 
-export async function loadScalableTransfers(db: Db, workspaceId: string) {
+export async function loadScalableTransfers(db: ReadonlyDb, workspaceId: string) {
   const [rows, connections] = await Promise.all([
     allPages<BrokerTransfer>((from, to) => db.from("scalable_transfers").select("provider_id, type, amount_minor::text, currency_code, occurred_at, on_date, status, is_cancellation, returns_provider_id, description").eq("workspace_id", workspaceId).order("provider_id").range(from, to) as never),
     db.from("scalable_connections").select("transfers_backfilled_at").eq("workspace_id", workspaceId).not("transfers_backfilled_at", "is", null).limit(1),
@@ -22,7 +22,7 @@ export async function loadScalableTransfers(db: Db, workspaceId: string) {
   return { rows, complete: (connections.data ?? []).length > 0 };
 }
 
-export async function loadNetWorthEvidence(db: Db, workspace: Workspace, given: { balances?: PromiseLike<Awaited<ReturnType<typeof loadBalanceEvidence>>>; items?: PromiseLike<Awaited<ReturnType<typeof loadWealthItems>>>; events?: PromiseLike<Awaited<ReturnType<typeof loadWealthEvents>>> } = {}) {
+export async function loadNetWorthEvidence(db: ReadonlyDb, workspace: Workspace, given: { balances?: PromiseLike<Awaited<ReturnType<typeof loadBalanceEvidence>>>; items?: PromiseLike<Awaited<ReturnType<typeof loadWealthItems>>>; events?: PromiseLike<Awaited<ReturnType<typeof loadWealthEvents>>> } = {}) {
   const [balances, items, events, scalable, transfers, legs] = await Promise.all([
     given.balances ?? loadBalanceEvidence(db, workspace.id, new Date().toISOString()), given.items ?? loadWealthItems(db, workspace.id, true), given.events ?? loadWealthEvents(db, workspace.id),
     loadScalableHistory(db, workspace.id), loadScalableTransfers(db, workspace.id), loadTransferLegs(db, workspace.id),
@@ -106,7 +106,7 @@ export function describeMonthSplit(split: NonNullable<ReturnType<NetWorthModel["
 
 type Rate = { from_currency: string; rate_text: string; rate_date: string; source: string };
 
-export async function loadFxRates(db: Db, workspaceId: string, displayCurrency: string): Promise<Rate[]> {
+export async function loadFxRates(db: ReadonlyDb, workspaceId: string, displayCurrency: string): Promise<Rate[]> {
   const { data, error } = await db.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source").eq("workspace_id", workspaceId).eq("to_currency", displayCurrency).order("rate_date", { ascending: false }).order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as Rate[];
@@ -140,7 +140,7 @@ export const netWorthInput = z.object({
   days: z.number().int().min(1).max(366).optional().describe("Also return each of the last N days, for a trend or chart"),
 }).strict();
 
-type Reader = { supabase: Db; workspace: { id: string; timezone: string; display_currency: string; locale: string } };
+type Reader = { supabase: ReadonlyDb; workspace: { id: string; timezone: string; display_currency: string; locale: string } };
 
 export async function readNetWorth({ supabase, workspace }: Reader, input: unknown) {
   const { date, days } = netWorthInput.parse(input);
