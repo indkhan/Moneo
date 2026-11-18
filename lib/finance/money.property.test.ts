@@ -3,6 +3,7 @@ import { checkProperty, fc } from "@/lib/property-check";
 import { formatInputAmount, formatMoney, minorFromMajor } from "./format";
 import { convertFx } from "./fx";
 import { netWorth, summarizeCashflow, type CashflowTransaction } from "./calculations";
+import { defined } from "@/lib/testing";
 
 const BEYOND_SAFE = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
 const magnitude = fc.oneof(
@@ -20,8 +21,8 @@ describe("exact amounts beyond Number.MAX_SAFE_INTEGER", () => {
       const cut = Math.min(split, balances.length);
       expect(netWorth(balances, "EUR")).toBe(exact);
       expect(netWorth([...balances].reverse(), "EUR")).toBe(exact);
-      expect(netWorth(balances.slice(0, cut), "EUR")! + netWorth(balances.slice(cut), "EUR")!).toBe(exact);
-      expect(netWorth([...balances, ...balances.map(balance => ({ ...balance, amountMinor: -balance.amountMinor! }))], "EUR")).toBe(0n);
+      expect(defined(netWorth(balances.slice(0, cut), "EUR")) + defined(netWorth(balances.slice(cut), "EUR"))).toBe(exact);
+      expect(netWorth([...balances, ...balances.map(balance => ({ ...balance, amountMinor: -defined(balance.amountMinor) }))], "EUR")).toBe(0n);
     }));
   });
 
@@ -35,10 +36,10 @@ describe("exact amounts beyond Number.MAX_SAFE_INTEGER", () => {
         ...countedRows.map(row => ({ amountMinor: row.amountMinor, currencyCode: "EUR", status: "posted" as const, kind: row.kind })),
       ];
       const expectedNet = countedRows.reduce((total, row) => total + row.amountMinor, 0n);
-      const summary = summarizeCashflow(transactions, "EUR")!;
+      const summary = defined(summarizeCashflow(transactions, "EUR"));
       expect(summary.netMinor).toBe(expectedNet);
       expect(summary.incomeMinor - summary.spendingMinor).toBe(expectedNet);
-      expect(summarizeCashflow([...transactions].reverse(), "EUR")!.netMinor).toBe(expectedNet);
+      expect(defined(summarizeCashflow([...transactions].reverse(), "EUR")).netMinor).toBe(expectedNet);
     }));
   });
 
@@ -70,7 +71,7 @@ describe("currency decimals", () => {
     checkProperty("decimals follow the currency", fc.property(amount, currencies, (value, { code, digits }) => {
       expect(readBack(formatInputAmount(value, code), digits)).toBe(value);
       const shown = formatMoney(value, code);
-      const [, sign, text] = /^(-?)[A-Z]{3} (.+)$/.exec(shown)!;
+      const [, sign, text] = defined(/^(-?)[A-Z]{3} (.+)$/.exec(shown));
       expect(sign === "-").toBe(value < 0n);
       expect(readBack(`${sign}${text}`, digits)).toBe(value);
     }));

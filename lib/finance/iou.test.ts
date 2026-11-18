@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { iouName, iouRecord, loanPayouts, parseIouName, repaymentMatches, type IouItem } from "./iou";
+import { defined } from "@/lib/testing";
 
 const lent: IouItem = { id: "i1", kind: "asset", name: "Lent to Mohammed", currency_code: "EUR", amount_minor: "50000", as_of: "2026-10-01", version: 1, removed_at: null, linked_account_id: null };
 const owed: IouItem = { id: "i2", kind: "debt", name: "Owed to Sara", currency_code: "EUR", amount_minor: "-20000", as_of: "2026-10-01", version: 1, removed_at: null, linked_account_id: null };
@@ -19,7 +20,7 @@ describe("iou naming and records", () => {
 describe("repaymentMatches", () => {
   it("matches money in from the borrower, partial or full", () => {
     expect(repaymentMatches([lent], [txn("t1", "SEPA Credit MOHAMMED ALI rent", "48000")])).toEqual([{ itemId: "i1", transactionId: "t1", appliedMinor: "48000", person: "Mohammed", direction: "lent", owedMinor: "50000" }]);
-    expect(repaymentMatches([lent], [txn("t1", "Mohammed", "70000")])[0].appliedMinor).toBe("50000");
+    expect(defined(repaymentMatches([lent], [txn("t1", "Mohammed", "70000")])[0]).appliedMinor).toBe("50000");
   });
   it("matches money out to the lender for a debt", () => {
     expect(repaymentMatches([owed], [txn("t2", "Transfer to sara", "-10000")])[0]).toMatchObject({ itemId: "i2", appliedMinor: "10000" });
@@ -30,7 +31,7 @@ describe("repaymentMatches", () => {
   });
   it("sends a transaction to the closest open IOU", () => {
     const second = { ...lent, id: "i3", amount_minor: "10000" };
-    expect(repaymentMatches([lent, second], [txn("t", "Mohammed", "9500")])[0].itemId).toBe("i3");
+    expect(defined(repaymentMatches([lent, second], [txn("t", "Mohammed", "9500")])[0]).itemId).toBe("i3");
   });
   it("skips removed and settled items", () => {
     expect(repaymentMatches([{ ...lent, removed_at: "2026-10-05T00:00:00Z" }, { ...owed, amount_minor: "0" }], [txn("t", "Mohammed", "100"), txn("u", "Sara", "-100")])).toEqual([]);

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evidenceFingerprint, createEvidenceReceipt, evidenceFreshness, persistEvidenceReceipt, loadEvidenceReceipt } from "./evidence-receipts";
+import { defined } from "@/lib/testing";
 
 const workspaceId = "00000000-0000-4000-8000-000000000001";
 const input = { workspaceId, fetchedAt: "2026-10-01T00:00:00Z", calculationVersion: "cashflow-v1", sourceVersion: "v1", query: { type: "cashflow", from: "2026-09-01", to: "2026-09-30" }, scopes: ["transactions" as const],
@@ -11,9 +12,9 @@ describe("immutable financial query receipts", () => {
   it("derives stable owned IDs and actual source links, preserving all query inputs and versions", () => {
     const saved = createEvidenceReceipt(input);
     expect(saved.id).toMatch(/^[a-f0-9-]{36}$/);
-    expect(saved.sources[0].href).toBe(`/money/transactions?transaction=${input.sources[0].id}`);
+    expect(defined(saved.sources[0]).href).toBe(`/money/transactions?transaction=${defined(input.sources[0]).id}`);
     expect(saved.query).toEqual(input.query);
-    expect(saved.sources[0].record).toEqual(input.sources[0].record);
+    expect(defined(saved.sources[0]).record).toEqual(defined(input.sources[0]).record);
     expect(createEvidenceReceipt({ ...input, fetchedAt: "2026-10-02T00:00:00Z" }).id).toBe(saved.id);
     expect(createEvidenceReceipt({ ...input, workspaceId: "00000000-0000-4000-8000-000000000004" }).id).not.toBe(saved.id);
     expect(createEvidenceReceipt({ ...input, sourceVersion: "v2" }).id).not.toBe(saved.id);
@@ -31,7 +32,7 @@ describe("immutable financial query receipts", () => {
     expect(evidenceFreshness(saved, saved.sourceVersion, "cashflow-v2").status).toBe("stale");
     expect(evidenceFreshness(saved, null, saved.calculationVersion).status).toBe("unknown");
     for (const source of [{ ...input.sources[0], version: "v2" }, { ...input.sources[0], record: { amount_minor: "-26", review_reasons: [] } }]) expect(evidenceFingerprint([source])).not.toBe(evidenceFingerprint(input.sources));
-    expect(saved.sources[0].record).toEqual(input.sources[0].record);
+    expect(defined(saved.sources[0]).record).toEqual(defined(input.sources[0]).record);
   });
   it("inserts immutable receipts and verifies idempotent collision reads are owned", async () => {
     const saved = createEvidenceReceipt(input);

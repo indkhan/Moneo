@@ -4,6 +4,7 @@ import { aiScopeGuard, DEFAULT_SETTINGS, type WorkspaceSettings } from "@/lib/wo
 import type { GuardedFinanceContext } from "./finance-context";
 import { captureToolEvidence } from "./capture-evidence";
 import { investigationSchema, type InvestigationRow } from "./investigation";
+import { defined } from "@/lib/testing";
 const fixture = vi.hoisted(() => ({ dataset: vi.fn(), balances: vi.fn() }));
 vi.mock("./investigation-reader", async original => ({ ...await original<typeof import("./investigation-reader")>(), loadInvestigationDataset: fixture.dataset }));
 vi.mock("./tools", async original => ({ ...await original<typeof import("./tools")>(), getBalances: fixture.balances }));
@@ -15,8 +16,8 @@ it("retains owned ordinary query inputs, exact results and capture scopes before
   const result = { from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR", spendingMinor: "25" };
   const receipts = await captureToolEvidence("analytics_cashflow", { from: result.from, to: result.to, currencyCode: "EUR" }, result, context, service);
   expect(receipts).toHaveLength(1);
-  expect(receipts[0].query.result).toEqual(result);
-  expect(receipts[0].scopes).toEqual(["transactions", "imports"]);
+  expect(defined(receipts[0]).query.result).toEqual(result);
+  expect(defined(receipts[0]).scopes).toEqual(["transactions", "imports"]);
   expect(insert).toHaveBeenCalledWith(expect.objectContaining({ workspace_id: context.workspace.id }));
 });
 it("does not persist or expose newly revoked scopes", async () => {
@@ -37,22 +38,22 @@ it("captures exact full investigation support rather than the first tool display
   fixture.dataset.mockResolvedValue({ spec, rows: [row], context: { workspaceId: context.workspace.id, capturedAt: "2026-10-01T00:00:00Z" }, sourceRevision: "v1" });
   const service = { from: () => ({ insert: async () => ({ error: null }) }) } as unknown as SupabaseClient;
   const receipts = await captureToolEvidence("finance_investigate", spec, { groups: [] }, context, service);
-  expect(receipts[0].metrics[0]).toMatchObject({ valueMinor: "10", sourceIds: [row.id] });
-  expect(receipts[0].sources[0].record).toMatchObject({ id: row.id, parentId: row.parentId });
+  expect(defined(receipts[0]).metrics[0]).toMatchObject({ valueMinor: "10", sourceIds: [row.id] });
+  expect(defined(defined(receipts[0]).sources[0]).record).toMatchObject({ id: row.id, parentId: row.parentId });
   const scenario = await captureToolEvidence("finance_scenario", { query: spec, overrides: [{ id: row.id, amountMinor: "-30" }] }, {}, context, service);
   expect(scenario).toHaveLength(2);
-  expect(scenario[1].metrics[0]).toMatchObject({ valueMinor: "30", qualifiers: ["assumption"] });
-  expect(scenario[0].sources[0].record).toMatchObject({ amountMinor: "-10" });
+  expect(defined(scenario[1]).metrics[0]).toMatchObject({ valueMinor: "30", qualifiers: ["assumption"] });
+  expect(defined(defined(scenario[0]).sources[0]).record).toMatchObject({ amountMinor: "-10" });
 });
 it("retains account calculation source records without returning those private rows as provider tool output", async () => {
   const supported = [{ id: "00000000-0000-4000-8000-000000000002", currency_code: "EUR", balance: { amount_minor: "10", evaluated_at: "2026-10-01T00:00:00Z" }, calculationEvidence: { snapshots: [{ amount_minor: "20" }], ledger: [{ amount_minor: "-10" }] } }];
   fixture.balances.mockResolvedValue(supported);
-  const original = [{ id: supported[0].id, currency_code: "EUR", balance: { amount_minor: "9" } }];
+  const original = [{ id: defined(supported[0]).id, currency_code: "EUR", balance: { amount_minor: "9" } }];
   const receipts = await captureToolEvidence("accounts_getBalances", {}, original, context, { from: () => ({ insert: async () => ({ error: null }) }) } as unknown as SupabaseClient);
   expect(fixture.balances).toHaveBeenCalledWith(context, true, true);
-  expect(receipts[0].sources[0].record).toEqual(supported);
-  expect(receipts[0].metrics[0]).toMatchObject({ valueMinor: "10" });
-  expect(original[0].balance.amount_minor).toBe("9");
+  expect(defined(defined(receipts[0]).sources[0]).record).toEqual(supported);
+  expect(defined(receipts[0]).metrics[0]).toMatchObject({ valueMinor: "10" });
+  expect(defined(original[0]).balance.amount_minor).toBe("9");
 });
 it("preserves conversion blockers in both baseline and hypothetical scenario receipts", async () => {
   const id = "00000000-0000-4000-8000-000000000002";

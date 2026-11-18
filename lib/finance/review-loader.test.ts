@@ -3,6 +3,7 @@ import { loadFinancialReviewEvidence } from "./review-loader";
 import { DEFAULT_SETTINGS, type AiDataScope } from "@/lib/workspace-settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compareReviewEvidence } from "./review-freshness";
+import { defined } from "@/lib/testing";
 
 vi.mock("./balances", async original => ({ ...await original<typeof import("./balances")>(), loadBalanceEvidence: async () => ({ accounts: [], snapshots: [], ledger: [], asOf: "2026-10-02T12:00:00Z" }) }));
 vi.mock("./model", () => ({ evaluatePlanForWorkspace: vi.fn(async () => ({ available: { status: "unavailable", missingInputs: ["balance"] }, forecast: [], input: { events: [] } })) }));
@@ -38,11 +39,11 @@ it("omits all planning reads when its scope is disabled and gathers exact compar
   };
   const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, input(["accounts", "transactions"]));
   expect(reads).not.toContain("imports"); expect(reads).not.toContain("source_transactions"); expect(reads).not.toContain("spending_plans");
-  expect(evidence.cashflow.EUR.spendingMinor).toBe("9007199254740993");
+  expect(defined(evidence.cashflow.EUR).spendingMinor).toBe("9007199254740993");
   expect(evidence).toMatchObject({ sourceCoverage: { unresolvedSourceRows: null, scope: { from: "2026-07-05", to: "2026-10-02" } } });
   expect(evidence.planning).toEqual({ unavailable: "AI access to planning is disabled in Settings" });
-  expect(evidence.investigation.records.items[0].link).toBe("/money/transactions?transaction=t");
-  expect(evidence.investigation.groups[0].currentMinor).toBe("9007199254740993");
+  expect(defined(evidence.investigation.records.items[0]).link).toBe("/money/transactions?transaction=t");
+  expect(defined(evidence.investigation.groups[0]).currentMinor).toBe("9007199254740993");
   expect(evidence).toMatchObject({ calculationEvidence: { transactions: [expect.objectContaining({ id: "t", amount_minor: "-9007199254740993" })], balances: { snapshots: [], ledger: [] } } });
 });
 it("loads older rollover evidence without extending the current cashflow summary", async () => {

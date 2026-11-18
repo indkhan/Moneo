@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveBalances } from "@/lib/finance/balances";
 import { archiveDates, currentNetWorth, dayRange, firstSyncedOn, monthEnds, netWorth, netWorthSeries, scalableKnownIds, valuationHistory } from "./net-worth";
+import { defined } from "@/lib/testing";
 
 it("lists month ends then today", () => {
   expect(monthEnds("2026-03-15", 3)).toEqual(["2025-12-31", "2026-01-31", "2026-02-28", "2026-03-15"]);
@@ -30,8 +31,8 @@ it("carries forward the latest recorded values per date without mixing currencie
     ],
   });
   expect(series.map(point => netWorth(point).get("EUR"))).toEqual([500n, 3000n, 3200n]);
-  expect(series[0].debts.get("EUR")).toBe(-800n);
-  expect(netWorth(series[2]).get("USD")).toBe(700n);
+  expect(defined(series[0]).debts.get("EUR")).toBe(-800n);
+  expect(netWorth(defined(series[2])).get("USD")).toBe(700n);
 });
 
 it("works balances back from the first recorded one through posted transactions, and leaves earlier dates unknown", () => {
@@ -99,12 +100,12 @@ describe("calculated Scalable values", () => {
   });
 
   it("gives Home's month base the calculated value when the first sync came after it", () => {
-    const [base] = netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [{ ...synced, as_of: "2026-11-05" }], calculated: { rows, before: "2026-11-05" }, snapshots: bank("2026-10-01T00:00:00Z") });
+    const base = defined(netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [{ ...synced, as_of: "2026-11-05" }], calculated: { rows, before: "2026-11-05" }, snapshots: bank("2026-10-01T00:00:00Z") })[0]);
     expect(netWorth(base).get("EUR")).toBe(1222n);
   });
 
   it("adds nothing without a first synced value", () => {
-    const [point] = netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [], calculated: { rows, before: null }, snapshots: bank("2026-10-01T00:00:00Z") });
+    const point = defined(netWorthSeries({ dates: ["2026-10-30"], timeZone: "UTC", accountIds: new Set(["bank"]), valuations: [], calculated: { rows, before: null }, snapshots: bank("2026-10-01T00:00:00Z") })[0]);
     expect(netWorth(point).get("EUR")).toBe(1000n);
   });
 
@@ -171,14 +172,14 @@ describe("the graph's safeguards", () => {
     const noAccounts = netWorthSeries({ ...base, accountIds: new Set(), dates: ["2026-08-15", "2026-09-15"], snapshots: [], valuations: [fund] });
     expect(noAccounts.map(point => point.known)).toEqual([false, true]);
     const emptyAccount = netWorthSeries({ ...base, dates: ["2026-09-15"], snapshots: [], valuations: [fund] });
-    expect(emptyAccount[0].known).toBe(true);
+    expect(defined(emptyAccount[0]).known).toBe(true);
   });
 
   it("resolves two same-dated balances like the headline, whatever order they are read in", () => {
     const older = snapshot({ id: "a", created_at: "2026-10-01T10:00:00Z" }), newer = snapshot({ id: "b", amount_minor: "2000", created_at: "2026-10-01T11:00:00Z" });
     for (const order of [[older, newer], [newer, older]]) {
-      const [point] = netWorthSeries({ ...base, dates: ["2026-10-02"], snapshots: order });
-      expect(netWorth(point).get("EUR")).toBe(BigInt(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], order, [], "2026-10-02T12:00:00Z", "UTC")[0].balance.amount_minor!));
+      const point = defined(netWorthSeries({ ...base, dates: ["2026-10-02"], snapshots: order })[0]);
+      expect(netWorth(point).get("EUR")).toBe(BigInt(defined(defined(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], order, [], "2026-10-02T12:00:00Z", "UTC")[0]).balance.amount_minor)));
     }
   });
 
@@ -189,16 +190,16 @@ describe("the graph's safeguards", () => {
     const good = netWorthSeries({ ...base, dates: ["2026-09-30", "2026-10-01", "2026-10-02"], snapshots: [reviewed], ledger: [row] });
     expect(good.map(point => [netWorth(point).get("EUR"), point.uncertain])).toEqual([[1100n, []], [1000n, []], [1000n, []]]);
     const changed = netWorthSeries({ ...base, dates: ["2026-10-02"], snapshots: [reviewed], ledger: [{ ...row, amount_minor: "-150" }] });
-    expect(changed[0].uncertain).toEqual(expect.arrayContaining([expect.stringContaining("review the booked balance")]));
-    expect(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], [reviewed], [{ ...row, amount_minor: "-150" }], "2026-10-02T12:00:00Z", "UTC")[0].balance.status).toBe("ambiguous");
+    expect(defined(changed[0]).uncertain).toEqual(expect.arrayContaining([expect.stringContaining("review the booked balance")]));
+    expect(defined(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], [reviewed], [{ ...row, amount_minor: "-150" }], "2026-10-02T12:00:00Z", "UTC")[0]).balance.status).toBe("ambiguous");
   });
 
   it("treats a row imported twice the same for every reader: one canonical row, repeated closing balances", () => {
     const copies = [snapshot({ id: "a", source_transaction_id: "s1", created_at: "2026-10-01T10:00:00Z" }), snapshot({ id: "b", source_transaction_id: "s2", created_at: "2026-10-02T10:00:00Z" })];
     const ledger = [{ id: "t", account_id: "bank", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-02", status: "posted" }];
-    const [point] = netWorthSeries({ ...base, dates: ["2026-10-03"], snapshots: copies, ledger });
-    const { balance } = resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], copies, ledger, "2026-10-03T12:00:00Z", "UTC")[0];
-    expect([netWorth(point).get("EUR"), BigInt(balance.amount_minor!), balance.conflicts.length]).toEqual([900n, 900n, 0]);
+    const point = defined(netWorthSeries({ ...base, dates: ["2026-10-03"], snapshots: copies, ledger })[0]);
+    const { balance } = defined(resolveBalances([{ id: "bank", name: "Bank", currency_code: "EUR" }], copies, ledger, "2026-10-03T12:00:00Z", "UTC")[0]);
+    expect([netWorth(point).get("EUR"), BigInt(defined(balance.amount_minor)), balance.conflicts.length]).toEqual([900n, 900n, 0]);
   });
 
   it("applies a correction only to what is counted: not before the broker has a value, and not where an account has none", () => {
@@ -208,6 +209,6 @@ describe("the graph's safeguards", () => {
     const points = netWorthSeries({ ...base, dates, snapshots: [snapshot()], transit: [window], calculated: { rows, before: "2026-10-10" } });
     expect(points.map(point => point.transit.get("EUR"))).toEqual([undefined, 700n]);
     const noBank = netWorthSeries({ ...base, dates: ["2026-09-20"], snapshots: [snapshot()], transit: [{ ...window, from: "2026-09-01", broker: false }] });
-    expect(noBank[0].transit.size).toBe(0);
+    expect(defined(noBank[0]).transit.size).toBe(0);
   });
 });

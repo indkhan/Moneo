@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountLiquidity, availableToSpend, forecastDaily, netWorth, summarizeCashflow, usableForecastInput } from "./calculations";
+import { defined } from "@/lib/testing";
 
 describe("exact financial calculations", () => {
   it("treats an unresolved posted transfer as unknown cashflow before excluding confirmed transfers", () => {
@@ -69,7 +70,7 @@ describe("exact financial calculations", () => {
     const input = { startDate: "2026-10-01", horizonDays: 3, currencyCode: "EUR", accounts: [{ id: "cash", currencyCode: "EUR", balanceMinor: 10000n }],
       events: [{ date: "2026-10-01", accountId: "cash", expectedMinor: 100000n }] };
     const forecast = forecastDaily(input);
-    expect(forecast.status === "available" && [forecast.opening.conservativeMinor, forecast.days[0].conservativeMinor]).toEqual([10000n, 110000n]);
+    expect(forecast.status === "available" && [forecast.opening.conservativeMinor, defined(forecast.days[0]).conservativeMinor]).toEqual([10000n, 110000n]);
     expect(availableToSpend(input)).toEqual({ status: "available", amountMinor: 10000n, limitingDate: "2026-10-01" });
     expect(accountLiquidity(input)).toMatchObject({ aggregate: { amountMinor: 10000n }, accounts: [{ amountMinor: 10000n, limitingDate: "2026-10-01", supportingEvents: [] }] });
     expect(availableToSpend({ ...input, events: [{ date: "2026-10-01", accountId: "cash", expectedMinor: -4000n }] })).toMatchObject({ amountMinor: 6000n });
@@ -103,7 +104,7 @@ describe("usableForecastInput", () => {
     expect(forecastDaily(input).status).toBe("available");
   });
   it("leaves out an account with a known balance when one of its schedules cannot be converted", () => {
-    const { excluded } = usableForecastInput({ ...base, accounts: [base.accounts[0], { id: "b", currencyCode: "EUR", balanceMinor: 5n }], missingInputs: ["fx:assumption:b"] });
+    const { excluded } = usableForecastInput({ ...base, accounts: [defined(base.accounts[0]), { id: "b", currencyCode: "EUR", balanceMinor: 5n }], missingInputs: ["fx:assumption:b"] });
     expect(excluded).toEqual(["b"]);
   });
   it("still stops on gaps that belong to no one account", () => {
@@ -113,7 +114,7 @@ describe("usableForecastInput", () => {
   it("changes nothing when every account is unusable or none is", () => {
     const none = { ...base, accounts: [{ id: "b", currencyCode: "EUR", balanceMinor: null }], events: [] };
     expect(usableForecastInput(none)).toEqual({ input: none, excluded: [] });
-    const all = { ...base, accounts: [base.accounts[0]], events: [base.events[0]], missingInputs: [] };
+    const all = { ...base, accounts: [defined(base.accounts[0])], events: [defined(base.events[0])], missingInputs: [] };
     expect(usableForecastInput(all)).toEqual({ input: all, excluded: [] });
   });
 });

@@ -5,6 +5,7 @@ import { settingsSchema } from "@/lib/workspace-settings";
 import { getBalances } from "./tools";
 import { buildReviewEvidence } from "./review";
 import { toolResultReceipt } from "./tool-evidence";
+import { defined } from "@/lib/testing";
 
 const workspaceId = "00000000-0000-4000-8000-000000000001";
 const now = "2026-10-01T12:00:00Z";
@@ -27,14 +28,15 @@ it.each(["manual", "import:00000000-0000-4000-8000-000000000002:row:7", "unknown
     ["reviews_investigate", { ...review, accountBalanceTotals: review.netWorth }, ["accounts.0.snapshotBalanceMinor", "accounts.0.balanceMinor", "netWorth.EUR", "accountBalanceTotals.EUR"]],
   ] as const) {
     const receipt = toolResultReceipt(name, {}, result, { workspaceId, fetchedAt: now, timezone: "UTC" }, ["accounts"]);
-    expect(receipt.sources[0].record).toEqual(result);
+    expect(defined(receipt.sources[0]).record).toEqual(result);
     for (const id of ids) {
-      const metric = receipt.metrics.find(metric => metric.id === id)!;
+      const metric = defined(receipt.metrics.find(metric => metric.id === id));
       expect(metric.qualifiers).toContain("dated_snapshot");
       expect(metric.qualifiers.includes("manual_evidence")).toBe(provenance === "manual");
       expect(metric.period).toEqual({ from: "2026-10-01", to: "2026-10-01" });
     }
   }
-  if (!("calculationEvidence" in direct[0])) throw new Error("Trusted balance loader omitted original snapshot evidence");
-  expect(direct[0].calculationEvidence.snapshots[0].provenance).toBe(provenance);
+  const first = defined(direct[0]);
+  if (!("calculationEvidence" in first)) throw new Error("Trusted balance loader omitted original snapshot evidence");
+  expect(defined(first.calculationEvidence.snapshots[0]).provenance).toBe(provenance);
 });

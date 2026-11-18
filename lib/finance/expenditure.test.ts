@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { reportExpenditure, type ExpenditurePosting } from "./expenditure";
+import { defined } from "@/lib/testing";
 
 const posting = (id: string, amountMinor: bigint, currencyCode = "USD", extra: Partial<ExpenditurePosting> = {}): ExpenditurePosting => ({ id, amountMinor, currencyCode, postedOn: "2026-10-07", status: "posted", kind: "ordinary", ...extra });
 const options = { view: "base" as const, currencyCode: "EUR", from: "2026-10-01", to: "2026-10-31" };
@@ -22,7 +23,7 @@ describe("authoritative expenditure reporting", () => {
   it("offers original currency totals without requiring conversion", () => {
     const result = reportExpenditure([posting("a", -100n), posting("b", -50n, "EUR")], [], { ...options, view: "original" });
     expect(result).toMatchObject({ status: "complete", totals: { spendingMinor: "50" }, perCurrency: { USD: { spendingMinor: "100" }, EUR: { spendingMinor: "50" } } });
-    expect(result.postings[0].reportingAmountMinor).toBeNull();
+    expect(defined(result.postings[0]).reportingAmountMinor).toBeNull();
   });
   it("keeps refunds and transfer fees exact while excluding principal, pending and unknown classifications", () => {
     const result = reportExpenditure([posting("fee", -101n), posting("refund", 1n, "USD", { kind: "refund" }), posting("principal", -500n, "USD", { kind: "transfer" }), posting("pending", -99n, "USD", { status: "pending" }), posting("unknown", 100n, "USD", { reviewReasons: ["kind"] })], [rate], options);
@@ -30,7 +31,7 @@ describe("authoritative expenditure reporting", () => {
   });
   it.each([["JPY", -1n, "-1"], ["USD", -100n, "-1"], ["KWD", -1000n, "-1"], ["CLF", -10000n, "-1"]])("converts %s accounting precision exactly", (currencyCode, amount, expected) => {
     const result = reportExpenditure([posting("precision", amount, currencyCode)], [{ ...rate, fromCurrency: currencyCode, toCurrency: "JPY", rateText: "1" }], { ...options, currencyCode: "JPY" });
-    expect(result.postings[0].reportingAmountMinor).toBe(expected);
+    expect(defined(result.postings[0]).reportingAmountMinor).toBe(expected);
   });
   it("recomputes correction amount and date with the newly applicable rate", () => {
     const rates = [rate, { ...rate, id: "rate-8", rateDate: "2026-10-08", rateText: "2" }];

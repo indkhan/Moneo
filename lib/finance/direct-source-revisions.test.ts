@@ -6,6 +6,7 @@ import { listAccounts, listGoals } from "./tools";
 import { loadInvestigationEntities } from "./investigation-reader";
 import { captureToolEvidence } from "./capture-evidence";
 import { readEvidenceView } from "./evidence-view";
+import { defined } from "@/lib/testing";
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z")); });
 afterEach(() => vi.useRealTimers());
@@ -33,11 +34,11 @@ it.each(["goals_list", "accounts_list", "finance_entities"])("retains actual sou
   const settings = settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", "planning"] });
   const context = { supabase: db, workspace: { id: workspaceId, timezone: "UTC" }, settings: settings, requireScopes: aiScopeGuard(settings) } as unknown as GuardedFinanceContext;
   const original = name === "goals_list" ? await listGoals(context) : name === "accounts_list" ? await listAccounts(context) : await loadInvestigationEntities(context);
-  const [receipt] = await captureToolEvidence(name, {}, original, context, db);
+  const receipt = defined((await captureToolEvidence(name, {}, original, context, db))[0]);
   expect((await readEvidenceView(context, receipt.id))?.freshness.status).toBe("current");
   version = 2;
   const view = await readEvidenceView(context, receipt.id);
   expect(view?.freshness.status).toBe("stale");
-  expect(view?.supportingRecords[0].record).toEqual(original);
-  if (name === "goals_list") expect(view?.receipt.metrics[0].valueMinor).toBe("500");
+  expect(defined(view?.supportingRecords[0]).record).toEqual(original);
+  if (name === "goals_list") expect(defined(view?.receipt.metrics[0]).valueMinor).toBe("500");
 });

@@ -3,11 +3,13 @@ import { netWorth } from "@/lib/finance/net-worth";
 import { buildReviewEvidence } from "./review";
 import { resolveBalances } from "./balances";
 import { convertedNetWorth, describeMonthSplit, loadNetWorthEvidence, netWorthModel, readNetWorth } from "./net-worth-source";
+import { defined } from "@/lib/testing";
 
 const WS = "w", TODAY = "2026-11-08";
 const workspace = { id: WS, timezone: "UTC", display_currency: "EUR", locale: "en-GB" };
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
+const table = (name: string) => defined(tables[name], name);
 
 function from(name: string) {
   const filters: ((row: Row) => boolean)[] = [];
@@ -46,7 +48,7 @@ describe("one source", () => {
     const home = convertedNetWorth(model, [], "EUR").totalMinor;
     const wealth = netWorth(model.now).get("EUR");
     const chat = await readNetWorth({ supabase: db, workspace }, {});
-    const graph = netWorth(model.points([`2026-11-07`, TODAY]).at(-1)!).get("EUR");
+    const graph = netWorth(defined(model.points([`2026-11-07`, TODAY]).at(-1))).get("EUR");
     expect(home).toBe(90000n);
     expect(wealth).toBe(home);
     expect(graph).toBe(home);
@@ -57,14 +59,14 @@ describe("one source", () => {
     tables.transactions = [posting("rent", "bank", "-30000", "2026-11-01")];
     const model = await load();
     const past = await readNetWorth({ supabase: db, workspace }, { date: "2026-10-31" });
-    expect(past).toMatchObject({ known: true, amountMinor: netWorth(model.points(["2026-10-31"])[0]).get("EUR")!.toString() });
+    expect(past).toMatchObject({ known: true, amountMinor: defined(netWorth(defined(model.points(["2026-10-31"])[0])).get("EUR")).toString() });
     expect(await readNetWorth({ supabase: db, workspace }, { date: "2020-01-01" })).toMatchObject({ known: false });
     await expect(readNetWorth({ supabase: db, workspace }, { date: "2030-01-01" })).rejects.toThrow("future");
     expect(await readNetWorth({ supabase: db, workspace }, { days: 3 })).toMatchObject({ trend: [{ date: "2026-11-06" }, { date: "2026-11-07" }, { date: TODAY, amountMinor: "70000" }] });
   });
 
   it("names what it left out and how fresh each input is", async () => {
-    tables.accounts.push({ id: "empty", name: "No balance", type: "checking", currency_code: "EUR", archived_at: null, version: 1 });
+    table("accounts").push({ id: "empty", name: "No balance", type: "checking", currency_code: "EUR", archived_at: null, version: 1 });
     const old = item("car", "Car", "asset", "500", "2026-11-01");
     tables.wealth_items = [old]; tables.wealth_events = [event(old, "2026-11-01T00:00:00Z")];
     const answer = await readNetWorth({ supabase: db, workspace }, {}) as { leftOut: string[]; freshness: { valuesNotFromToday: { name: string }[] } };
@@ -73,24 +75,24 @@ describe("one source", () => {
   });
 
   it("leaves an archived account out of today and every reader, and keeps its past days", async () => {
-    tables.accounts.push({ id: "old", name: "Old", type: "checking", currency_code: "EUR", archived_at: "2026-11-05T10:00:00Z", version: 2 });
-    tables.balance_snapshots.push(snapshot("old", "5000", "2026-10-01T00:00:00Z"));
+    table("accounts").push({ id: "old", name: "Old", type: "checking", currency_code: "EUR", archived_at: "2026-11-05T10:00:00Z", version: 2 });
+    table("balance_snapshots").push(snapshot("old", "5000", "2026-10-01T00:00:00Z"));
     const model = await load();
     expect(netWorth(model.now).get("EUR")).toBe(100000n);
-    expect(netWorth(model.points(["2026-11-04"])[0]).get("EUR")).toBe(105000n);
-    expect(netWorth(model.points(["2026-11-05"])[0]).get("EUR")).toBe(100000n);
+    expect(netWorth(defined(model.points(["2026-11-04"])[0])).get("EUR")).toBe(105000n);
+    expect(netWorth(defined(model.points(["2026-11-05"])[0])).get("EUR")).toBe(100000n);
   });
 
   it("lets every balance reader agree when one statement row was imported twice", async () => {
     const copies = [snapshot("bank", "100000", "2026-10-01T00:00:00Z", { id: "a", provenance: "import:a:row:1", source_transaction_id: "s1", created_at: "2026-10-02T00:00:00Z" }), snapshot("bank", "100000", "2026-10-01T00:00:00Z", { id: "b", provenance: "import:b:row:9", source_transaction_id: "s2", created_at: "2026-10-03T00:00:00Z" })];
     tables.balance_snapshots = copies;
     const accounts = tables.accounts as { id: string; name: string; currency_code: string }[];
-    const strict = resolveBalances(accounts, copies as never[], [], `${TODAY}T12:00:00Z`, "UTC")[0].balance;
+    const strict = defined(resolveBalances(accounts, copies as never[], [], `${TODAY}T12:00:00Z`, "UTC")[0]).balance;
     const review = buildReviewEvidence(accounts, copies as never[], [], TODAY, TODAY, { asOf: `${TODAY}T12:00:00Z`, ledger: [], timeZone: "UTC" });
     expect(strict).toMatchObject({ amount_minor: "100000", status: "stale", conflicts: [] });
     expect(review.netWorth).toEqual({ EUR: "100000" });
     expect(await headline()).toBe(100000n);
-    expect(netWorth((await load()).points(["2026-10-15"])[0]).get("EUR")).toBe(100000n);
+    expect(netWorth(defined((await load()).points(["2026-10-15"])[0])).get("EUR")).toBe(100000n);
   });
 });
 
@@ -125,7 +127,7 @@ describe("own money between accounts, on every screen", () => {
 
   it("doesn't list a broker transfer from before every account has data: its other side can't be on record", async () => {
     const broker = (provider_id: string, on_date: string) => ({ provider_id, type: "DEPOSIT", amount_minor: "13000", currency_code: "EUR", on_date, occurred_at: `${on_date}T00:00:00Z`, status: "SETTLED", is_cancellation: false, returns_provider_id: null, description: null });
-    tables.accounts.push({ id: "newer", name: "Newer", type: "checking", currency_code: "EUR", archived_at: null, version: 1 });
+    table("accounts").push({ id: "newer", name: "Newer", type: "checking", currency_code: "EUR", archived_at: null, version: 1 });
     tables.transactions = [posting("a", "bank", "-100", "2024-12-05"), posting("b", "newer", "-100", "2025-11-09")];
     tables.scalable_connections = [{ portfolio: { itemIds: [] }, transfers_backfilled_at: "2026-11-07T10:00:00Z" }];
     tables.scalable_transfers = [broker("old", "2025-02-03"), broker("recent", "2026-01-10")];
@@ -135,10 +137,10 @@ describe("own money between accounts, on every screen", () => {
 
 describe("this month, split", () => {
   it("shows a new bank as newly added, in the total but not in the change", async () => {
-    tables.accounts.push({ id: "new", name: "New bank", type: "checking", currency_code: "EUR", archived_at: null, version: 1 });
-    tables.balance_snapshots.push(snapshot("new", "250000", "2026-11-05T00:00:00Z"));
+    table("accounts").push({ id: "new", name: "New bank", type: "checking", currency_code: "EUR", archived_at: null, version: 1 });
+    table("balance_snapshots").push(snapshot("new", "250000", "2026-11-05T00:00:00Z"));
     tables.transactions = [posting("rent", "bank", "-30000", "2026-11-01")];
-    const split = (await load()).monthSplit("EUR")!;
+    const split = defined((await load()).monthSplit("EUR"));
     expect(await headline()).toBe(320000n);
     expect(split).toMatchObject({ baseMinor: 100000n, totalChangeMinor: 220000n, newlyAddedMinor: 250000n, changeMinor: -30000n, moneyMinor: -30000n, investmentsMinor: 0n });
   });
@@ -156,7 +158,7 @@ describe("this month, split", () => {
     tables.scalable_value_history = [{ on_date: "2026-09-30", currency_code: "EUR", total_minor: "1" }];
     tables.scalable_transfers = [{ provider_id: "D", type: "DEPOSIT", amount_minor: "6000", currency_code: "EUR", on_date: "2026-11-02", occurred_at: "2026-11-02T00:00:00Z", status: "SETTLED", is_cancellation: false, returns_provider_id: null, description: null }];
     tables.transactions = [posting("pay", "bank", "-6000", "2026-11-02", { kind: "transfer" })];
-    const split = (await load()).monthSplit("EUR")!;
+    const split = defined((await load()).monthSplit("EUR"));
     expect(split).toMatchObject({ investmentsMinor: 59000n, moneyMinor: 0n, newlyAddedMinor: 0n, changeMinor: 59000n });
   });
 

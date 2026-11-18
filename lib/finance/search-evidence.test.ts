@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { searchTransactions } from "./tools";
 import type { FinanceContext } from "./finance-context";
+import { defined } from "@/lib/testing";
 const parent = "00000000-0000-4000-8000-000000000001";
 it("retains provisional parent classification, exact effective allocations and canonical source links", async () => {
   const source = { id: parent, posted_on: "2026-09-01", amount_minor: "-100", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: ["source_transfer"], version: 1 };
@@ -13,10 +14,10 @@ it("retains provisional parent classification, exact effective allocations and c
     return query;
   } } } as unknown as FinanceContext;
   const result = await searchTransactions({ query: "transfer" }, context);
-  expect(queries[0].columns).toContain("review_reasons");
-  expect(result![0]).toMatchObject({ review_reasons: ["source_transfer"], classificationStatus: "unresolved", financialKind: null, confirmedSpending: false,
+  expect(defined(queries[0]).columns).toContain("review_reasons");
+  expect(defined(result)[0]).toMatchObject({ review_reasons: ["source_transfer"], classificationStatus: "unresolved", financialKind: null, confirmedSpending: false,
     amountBasis: "canonical_parent", effectiveRows: components, link: `/money/transactions?transaction=${parent}` });
-  expect(result![0].allocationSemantics).toContain("effective");
+  expect(defined(defined(result)[0]).allocationSemantics).toContain("effective");
 });
 
 it("finds a nickname through similar descriptions after the exact matches", async () => {
@@ -29,7 +30,7 @@ it("finds a nickname through similar descriptions after the exact matches", asyn
       let ids: string[] | undefined;
       const query = { select: () => query, eq: () => query, ilike: () => query, gte: () => query, lte: () => query, or: () => query, order: () => query,
         in: (column: string, values: string[]) => { if (column === "id") ids = values; return query; },
-        limit: async () => ({ data: ids ? [exact, similar].filter(row => ids!.includes(row.id)) : [exact], error: null }),
+        limit: async () => ({ data: ids ? [exact, similar].filter(row => defined(ids).includes(row.id)) : [exact], error: null }),
         range: async () => ({ data: table === "effective_transactions" ? [] : [], error: null }) };
       return query;
     } } } as unknown as FinanceContext;

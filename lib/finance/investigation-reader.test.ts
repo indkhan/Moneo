@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { loadInvestigationEntities, runInvestigation, evaluateInvestigationScenario, investigationDetailSchema } from "./investigation-reader";
+import { defined } from "@/lib/testing";
 
 const id = "11111111-1111-4111-8111-111111111111";
 function context() {
@@ -24,9 +25,9 @@ const query = { version: 1, period: { from: "2026-09-01", to: "2026-09-30" }, ac
 it("scopes every read to the owned workspace and resolves names before executing", async () => {
   const { calls, context: ctx } = context();
   const result = await runInvestigation(query, ctx);
-  expect(result.groups[0].currentMinor).toBe("100");
+  expect(defined(result.groups[0]).currentMinor).toBe("100");
   expect(result.interpretedFilters.accounts?.include).toEqual([{ id }]);
-  expect(result.records.items[0].sourceVersions).toMatchObject([{ id: "source", importId: "import", link: "/import/import/review" }]);
+  expect(defined(result.records.items[0]).sourceVersions).toMatchObject([{ id: "source", importId: "import", link: "/import/import/review" }]);
   expect(calls.length).toBeGreaterThan(4);
   expect(calls.every(([, key, value]) => key === "workspace_id" && value === "owned")).toBe(true);
   expect((await loadInvestigationEntities(ctx)).accounts).toEqual([{ id, name: "Checking" }]);
@@ -34,8 +35,8 @@ it("scopes every read to the owned workspace and resolves names before executing
 it("evaluates bounded hypothetical overrides without mutating canonical records", async () => {
   const { context: ctx } = context();
   const result = await evaluateInvestigationScenario({ query, overrides: [{ id, amountMinor: "-300" }] }, ctx);
-  expect(result.baseline.groups[0].currentMinor).toBe("100");
-  expect(result.hypothetical.groups[0].currentMinor).toBe("300");
+  expect(defined(result.baseline.groups[0]).currentMinor).toBe("100");
+  expect(defined(result.hypothetical.groups[0]).currentMinor).toBe("300");
   expect(result.canonicalMutations).toBe(false);
   await expect(evaluateInvestigationScenario({ query, overrides: [{ id: "22222222-2222-4222-8222-222222222222", amountMinor: "-3" }] }, ctx)).rejects.toThrow("owned");
   await expect(evaluateInvestigationScenario({ query, overrides: Array.from({ length: 101 }, () => ({ id, amountMinor: "0" })) }, ctx)).rejects.toThrow();

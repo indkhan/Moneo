@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { investigate, investigationSchema, resolveInvestigation, type InvestigationRow } from "./investigation";
+import { defined } from "@/lib/testing";
 
 const account = "11111111-1111-4111-8111-111111111111";
 const category = "22222222-2222-4222-8222-222222222222";
@@ -77,10 +78,10 @@ describe("deterministic investigations", () => {
   it("keeps selected transfer principals neutral for accounting metrics and explicit for gross-flow metrics", () => {
     const rows = [{ ...row("transfer", "-500"), kind: "transfer" as const }, row("fee", "-5")];
     const args = { ...query, kinds: ["ordinary", "transfer", "refund"] };
-    expect(investigate(args, rows, context).groups[0].currentMinor).toBe("5");
-    expect(investigate({ ...args, metric: "net" }, rows, context).groups[0].currentMinor).toBe("-5");
-    expect(investigate({ ...args, metric: "signed" }, rows, context).groups[0].currentMinor).toBe("-505");
-    expect(investigate({ ...args, metric: "absolute" }, rows, context).groups[0].currentMinor).toBe("505");
+    expect(defined(investigate(args, rows, context).groups[0]).currentMinor).toBe("5");
+    expect(defined(investigate({ ...args, metric: "net" }, rows, context).groups[0]).currentMinor).toBe("-5");
+    expect(defined(investigate({ ...args, metric: "signed" }, rows, context).groups[0]).currentMinor).toBe("-505");
+    expect(defined(investigate({ ...args, metric: "absolute" }, rows, context).groups[0]).currentMinor).toBe("505");
   });
   it("counts overlapping-period supporting records once while calculating both chosen periods", () => {
     const result = investigate({ ...query, comparison: query.period }, [row("both")], context);

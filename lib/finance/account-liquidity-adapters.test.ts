@@ -3,6 +3,7 @@ import { accountLiquidity, availableToSpend, forecastDaily, serializeAccountLiqu
 import type { FinanceContext } from "./finance-context";
 import { evaluateForecast } from "./tools";
 import { toolResultReceipt } from "./tool-evidence";
+import { defined } from "@/lib/testing";
 const fixture = vi.hoisted(() => ({ spendingAccountId: "checking" as string | null, input: {
   workspaceBufferMinor: 0n, startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR",
   accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }, { id: "savings", currencyCode: "EUR", balanceMinor: 100000n }],
@@ -27,7 +28,7 @@ it.each([false, true])("receipts use each real forecast metric's own limiting da
       events: [{ date: "2026-10-08", accountId: "savings", expectedMinor: localCap ? -200n : -1500n, name: "Bill" }] };
     const result = await evaluateForecast({ horizonDays: 3, accountId: "checking" }, context);
     const receipt = toolResultReceipt("forecast_evaluate", {}, result, { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-07T12:00:00Z", timezone: "UTC" }, ["accounts", "transactions", "planning"]);
-    const metric = (id: string) => receipt.metrics.find(metric => metric.id === id)!;
+    const metric = (id: string) => defined(receipt.metrics.find(metric => metric.id === id));
     expect(metric("liquidity.accounts.0.spendableMinor")).toMatchObject({ valueMinor: localCap ? "100" : "300", period: { from: "2026-10-07", to: "2026-10-09" } });
     expect(metric("liquidity.accounts.0.spendableMinor").calculation).toContain(`Limiting date: ${localCap ? "2026-10-07" : "2026-10-08"}`);
     expect(metric("liquidity.accounts.0.amountMinor").calculation).toContain("Limiting date: 2026-10-07");
