@@ -89,12 +89,12 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const followOutput = useFollowOutput(end, [entry?.messages.length, active], activeId);
   const resuming = entry?.running && !active ? activeId : null;
   usePolling(signal => json<Loaded>(`/api/conversations/${resuming}`, { signal })
-    .then(data => { if (!data.running) { setEntries(current => ({ ...current, [resuming!]: loaded(data) })); retitle(resuming!, data.selected.title); } }).catch(() => {}), 3000, !!resuming);
+    .then(data => { if (!data.running) { setEntries(current => ({ ...current, [resuming!]: loaded(data) })); retitle(resuming!, data.selected.title); } }), 3000, !!resuming);
 
   const waitingOnCall = entry?.messages.some(item => item.call && (item.call.summaryStatus === "pending" || item.call.unfinished.some(task => task.status === "running"))) ? activeId : null;
   const tries = useRef(0);
   useEffect(() => { tries.current = 0; }, [waitingOnCall]);
-  usePolling(signal => ++tries.current > 60 ? undefined : json<Loaded>(`/api/conversations/${waitingOnCall}`, { signal }).then(data => { setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) })); retitle(waitingOnCall!, data.selected.title); }).catch(() => {}), 3000, !!waitingOnCall);
+  usePolling(signal => ++tries.current > 60 ? undefined : json<Loaded>(`/api/conversations/${waitingOnCall}`, { signal }).then(data => { setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) })); retitle(waitingOnCall!, data.selected.title); }), 3000, !!waitingOnCall);
 
   const [later, cancelLater] = useDelay();
   useEffect(() => {

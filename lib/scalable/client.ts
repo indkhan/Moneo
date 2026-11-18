@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { scalableMcpOrigin } from "@/lib/env";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 export const scalableMcpUrl = () => `${scalableMcpOrigin()}/mcp`;
 const SCOPE = "openid profile offline_access";
@@ -18,7 +19,7 @@ export function pkcePair() {
 }
 
 async function json<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
-  const body = await response.json().catch(() => null);
+  const body = await jsonBodyOrNull(response);
   if (!response.ok) {
     const code = z.object({ error: z.string() }).safeParse(body).data?.error;
     throw new ScalableError(`Scalable returned ${response.status}${code ? ` (${code})` : ""}`, response.status, code === "invalid_grant" || response.status === 401);

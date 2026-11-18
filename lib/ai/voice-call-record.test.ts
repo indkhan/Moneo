@@ -5,7 +5,7 @@ import { MAX_TRANSCRIPT_BYTES, SUMMARY_INPUT_CHARS, boundTranscript, callRecordS
 vi.mock("ai", async importOriginal => ({ ...await importOriginal<typeof import("ai")>(), generateText: vi.fn() }));
 
 const id = "00000000-0000-4000-8000-000000000001";
-const valid = { id, conversationId: "00000000-0000-4000-8000-000000000002", durationSeconds: 90, transcript: [{ role: "user", text: "hi" }], tasks: [] };
+const valid = { id, workspaceId: "00000000-0000-4000-8000-0000000000a1", conversationId: "00000000-0000-4000-8000-000000000002", durationSeconds: 90, transcript: [{ role: "user", text: "hi" }], tasks: [] };
 
 it("accepts a call record and rejects bad ones", () => {
   expect(callRecordSchema.safeParse(valid).success).toBe(true);

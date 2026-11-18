@@ -95,7 +95,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
   usePolling(signal => fetch(`/api/conversations/${conversationId}`, { cache: "no-store", signal }).then(response => response.json())
-    .then(result => { if (!result.running) void load(); }).catch(() => {}), 3000, open && running && !busy && !!conversationId);
+    .then(result => { if (!result.running) void load(); }), 3000, open && running && !busy && !!conversationId);
   useEffect(() => {
     const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
     window.addEventListener(DRAFT_EVENT, draft);

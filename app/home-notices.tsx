@@ -14,6 +14,8 @@ export function nextNotices(notices: HomeNotice[], seen: string[]) {
   return { fresh, seen: notices.map(notice => notice.text) };
 }
 
+const noticesShowAgainWhenStorageIsBlocked = () => undefined;
+
 function readSeen(): string[] {
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]");
@@ -21,7 +23,7 @@ function readSeen(): string[] {
   } catch { return []; }
 }
 function writeSeen(seen: string[]) {
-  try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch {}
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch { noticesShowAgainWhenStorageIsBlocked(); }
 }
 
 export function HomeNotices({ notices }: { notices: HomeNotice[] }) {

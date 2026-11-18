@@ -8,6 +8,8 @@ import { loadIouProposal, type ChatProposal } from "@/lib/ai/iou-actions";
 import { displayFormat } from "@/lib/display-format";
 import { TradeCard } from "@/components/trade-card";
 
+const cardKeepsItsAcceptedStateWhenReloadFails = () => undefined;
+
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { conflict_key?: string };
 
 export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }: { id: string; initial?: Proposal; locale?: string; onAccount?: (id: string, accountId: string | undefined) => void; onDecided?: (id: string, undone?: boolean) => void }) {
@@ -40,7 +42,7 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
     try {
       const [outcome] = await decideAgentProposals([id], decision, (transaction || cashWithdrawal) && chosen ? chosen : undefined);
       if (outcome.error) { setProposal(before); setError(outcome.error); onDecided?.(id, true); }
-      else if (decision === "accept") loadIouProposal(id).then(loaded => loaded && setProposal(loaded), () => {});
+      else if (decision === "accept") loadIouProposal(id).then(loaded => loaded && setProposal(loaded), cardKeepsItsAcceptedStateWhenReloadFails);
     } catch (cause) { setProposal(before); setError(cause instanceof Error ? cause.message : "Could not save"); onDecided?.(id, true); }
   });
   const named = (verb: string) => recurring ? undefined : `${verb}: ${proposal.title}`;

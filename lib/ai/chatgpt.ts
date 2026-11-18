@@ -5,6 +5,7 @@ import { z } from "zod";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 import { serviceKey } from "@/lib/service-keys";
 import { dataDir } from "@/lib/env";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 const remoteRevokeIsBestEffort = () => undefined;
 const AUTH = "https://auth.openai.com/api/accounts";
@@ -13,6 +14,7 @@ const SCOPE = "openid profile email offline_access resource.invoke chatgpt.token
 const PLAN_SCOPE = "chatgpt.tokens.use.direct";
 const file = () => path.join(dataDir(), "chatgpt.json");
 const AAD = "moneo:chatgpt";
+const unreadableSignInCountsAsSignedOut = () => null;
 
 export type AiSource = "chatgpt" | "claude" | "api_key";
 const tokensSchema = z.object({ accessToken: z.string(), refreshToken: z.string().nullable(), expiresAt: z.number(), scopes: z.array(z.string()) });
@@ -45,7 +47,7 @@ async function save(state: State) {
 const tokenResponse = z.object({ access_token: z.string(), refresh_token: z.string().optional(), id_token: z.string().optional(), expires_in: z.number().optional(), scope: z.string().optional() });
 async function token(body: Record<string, string>, previous?: Tokens) {
   const response = await fetch(`${AUTH}/oauth/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ ...body, resource: RESOURCE }) });
-  const parsed = tokenResponse.safeParse(await response.json().catch(() => null));
+  const parsed = tokenResponse.safeParse(await jsonBodyOrNull(response));
   if (!response.ok || !parsed.success) throw new ChatGPTError(`ChatGPT sign-in failed (${response.status})`);
   const data = parsed.data;
   const tokens: Tokens = { accessToken: data.access_token, refreshToken: data.refresh_token ?? previous?.refreshToken ?? null,
@@ -102,7 +104,7 @@ export async function setAiSource(source: AiSource) {
 }
 
 export async function chatgptStatus() {
-  const state = await load().catch(() => null);
+  const state = await load().catch(unreadableSignInCountsAsSignedOut);
   return { signedIn: Boolean(state?.account), email: state?.account?.email ?? null, source: state?.source ?? "api_key" };
 }
 

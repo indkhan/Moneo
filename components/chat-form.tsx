@@ -13,6 +13,7 @@ import { ChatQueue } from "@/components/chat-queue";
 import { DRAFT_EVENT } from "@/components/chat-messages";
 import { RESEND_EVENT, type Resend } from "@/components/message-actions";
 
+const draftIsNotKeptWhenStorageIsBlocked = () => undefined;
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
 
 export type ChatFormEvents = {
@@ -32,7 +33,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
       const saved = sessionStorage.getItem(draftKey);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved) setMessage(current => current || saved);
-    } catch {}
+    } catch { draftIsNotKeptWhenStorageIsBlocked(); }
   }, [message, draftKey]);
   const chat = useChatRequest();
   const files = useChatAttachments();

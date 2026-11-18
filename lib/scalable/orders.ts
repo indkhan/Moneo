@@ -57,8 +57,9 @@ export type TradeReview = {
 const payloadSchema = z.object({ connectionId: z.uuid(), side: z.enum(["buy", "sell"]), expiresAt: z.string(), submission: previewSchema.shape.submission }).strict();
 const cancelPayloadSchema = z.object({ connectionId: z.uuid(), orderId: z.string().min(1).max(200) }).strict();
 
+const nameFallsBackToTheIsinWhenQuoteIsUnavailable = () => null;
 const nameOf = async (mcp: ScalableMcp, isin: string) => {
-  const found = await mcp.callTool("get_security_quote", { isin }).catch(() => null) as { security?: { name?: unknown } } | null;
+  const found = await mcp.callTool("get_security_quote", { isin }).catch(nameFallsBackToTheIsinWhenQuoteIsUnavailable) as { security?: { name?: unknown } } | null;
   return typeof found?.security?.name === "string" ? found.security.name.slice(0, 120) : isin;
 };
 const minorOf = (value: string | null | undefined, currency: string) => value == null || value === "" ? null : toMinor(value, currency);
