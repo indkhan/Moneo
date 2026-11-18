@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
+import { useDelay } from "@/lib/use-timeout";
 
 export function IntentLink({ onPointerEnter, onPointerLeave, onFocus, onBlur, onTouchStart, ...props }: ComponentProps<typeof Link>) {
   const [intent, setIntent] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [later, cancelLater] = useDelay();
   const current = props["aria-current"] === "page";
   const show = () => { if (!current) setIntent(true); };
-  const hide = () => { clearTimeout(timer.current); setIntent(false); };
+  const hide = () => { cancelLater(); setIntent(false); };
   return <Link {...props} prefetch={intent ? true : null}
-    onPointerEnter={event => { onPointerEnter?.(event); clearTimeout(timer.current); timer.current = setTimeout(show, 60); }}
+    onPointerEnter={event => { onPointerEnter?.(event); later(show, 60); }}
     onPointerLeave={event => { onPointerLeave?.(event); hide(); }}
     onFocus={event => { onFocus?.(event); show(); }}
     onBlur={event => { onBlur?.(event); hide(); }}
