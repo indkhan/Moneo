@@ -70,7 +70,7 @@ Go to **Settings → Keys and connections → AI access** and choose one:
 
 In Settings ? AI and your data, type or choose one default model for all AI tasks (GPT-6 Luna by default with OpenAI). Turn on ?Customize by task? for individual overrides; turning it off clears those overrides when you save. Model IDs are saved without a provider call, so unavailable models report an error when used. Claude-only installs use a Claude default.
 
-Voice calls and dictation need the OpenAI API key. Settings → Voice chooses the speech-to-text engine for the chat microphone; OpenAI is the only one you can pick so far, and it is also the fallback when a chosen engine can't run. An OpenRouter key is optional (for other models).
+Voice calls need the OpenAI API key. Settings → Voice chooses the speech-to-text engine for the chat microphone: OpenAI, or **On this computer**, which needs no key (see [Speech to text on this computer](#speech-to-text-on-this-computer-optional)). OpenAI is also the fallback when a chosen engine can't run. An OpenRouter key is optional (for other models).
 
 #### 6. Add your money
 
@@ -114,9 +114,20 @@ Chat, artifacts, briefings, imports and the agents then run on Claude (Opus 5.5 
 
 - **Never billed to an API key.** Moneo removes `ANTHROPIC_API_KEY` and similar settings before it starts Claude Code, and only runs Claude when Claude Code is signed in with a Claude plan. If you sign out of Claude Code, AI stays off until you sign in again or pick another option.
 - **Only Moneo's tools.** Claude gets Moneo's finance tools and nothing else: no files, no shell, no other MCP servers, and no chat history saved by Claude Code. Changes still go through cards you accept.
-- **Not yet:** voice calls and dictation, which still need an OpenAI API key for the audio.
+- **Not yet:** voice calls, which still need an OpenAI API key for the audio. Dictation works with an OpenAI key or [on this computer](#speech-to-text-on-this-computer-optional).
 - **Stop using Claude** switches Moneo back to ChatGPT or your API key. It doesn't sign you out of Claude Code.
 - Anthropic's rules say apps may not offer Claude plan sign-in without its approval ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)). Moneo only uses the Claude Code login you set up yourself, on your own computer. Decide for yourself whether that fits your use.
+
+### Speech to text on this computer (optional)
+
+The chat microphone can turn speech into text on the computer that runs Moneo, so recordings never leave it. It works from your phone too, because the model runs on the computer.
+
+1. In **Settings → Voice**, set **Speech to text** to **On this computer**.
+2. Click **Download** next to a model. Moonshine Base (67 MB) and Distil-Whisper (175 MB) understand English; Whisper Base (80 MB) and Whisper Small (252 MB) understand many languages, including German. Moonshine is the fastest, Whisper Small the most accurate. Models are saved in `.data/speech-models` (in the desktop app, in its data folder) and downloaded once from Hugging Face; each file is checked against its known size and hash, and a stopped download continues where it left off.
+3. Or choose **A model you already have**: a folder holding a Whisper or Moonshine model in ONNX format (`config.json`, the tokenizer files and an `onnx` folder), such as one from [onnx-community](https://huggingface.co/onnx-community). Type its full path, or click **Choose folder…** in the desktop app.
+4. Click **Try it**, say a sentence and check the text, then **Save preferences**.
+
+The model loads the first time you use the mic and is unloaded after five idle minutes. Moneo passes the names of your accounts, shops and categories to Whisper models so they spell them right. Intel Macs can't run these models yet. If the model is missing or fails, Moneo uses OpenAI when you have added a key, and says so. Downloaded models aren't part of backups and stay when you reset your data; delete the folder to remove them.
 
 ### Connect your bank (optional)
 

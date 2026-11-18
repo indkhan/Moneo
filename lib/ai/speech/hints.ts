@@ -8,3 +8,9 @@ export const SPEECH_PROMPT = "A short personal-finance voice note: spending, inc
 export async function loadSpeechHints(supabase: SupabaseClient, workspaceId: string, scopes: readonly AiDataScope[]): Promise<SpeechHints> {
   return { prompt: SPEECH_PROMPT, keywords: await loadVoiceVocabulary(supabase, workspaceId, scopes).catch(() => []) };
 }
+
+const MAX_HINT_CHARACTERS = 800;
+export function promptWithNames(hints: SpeechHints) {
+  const names = hints.keywords.join(", ").slice(0, MAX_HINT_CHARACTERS);
+  return names ? `${hints.prompt} Names that may come up: ${names}.` : hints.prompt;
+}
