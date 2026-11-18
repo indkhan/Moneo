@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7RC79DAR6QGT4CSVSB0QY4D",
+  "session_id": "5cdeb7c6-fadd-4ef9-bc50-637ed14f6be2",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T22:25:19.6047426Z",
+  "branch": "t3/issue-268-swallowed-failures",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/home-notices.tsx",
+    "app/import/[id]/review/page.tsx",
+    "app/layout.tsx",
+    "app/money/investigations/page.tsx",
+    "app/setup/page.tsx",
+    "components/ai-panel-dialog.tsx",
+    "components/chat-form.tsx",
+    "components/chat-workspace.tsx",
+    "components/decision-card.tsx",
+    "components/iou-card.tsx",
+    "components/proposal-group.tsx",
+    "components/service-worker.tsx",
+    "eslint.config.mjs"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "640e00d19dcb",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 32,
+    "cache_creation_tokens": 47554,
+    "cache_read_tokens": 1083626,
+    "output_tokens": 6566,
+    "api_call_count": 16
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
