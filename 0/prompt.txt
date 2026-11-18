@@ -1,0 +1,74 @@
+This is going to be a documentation change, an 8inst.md change. In 8inst.md I want to change that. If the PR is any change, no matter what, always have this speed thing: how much time does it take to open the application, how much time does it take to do the thing which it touches, and all of those things. That speed should be there before and after.
+
+The other thing that should be there in the PR is that if it is a UI change, we added a lot of things for the visual thing. Add those visual things in the PR itself. Whether it's an image, a video, or anything, add it to the PR itself. Don't just say, "Okay this image is in this folder." Add that to the PR. I hope it is clear enough. Let me know if you want to talk about something related to it.
+
+Another thing is about the speed thing. If it sees that the speed has gone down, it should try to improve it. That is because if it has gone down, that means the thing that it did made the application slower but it should have made it faster. How should we change the agents.md and other things? What do you say?
+
+---
+
+If I'm not wrong, it had a before. There were changes in agents. The PR had this verify UI kind of skill that it uses and all of that so check into that.
+1. For your first question no, docs-only PRs don't need a speed number.
+2. How should images get in? Sure, with the suggestion, if you want to put it in a separate PR, assets, generate the URLs, that's fine. The suggestion is for use cases of flows and MP4. Whatever do you think is easier and cheaper? It's just that the PR should add them. Reaction time can cost money. No, the interaction timing can use mocks and tests. It should use mocks and tests in the normal test.
+
+And also tell me what all skills were added and how it connects to AGENTS.md and all of those things.
+
+---
+
+firstly bring the code from origin main and then check each thing and agents.md and all and then give me what should we do in simple and consice words
+
+---
+
+what is there in instrumentation.ts and all
+
+---
+
+sure drong the stach  get the newmain and then check and then give me what u think should be done and then lets talk about it
+
+---
+
+sure sounds good
+
+---
+
+<task-notification>
+<task-id>btvqlvthc</task-id>
+<tool-use-id>toolu_01Q3KNEvtw4xNFZEb2M8fcqa</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\3de23844519d7b87\ed892a43-72f1-4d8c-aedb-23496d80c797\tasks\btvqlvthc.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/codebases/Moneo-pr-evidence; T="
+
+Co-Authored-By: Claude Opus 5.5 &lt;noreply@anthropic.com&gt;"
+git add scripts/qa-server.mjs &amp;&amp; git commit -q -m "Let qa:server run on another port with QA_PORT
+
+Measuring speed needs the base and the branch running side by side, and
+verify-ui already told agents to use a free port when 3100 is taken, which
+the script could not do. Port 3000 is refused because it is the owner's app.$T"
+git add .agents/skills/verify-ui AGENTS.md &amp;&amp; git commit 
+
+... [672 characters truncated] ...
+
+he app, a mocked Playwright timing for
+the changed action, a before/after table in the PR. A slowdown over 10%
+and 50 ms gets fixed before the PR opens, or explained. AGENTS.md points
+to it and to verify-ui; docs-only PRs skip it.$T"; git log --oneline -4; git status --short" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bx2h4he96</task-id>
+<tool-use-id>toolu_012R31gaGrYefHK8wfwePhne</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\3de23844519d7b87\ed892a43-72f1-4d8c-aedb-23496d80c797\tasks\bx2h4he96.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/codebases/Moneo-pr-evidence; node -e '
+const fs=require("fs");let s=fs.readFileSync("AGENTS.md","utf8");
+const r=(a,b)=&gt;{if(!s.includes(a))throw a;s=s.replace(a,b)};
+r("Purely visual changes get a before/after screenshot instead.","Purely visual changes get before/after screenshots instead (skill `verify-ui`).");
+r("building into `.next-qa`, with bank","building into `.next-qa` (`QA_PORT=&lt;port&gt;` for another port), with bank");
+r("- Long agent prompts and plans","- Every
+
+... [358 characters truncated] ...
+
+s embeds its screenshots and recordings in the description (skill `verify-ui`). A path to a local folder is not enough.\n- Long agent prompts and plans");
+fs.writeFileSync("AGENTS.md",s)'; git diff --stat; npm ci --silent &gt;/dev/null 2&gt;&amp;1; npm run check:privacy 2&gt;&amp;1 | tail -2" completed (exit code 0)</summary>
+</task-notification>
