@@ -3,9 +3,11 @@ import { afterAll, vi } from "vitest";
 
 Object.assign(globalThis, { AsyncLocalStorage });
 
-const env = { ...process.env };
+const pristine = globalThis as typeof globalThis & { pristineTestEnv?: NodeJS.ProcessEnv };
+pristine.pristineTestEnv ??= { ...process.env };
+const env = pristine.pristineTestEnv;
 
-afterAll(() => {
+function resetSharedState() {
   vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -13,4 +15,7 @@ afterAll(() => {
   vi.resetModules();
   for (const name of Object.keys(process.env)) if (!(name in env)) delete process.env[name];
   Object.assign(process.env, env);
-});
+}
+
+resetSharedState();
+afterAll(resetSharedState);

@@ -29,7 +29,7 @@ jobs:
         id: modules
         with:
           path: node_modules
-          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json') }}
+          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}
       - &install
         if: steps.modules.outputs.cache-hit != 'true'
         run: npm ci
@@ -93,8 +93,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - *checkout
-      - name: Pull the backend images in the background
-        run: docker compose pull --quiet > "$RUNNER_TEMP/pull.log" 2>&1 &
       - *node
       - *modules
       - *install
@@ -115,8 +113,6 @@ jobs:
       E2E_BASE_URL: http://localhost:3100
     steps:
       - *checkout
-      - name: Pull the backend images in the background
-        run: docker compose pull --quiet > "$RUNNER_TEMP/pull.log" 2>&1 &
       - *node
       - *modules
       - *install
@@ -149,6 +145,7 @@ jobs:
           wait $playwright || { cat "$RUNNER_TEMP/playwright.log"; exit 1; }
       - run: npm run qa:auth
       - name: Wait for the QA app
+        timeout-minutes: 5
         run: |
           until curl -s -o /dev/null http://localhost:3100/api/health; do
             kill -0 "$(cat "$RUNNER_TEMP/qa-server.pid")" 2>/dev/null || { cat "$RUNNER_TEMP/qa-server.log"; exit 1; }
@@ -174,5 +171,5 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
         run: exit 1
