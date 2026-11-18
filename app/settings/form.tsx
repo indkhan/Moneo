@@ -9,6 +9,7 @@ import { INSIGHT_TYPES } from "@/lib/insight-types";
 import { SPEECH_ENGINE_LABELS } from "@/lib/ai/speech/engine";
 import { saveSettings } from "./actions";
 import { SpeechModels } from "./speech-models";
+import { SpeechOpenRouter } from "./speech-openrouter";
 import type { AiSource } from "@/lib/ai/chatgpt";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
 import { connectedDefault, modelOptions, type ModelConnections } from "@/lib/ai/model-options";
@@ -158,10 +159,11 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
       <VoicePicker value={settings.voice} />
       <label className={label}>Speech to text
         <select name="speech_engine" className={input} value={speechEngine} onChange={event => setSpeechEngine(event.target.value as typeof speechEngine)}>
-          {SPEECH_ENGINES.map(engine => <option key={engine} value={engine} disabled={engine === "openrouter" && engine !== settings.speech_engine}>{SPEECH_ENGINE_LABELS[engine]}{engine === "openrouter" && engine !== settings.speech_engine ? " (coming soon)" : ""}</option>)}
+          {SPEECH_ENGINES.map(engine => <option key={engine} value={engine} disabled={engine === "openrouter" && !connections.openrouter && engine !== settings.speech_engine}>{SPEECH_ENGINE_LABELS[engine]}{engine === "openrouter" && !connections.openrouter ? " (needs an OpenRouter key)" : ""}</option>)}
         </select>
         <span className={`${help} font-normal`}>Turns what you say into text when you use the microphone in chat. Voice calls always use OpenAI. If the engine you choose can&apos;t run, Moneo uses OpenAI when you have added an API key.</span>
       </label>
+      <SpeechOpenRouter initial={settings.speech_openrouter_model} hidden={speechEngine !== "openrouter"} onChange={() => setDirty(true)} />
       <SpeechModels initial={settings.speech_local_model} hidden={speechEngine !== "local"} onChange={() => setDirty(true)} />
     </fieldset>
     <fieldset id="insights" className={card}><legend className={legend}>Insights and summaries</legend>
