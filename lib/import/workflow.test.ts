@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { importFile } from "@/workflows/import-file";
 import { createHash } from "node:crypto";
 
@@ -23,6 +23,8 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
     return query;
   },
 }) }));
+
+beforeEach(() => { fixture.updates = []; fixture.effects = []; fixture.frozenMissing = false; });
 
 it("refuses ambiguous account names before any ledger effect", async () => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");

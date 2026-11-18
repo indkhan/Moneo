@@ -133,6 +133,7 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | `FEATURES.md` matches the registered pages, chat tools, widgets, palette, cron routes and workflows; a cron route `lib/scheduler.ts` never runs fails | `npm run check:features` (runs before lint, so CI); fix with `npm run feature-map` |
 | A page's JavaScript stays within its size budget | `npm run check:bundle` |
 | A test file runs in 10 seconds or less | CI, "Slowest test files" |
+| Tests pass in any order, sharing one loaded app | `isolate: false` and `sequence.shuffle` in `vitest.config.mts`, reset in `vitest.setup.ts` |
 
 ## Sign-in callbacks and addresses
 
@@ -160,6 +161,7 @@ A test earns its place by failing when real behaviour breaks. Before writing one
 - One test per behaviour. Don't add a test per requirement or per audit finding; if an existing test covers the failure, extend it.
 - `npm test` must pass with no `.env`, no Docker and no network. Anything that needs the database is a `*.live.test.ts`.
 - Use fake timers or controlled promises, never real waits. Mock AI, bank and Scalable; real calls are opt-in only.
+- Test files share one loaded app (`isolate: false`) and run in random order. `vitest.setup.ts` puts back timers, env, globals, spies, loaded modules and `process.env` after each file; anything else a test changes (a fixture object, a file, a module's own state) it resets in `beforeEach`. A test never relies on what an earlier test left behind. For a module that keeps state, take a fresh copy per test with `vi.resetModules()` and `await import()`. A failure seen only in some orders is such a leak: rerun with the printed seed (`--sequence.seed=<n>`) and fix it.
 - Browser specs are for whole user journeys, not single links or labels. Add a spec only when no existing journey can take the check.
 - When you remove a feature, remove its tests. Never delete or skip a failing test just to get green: fix the cause, or ask.
 - If a pointless test lands, find out why the agent wrote it and fix the guidance here.

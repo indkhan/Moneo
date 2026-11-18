@@ -2,15 +2,17 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { GET, POST } from "./route";
 
 const fixture = vi.hoisted(() => ({ denied: false }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => { if (fixture.denied) throw new Error("Unauthorized"); return {}; } }));
 
 const download = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }));
 const post = (body: unknown) => POST(new Request("http://localhost/api/voice/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
-let home: string;
-beforeEach(() => { home = mkdtempSync(path.join(tmpdir(), "moneo-models-route-")); vi.stubEnv("MONEO_DATA_DIR", home); vi.stubGlobal("fetch", download); vi.spyOn(console, "warn").mockImplementation(() => {}); });
+let home: string, GET: typeof import("./route").GET, POST: typeof import("./route").POST;
+beforeEach(async () => {
+  vi.resetModules();
+  ({ GET, POST } = await import("./route"));
+  home = mkdtempSync(path.join(tmpdir(), "moneo-models-route-")); vi.stubEnv("MONEO_DATA_DIR", home); vi.stubGlobal("fetch", download); vi.spyOn(console, "warn").mockImplementation(() => {}); });
 afterEach(() => { fixture.denied = false; rmSync(home, { recursive: true, force: true }); vi.unstubAllEnvs(); vi.unstubAllGlobals(); download.mockClear(); });
 
 it("lists the suggested models as not downloaded in Moneo's data folder", async () => {

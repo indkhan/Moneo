@@ -14,18 +14,65 @@ on:
       - ".github/workflows/desktop.yml"
   push:
     tags: ["v*"]
+    branches: [main]
+    paths:
+      - "scripts/desktop/fetch-backend.mjs"
+      - "scripts/desktop/backend-fs-xattr-shim/**"
+      - "package-lock.json"
+      - ".github/workflows/desktop.yml"
+  schedule:
+    - cron: "17 3 * * 1"
   workflow_dispatch:
 
 concurrency:
-  group: desktop-${{ github.ref }}
+  group: desktop-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  cache:
+    name: cache ${{ matrix.id }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: win-x64, runner: windows-latest }
+          - { id: mac-arm64, runner: macos-15 }
+          - { id: mac-x64, runner: macos-15-intel }
+          - { id: linux-x64, runner: ubuntu-24.04 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        id: modules
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci
+      - uses: actions/cache@v4
+        id: backend
+        with:
+          path: |
+            desktop/.build/backend/${{ matrix.id }}
+            desktop/.build/storage-api
+          key: backend-${{ matrix.id }}-node22-${{ hashFiles('scripts/desktop/fetch-backend.mjs', 'scripts/desktop/backend-fs-xattr-shim/**') }}
+      - if: steps.backend.outputs.cache-hit != 'true'
+        run: node scripts/desktop/fetch-backend.mjs --platform ${{ matrix.id }}
+
   build:
     name: ${{ matrix.id }}
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -58,18 +105,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+
+      - uses: actions/cache/restore@v4
+        id: modules
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}
 
       # No setup-go: fetch-backend.mjs downloads its own pinned Go toolchain into desktop/.cache.
-      - run: npm ci
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - uses: actions/cache/restore@v4
+        id: backend
+        with:
+          path: |
+            desktop/.build/backend/${{ matrix.id }}
+            desktop/.build/storage-api
+          key: backend-${{ matrix.id }}-node22-${{ hashFiles('scripts/desktop/fetch-backend.mjs', 'scripts/desktop/backend-fs-xattr-shim/**') }}
+
+      - name: Fetch the native backend
+        run: node scripts/desktop/fetch-backend.mjs --platform ${{ matrix.id }} ${{ steps.backend.outputs.cache-hit == 'true' && '--skip postgres,postgrest,gotrue,mkcert,storage,vcruntime' || '' }}
 
       - uses: actions/cache@v4
         with:
-          path: desktop/.cache
-          key: desktop-cache-${{ matrix.id }}-${{ hashFiles('scripts/desktop/fetch-backend.mjs') }}
-
-      - name: Fetch the native backend
-        run: node scripts/desktop/fetch-backend.mjs --platform ${{ matrix.id }}
+          path: .next-desktop/cache
+          key: next-.next-desktop-${{ matrix.id }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-.next-desktop-${{ matrix.id }}-${{ hashFiles('package-lock.json') }}-
 
       - run: npm run desktop:build
 
@@ -85,17 +147,18 @@ jobs:
           # electron-builder skips signing on pull requests; sign (ad hoc without a certificate) so
           # codesign's checks fail here instead of first on a release tag.
           CSC_FOR_PULL_REQUEST: "true"
+          ELECTRON_BUILDER_COMPRESSION_LEVEL: ${{ !startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
         run: |
           # Secrets that do not exist arrive as empty strings; unset them so electron-builder
           # treats the build as unsigned.
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD ELECTRON_BUILDER_COMPRESSION_LEVEL; do
             if [ -z "${!name}" ]; then unset "$name"; fi
           done
           if [ -z "${CSC_LINK:-}" ] && [ -z "${WIN_CSC_LINK:-}" ]; then
             export CSC_IDENTITY_AUTO_DISCOVERY=false
             echo "No signing certificate: building unsigned packages."
           fi
-          npm run desktop:dist -- ${{ matrix.builder }} --publish never
+          npm run desktop:dist -- ${{ matrix.builder }} --publish never ${{ !startsWith(github.ref, 'refs/tags/v') && '-c.deb.compression=gz' || '' }}
           # Both Mac jobs write latest-mac.yml. Macs only read the version from it (unsigned apps
           # download from the release page), so the Apple Silicon one is kept.
           if [ "${{ matrix.id }}" = "mac-x64" ]; then rm -f desktop/release/latest-mac.yml; fi
