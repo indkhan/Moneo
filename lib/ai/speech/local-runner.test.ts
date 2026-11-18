@@ -38,10 +38,12 @@ it("keeps the model loaded between recordings and unloads it once it has been id
 it("never unloads the model while a recording is still being transcribed", async () => {
   const model = runner();
   const pending = model.transcribe(job());
+  expect(model.idle()).toBe(false);
   vi.advanceTimersByTime(5000);
   expect(workers[0].terminate).not.toHaveBeenCalled();
   workers[0].answer("done");
   expect(await pending).toBe("done");
+  expect(model.idle()).toBe(true);
 });
 
 it("fails the waiting recordings when the model crashes, and starts fresh next time", async () => {

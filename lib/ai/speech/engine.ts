@@ -8,7 +8,8 @@ export type SpeechHints = { prompt: string; keywords: string[] };
 export type BatchSpeechEngine = {
   available: () => Promise<boolean>;
   transcribe: (audio: SpeechAudio, hints: SpeechHints, signal?: AbortSignal) => Promise<string>;
+  interim?: (audio: SpeechAudio, hints: SpeechHints) => Promise<string | null>;
 };
 export type BatchSpeechEngines = Partial<Record<SpeechEngineId, BatchSpeechEngine>>;
 
-export type SpeechPlan = { mode: "live"; fellBack: boolean } | { mode: "batch"; engine: SpeechEngineId; fellBack: false };
+export type SpeechPlan = { mode: "live"; fellBack: boolean } | { mode: "batch"; engine: SpeechEngineId; fellBack: false; live: boolean };
