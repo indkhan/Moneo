@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { cashflow } from "./tools";
 import type { FinanceContext } from "./finance-context";
 
