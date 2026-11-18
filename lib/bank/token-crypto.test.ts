@@ -17,7 +17,8 @@ describe("bank token encryption", () => {
     const sealed = encryptToken("session-123", "conn-a");
     expect(() => decryptToken(sealed, "conn-b")).toThrow();
     const bytes = Buffer.from(sealed.slice(3), "base64");
-    bytes[bytes.length - 1] ^= 1;
+    const last = bytes.length - 1;
+    bytes.writeUInt8(bytes.readUInt8(last) ^ 1, last);
     expect(() => decryptToken(`v1:${bytes.toString("base64")}`, "conn-a")).toThrow();
     vi.stubEnv("BANK_TOKEN_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
     expect(() => decryptToken(sealed, "conn-a")).toThrow();

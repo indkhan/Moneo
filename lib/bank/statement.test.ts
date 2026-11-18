@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { inspectRows, parseCsv } from "@/lib/import/csv";
 import { batchDecisions } from "@/lib/import/batch";
+import { defined } from "@/lib/testing";
 import { bankStatement, preferredBalance, bankObservation } from "./statement";
 import type { BankTransaction } from "./enable-banking";
 
@@ -12,7 +13,7 @@ const tx = (over: Partial<BankTransaction>): BankTransaction => ({
 });
 const account = { accountName: "Revolut ••1234", currencyCode: "EUR", calendarTimezone: "Europe/Berlin" };
 const mapped = (transactions: BankTransaction[]) => {
-  const statement = bankStatement(transactions, account)!;
+  const statement = defined(bankStatement(transactions, account));
   return inspectRows(parseCsv(statement.csv), statement.mapping).mapped;
 };
 
@@ -31,11 +32,11 @@ describe("bank statement mapping", () => {
       ["ref-3", -7n, "EUR", "2026-10-01", "posted"],
       ["ref-4", -1500n, "JPY", "2026-10-02", "posted"],
     ]);
-    expect(typeof rows[0].amountMinor).toBe("bigint");
-    expect(rows[0].description).toBe("REWE SAGT DANKE 1234");
-    expect(rows[0].merchant).toBe("REWE Markt");
-    expect(rows[1].description).toBe("Employer GmbH");
-    expect(rows[3].balanceMinor).toBe(98500n);
+    expect(typeof rows[0]?.amountMinor).toBe("bigint");
+    expect(rows[0]?.description).toBe("REWE SAGT DANKE 1234");
+    expect(rows[0]?.merchant).toBe("REWE Markt");
+    expect(rows[1]?.description).toBe("Employer GmbH");
+    expect(rows[3]?.balanceMinor).toBe(98500n);
   });
 
   it("drops pending rows, dedupes repeated ids and falls back to transaction_id", () => {
@@ -45,8 +46,8 @@ describe("bank statement mapping", () => {
   });
 
   it("is idempotent: syncing the same data twice yields one import, overlaps match by bank id", () => {
-    const first = bankStatement([tx({}), tx({ entry_reference: "ref-2" })], account)!;
-    const again = bankStatement([tx({ entry_reference: "ref-2" }), tx({})], account)!;
+    const first = defined(bankStatement([tx({}), tx({ entry_reference: "ref-2" })], account));
+    const again = defined(bankStatement([tx({ entry_reference: "ref-2" }), tx({})], account));
     const hash = (csv: string) => createHash("sha256").update(csv).digest("hex");
     expect(hash(again.csv)).toBe(hash(first.csv));
     const decisions = batchDecisions([
@@ -63,18 +64,18 @@ describe("bank statement mapping", () => {
     expect(bankObservation([{ ...closing, balance_type: "ITBD", reference_date: "2026-10-05" }], "EUR", now, "Europe/Berlin")).toMatchObject({ balanceType: "ITBD", asOf: now.toISOString() });
     expect(bankObservation([{ ...closing, reference_date: null }], "EUR", now, "Europe/Berlin")).toMatchObject({ asOf: now.toISOString() });
     expect(bankObservation([], "EUR", now, "Europe/Berlin")).toBeNull();
-    const statement = bankStatement([tx({ booking_date: "2026-10-05" })], account)!;
-    expect(inspectRows(parseCsv(statement.csv), statement.mapping).mapped[0].balanceMinor).toBeUndefined();
+    const statement = defined(bankStatement([tx({ booking_date: "2026-10-05" })], account));
+    expect(defined(inspectRows(parseCsv(statement.csv), statement.mapping).mapped[0]).balanceMinor).toBeUndefined();
   });
 
   it("never dates an available balance as an earlier closing balance, so a hold can't count twice", () => {
     const available = (amount: string) => ({ balance_type: "CLAV", reference_date: "2026-10-04", balance_amount: { currency: "EUR", amount } });
     const account = { id: "bank", name: "Bank", currency_code: "EUR" };
-    const monday = bankObservation([available("70.00")], "EUR", new Date("2026-10-05T09:00:00Z"), "UTC")!;
-    const tuesday = bankObservation([available("70.00")], "EUR", new Date("2026-10-06T09:00:00Z"), "UTC")!;
+    const monday = defined(bankObservation([available("70.00")], "EUR", new Date("2026-10-05T09:00:00Z"), "UTC"));
+    const tuesday = defined(bankObservation([available("70.00")], "EUR", new Date("2026-10-06T09:00:00Z"), "UTC"));
     const snapshot = (row: typeof monday, id: string) => ({ id, account_id: "bank", amount_minor: row.amountMinor, currency_code: "EUR", as_of: row.asOf, provenance: `bank:${row.balanceType}`, balance_type: row.balanceType });
     const hold = { id: "hold", account_id: "bank", amount_minor: "-3000", currency_code: "EUR", posted_on: "2026-10-06", status: "posted" };
-    expect(resolveBalances([account], [snapshot(monday, "m"), snapshot(tuesday, "t")], [hold], "2026-10-06T12:00:00Z", "UTC")[0].balance.amount_minor).toBe("7000");
+    expect(resolveBalances([account], [snapshot(monday, "m"), snapshot(tuesday, "t")], [hold], "2026-10-06T12:00:00Z", "UTC")[0]?.balance.amount_minor).toBe("7000");
   });
 
   it("prefers a booked balance in the account currency, falling back to an available one", () => {
@@ -109,13 +110,13 @@ describe("statement bytes are frozen", () => {
   ].join("\n");
 
   it("produces the same CSV and file hash as before", () => {
-    const statement = bankStatement(pages.flat(), account)!;
+    const statement = defined(bankStatement(pages.flat(), account));
     expect(statement.csv).toBe(GOLDEN);
     expect(createHash("sha256").update(statement.csv).digest("hex")).toBe("e0a1dcc69d4b8cd1962e2f7b15341bc548d6e109fa82311848d9a3f4c7a2165d");
   });
 
   it("names the bank transaction behind every CSV row, in order", () => {
-    const statement = bankStatement(pages.flat(), account)!;
+    const statement = defined(bankStatement(pages.flat(), account));
     expect(statement.sources).toHaveLength(statement.rowCount);
     const ids = parseCsv(statement.csv).map(row => row.id);
     statement.sources.forEach((source, index) => expect(source.entry_reference ?? source.transaction_id ?? "").toBe(ids[index]));

@@ -125,6 +125,7 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | Nothing in `lib/`, `workflows/`, server actions or route handlers ignores a failure without naming what handles it; no floating or misused promises; switches over unions list every case | `no-restricted-syntax`, `@typescript-eslint/no-floating-promises`, `no-misused-promises`, `switch-exhaustiveness-check` (lint) |
 | No `eslint-disable` that suppresses nothing | `reportUnusedDisableDirectives` (lint) |
 | Every code path returns; overrides are marked; no switch fall-through | `tsconfig.json` |
+| Indexed access (`array[i]`, `record[key]`) is checked and never silenced with `!` in the folders listed in `tsconfig.indexed.json` (so far `lib/bank`). To migrate the next folder: add `<folder>/**/*.ts` to `include` there, fix its errors with an early return, a default, Zod at the boundary or `defined()` in tests, and run `npm run typecheck`; `npm run lint` forbids `!` in the same folders | `npm run typecheck` (`scripts/typecheck-indexed.mjs`), `@typescript-eslint/no-non-null-assertion` for the same files (lint) |
 | A stored preference this version cannot read never blocks sign-in | `lib/settings.test.ts` |
 | The assistant's system prompt does not grow by special cases | budget in `lib/ai/provider.test.ts` |
 | `lib/database.types.ts` is generated from the migrations; the typed clients (`serviceDb()`, `createClient()`, `Db`) check every query against it | `npm run db:types` and the CI job `database`, which fails when the file differs from a fresh generation |

@@ -38,8 +38,8 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
   const entries = [...byId.values(), ...unidentified].sort((a, b) => a.row.date.localeCompare(b.row.date) || a.row.id.localeCompare(b.row.id)
     || a.row.amount.localeCompare(b.row.amount) || a.row.description.localeCompare(b.row.description));
   const rows = entries.map(entry => entry.row);
-  if (!rows.length) return null;
-  const last = rows[rows.length - 1];
+  const last = rows.at(-1);
+  if (!last) return null;
   const csv = Papa.unparse({ fields: [...headers], data: rows.map(row => headers.map(header => row[header])) }, { newline: "\n" });
   const mapping: ImportMapping = {
     accountName: account.accountName, currencyCode: account.currencyCode,
@@ -61,7 +61,8 @@ export function preferredBalance(balances: BankBalance[], currencyCode: string) 
 export function bankObservation(balances: BankBalance[], currencyCode: string, fetchedAt: Date, timeZone: string) {
   const balance = preferredBalance(balances, currencyCode);
   if (!balance) return null;
-  const closesEarlierDay = BOOKED_BALANCE_TYPES.has(balance.balance_type) && balance.reference_date && balance.reference_date < calendarDate(fetchedAt, timeZone);
+  const referenceDate = balance.reference_date;
+  const closesEarlierDay = BOOKED_BALANCE_TYPES.has(balance.balance_type) && referenceDate && referenceDate < calendarDate(fetchedAt, timeZone);
   return { amountMinor: wealthAmount(balance.balance_amount.amount, currencyCode).toString(), balanceType: balance.balance_type,
-    asOf: closesEarlierDay ? calendarDayBoundary(balance.reference_date!, timeZone) : fetchedAt.toISOString() };
+    asOf: closesEarlierDay ? calendarDayBoundary(referenceDate, timeZone) : fetchedAt.toISOString() };
 }

@@ -1,4 +1,5 @@
 import path from "node:path";
+import indexedAccess from "./tsconfig.indexed.json" with { type: "json" };
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
@@ -233,6 +234,10 @@ export default defineConfig([
     rules: { "moneo/no-comments": "error", "moneo/import-boundaries": "error" },
   },
   { linterOptions: { reportUnusedDisableDirectives: "error" } },
+  {
+    files: indexedAccess.include,
+    rules: { "@typescript-eslint/no-non-null-assertion": ["error"] },
+  },
   {
     files: ["app/**", "components/**", "lib/**", "workflows/**", "proxy.ts", "instrumentation-node.ts"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "**/*.live.test.ts", "lib/env.ts", "lib/property-check.ts"],

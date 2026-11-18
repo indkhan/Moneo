@@ -1,5 +1,6 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defined } from "@/lib/testing";
 import { checkEnableBankingCredentials, EnableBankingError, enableBankingClient, enableBankingConfigured, signJwt } from "./enable-banking";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -9,7 +10,7 @@ const decode = (part: string) => JSON.parse(Buffer.from(part, "base64url").toStr
 describe("signJwt", () => {
   it("signs an RS256 token Enable Banking can verify", () => {
     const token = signJwt("app-1", pem, 1_000);
-    const [header, payload, signature] = token.split(".");
+    const [header = "", payload = "", signature = ""] = token.split(".");
     expect(decode(header)).toEqual({ typ: "JWT", alg: "RS256", kid: "app-1" });
     expect(decode(payload)).toEqual({ iss: "enablebanking.com", aud: "api.enablebanking.com", iat: 1_000, exp: 4_600 });
     expect(verify("RSA-SHA256", Buffer.from(`${header}.${payload}`), publicKey, Buffer.from(signature, "base64url"))).toBe(true);
@@ -32,8 +33,8 @@ describe("enableBankingClient", () => {
   it("lists banks with a signed bearer token", async () => {
     const fetcher = vi.fn().mockResolvedValue(reply({ aspsps: [{ name: "Revolut", country: "DE", maximum_consent_validity: 15_552_000 }] }));
     const banks = await (await enableBankingClient(fetcher)).listAspsps("DE");
-    expect(banks[0].name).toBe("Revolut");
-    const [url, init] = fetcher.mock.calls[0];
+    expect(banks[0]?.name).toBe("Revolut");
+    const [url, init] = defined(fetcher.mock.calls[0], "the first request");
     expect(url).toBe("https://eb.test/aspsps?country=DE&psu_type=personal");
     expect(init.headers.authorization).toMatch(/^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
   });
@@ -46,11 +47,11 @@ describe("enableBankingClient", () => {
     const client = await enableBankingClient(fetcher);
     const psu = { ip: "1.2.3.4", userAgent: "test" };
     await client.startAuthorization({ aspsp: { name: "Revolut", country: "DE" }, validUntil: new Date("2027-04-14T00:00:00Z"), state: "st", redirectUrl: "http://localhost:3000/api/bank/callback", psu });
-    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ access: { valid_until: "2027-04-14T00:00:00.000Z" }, aspsp: { name: "Revolut", country: "DE" },
+    expect(JSON.parse(defined(fetcher.mock.calls[0])[1].body)).toEqual({ access: { valid_until: "2027-04-14T00:00:00.000Z" }, aspsp: { name: "Revolut", country: "DE" },
       state: "st", redirect_url: "http://localhost:3000/api/bank/callback", psu_type: "personal" });
-    expect(fetcher.mock.calls[0][1].headers["psu-ip-address"]).toBe("1.2.3.4");
+    expect(defined(fetcher.mock.calls[0])[1].headers["psu-ip-address"]).toBe("1.2.3.4");
     const session = await client.createSession("code", psu);
-    expect(session.accounts[0].uid).toBe("u1");
+    expect(session.accounts[0]?.uid).toBe("u1");
   });
 
   it("follows continuation keys for booked transactions", async () => {
@@ -60,8 +61,8 @@ describe("enableBankingClient", () => {
       .mockResolvedValueOnce(reply({ transactions: [tx("b")], continuation_key: null }));
     const rows = await (await enableBankingClient(fetcher)).bookedTransactions("u1", "2026-09-01");
     expect(rows.map(row => row.entry_reference)).toEqual(["a", "b"]);
-    expect(fetcher.mock.calls[0][0]).toBe("https://eb.test/accounts/u1/transactions?date_from=2026-09-01&transaction_status=BOOK");
-    expect(fetcher.mock.calls[1][0]).toContain("continuation_key=next");
+    expect(defined(fetcher.mock.calls[0])[0]).toBe("https://eb.test/accounts/u1/transactions?date_from=2026-09-01&transaction_status=BOOK");
+    expect(defined(fetcher.mock.calls[1])[0]).toContain("continuation_key=next");
   });
 
   it("validates responses and classifies errors", async () => {
@@ -95,7 +96,7 @@ describe("Enable Banking credentials", () => {
     await expect(checkEnableBankingCredentials({ appId: "app-1", privateKey: "not a pem" }, vi.fn())).rejects.toMatchObject({ code: "INVALID_PRIVATE_KEY" });
     const fetcher = vi.fn().mockResolvedValueOnce(reply({ name: "Moneo" })).mockResolvedValueOnce(reply({ error: "UNAUTHORIZED" }, 401));
     await checkEnableBankingCredentials({ appId: "app-1", privateKey: pem }, fetcher);
-    expect(fetcher.mock.calls[0][0]).toBe("https://eb.test/application");
+    expect(defined(fetcher.mock.calls[0])[0]).toBe("https://eb.test/application");
     await expect(checkEnableBankingCredentials({ appId: "app-1", privateKey: pem }, fetcher)).rejects.toMatchObject({ status: 401 });
   });
 });

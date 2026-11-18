@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "incremental": false
+  },
+  "include": ["lib/bank/**/*.ts"],
+  "exclude": ["node_modules"]
+}

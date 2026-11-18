@@ -17,17 +17,17 @@ export function enableBankingErrorMessage(error: unknown, fallback: string) {
 
 export function psuFrom(request: Request): PsuContext {
   return {
-    ip: request.headers.get("x-forwarded-for")?.split(",")[0].trim() || request.headers.get("x-real-ip") || "127.0.0.1",
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "127.0.0.1",
     userAgent: (request.headers.get("user-agent") ?? "Moneo").slice(0, 500),
   };
 }
 
 export function bankAccountNames(aspspName: string, accounts: BankAccount[]) {
-  const base = accounts.map(account => {
+  const named = accounts.map(account => {
     const label = account.account_id?.iban ? maskAccountNumber(account.account_id.iban) : account.name || account.product || account.currency;
-    return `${aspspName} ${label}`.trim();
+    return { name: `${aspspName} ${label}`.trim(), currency: account.currency };
   });
-  return base.map((name, index) => Array.from(base.filter(other => other === name).length > 1 ? `${name} ${accounts[index].currency}` : name).slice(0, 100).join(""));
+  return named.map(({ name, currency }) => Array.from(named.filter(other => other.name === name).length > 1 ? `${name} ${currency}` : name).slice(0, 100).join(""));
 }
 
 export function consentValidUntil(maximumSeconds: number | null | undefined, now = Date.now()) {
