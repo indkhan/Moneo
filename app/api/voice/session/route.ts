@@ -14,9 +14,10 @@ export async function POST(request: Request) {
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!inputSchema.safeParse(await request.json().catch(() => null)).success) return Response.json({ error: "Invalid request" }, { status: 400 });
   const { supabase, workspace, settings } = context;
-  const choice = chooseSpeechEngine(settings.speech_engine, await speechAvailability(batchEngines(settings)));
+  const engines = batchEngines(settings);
+  const choice = chooseSpeechEngine(settings.speech_engine, await speechAvailability(engines));
   if (!choice.engine) return Response.json({ error: choice.reason }, { status: 503 });
-  if (choice.engine !== "openai") return Response.json({ mode: "batch", engine: choice.engine, fellBack: false }, { headers: { "Cache-Control": "no-store" } });
+  if (choice.engine !== "openai") return Response.json({ mode: "batch", engine: choice.engine, fellBack: false, live: Boolean(engines[choice.engine]?.interim) }, { headers: { "Cache-Control": "no-store" } });
   const apiKey = await voiceApiKey();
   if (!apiKey) return Response.json({ error: "Voice input is unavailable. Try again." }, { status: 502 });
   const hints = await loadSpeechHints(supabase, workspace.id, settings.ai_data_scopes);

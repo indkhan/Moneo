@@ -141,6 +141,27 @@ it("records for a batch engine and posts the audio once on stop", async () => {
   expect(audio.closed).toBe(1);
 });
 
+it("shows live words from the engine on this computer while recording, then returns the final transcript", async () => {
+  vi.useFakeTimers();
+  try {
+    fetchMock.mockResolvedValueOnce(Response.json({ mode: "batch", engine: "local", fellBack: false, live: true }));
+    const events = handlers();
+    const recording = await startVoiceRecording(events);
+    speak();
+    fetchMock.mockResolvedValueOnce(Response.json({ text: "Spent" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/voice/interim?rate=24000");
+    expect(events.onText).toHaveBeenCalledWith("Spent");
+    speak();
+    fetchMock.mockResolvedValueOnce(Response.json({ text: "Spent twelve at Netto", engine: "local", fellBack: false }));
+    expect(await recording.stop()).toBe("Spent twelve at Netto");
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/voice/transcribe?rate=24000");
+    expect(fetchMock.mock.calls[2][1].body).toHaveLength(2 * pcm16(new Float32Array(480), 48000).length);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  } finally { vi.useRealTimers(); }
+});
+
 it("tells the owner when a batch recording was transcribed by OpenAI instead", async () => {
   fetchMock.mockResolvedValueOnce(Response.json({ mode: "batch", engine: "local", fellBack: false }));
   const events = handlers();

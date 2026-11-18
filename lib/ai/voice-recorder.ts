@@ -1,7 +1,9 @@
+import { createLiveWords, type InterimTranscriber } from "./speech/live-words";
+
 export type VoiceRecording = { stop: () => Promise<string>; cancel: () => void };
 export type VoiceHandlers = { onText: (text: string) => void; onLevel: (level: number) => void; onError: (error: Error) => void; onNote: (note: string) => void };
 type Microphone = { audio: AudioContext; stream: MediaStream; release: () => void };
-type SessionPlan = { mode: "live"; fellBack: boolean; token: string; url: string } | { mode: "batch"; fellBack: boolean };
+type SessionPlan = { mode: "live"; fellBack: boolean; token: string; url: string } | { mode: "batch"; fellBack: boolean; live: boolean };
 
 const RATE = 24000;
 const notRunningIsReportedBelow = () => undefined;
@@ -73,7 +75,7 @@ export async function startVoiceRecording(handlers: VoiceHandlers): Promise<Voic
     const body = await uploadSpeech("/api/voice/transcribe", samples);
     if (body.fellBack === true) handlers.onNote("Your chosen speech-to-text engine didn't work, so Moneo used OpenAI.");
     return body.text;
-  });
+  }, plan.live ? { transcribe: interimSpeech, onText: handlers.onText } : undefined);
 }
 
 export async function startModelTrial(model: string, onLevel: (level: number) => void): Promise<VoiceRecording> {
@@ -89,11 +91,19 @@ async function uploadSpeech(path: string, samples: Int16Array<ArrayBuffer>): Pro
   return body;
 }
 
+const interimSpeech: InterimTranscriber = async (samples, signal) => {
+  const response = await fetch(`/api/voice/interim?rate=${RATE}`, { method: "POST", headers: { "Content-Type": "audio/pcm" }, body: samples, signal });
+  const body = await response.json().catch(() => ({}));
+  if (response.ok && body?.busy === true) return null;
+  if (!response.ok || typeof body?.text !== "string") throw new Error("Live words are unavailable");
+  return body.text;
+};
+
 async function openSession(): Promise<SessionPlan> {
   const response = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   const body = await response.json().catch(() => ({}));
   const fellBack = body?.fellBack === true;
-  if (response.ok && body?.mode === "batch") return { mode: "batch", fellBack };
+  if (response.ok && body?.mode === "batch") return { mode: "batch", fellBack, live: body.live === true };
   if (!response.ok || body?.mode !== "live" || !str(body?.token) || !str(body?.url)) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
   return { mode: "live", fellBack, token: body.token, url: body.url };
 }
@@ -166,7 +176,9 @@ function transcribe({ audio, stream, release }: Microphone, connecting: Promise<
   };
 }
 
-function recordBatch({ audio, stream, release }: Microphone, onLevel: (level: number) => void, upload: (samples: Int16Array<ArrayBuffer>) => Promise<string>): VoiceRecording {
+function recordBatch({ audio, stream, release }: Microphone, onLevel: (level: number) => void, upload: (samples: Int16Array<ArrayBuffer>) => Promise<string>,
+  interim?: { transcribe: InterimTranscriber; onText: (text: string) => void }): VoiceRecording {
+  const words = interim ? createLiveWords({ sampleRate: RATE, ...interim }) : null;
   const chunks: Int16Array[] = [];
   const source = audio.createMediaStreamSource(stream);
   const processor = audio.createScriptProcessor(4096, 1, 1);
@@ -177,17 +189,23 @@ function recordBatch({ audio, stream, release }: Microphone, onLevel: (level: nu
     if (ended) return;
     const samples = event.inputBuffer.getChannelData(0);
     onLevel(level(samples));
-    chunks.push(pcm16(samples, audio.sampleRate));
+    const chunk = pcm16(samples, audio.sampleRate);
+    if (words) words.push(chunk); else chunks.push(chunk);
   };
   source.connect(processor); processor.connect(mute); mute.connect(audio.destination);
-  const end = () => { ended = true; processor.onaudioprocess = null; release(); };
+  const end = () => { ended = true; processor.onaudioprocess = null; words?.stop(); release(); };
+  const recording = () => {
+    if (words) return words.recording();
+    const samples = new Int16Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+    chunks.reduce((offset, chunk) => { samples.set(chunk, offset); return offset + chunk.length; }, 0);
+    return samples;
+  };
   return {
     cancel: () => { if (!ended) end(); },
     async stop() {
       if (ended) return "";
       end();
-      const samples = new Int16Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-      chunks.reduce((offset, chunk) => { samples.set(chunk, offset); return offset + chunk.length; }, 0);
+      const samples = recording();
       return samples.length ? upload(samples) : "";
     },
   };
