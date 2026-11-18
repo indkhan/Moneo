@@ -1,6 +1,6 @@
+import type { ReadonlyDb, WorkspaceRelation } from "@/lib/database";
 import { netWorth } from "@/lib/finance/net-worth";
 import { loadNetWorthEvidence, netWorthModel } from "./net-worth-source";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AiDataScope } from "@/lib/workspace-settings";
 import { loadBalanceEvidence } from "./balances";
 import { calendarDate } from "./calendar";
@@ -14,12 +14,12 @@ import { toolSourceVersion } from "./tool-evidence";
 
 export type ReviewEvidenceInput = { timezone: string; scopes: readonly AiDataScope[]; now: Date };
 
-export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, input: ReviewEvidenceInput, query?: unknown) {
+export async function loadFinancialReviewEvidence(db: ReadonlyDb, workspace: { id: string; display_currency: string; timezone: string }, input: ReviewEvidenceInput, query?: unknown) {
   const balances = await loadBalanceEvidence(db, workspace.id, input.now.toISOString());
   const to = calendarDate(balances.asOf, input.timezone);
   const from = new Date(Date.parse(`${to}T00:00:00Z`) - 89 * 86400000).toISOString().slice(0, 10);
   const comparisonFrom = new Date(Date.parse(`${from}T00:00:00Z`) - 90 * 86400000).toISOString().slice(0, 10);
-  async function rows<T>(table: string, columns: string, periodFrom?: string): Promise<T[]> {
+  async function rows<T>(table: WorkspaceRelation, columns: string, periodFrom?: string): Promise<T[]> {
     const result: T[] = [];
     for (let offset = 0; offset <= 10000; offset += 500) {
       let query = db.from(table).select(columns).eq("workspace_id", workspace.id);

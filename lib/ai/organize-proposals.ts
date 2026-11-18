@@ -1,3 +1,4 @@
+import type { ReadonlyDb } from "@/lib/database";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { setMemory } from "@/lib/organize/owner";
@@ -11,7 +12,7 @@ export const organizeReviewSchema = z.object({
   source: z.enum(SOURCES).optional().describe("decisions only: who labelled the rows"),
 }).strict();
 
-export async function organizeReview({ supabase, workspace }: Context, input: z.infer<typeof organizeReviewSchema>) {
+export async function organizeReview({ supabase, workspace }: Omit<Context, "supabase"> & { supabase: ReadonlyDb }, input: z.infer<typeof organizeReviewSchema>) {
   const names = await loadNames(supabase, workspace.id);
   if (input.view === "memory") {
     const memory = await loadMemory(supabase, workspace.id);

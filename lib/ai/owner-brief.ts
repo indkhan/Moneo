@@ -1,10 +1,10 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReadonlyDb } from "@/lib/database";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { formatMoney } from "@/lib/finance/format";
 import { loadWealthItems, wealthOverview } from "@/lib/finance/wealth";
 import type { AiDataScope } from "@/lib/settings";
 
-type Context = { supabase: SupabaseClient; workspace: { id: string; locale: string }; settings: { ai_data_scopes: AiDataScope[] } };
+type Context = { supabase: ReadonlyDb; workspace: { id: string; locale: string }; settings: { ai_data_scopes: AiDataScope[] } };
 
 export async function ownerBrief({ supabase, workspace, settings }: Context) {
   const allowed = (scope: AiDataScope) => settings.ai_data_scopes.includes(scope);

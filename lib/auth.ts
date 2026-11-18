@@ -2,6 +2,7 @@ import { cache } from "react";
 import { isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase-server";
 import { readSettings } from "@/lib/settings";
+import type { ReadonlyDb } from "@/lib/database";
 
 const CONFIRMED_MS = 60_000;
 const confirmed = new Map<string, { user: User; until: number }>();
@@ -48,3 +49,5 @@ export const requireWorkspace = cache(async () => {
   }
   return { supabase, user, settings, workspace: { ...workspace, timezone: settings.timezone, locale: settings.locale, settings } };
 });
+
+export type ReadonlyWorkspace = Omit<Awaited<ReturnType<typeof requireWorkspace>>, "supabase"> & { supabase: ReadonlyDb };

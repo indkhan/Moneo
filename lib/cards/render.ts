@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { requireWorkspace } from "@/lib/auth";
+import type { ReadonlyWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
 import { artifactQueriesSchema, checkQueries, runArtifactQueries, type ArtifactQuery, type QueryShared } from "@/lib/ai/artifact-data";
 import { cardParamsSchema, resolveParams, type CardParam, type ParamState } from "./params";
@@ -9,7 +9,7 @@ import { CardTreeError, sanitizeTree } from "./tree";
 import { CARD_SIZE_KEYS, type CardSize } from "./sizes";
 import { localValues, type LocalRun } from "./local";
 
-type Context = Awaited<ReturnType<typeof requireWorkspace>>;
+type Context = ReadonlyWorkspace;
 export type CardVersion = { id: string; card_id: string; version: number; title: string; kind: "preset" | "code"; preset: string | null; compiled: string; queries: unknown; params: unknown };
 export type CardRow = { id: string; artifact_id: string; title: string; size: string; published_version: number | null };
 export type RenderedCard = { tree: CardNode | null; error: string | null; params: ParamState[]; local?: LocalRun | null };
