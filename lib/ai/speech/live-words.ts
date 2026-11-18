@@ -10,7 +10,7 @@ export function createLiveWords({ sampleRate, transcribe, onText, everyMs = LIVE
   const windowSamples = sampleRate * LIVE_WORDS_WINDOW_SECONDS;
   const chunks: Int16Array[] = [];
   const settled: string[] = [];
-  let length = 0, windowStart = 0, heardUpTo = 0, current = "", inFlight: AbortController | null = null;
+  let length = 0, windowStart = 0, heardUpTo = 0, current = "", inFlight: AbortController | null = null, missedTick = false;
   const timer = setInterval(tick, everyMs);
 
   function slice(from: number, to: number) {
@@ -26,17 +26,20 @@ export function createLiveWords({ sampleRate, transcribe, onText, everyMs = LIVE
   }
 
   function tick() {
-    if (inFlight || length <= heardUpTo) return;
+    if (inFlight) { missedTick = true; return; }
+    missedTick = false;
+    if (length <= heardUpTo) return;
     const controller = inFlight = new AbortController();
     const from = windowStart, to = Math.min(length, from + windowSamples);
     heardUpTo = to;
     transcribe(slice(from, to), controller.signal).then(text => {
       inFlight = null;
       if (controller.signal.aborted) return;
-      if (text === null) { heardUpTo = from; return; }
-      if (to - from < windowSamples) current = text.trim();
+      if (text === null) heardUpTo = from;
+      else if (to - from < windowSamples) current = text.trim();
       else { settled.push(text.trim()); windowStart = to; current = ""; }
-      onText([...settled, current].filter(Boolean).join(" "));
+      if (text !== null) onText([...settled, current].filter(Boolean).join(" "));
+      if (missedTick) tick();
     }, () => { inFlight = null; clearInterval(timer); });
   }
 

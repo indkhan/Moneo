@@ -24,7 +24,6 @@ it("shows words for the growing recording every second, never asking again while
   calls[0].answer(" spent twelve ");
   await settle();
   expect(shown).toEqual(["spent twelve"]);
-  await vi.advanceTimersByTimeAsync(1000);
   expect(calls).toHaveLength(2);
   expect(calls[1].samples).toEqual(speech(0, 20));
   calls[1].answer("spent twelve at Netto");
@@ -32,6 +31,11 @@ it("shows words for the growing recording every second, never asking again while
   expect(shown.at(-1)).toBe("spent twelve at Netto");
   await vi.advanceTimersByTimeAsync(5000);
   expect(calls).toHaveLength(2);
+  words.push(speech(20, 10));
+  await vi.advanceTimersByTimeAsync(999);
+  expect(calls).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(calls).toHaveLength(3);
   words.stop();
 });
 
