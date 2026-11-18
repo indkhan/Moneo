@@ -1,10 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { afterAll, beforeAll, vi } from "vitest";
+import { afterAll, vi } from "vitest";
 
 Object.assign(globalThis, { AsyncLocalStorage });
 
-let env: NodeJS.ProcessEnv;
-beforeAll(() => { env = { ...process.env }; });
+const env = { ...process.env };
 
 afterAll(() => {
   vi.useRealTimers();

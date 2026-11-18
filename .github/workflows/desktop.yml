@@ -34,7 +34,7 @@ permissions:
 jobs:
   cache:
     name: cache ${{ matrix.id }}
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/t3/speed-up-ci'
+    if: github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     strategy:
