@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { evaluatePlanForWorkspace } from "./model";
 import type { BalanceSnapshot, BalanceTransaction } from "./balances";
 import type { OccurrenceSettlement } from "./recurring-occurrences";

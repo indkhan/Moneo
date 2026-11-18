@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePlanForWorkspace } from "./model";
 
