@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const audio = decodeSpeechAudio(request.headers.get("content-type"), new URL(request.url).searchParams.get("rate"), bytes);
   if (!audio) return Response.json({ error: "Invalid audio" }, { status: bytes.byteLength > MAX_SPEECH_BYTES ? 413 : 400 });
   const hints = await loadSpeechHints(supabase, workspace.id, settings.ai_data_scopes);
-  const text = await engine.interim(audio, hints).catch(() => undefined);
-  if (text === undefined) return Response.json({ error: "Live words are unavailable" }, { status: 502 });
+  let text: string | null;
+  try { text = await engine.interim(audio, hints); } catch { return Response.json({ error: "Live words are unavailable" }, { status: 502 }); }
   return Response.json(text === null ? { busy: true } : { text: text.trim() }, noStore);
 }
