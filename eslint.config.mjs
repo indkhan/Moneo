@@ -241,6 +241,7 @@ export default defineConfig([
   { linterOptions: { reportUnusedDisableDirectives: "error" } },
   {
     files: indexedAccess.include,
+    ignores: indexedAccess.exclude,
     rules: { "@typescript-eslint/no-non-null-assertion": ["error"] },
   },
   {
