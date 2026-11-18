@@ -6,10 +6,14 @@ import PlanPage from "./page";
 import { evaluatePlan } from "@/lib/finance/model";
 import { accountLiquidity, availableToSpend, forecastDaily, type ForecastInput } from "@/lib/finance/calculations";
 import { evaluateForecast } from "@/lib/finance/tools";
+import { requireWorkspace } from "@/lib/auth";
 
 vi.mock("@/components/currency-select", () => ({ CurrencySelect: () => null }));
 vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
+vi.mock("@/lib/finance/model", () => {
+  const evaluatePlan = vi.fn();
+  return { evaluatePlan, evaluatePlanForWorkspace: (_db: unknown, _workspace: unknown, horizon?: number, scenario?: string) => evaluatePlan(horizon, scenario) };
+});
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("./history", () => ({ PlanningHistory: () => null }));
 vi.mock("./goal-plan", () => ({ GoalPlanEditor: () => null, GoalPlanHistory: () => null, ReservationHistory: () => null }));
@@ -19,7 +23,7 @@ vi.mock("./model-sources", () => ({ ModelSources: () => null }));
 let storedAssumptions: Record<string,unknown>[] = [];
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   const accounts = [{ id: "checking", name: "Checking", currency_code: "EUR" }, { id: "savings", name: "Savings", currency_code: "EUR" }];
-  return { workspace: { id: "synthetic", display_currency: "EUR", timezone: "Europe/Berlin", locale: "en" },
+  return { workspace: { id: "synthetic", display_currency: "EUR", timezone: "Europe/Berlin", locale: "en" }, settings: { timezone: "Europe/Berlin", ai_data_scopes: ["accounts", "transactions", "planning"] },
     supabase: { from: (table: string) => {
       const q = { select: () => q, eq: () => q, is: () => q, order: () => q, limit: () => q,
         then: (resolve: (result: unknown) => unknown) => resolve({ data: table === "financial_assumptions" ? storedAssumptions : table === "accounts" ? accounts : table === "scenarios" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Test scenario" }] : [], error: null }) };
@@ -52,7 +56,7 @@ it("renders checking's dated EUR 400 shortfall and bill even while aggregate cas
   expect(html).toContain("EUR 600.00");
   expect(html).toContain("Chosen-account headroom"); expect(html).toContain("-EUR 400.00");
   expect(html).toContain("2026-10-08"); expect(html).toContain("Tomorrow bill");
-  expect(await evaluateForecast({ accountId: "checking", horizonDays: 3 })).toMatchObject({
+  expect(await evaluateForecast({ accountId: "checking", horizonDays: 3 }, await requireWorkspace())).toMatchObject({
     availableToSpendMinor: "-40000", aggregateAvailableMinor: "60000", limitingDate: "2026-10-08",
   });
 });
