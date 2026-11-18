@@ -70,7 +70,7 @@ Go to **Settings → Keys and connections → AI access** and choose one:
 
 In Settings ? AI and your data, type or choose one default model for all AI tasks (GPT-6 Luna by default with OpenAI). Turn on ?Customize by task? for individual overrides; turning it off clears those overrides when you save. Model IDs are saved without a provider call, so unavailable models report an error when used. Claude-only installs use a Claude default.
 
-Voice calls need the OpenAI API key. Settings → Voice chooses the speech-to-text engine for the chat microphone: OpenAI, or **On this computer**, which needs no key (see [Speech to text on this computer](#speech-to-text-on-this-computer-optional)). OpenAI is also the fallback when a chosen engine can't run. An OpenRouter key is optional (for other models).
+Voice calls need the OpenAI API key. Settings → Voice chooses the speech-to-text engine for the chat microphone: OpenAI, **On this computer**, which needs no key (see [Speech to text on this computer](#speech-to-text-on-this-computer-optional)), or **OpenRouter** (see [Speech to text with OpenRouter](#speech-to-text-with-openrouter-optional)). OpenAI is also the fallback when a chosen engine can't run. An OpenRouter key is optional (for other models).
 
 #### 6. Add your money
 
@@ -128,6 +128,16 @@ The chat microphone can turn speech into text on the computer that runs Moneo, s
 4. Click **Try it**, say a sentence and check the text, then **Save preferences**.
 
 The model loads the first time you use the mic and is unloaded after five idle minutes. Moneo passes the names of your accounts, shops and categories to Whisper models so they spell them right. Intel Macs can't run these models yet. If the model is missing or fails, Moneo uses OpenAI when you have added a key, and says so. Downloaded models aren't part of backups and stay when you reset your data; delete the folder to remove them.
+
+### Speech to text with OpenRouter (optional)
+
+The chat microphone can use any OpenRouter model that accepts audio, billed to your OpenRouter key. It needs no OpenAI key.
+
+1. Add an OpenRouter API key under **Settings → Keys and connections**.
+2. In **Settings → Voice**, set **Speech to text** to **OpenRouter** and pick a model. The list comes from OpenRouter and only shows models that take audio as input.
+3. **Save preferences**.
+
+When you press Send or Done, Moneo sends the recording and the names of your accounts, shops and categories to the model you chose and asks for the plain transcript. Without a key or a model the option is unavailable. If OpenRouter fails, Moneo uses OpenAI when you have added a key, and says so.
 
 ### Connect your bank (optional)
 
