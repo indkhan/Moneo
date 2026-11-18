@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 
+const taskReportsItsOwnFailure = () => undefined;
+
 type PollTask = (signal: AbortSignal) => void | Promise<void>;
 
 export function usePolling(task: PollTask, ms: number, active: boolean, options: { immediate?: boolean } = {}) {
@@ -16,7 +18,7 @@ export function usePolling(task: PollTask, ms: number, active: boolean, options:
       const release = () => { if (running === controller) running = undefined; };
       try {
         const result = latest.current(controller.signal);
-        if (result) result.catch(() => undefined).finally(release); else release();
+        if (result) result.catch(taskReportsItsOwnFailure).finally(release); else release();
       } catch { release(); }
     };
     const stop = () => { clearInterval(timer); timer = undefined; running?.abort(); running = undefined; };
