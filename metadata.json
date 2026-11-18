@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7R2FA7140YFZMMP87FY8WCE",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-239-balances",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/insights/actions.ts",
+    "app/money/accounts/actions.ts",
+    "app/settings/form.tsx",
+    "lib/ai/agent-apply.ts",
+    "lib/finance/insights.ts",
+    "lib/finance/own-transfers.live.test.ts",
+    "lib/finance/own-transfers.ts",
+    "lib/insight-types.ts",
+    "lib/settings.ts",
+    "workflows/import-file.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 64,
+    "cache_creation_tokens": 141749,
+    "cache_read_tokens": 2619282,
+    "output_tokens": 10473,
+    "api_call_count": 33
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

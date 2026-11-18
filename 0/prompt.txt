@@ -1,0 +1,23 @@
+Act as the implementation sub-agent for this task.
+
+Repo indkhan/Moneo. Work on GitHub issue #239 (read it with `gh issue view 239`, and AGENTS.md). This is PR 1 of several: one area per PR. Your area is the balance and dashboard calculations: `lib/finance/balances.ts`, `lib/finance/net-worth-source.ts`, `lib/finance/own-transfers.ts`, `lib/finance/dashboard-spending.ts`, `lib/finance/insights.ts`. Each of these imports `@/lib/auth`, `@/lib/settings` or `@/lib/all-pages`.
+
+Owner's decision: callers (app pages, route handlers, server actions, chat/voice tools, workflows) resolve the owner/workspace, settings and clock; the lib/finance functions take plain inputs (a db client, workspace id, the narrow settings they need such as timeZone, and a `today`/`now` value). No dependency-injection framework. Authorization stays at each public entry point. Behaviour must not change. Do NOT add the lint ban yet; it comes in the last PR once all areas are migrated. Leave the other lib/finance files alone.
+
+Steps: create branch `t3/issue-239-balances` from origin/main. Reproduce current behaviour first (existing tests). Migrate the five files and every caller (`git grep` them). Make existing tests need fewer request-state mocks (drop `vi.mock("@/lib/auth")`/settings mocks where they become unnecessary). Commit in steps with plain-language messages. Before opening the PR, merge origin/main again (resolve conflicts keeping main's changes; another PR is typing the database clients). Run `npm run feature-map` if lint asks.
+
+Rules: run `npm test`, `npm run lint`, `npm run typecheck` and `npm run build` yourself and quote their last lines. Tests use only the moneo-qa test backend; never the owner's backend (.env, Docker project `moneo`, port 3000). Never run `qa:reset` or `docker compose -p moneo-qa down`. Never kill a process you didn't start (verify by PID). Don't end your turn while a command is still running. No comments in code. Open the PR (body ends with "🤖 Generated with [Claude Code](https://claude.com/claude-code)"; commits end with "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"), never merge it. Final line: PR <full URL>, head <SHA>.
+
+---
+
+<task-notification>
+<task-id>bt8bjveyv</task-id>
+<tool-use-id>toolu_01L949XepVP7aoudwjZtsbBy</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\e707d5c987eb7610\a2f05f01-1505-40e1-a843-f9adc9c98dd5\tasks\bt8bjveyv.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm ci &gt; ../npmci.log 2&gt;&amp;1; tail -3 ../npmci.log) ; ls" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Continue where you left off.
