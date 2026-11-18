@@ -1,0 +1,804 @@
+Update on pull request #280 (https://github.com/indkhan/Moneo/pull/280), which T3 Code is watching for you:
+- All 1 required check passed on a56a6eb.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #277 (https://github.com/indkhan/Moneo/pull/277), which T3 Code is watching for you:
+- All 1 required check passed on 02c0b28.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #277 (https://github.com/indkhan/Moneo/pull/277), which T3 Code is watching for you:
+- All 9 checks passed on 02c0b28.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #280 (https://github.com/indkhan/Moneo/pull/280), which T3 Code is watching for you:
+- All 9 checks passed on a56a6eb.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Adbf87628-c489-4723-9420-d915b808edcf%3Adelegate-task%3A8438b22c-db29-4b4a-abcb-890bcb03c3be (#242 property tests) [completed]:
+I opened the PR with five property groups. They pass locally and caught every mutation I tried. `npm test` had one failure: `supabase/tests/migration-replay.test.ts` hit its 5-second timeout while other worktrees were running, and it passes when run alone.
+
+- **Tool:** I added `fast-check` 4.10.2 as a devDependency with an exact version, because no property tool was installed.
+- **Properties:**
+  - `lib/finance/money.property.test.ts` covers exact amounts beyond `Number.MAX_SAFE_INTEGER` and the 0-, 2- and 3-decimal currencies.
+  - `lib/import/import.property.test.ts` covers staging, undo and reimport.
+  - `lib/finance/calendar.property.test.ts` covers DST and leap days in explicit time zones.
+- **Undo:** I tested it through the pure `resolveBalances` and the staged rows, not SQL. The SQL undo path stays covered by `row-undo.live.test.ts`.
+- **Seeds:** `lib/property-check.ts` uses a fixed seed (242), so runs are deterministic. A failure prints the shrunken counterexample, seed, path and failing check. Add `{ seed, path }` to `lib/property-regressions.json` to replay it on every run.
+- **Mutations:** I tried 3 wrong-sign, 4 dropped-effect and 2 duplicate-effect edits, and the properties failed for each. I reverted them, and `git status` was clean. The PR lists them.
+- **Runtime:** Each property file runs in about 2 seconds.
+- **Checks:**
+  - `npm run lint`: no output, clean.
+  - `npm run typecheck`: `tsc --noEmit && tsc --noEmit -p desktop`, exit 0.
+  - `npm test`: 1807 passed, 1 failed (the timeout above).
+- **AGENTS.md:** I suggested a one-line edit in the PR body but did not make it.
+
+PR https://github.com/indkhan/Moneo/pull/283, head 54fdc9e9c5630501302789054eee2364f2838c37, checks pending (7 CI jobs running, GitGuardian passed), no reviews yet.
+
+---
+
+Update on pull request #283 (https://github.com/indkhan/Moneo/pull/283), which T3 Code is watching for you:
+- All 1 required check passed on 54fdc9e.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #284 (https://github.com/indkhan/Moneo/pull/284), which T3 Code is watching for you:
+- All 1 required check passed on 1196d57.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Adbf87628-c489-4723-9420-d915b808edcf%3Adelegate-task%3A0f885c4e-766f-491d-86b3-bcca2e5c6edb (#244 feature map) [completed]:
+`npm run feature-map` now generates `FEATURES.md`, and `npm run lint` fails when the file is stale. I also ran `npm test`, which had one failure. It is `supabase/tests/migration-replay.test.ts` timing out at 5 s under full-suite load. It passes alone (17/17), also on `origin/main`, and this PR doesn't touch it.
+
+- **Sources:** the script reads the registrations as data: the `app/` tree, `tool({...})` registrations, the navigation and palette in `app-shell.tsx`, `BUILTIN_WIDGETS`, `CRON_JOBS`, `workflows/` and the undo functions. Output is sorted and has no timestamps or env values.
+- **Staleness check:** `npm run check:features` runs in `prelint`, so CI's lint step covers it. The failure message says to run `npm run feature-map`.
+- **Consistency check:** it also fails on a cron route missing from `CRON_JOBS`, a `CRON_JOBS` entry with no route, or a chat tool registered twice. I confirmed the cron case by adding an unscheduled route.
+- **Docs:** AGENTS.md gets a "Hit every surface" line, a rules-table row and a Commands entry. The `verify-ui` and `state-chart` skills point at `FEATURES.md`.
+- **Tests:** I added none. The check itself is the enforcement.
+
+**Last lines of each check:**
+- lint: `> eslint .` (exit 0)
+- typecheck: `> tsc --noEmit && tsc --noEmit -p desktop` (exit 0)
+- build: finished; its last output lines are the `Proxy (Middleware)` and rendering legend
+
+PR https://github.com/indkhan/Moneo/pull/285, head 1eb3fae7d0fe665c1c7b6f4251840aef0681eb6c, checks and reviews pending (not checked after opening)
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Adbf87628-c489-4723-9420-d915b808edcf%3Adelegate-task%3Aec3a0e46-3a69-451a-a0f8-b5fe649c11e0 (#227 PR2 local speech model) [completed]:
+I opened PR #282 with the "On this computer" speech engine for the chat mic. All CI checks pass, including the Desktop builds on Windows, Linux and both Macs, and nothing is merged.
+
+**What it does**
+- **Models in Settings → Voice:** Moonshine Base, Whisper Base, Whisper Small and Distil-Whisper. Each shows size, languages and speed, and has a Download button with progress.
+- **Downloads:** they go to `MONEO_DATA_DIR/speech-models` (`.data/speech-models` on the source install). Each file is pinned to a fixed Hugging Face revision and checked against its known size and hash. A stopped download continues where it left off.
+- **Your own model:** a native **Choose folder…** dialog on desktop, a path field on the source install. Settings tells the owner whether a model was found in the folder.
+- **Try it:** say a sentence and Settings shows the text and how long it took.
+- **Runtime:** the model runs in a worker thread on the server, so it works from the phone too. It loads on first use and unloads after 5 idle minutes.
+- **Hints:** Whisper models get the workspace's names as a prompt. Whisper detects the spoken language itself; without that, transformers.js would treat German speech as English.
+- **Fallback:** a missing or failing model falls back to OpenAI with PR 1's note.
+- **Reset and backups:** Reset all data clears the choice and never deletes model files. Models are left out of backups because they can be downloaded again.
+- **Plain `npm ci`:** a new `.npmrc` stops onnxruntime from downloading its optional GPU (CUDA) files on Linux.
+
+**Different from the agreed design — please check**
+- **Smaller sizes than in the issue:** every model uses the 8-bit version. Whisper Base is 80 MB instead of ~150, Whisper Small 252 MB instead of ~500. Whisper Base 8-bit was faster than the 16-bit version on this machine (3.6 s vs 4.4 s for 7.4 s of audio), gave the same text, and is half the size.
+- **"Choose folder…" instead of "Choose file…":** these models are several files, so the owner picks the folder that holds them.
+- **Intel Macs can't run it:** onnxruntime ships no binary for them. Settings says so and the mic uses OpenAI. The mac-x64 desktop build still passes.
+
+**Verification**
+- **Real models:** with a recorded sentence naming Netto, Girokonto and Revolut, Whisper Base spelled all three names right when given them as hints. Moonshine was fastest (about 1 s once loaded) but misheard "Girokonto" and "Revolut".
+- **In the QA app:** Download, Save, reload and Try it work through a fake microphone. The chat mic's session and transcribe routes report `engine: "local"` with no fallback, and there were no console errors.
+- **Packaged desktop app:** `desktop:build` passes on Windows, and the packaged app runs the model with only its own files.
+- **Not tested:** German speech (no German voice on this machine), and clicking the native folder dialog in a packaged app. The dialog is covered by bridge and route tests only.
+- **Shared QA backend:** I applied the migration, ran the schema check against it, then reverted it. The column is dropped, PR 1's save function is restored, the migration record is removed, and the QA workspace's engine is back to OpenAI.
+- **Other checks:** `npm test` passed 1822 tests (17 skipped), and `npm run build` and `npm run check:bundle` pass.
+- **Manual script:** `scripts/speech-model-check.mts` downloads a real model and transcribes WAV files; it is never run by `npm test`.
+
+**Found but not changed**
+- **`desktop:build` and `.data/`:** the build fails if the checkout has a `.data/` folder. Existing code in `lib/ai/chatgpt.ts`, `claude.ts` and `return-listener.ts` makes Next.js include that folder in the server build. CI has no `.data/`, so it only bites local builds.
+- **Duplicate `id="voice"` in Settings.**
+
+Both are in the PR body.
+
+**Last lines of the required checks**
+- `npm run lint`: `> eslint .` (exit 0, no output)
+- `npm run typecheck`: `> tsc --noEmit && tsc --noEmit -p desktop` (exit 0, no output)
+
+PR https://github.com/indkhan/Moneo/pull/282, head 7c0900d8846536957f81ed6191979f59bf3c0710, checks and reviews: all checks pass (Draft release skipped), no reviews yet.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A65daaeca-c951-4b6d-81b8-67ed4a3d19a5%3Adelegate-task%3A84b0647f-ee75-4c36-9950-088e4eeaa0f4 (#227 PR3 OpenRouter speech engine) [failed]:
+Claude API rate limit reached. Try again later.
+
+Last assistant message before the run failed:
+
+You've hit your 5-hour limit · resets 3am (Europe/Berlin)
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Adbf87628-c489-4723-9420-d915b808edcf%3Adelegate-task%3Aa7e12e18-d5f9-4bb6-876b-9b5484efc181 (#241 PR1 generated DB types) [failed]:
+Claude API rate limit reached. Try again later.
+
+Last assistant message before the run failed:
+
+You've hit your 5-hour limit · resets 3am (Europe/Berlin)
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A65daaeca-c951-4b6d-81b8-67ed4a3d19a5%3Adelegate-task%3Ab80e2b99-9724-4364-b8b0-72b820a0357a (#234 validated env access) [failed]:
+Claude API rate limit reached. Try again later.
+
+Last assistant message before the run failed:
+
+You've hit your 5-hour limit · resets 3am (Europe/Berlin)
+
+---
+
+Update on pull request #283 (https://github.com/indkhan/Moneo/pull/283), which T3 Code is watching for you:
+- All 9 checks passed on 54fdc9e.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #285 (https://github.com/indkhan/Moneo/pull/285), which T3 Code is watching for you:
+- All 9 checks passed on 1eb3fae.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>br30maesf</task-id>
+<tool-use-id>toolu_01GKMrPg5bon4z5vPkawp3Lk</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ff8438f77c7e4b53\bb0f6ad7-c86a-46b2-8129-8044cbbbb88f\tasks\br30maesf.output</output-file>
+<status>completed</status>
+<summary>Background command "Commit and push FEATURES.md" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A65daaeca-c951-4b6d-81b8-67ed4a3d19a5%3Adelegate-task%3A3b680697-ea87-4eb2-ae48-e01c0797da0b (#240 effects and timers) [failed]:
+Claude API rate limit reached. Try again later.
+
+Last assistant message before the run failed:
+
+You've hit your 5-hour limit · resets 3am (Europe/Berlin)
+
+---
+
+Update on pull request #285 (https://github.com/indkhan/Moneo/pull/285), which T3 Code is watching for you:
+- All 1 required check passed on 2df1060.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+continue where the subagents are and finish it
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A8fb82395-ffcd-4515-85d0-6b5c862bc514%3Athread-send%3Ac649b000-092f-4f8d-b70a-4bf08447b4f5 (#234 validated env access) [completed]:
+Child task completed without an assistant result.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A8fb82395-ffcd-4515-85d0-6b5c862bc514%3Athread-send%3A107387fd-1125-429a-8fed-1a4f94e726de (#241 PR1 generated DB types) [completed]:
+PR 1 is open. CI hasn't run yet, so checks and reviews are pending.
+
+- **Lint:** `npm run lint` exited 0 with no warnings. I ran `eslint . --cache` directly instead of through the npm script, so `prelint` (the privacy and feature-map checks) did not run in that final pass. It ran in an earlier pass, and the feature-map check passed.
+- **Typecheck:** `npm run typecheck` printed `> tsc --noEmit && tsc --noEmit -p desktop` and exited 0.
+- **Tests:** `npm test` passed with 323 files and 1836 tests, 17 skipped. `npm run build` passes.
+- **`npm run test:db`:** 10 of 11 live files pass. `lib/ai/data-query.live.test.ts` fails because the shared QA database has no `moneo_query` views, though its migration is recorded as applied. This branch doesn't touch that code or SQL, and I left the shared backend alone. CI starts a fresh one.
+- **Bug found:** Home's "Skip all" (`skipUncategorized`) failed with a not-null error, because it upserted `workspace_settings` without `timezone`. I reproduced it on QA and switched it to an update.
+- **Casts:** 25 `as unknown as` casts outside tests became 9. Two query-result casts remain, in `app/import/[id]/review/page.tsx` and `app/insights/panel.tsx`.
+- **Not typed yet:** `lib/finance/{model,balances,investigation-reader,review-loader,source-coverage}.ts` and `lib/organize/owner.ts` stay on the untyped client because they take table names as strings. About 50 other files still declare `SupabaseClient` for the parameter. The PR body lists these.
+- **Speed section:** it says I did not benchmark. The runtime changes are small Zod parses and one update in place of an upsert.
+- **Machine problems:** memory ran out partway through, so I stopped a stale lint process I had started (PID 17612). `npm test` had one timeout in `supabase/tests/migration-replay.test.ts` that passed when rerun alone. Docker Desktop stopped and came back, so I reran `npm run setup -- --qa`.
+
+PR https://github.com/indkhan/Moneo/pull/290, head 0a430d7faf1372a3fcd26ef4085c55dda8da07f1, checks and reviews pending
+
+---
+
+Update on pull request #290 (https://github.com/indkhan/Moneo/pull/290), which T3 Code is watching for you:
+- All 1 required check passed on 0a430d7.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A8fb82395-ffcd-4515-85d0-6b5c862bc514%3Athread-send%3Acf111e82-4b60-4a4c-964e-16478dba8441 (#240 effects and timers) [completed]:
+Issue #240 is done in PR #293: the shared hooks are in, call sites are migrated, and a lint rule bans raw timers in client code. I haven't merged it. CI was still pending when I last checked (`browser`, `checks` and `database`); GitGuardian passed.
+
+**Checks**
+- `npm run lint`: `> eslint .` then `exit 0`.
+- `npm run typecheck`: `> tsc --noEmit && tsc --noEmit -p desktop` then `exit 0`.
+- `npm test`: 1844 passed, 1 failed. The failure is a 5000 ms timeout in `supabase/tests/migration-replay.test.ts` while the machine was loaded; it passes alone (17/17).
+- `npm run build` and `npm run check:bundle` both pass.
+
+**Recount.** The base had 77 `useEffect` calls and 22 raw timer calls (19 client side). There are 65 effects now.
+
+**Hooks**
+- `usePolling` moved from `lib/ai` to `lib/use-polling.ts`. It is now abortable, never overlaps, and stops on unmount and in hidden tabs.
+- `useTimeout`, `useDelay` and `useNow` are new; fake-timer tests cover them, including a Strict Mode remount.
+- I removed two effects that only handled events or derived DOM state. The remaining effects are legitimate subscriptions, DOM sync and fetch-on-mount, so I left them.
+
+**Lint**
+- A raw `setTimeout` or `setInterval` in `app/` or `components/` is now rejected, with a message pointing to the hooks.
+- It skips tests, `app/api/**`, server-action and route files, and `app/settings/ai-access.tsx`, whose server action waits for the Claude sign-in.
+- There is a new AGENTS.md rules-table row.
+
+**Not verified**
+- **Screenshots:** the PR has after-only screenshots (light, dark, mobile) for seven pages; every page returned 200 with no console errors. I did not capture before shots.
+- **Speed:** there are no before/after numbers, because I couldn't install and build a second checkout on this machine. The Speed section says so.
+- **Deferred:** three effects are left for follow-up and listed in the PR body (`useReportCleared` in `app/home-review.tsx`, the size-change reload in `card-view.tsx`, and a poll-counter reset in `chat-workspace.tsx`).
+
+**Side effects to know about**
+- `npm run setup -- --qa` recreated the shared `moneo-qa` db and gateway containers. Its volumes are kept, but anyone else using that stack may have seen a short interruption.
+- My install logs in `/tmp` collided with other sessions' logs, so I switched to my scratchpad. I only removed `node_modules` inside this worktree.
+- I stopped only the QA server I started (PID 35172 on port 3141).
+
+PR https://github.com/indkhan/Moneo/pull/293, head 0f12bc4dcfc00dec948346c38fb26a8d682cb5f0
+
+---
+
+Update on pull request #293 (https://github.com/indkhan/Moneo/pull/293), which T3 Code is watching for you:
+- All 1 required check passed on 0f12bc4.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #289 (https://github.com/indkhan/Moneo/pull/289), which T3 Code is watching for you:
+- All 1 required check passed on 524f8e0.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+<task-notification>
+<task-id>bcuu7lpnu</task-id>
+<tool-use-id>toolu_01UrMKHh5xf2pKaWVf7DsCep</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ff8438f77c7e4b53\bb0f6ad7-c86a-46b2-8129-8044cbbbb88f\tasks\bcuu7lpnu.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for the desktop run on #234 to finish" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Update on pull request #290 (https://github.com/indkhan/Moneo/pull/290), which T3 Code is watching for you:
+- All 1 required check passed on 17f7600.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #290 (https://github.com/indkhan/Moneo/pull/290), which T3 Code is watching for you:
+- Checks failed on 17f7600:
+  - mac-arm64 (cancelled) https://github.com/indkhan/Moneo/actions/runs/44368279094/job/135027819028
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Continue where you left off.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A8fb82395-ffcd-4515-85d0-6b5c862bc514%3Athread-send%3A1cf2ff2b-8fb4-4db7-98ba-6b173db53419 (#227 PR3 OpenRouter speech engine) [completed]:
+PR #291 is open and linked, and its CI is running. I'm waiting for the monitor to report the check results before giving the final line.
+
+What's done:
+- **Screenshots:** the Settings shots in light, dark and mobile are embedded in the PR body from `pr-assets/291`, and all three images load. The new section is shown in the no-OpenRouter-key state; a populated model list needs a real key and wasn't captured.
+- **QA cleanup:** I reverted the migration on `moneo-qa`: column dropped, `save_workspace_preferences` restored, version row removed. I stopped only my own QA app on port 3100, verified by its path.
+- **Local checks (full output in the PR body):**
+  - Typecheck, lint and build pass.
+  - `npm test` shows 1844 passed and 1 failed: a 5 s timeout in `lib/finance/calendar.property.test.ts` under CPU load. The test comes from `main` and passes alone.
+  - Two `lib/ai/data-query.live.test.ts` tests fail against the shared QA backend; they don't involve speech or this migration.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A77ae2b15-c5f9-4238-a137-d9095f636b4d%3Adelegate-task%3A98e06369-91c1-41a3-98a0-ded5aa9a86fc (#239 area 1 balances and dashboard) [failed]:
+Claude API rate limit reached. Try again later.
+
+Last assistant message before the run failed:
+
+You've hit your 5-hour limit · resets 8:30pm (Europe/Berlin)
+
+---
+
+Update on pull request #291 (https://github.com/indkhan/Moneo/pull/291), which T3 Code is watching for you:
+- All 1 required check passed on cc08bd5.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:limit-resume%3Athread%3Adelegated-task%3Acommand%253Amcp%253A77ae2b15-c5f9-4238-a137-d9095f636b4d%253Adelegate-task%253A98e06369-91c1-41a3-98a0-ded5aa9a86fc%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A77ae2b15-c5f9-4238-a137-d9095f636b4d%25253Adelegate-task%25253A98e06369-91c1-41a3-98a0-ded5aa9a86fc%3Aordinal%3A1%3A1795030200000%3Alimit-arm%3Athread%3Adelegated-task%3Acommand%253Amcp%253A77ae2b15-c5f9-4238-a137-d9095f636b4d%253Adelegate-task%253A98e06369-91c1-41a3-98a0-ded5aa9a86fc%3Arun%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253A77ae2b15-c5f9-4238-a137-d9095f636b4d%25253Adelegate-task%25253A98e06369-91c1-41a3-98a0-ded5aa9a86fc%3Aordinal%3A1%3A1795030200000 (#239 area 1 balances and dashboard) [completed]:
+Only `own-transfers.ts` and `insights.ts` needed code changes in your area; the other three files had nothing to migrate. `npm test`, `npm run lint`, `npm run typecheck` and `npm run build` all pass, and `own-transfers.live.test.ts` passes against moneo-qa.
+
+- **Own-transfers:** `linkOwnTransfers` and `confirmOwnAccount` now take `{ locale, timezone, now }` instead of loading settings inside. The accounts server actions and `agent-apply.ts` pass the signed-in workspace's values. The import workflow reads the settings once in its step.
+- **Insights:** `INSIGHT_TYPES` moved from `lib/settings.ts` to a new `lib/insight-types.ts`, so `lib/finance/insights.ts` no longer imports settings.
+- **`balances.ts`, `net-worth-source.ts`, `dashboard-spending.ts`:** left alone. They only import `allPages`, a plain paging helper with no auth or settings. None of the five files ever imported `lib/auth`.
+- **Mocks:** the tests for these five files already ran without request-state mocks, so there were none to drop.
+- **Merge:** I merged origin/main and resolved the conflict in `own-transfers.ts`, keeping main's `Db` type.
+- **Test runs:** the first full `npm test` run had one failing test I didn't identify. Two reruns passed (last: 324 files, 1863 tests, 17 skipped).
+
+The PR notes the Speed section as no measurable change; the import workflow now does one settings read instead of up to three lazy ones.
+
+PR https://github.com/indkhan/Moneo/pull/294, head 435339a16503bb3688438b044e2dcfed5ac53e7e
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Ad1063c2c-e093-49f2-a5a6-eec5e32e82c6 (#286 migration-replay timeout) [completed]:
+The fix is in PR #295, but I couldn't reproduce the 5 s timeout here. The worst I saw was 2 s, so I haven't proven that this change prevents the original failure.
+
+**Cause:** The first test read all 133 migration files (1.2 MB) one at a time inside its 5 s budget. Every other test in the file is pure string work. Alone, that loop takes about 25 ms. A busy disk makes each read wait, and the whole loop counts as test time.
+
+**Fix:** The files are now read once, in parallel, when the test file loads, so the timed tests do no file reading. This is the same approach #251 used to move module loading out of test time. What the tests check is unchanged. `applicationMigrationSql` is untouched, so `scripts/generate-db-types.mjs` still works. I didn't raise any timeout or skip anything.
+
+**Measurements** (first test, the one that read the files). I simulated disk load with six processes that re-read `node_modules`.
+
+| Condition | Before | After |
+| --- | --- | --- |
+| Idle | 23 ms | not re-measured |
+| Full `npm test` | 155 ms | not re-measured |
+| Disk contention | 2021 ms on one cold run, 17–90 ms once the disk cache warmed | 5–7 ms on every run |
+
+**Checks:**
+- **`npm test`:** `Test Files  324 passed | 11 skipped (335)`, `Tests  1863 passed | 17 skipped (1880)`
+- **`npm run lint`:** `> eslint .` (no errors)
+- **`npm run typecheck`:** `> tsc --noEmit && tsc --noEmit -p desktop` (no errors)
+
+The branch already existed at an older commit, so I reset it to `origin/main` before committing.
+
+PR https://github.com/indkhan/Moneo/pull/295, head 837ebd6090b444f4eba9102fa20a005b72f29db7
+
+---
+
+Update on pull request #291 (https://github.com/indkhan/Moneo/pull/291), which T3 Code is watching for you:
+- Checks failed on cc08bd5:
+  - mac-arm64 (cancelled) https://github.com/indkhan/Moneo/actions/runs/44382742151/job/135079097481
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #294 (https://github.com/indkhan/Moneo/pull/294), which T3 Code is watching for you:
+- All 1 required check passed on 435339a.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #295 (https://github.com/indkhan/Moneo/pull/295), which T3 Code is watching for you:
+- All 1 required check passed on 837ebd6.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #294 (https://github.com/indkhan/Moneo/pull/294), which T3 Code is watching for you:
+- All 4 checks passed on 435339a.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+<task-notification>
+<task-id>bfmosoyou</task-id>
+<tool-use-id>toolu_01QBz1Jwij1stBzgke7kfaPZ</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ff8438f77c7e4b53\bb0f6ad7-c86a-46b2-8129-8044cbbbb88f\tasks\bfmosoyou.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for #291's desktop run to finish" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Ae3d93eca-c53f-449b-b2d7-dd1b4fa85ee8 (#239 area 2 review pipeline) [completed]:
+The PR is open and the four review-pipeline files no longer read request state. `review-request.ts` needed no change because it only imports the `AI_DATA_SCOPES` constant.
+
+- **Checks:** `npm test` passed (1863 passed, 17 skipped). `npm run lint` and `npm run typecheck` came back clean, and `npm run build` succeeded.
+- **Scope checks:** the PR body lists, for each entry point, where its scope check now happens. They stay enforced everywhere, in two ways:
+  - `loadFinancialReviewEvidence` no longer checks scopes itself. The workflow and `readEvidenceView` now call `requireAiScope(accounts, transactions)` before it. The chat tool already checks through `aiEvidence`.
+  - `gatherReviewInvestigation` keeps its re-reads that catch a scope revoked mid-run. The workflow passes it `settings`, `requireScopes` and `now` as functions.
+- **Freshness check:** `reviewFreshness` takes the caller's settings and clock. It still returns `unknown` when accounts or transactions are off.
+- **Tests:** the `@/lib/settings` mock is gone from `review-gather.test.ts`. The loader and freshness tests pass plain inputs.
+- **Merge:** `origin/main` was already merged in; there were no conflicts.
+- **Commits:** there are two, one for the loader and freshness check and one for the gatherer.
+
+PR https://github.com/indkhan/Moneo/pull/296, head 54dcd1db29f27dddd3307aaf4ea83bb5c9142bbf, checks and reviews not yet reported (PR just opened).
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3A00717d57-3880-49e0-a4f3-16a43d2c1736 (#287 .data desktop build and duplicate id) [completed]:
+The duplicate `id="voice"` is fixed. I couldn't reproduce the `.data/` build failure on current main, so I added a build check instead of a code fix.
+
+- **Duplicate id:** the Voice section keeps `id="voice"` because the settings nav links to `#voice`. The "Call voice" select now uses `useId`, and its label is still linked to it (`app/settings/form.tsx`).
+- **`.data/` tracing:** with a scratch `.data/` folder present, `npm run desktop:build` passes on main. Since #234, every `.data` path goes through `dataDir()`, and Next no longer traces it. The failure does reproduce with the old per-file form, `path.join(process.env.MONEO_DATA_DIR ?? path.join(process.cwd(), ".data"), …)`.
+- **The check:** `scripts/desktop/build.mjs` now puts a probe file in `.data/` while Next runs and removes it afterwards. If it created the folder, it removes that too. A regression now fails on CI, which has no `.data/` folder. I confirmed it fails the build with the old path form and passes with `dataDir()`.
+- **Checks:**
+  - `npm test`: 324 files passed, 11 skipped; 1863 tests passed, 17 skipped.
+  - `npm run lint`, `npm run typecheck` and `npm run build`: no errors.
+  - `npm run desktop:build` bundles, then stops only because the backend binaries (`desktop/.build/backend`, `storage-api`) weren't fetched here.
+- **Cleanup:** my scratch `.data/` is deleted, and nothing was run against the owner's backend or desktop app.
+
+PR https://github.com/indkhan/Moneo/pull/297, head e2e7a4454a050a431fb794dc2c88a8861775274e, checks and reviews pending
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Afd1c68a4-c7c2-417a-ae6e-8857ead567b8 (#227 PR4 live words for local speech) [completed]:
+I've opened PR #298: when you dictate in the chat mic with the "On this computer" engine, words now appear while you speak. On stop, the full transcript replaces them. All four checks pass. In the QA app, words updated about every 1.1–1.7 s once the model had loaded.
+
+- **Checks:**
+  - `npm test`: `Test Files 327 passed | 11 skipped (338)`, `Tests 1884 passed | 17 skipped (1901)`.
+  - `npm run lint`: `> eslint .` with no errors.
+  - `npm run typecheck`: `> tsc --noEmit && tsc --noEmit -p desktop` with no errors.
+  - `npm run build`: ends with `ƒ  (Dynamic)  server-rendered on demand`.
+  - `npm run feature-map` lists the new route.
+- **How it works:** about once a second, the mic re-sends the audio still being spoken to a new `/api/voice/interim` route. It never sends one while another is in flight; a skipped update runs as soon as the reply arrives. Each request is at most 30 s of audio, so long dictations don't get slower per update.
+- **No paid calls:** the interim route only uses the local engine. It refuses OpenAI and OpenRouter (which stays batch-only) and never falls back. While the model is already busy it answers "busy" instead of queuing work.
+- **Unchanged:** the final transcript and the OpenAI fallback with its note work as before. Vocabulary hints still go to Whisper on every update.
+- **QA app:**
+  - **Setup:** I used port 3117 with a scratch model folder, downloaded Moonshine Base and dictated a 12 s text-to-speech recording through a fake mic. There were no console errors.
+  - **Results:** after you stop, the final text arrives in about 1.8 s. Screenshots at 4 s, 9 s and after Done are in the PR.
+  - **Cleanup:** I set the QA workspace back to OpenAI afterwards and stopped only my own server.
+- **Known gaps:**
+  - On the first recording after a server start, words appear only after the model loads (about 10 s on the cold dev server).
+  - Moonshine sometimes repeats words in the first second or two; the final text isn't affected.
+- **Desktop:** I didn't run `desktop:build`. No desktop files or native modules changed; the new route reuses the worker that is already packaged.
+
+PR https://github.com/indkhan/Moneo/pull/298, head fe064be456c91404a8156b0bd1276b4703dddd3d, checks and reviews: some checks finished and others still queued, no review yet.
+
+---
+
+Update on pull request #297 (https://github.com/indkhan/Moneo/pull/297), which T3 Code is watching for you:
+- All 1 required check passed on e2e7a44.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #298 (https://github.com/indkhan/Moneo/pull/298), which T3 Code is watching for you:
+- All 1 required check passed on fe064be.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #297 (https://github.com/indkhan/Moneo/pull/297), which T3 Code is watching for you:
+- All 14 checks passed on e2e7a44.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3A63fe96b6-846d-4be6-9abc-eeb2a865773d (#243 checked indexed access, lib/bank stage) [completed]:
+`lib/bank` now builds under `noUncheckedIndexedAccess`, and `npm run typecheck` enforces it in CI. I found no real absent-value bug, so there is no behavioural commit or new test. All three non-test errors were cases that can't be absent today.
+
+`typecheck`, `lint` and `build` all pass. `npm test`: `Test Files 327 passed | 11 skipped (338)`, `Tests 1884 passed | 17 skipped (1901)`.
+
+- **Recount:** 484 non-test errors on main (`lib/` 286, `components/` 114, `app/` 83, `workflows/` 1). The audit said 584. There are also 852 errors in test and e2e files. The per-folder breakdown is in the PR body.
+- **Config:** `tsconfig.indexed.json` includes only `lib/bank/**/*.ts`, tests included.
+- **Transitive errors:** the compiler also checks files that `lib/bank` imports, which pulled in about 240 errors from `lib/ai`, `lib/finance` and `lib/import`. `scripts/typecheck-indexed.mjs` runs the compiler and reports only errors in the listed files. I checked that a deliberate `a[0].length` in `lib/bank` fails it.
+- **Fixes:** three source fixes in `lib/server.ts` and `lib/statement.ts`, none changing behaviour. Test fixes use a small `defined()` helper in `lib/testing.ts`.
+- **`!` guard:** the new lint rule on those folders found 10 existing `!` in `lib/bank`, and I removed them. It reads the same `include` list, so adding a folder is one edit.
+- **AGENTS.md:** a new rules-table row says how to add the next folder.
+- **Branch:** origin/main is merged into it.
+
+PR https://github.com/indkhan/Moneo/pull/299, head 346f8b381bb0dc9eb836ac7f746bac785a904e85, checks and reviews pending.
+
+---
+
+Update on pull request #299 (https://github.com/indkhan/Moneo/pull/299), which T3 Code is watching for you:
+- All 1 required check passed on 346f8b3.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Ad9b498a7-9a19-4249-9e70-1285576c0595 (#239 area 3 chat tools and investigation) [completed]:
+The PR is open. Finance tools, the investigation reader and evidence capture/view no longer sign in on their own. Every caller now passes the owner context.
+
+- **Context type:** `lib/finance/finance-context.ts` defines `FinanceContext` and the scope-guard types, which replace the `typeof requireWorkspace` types.
+- **Scope checks:** `captureToolEvidence`, `readEvidenceView` and `reviewFreshness` call an injected `requireScopes`. Callers build it with a new `aiScopeGuard(settings)` helper in `lib/settings.ts`. It calls the same `requireAiScope`, so the error text is unchanged.
+- **Where each check now happens:** the PR body has the full table. Every public entry point still does its own `requireWorkspace()`, and no scope check was dropped.
+- **Not done:** I did not thread `now` into these files, because `new Date()` there isn't request state. `evaluatePlan` in `model.ts` still uses `requireWorkspace`; I left it for the model area.
+- **Tests:** the `@/lib/auth` mocks and `requireWorkspace` casts are gone from the affected tests. `tools.test.ts` builds a fresh context per call, because `perClient` caches per client.
+- **Checks:**
+  - `npm test`: Test Files 327 passed | 11 skipped (338); Tests 1884 passed | 17 skipped (1901)
+  - `npm run lint`: clean (`eslint .`, no output)
+  - `npm run typecheck`: clean (`tsc --noEmit && tsc --noEmit -p desktop`)
+  - `npm run build`: succeeded
+
+I merged origin/main into the branch with no conflicts. Checks and reviews on the PR are still pending.
+
+PR https://github.com/indkhan/Moneo/pull/300, head 19bd086246d9567d986ac9c85bab6f616dc52aec
+
+---
+
+Update on pull request #300 (https://github.com/indkhan/Moneo/pull/300), which T3 Code is watching for you:
+- All 1 required check passed on 19bd086.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3A5c31b42d-eafd-414d-a870-cc752638dda0 (#272 import progress recount) [completed]:
+PR #301 is open and not merged. `npm run test:db` has two failures in `lib/ai/data-query.live.test.ts`; the other 15 of 17 tests pass.
+
+- **Fix:** each batch now counts only its own 250-row window before and after, and writes `totals − before + after`. The totals are read under the import lock, so two batches of the same import can't lose updates. `record_import_exclusion` now adds one to `rejected_rows` instead of recounting. `finish_import_run`, undo and review corrections still do the full recount, so it remains the check.
+- **Migration:** `202611180001_import_batch_progress_delta.sql` adds one helper function and replaces two functions with `create or replace`. No columns change, and it uses nothing the desktop bundle lacks. I ran `npm run db:types`, which added the new helper to `lib/database.types.ts`.
+- **Numbers:** buffer blocks per row from the throughput script:
+
+| rows | before | after |
+| --- | --- | --- |
+| 1,000 | 147 | 136 |
+| 10,000 | 280 | 147 |
+
+  The ratio at 10,000 vs 1,000 rows went from 1.9× to 1.08×. The script now asserts at most 1.2× (was 3×).
+- **New regression:** `supabase/tests/import-batch-progress.sql` ingests 501 rows in three batches. It includes a matched re-import row, review rows, a classification-review row and exclusions in batches 1 and 3. After each batch the counts must equal a full recount, and retrying the batch must not change them. Breaking the delta for `review_rows` or `classification_review_rows` makes it fail.
+- **Checks:**
+  - `npm test`: 1884 passed, 17 skipped.
+  - `npm run lint`, `npm run typecheck` and `npm run build`: clean.
+  - `node supabase/tests/migrations.mjs`: 145 migrations and 64 SQL regressions pass.
+- **`test:db` failures:** both are `data-query.live.test.ts`. The moneo-qa `moneo_query` schema has no views, which this change doesn't touch.
+- **QA database:** I didn't apply my migration to moneo-qa, so nothing needed reverting. Setting up the worktree applied one existing migration from main there.
+
+PR https://github.com/indkhan/Moneo/pull/301, head 7bf1200d5c2e6fdb2a0008466b8c46399a549d8c, checks and reviews pending
+
+---
+
+Update on pull request #301 (https://github.com/indkhan/Moneo/pull/301), which T3 Code is watching for you:
+- All 1 required check passed on 7bf1200.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Aa42139d5-a382-4e0e-ad20-83edc8e0b0d0 (#239 final: model.ts, shared types, lint ban) [completed]:
+`lib/finance` now imports neither `@/lib/auth` nor `@/lib/settings`, and lint fails if it does. `npm test`, `npm run lint`, `npm run typecheck` and `npm run build` all pass. `npm run check:bundle` shows every page inside its budget.
+
+- **`evaluatePlan`:** I removed it. Its only caller was `/plan`, which already has the owner context, so the page now calls `evaluatePlanForWorkspace` directly.
+- **Settings module:** the pure settings pieces moved to `lib/workspace-settings.ts`. `lib/settings.ts` keeps only `loadWorkspaceSettings` and re-exports the rest, so other importers didn't change.
+- **Lint ban:** I added a layer to `moneo/import-boundaries` for `lib/finance` (non-test files). A deliberate `@/lib/auth` import and a relative `../settings` import were both rejected with the message; I then deleted the probe file. I also added an AGENTS.md rules-table row.
+- **Tests:** the three finance tests that mocked `@/lib/auth` only because the model imported it no longer do. Two other finance tests still use `@/lib/auth` (`model-balances.test.ts` as fixture data, `forecast-provenance.test.ts` as a local helper), so the ban applies only to non-test files.
+- **PR body:** it lists where each `evaluatePlanForWorkspace` entry point checks authorization. It also maps each #239 acceptance item to where it's met.
+
+`origin/main` was already merged in, so there was nothing new to pull in before opening the PR.
+
+I also ran `npm ci` in this worktree because `node_modules` was missing.
+
+PR https://github.com/indkhan/Moneo/pull/302, head fec13ea3bd1c7c75f66367e0a16038f04aef21b3, checks and reviews not yet run.
+
+---
+
+Update on pull request #302 (https://github.com/indkhan/Moneo/pull/302), which T3 Code is watching for you:
+- All 1 required check passed on fec13ea.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #301 (https://github.com/indkhan/Moneo/pull/301), which T3 Code is watching for you:
+- All 14 checks passed on 7bf1200.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+<task-notification>
+<task-id>bsv098byf</task-id>
+<tool-use-id>toolu_0193nYHoM9pb59Sg6FJ1xxXd</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ff8438f77c7e4b53\bb0f6ad7-c86a-46b2-8129-8044cbbbb88f\tasks\bsv098byf.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for #301's desktop builds" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3A49e87659-f834-48ba-9445-85dcf3652ac1 (#243 stage 2 lib/finance indexed access) [completed]:
+`lib/finance` source files now pass the indexed-access check with no `!` left. The finance test files are not done and are the next PR.
+
+- **Split:** `lib/finance` had 357 errors. I did the source files first (114 errors down to 0). The 243 errors in tests remain behind an `exclude` of `lib/finance/**/*.test.ts` in `tsconfig.indexed.json`, which the lint rule also honours. Deleting that one entry starts the second half.
+- **`!` removals:** All 58 in finance source are gone, via early returns, defaults and types that cannot be absent. The `!` in finance tests will be flagged by lint once that exclude entry goes.
+- **Commits:** One behaviour-preserving commit for the type errors, a separate commit for own-transfer linking, one for the remaining `!`, and one for wiring and the AGENTS.md row.
+- **Behavioural commit:** In own-transfer linking, a row missing from the loaded set is now counted as skipped, or produces no proposal card, instead of throwing partway through a batch of writes. This is unreachable today, so I added no test.
+- **Real bugs:** None found; every error was a value that cannot be absent today. Two small edge-case differences, both for malformed input, are noted in the PR body.
+- **Flake:** One `npm test` run printed `Errors 2 errors` and then passed on two reruns. I didn't find the cause.
+
+Checks, run after the final merge of `origin/main` (up to date):
+- `npm run typecheck`: `Checked indexed access in 69 files.`
+- `npm run lint`: clean, no output
+- `npm test`: `Test Files 327 passed | 11 skipped (338)`, `Tests 1884 passed | 17 skipped (1901)`
+- `npm run build`: exit 0
+
+PR https://github.com/indkhan/Moneo/pull/303, head 69a8661ea34f7d31652deeeb4c8956c2d026f91e, checks and reviews not yet looked at.
+
+---
+
+Update on pull request #303 (https://github.com/indkhan/Moneo/pull/303), which T3 Code is watching for you:
+- All 1 required check passed on 69a8661.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Afac25be5-2e82-474f-9aa7-92421dc256b6 (#241 PR2 read-only AI tool clients) [completed]:
+I opened PR #304. AI read tools now get a read-only database type, so a read tool that tries a table insert, update, upsert or delete, or any RPC outside a read-only list, won't compile. Behaviour doesn't change, and all four checks pass after merging origin/main.
+
+**What changed**
+- **`ReadonlyDb`** (`lib/database.ts`) is type-only: `from()` exposes only `select`, and `rpc` accepts only `data_query` and `similar_transaction_ids`. I checked both in the migrations: the first runs in a read-only transaction that rolls back, the second is declared `stable`. Every other RPC is treated as mutating. The full client still fits wherever `ReadonlyDb` is asked for, so no runtime wrapper was needed.
+- **AI read paths now use it:** `FinanceContext.supabase`, a new `ReadonlyWorkspace` type in `lib/auth.ts`, and the chat route's read helper. Together that's 20 chat tools, 7 Scalable tools and 18 artifact data sources. About 25 reader functions in `lib/finance`, `lib/organize`, `lib/recurring` and `lib/ai` were narrowed so this compiles.
+- **Tools that write keep the full client.** `iou_findRepayments` creates cards and `reviews_start` starts a review job; both go through a separate helper with the same scope checks. Card application (`decideProposals`) and the organizer were left as they were.
+- **One JSON column got a declared type.** The settlement `receipt` column is now typed in `lib/database.ts` (same pattern as the existing `JsonReturns`), because the forecast reader now gets typed rows for it.
+- **AGENTS.md** has a new rules-table row naming what enforces this.
+
+**One AI financial write still bypasses cards.** `transactions_setCategory` writes directly. It already did, only runs when the owner types the exact transaction ID and category, and is audited and undoable. I left it unchanged and flagged it in the PR body.
+
+**Tests**
+- **New:** `lib/database.test.ts` uses `expectTypeOf`, checked by `npm run typecheck`. I confirmed it fails when `delete` or `reset_workspace` is allowed.
+- **No new tests needed:** existing tests already cover the three you asked about:
+  - apply authorization: `supabase/tests/workspace-isolation.sql`
+  - scope revocation: three tests in `app/api/chat/route.test.ts`
+  - duplicate application: the claim test in `lib/ai/agent-apply.test.ts`
+
+The PR body has the full inventory table with counts.
+
+**Checks**
+- `npm test`: `Tests  1887 passed | 17 skipped (1904)`
+- `npm run lint`: exit 0
+- `npm run typecheck`: exit 0, `Checked indexed access in 15 files.`
+- `npm run build`: exit 0
+
+PR https://github.com/indkhan/Moneo/pull/304, head 4f7cbf58d3503a350c9519718089cd9334df4554, checks and reviews pending (just opened)
+
+---
+
+Update on pull request #304 (https://github.com/indkhan/Moneo/pull/304), which T3 Code is watching for you:
+- All 1 required check passed on c3bee5b.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+once issue are done stop with it no need to go ahead with other things just get these merged and then start the new relaease
+
+---
+
+call the subagent for issue 243 now only
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Ac53f84f5-9836-42a2-bb20-8ea8d107b6ca (#268 part 3 offline voice call record) [completed]:
+Part 3 of #268 is done and the PR is open. When saving the call record fails because of the network, the record now stays in the browser and is saved automatically later.
+
+- **When it retries:** on the `online` event and the next time Moneo opens. Retries stop after 5 attempts at 30-second intervals while the browser is online but the server is unreachable. A "saved when you're back online" note shows while a record is pending, and a "Your call was saved." note shows when it goes through.
+- **Where the note shows:** the note is mounted in the layout (`components/pending-call-records.tsx`), not on the call screen. The call screen is already closed by the time the record is saved.
+- **Idempotency:** the save route already treated a repeated id as done. It now also checks that the existing row belongs to the owner's workspace and returns 409 otherwise. The record also carries a `workspaceId`, which `/api/voice/call` returns at call start. The route returns 409 if it doesn't match the signed-in workspace, and the client never sends a queued record for another workspace.
+- **Failures:** only fetch errors and 502/503/504 are queued. Any other error is shown to the owner instead of retried. A queued record the server keeps rejecting is reported each time and dropped after 3 rejections, with a final message. If IndexedDB is blocked, the failure is shown as before.
+- **Tests:** `lib/ai/voice-record-queue.test.ts` covers queueing, retry, duplicate retry after a lost response, the rejection bound and other-workspace entries. The route tests cover the workspace check, including a reused id from another workspace. None of them use fake timers, because the queue module itself has no timers (the 30-second retry is in the component).
+
+I also ran it in the QA app with real IndexedDB:
+- With `/api/voice/calls` blocked, the record stayed pending and the note showed.
+- Once unblocked, it saved as one row, and a repeat flush added none.
+- An entry for another workspace was left untouched.
+
+Screenshots in light, dark and mobile are in `.qa/shots/offline-note/` locally; that folder is git-ignored, so they aren't in the PR. The raw IndexedDB wrapper is only exercised by that browser run, not by unit tests.
+
+Checks:
+- `npm test`: Tests 1895 passed | 17 skipped (1912)
+- `npm run lint`: ran `eslint .` and exited clean
+- `npm run typecheck`: Checked indexed access in 69 files.
+- `npm run build`: ended at the `ƒ Proxy (Middleware)` / Static / Dynamic route legend; I didn't see a build error.
+
+I also updated `FEATURES.md` with `npm run feature-map`. The QA server I started on port 3100 is stopped.
+
+PR https://github.com/indkhan/Moneo/pull/305, head d97f35deda404ed9dc20b05d42d687bd5f438f13
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3Ae71e07b0-5ce2-47d8-89b5-0c4468c8d3a0 (#268 swallowed failures in pages and catch-to-null) [completed]:
+I opened the PR for parts 1 and 2 of #268. Part 3 (the voice call record) is left out, and the PR body says it still needs its own design.
+
+Checks after merging `origin/main`:
+- **`npm test`:** `Tests  1886 passed | 17 skipped (1903)`.
+- **`npm run lint`:** no errors.
+- **`npm run typecheck`:** `Checked indexed access in 69 files.`
+- **`npm run build`:** completed.
+- I did not run `npm run test:db`, the e2e specs or the QA server, because nothing in the change touches the schema or a user flow.
+
+**Part 1 (empty catches):**
+- `unexplainedIgnoredFailure` now also covers `app/**` and `components/**`.
+- It found the four pages named in the issue, plus `app/money/investigations/page.tsx` and nine components.
+- Each now names its handler, or the catch was removed. The three polling callers lost their own catch because `usePolling` already ignores a failed poll and retries.
+- I updated the AGENTS.md rule row to say it covers `app/` and `components/`.
+
+**Part 2 (about 60 `.catch(() => null)`-style sites):** The PR body has the table.
+- **(a) Legitimate absence:**
+  - Non-JSON request bodies now go through one named helper, `jsonBodyOrNull` in `lib/json-body.ts`.
+  - The best-effort fallbacks that stay each have a name saying why.
+  - The remaining client error-body reads and desktop file reads are left unchanged.
+- **(b) Hidden failures, now surfaced:**
+  - A database failure while reading a chat for its title returned 400 "nothing to name". It now returns 500.
+  - A failed loan lookup was treated as "no loans", so loan payouts were counted as spending. I removed that catch at all seven sites.
+  - A failed Scalable connection lookup silently dropped Scalable data from chat. It now fails the answer.
+  - Home "waiting for you", the home review counts and the import-review repeats check each looked empty on failure. Each now says it could not check.
+  - Account options on proposals were swallowed. They now fail the list.
+
+**What the owner sees:** The home and import-review notices are new. Chat, the spending views and the agents now show an error in the cases above, but only when the database itself fails.
+
+**Tests:** I added two, for the home notice and the title route. Three existing fake databases had to gain `is` and `limit`, because they only passed while the swallowed error hid the missing methods.
+
+PR https://github.com/indkhan/Moneo/pull/306, head f3e4c6e71407ac0a2ea9984a372f3ce706be9620, checks and reviews not yet run
+
+---
+
+wait a minute what is the issue of 243 and there are 243 tests failing or what is that thing about
+
+---
+
+Update on pull request #305 (https://github.com/indkhan/Moneo/pull/305), which T3 Code is watching for you:
+- All 1 required check passed on d97f35d.
+
+Update on pull request #306 (https://github.com/indkhan/Moneo/pull/306), which T3 Code is watching for you:
+- All 1 required check passed on f3e4c6e.
+
+Look into each item and act on it as your task requires. Each PR T3 Code still watches stays linked and watched, so do not link, watch, or list them again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request for each first so the thread returns to their inbox.
+
+---
+
+Update on pull request #305 (https://github.com/indkhan/Moneo/pull/305), which T3 Code is watching for you:
+- The branch now conflicts with main.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Update on pull request #305 (https://github.com/indkhan/Moneo/pull/305), which T3 Code is watching for you:
+- All 1 required check passed on 3357e1c.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3Ae6c16771-397f-429f-a669-33dc2808b6c6%3Adelegate-task%3A1c3a7cf8-e3b9-4ec8-9ea2-224eafc4efb4 (#243 stage 3 lib/finance tests indexed access) [completed]:
+The lib/finance tests are now covered by the indexed-access check, and the typecheck, lint, unit tests and build pass on the merged result. I opened the PR and did not merge it.
+
+- **Scope:** I removed the test exclude from `tsconfig.indexed.json`, and the `!` lint rule follows it. That surfaced 241 type errors (not 243) and 59 `!` uses, all fixed in the lib/finance tests. Values a test needs now go through `defined()`, and I added no `!`. No test turned out to assert something wrong, and I changed no assertions.
+- **Commits:** the database tests, then the unit tests, then the config and AGENTS.md row. I merged `origin/main` before opening the PR.
+- **Checks:**
+  - `npm run typecheck` ended with `Checked indexed access in 147 files.`
+  - `npm run lint` printed nothing.
+  - `npm test` ended with `Test Files  329 passed | 11 skipped (340)` and `Tests  1894 passed | 17 skipped (1911)`.
+  - `npm run build` completed.
+  - I ran the database tests against `moneo-qa` directly: `Test Files  83 passed (83)`, `Tests  551 passed (551)`.
+- **Pre-existing failure:** `npm run test:db` stops in its first step with `Fresh SQL regression reviewed-balances.sql: Date-only closing balance double counted same-day postings`. This PR touches no SQL, so I ran its second step (the vitest database tests) directly. I didn't check whether it also fails on `main`.
+
+PR https://github.com/indkhan/Moneo/pull/307, head d8dfbff622476f9d68e5da4c030c9c78f2be4b14, checks and reviews pending
+
+---
+
+Update on pull request #307 (https://github.com/indkhan/Moneo/pull/307), which T3 Code is watching for you:
+- All 1 required check passed on d8dfbff.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
