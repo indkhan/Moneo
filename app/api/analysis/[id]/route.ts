@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: Context) {
     .select("id, title, body, evidence, created_at").eq("job_id", id).eq("workspace_id", context.workspace.id).maybeSingle() : null;
   if (analysis?.error) return Response.json({ error: analysis.error.message }, { status: 500 });
   const saved = analysis?.data;
-  const freshness = saved ? await reviewFreshness(context.supabase, context.workspace, saved.evidence) : null;
+  const freshness = saved ? await reviewFreshness(context.supabase, context.workspace, saved.evidence, context.settings, new Date()) : null;
   return Response.json({ ...job.data, analysis: saved ? { ...saved, freshness } : null });
 }
 

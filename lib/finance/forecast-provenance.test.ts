@@ -5,7 +5,7 @@ import { evidenceFreshness } from "./evidence-receipts";
 import { loadFinancialReviewEvidence } from "./review-loader";
 import { compareReviewEvidence, reviewFreshness } from "./review-freshness";
 import { requireWorkspace } from "@/lib/auth";
-import { settingsSchema } from "@/lib/settings";
+import { settingsSchema, type AiDataScope } from "@/lib/settings";
 
 const fixture = vi.hoisted(() => ({ rate: "1", snapshotVersion: 1, revision: 1, revisionTable: "", reads: [] as string[] }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
@@ -30,6 +30,9 @@ beforeEach(() => { fixture.rate = "1"; fixture.snapshotVersion = 1; fixture.revi
 afterEach(() => vi.useRealTimers());
 const receiptContext = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T12:00:00Z", timezone: "UTC" };
 
+const reviewEvidence = (supabase: Parameters<typeof loadFinancialReviewEvidence>[0], workspace: Parameters<typeof loadFinancialReviewEvidence>[1], settings: { timezone: string; ai_data_scopes: readonly AiDataScope[] }) =>
+  loadFinancialReviewEvidence(supabase, workspace, { timezone: settings.timezone, scopes: settings.ai_data_scopes, now: new Date() });
+
 it("retains original forecast evidence and marks rounding-invisible rate and snapshot revisions stale", async () => {
   const context = await requireWorkspace();
   const first = await evaluateForecast({ horizonDays: 2 }, context);
@@ -49,9 +52,9 @@ it("retains original forecast evidence and marks rounding-invisible rate and sna
 
 it("propagates forecast source changes through real review receipts and review freshness", async () => {
   const { supabase, workspace, settings } = await requireWorkspace();
-  const saved = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const saved = await reviewEvidence(supabase, workspace, settings);
   fixture.rate = "1.01";
-  const current = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const current = await reviewEvidence(supabase, workspace, settings);
   expect(compareReviewEvidence(saved, current).status).toBe("stale");
   expect(toolSourceVersion(saved)).not.toBe(toolSourceVersion(current));
 });
@@ -59,17 +62,17 @@ it("propagates forecast source changes through real review receipts and review f
 it.each([false, true])("keeps source-only balance revisions stale in saved summaries with planning=%s", async planning => {
   const { supabase, workspace } = await requireWorkspace();
   const settings = settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", ...(planning ? ["planning"] : [])] });
-  const first = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const first = await reviewEvidence(supabase, workspace, settings);
   const saved = Object.fromEntries(Object.entries(first).filter(([key]) => key !== "calculationEvidence"));
   vi.setSystemTime(new Date("2026-10-01T13:00:00Z"));
-  const later = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const later = await reviewEvidence(supabase, workspace, settings);
   expect(compareReviewEvidence(saved, later).status).toBe("current");
   fixture.snapshotVersion = 2;
-  const current = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const current = await reviewEvidence(supabase, workspace, settings);
   expect(current.accounts[0].balanceMinor).toBe(first.accounts[0].balanceMinor);
   expect(toolSourceVersion(current)).not.toBe(toolSourceVersion(first));
   expect(compareReviewEvidence(saved, current).status).toBe("stale");
-  expect((await reviewFreshness(supabase, workspace, saved, settings)).status).toBe("stale");
+  expect((await reviewFreshness(supabase, workspace, saved, settings, new Date())).status).toBe("stale");
   expect(saved.accounts).toEqual(first.accounts);
   expect(fixture.reads).not.toContain("imports");
   expect(fixture.reads).not.toContain("source_transactions");
@@ -78,10 +81,10 @@ it.each([false, true])("keeps source-only balance revisions stale in saved summa
 
 it("detects rounding-invisible forecast changes after stripping calculation evidence from saved summaries", async () => {
   const { supabase, workspace, settings } = await requireWorkspace();
-  const first = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const first = await reviewEvidence(supabase, workspace, settings);
   const saved = Object.fromEntries(Object.entries(first).filter(([key]) => key !== "calculationEvidence"));
   fixture.rate = "1.01";
-  const current = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const current = await reviewEvidence(supabase, workspace, settings);
   expect(current.accounts).toEqual(first.accounts);
   expect(compareReviewEvidence(saved, current).status).toBe("stale");
 });
@@ -90,10 +93,10 @@ it.each([["accounts", false], ["accounts", true], ["goals", true], ["spending_pl
   fixture.revisionTable = table;
   const { supabase, workspace } = await requireWorkspace();
   const settings = settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", ...(planning ? ["planning"] : [])] });
-  const first = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const first = await reviewEvidence(supabase, workspace, settings);
   const saved = Object.fromEntries(Object.entries(first).filter(([key]) => key !== "calculationEvidence"));
   fixture.revision = 2;
-  const current = await loadFinancialReviewEvidence(supabase, workspace, settings);
+  const current = await reviewEvidence(supabase, workspace, settings);
   expect(current.accounts).toEqual(first.accounts);
   expect(current.netWorth).toEqual(first.netWorth);
   expect(compareReviewEvidence(saved, current).status).toBe("stale");

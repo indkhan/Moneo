@@ -1,13 +1,12 @@
 import {beforeEach, expect, it, vi} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {DEFAULT_SETTINGS} from "@/lib/settings";
+import {DEFAULT_SETTINGS, requireAiScope} from "@/lib/settings";
 import {resolveReviewRequest} from "./review-request";
 import {gatherReviewInvestigation} from "./review-gather";
 const fixture = vi.hoisted(() => ({load: vi.fn(), settings: vi.fn(), persist: vi.fn(), forecast: vi.fn()}));
 vi.mock("./tools", async original => ({...await original<typeof import("./tools")>(), evaluateForecast: fixture.forecast}));
 vi.mock("./investigation-reader", () => ({loadInvestigationDataset: fixture.load}));
 vi.mock("./evidence-receipts", async original => ({...await original<typeof import("./evidence-receipts")>(), persistEvidenceReceipt: fixture.persist}));
-vi.mock("@/lib/settings", async original => ({...await original<typeof import("@/lib/settings")>(), loadWorkspaceSettings: fixture.settings}));
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const request = resolveReviewRequest({version: 1, question: "Explain September", query: {version: 1, period: {from: "2026-09-01", to: "2026-09-30"}}, budget: {maxQueries: 1}}, "2026-10-07");
 beforeEach(() => {
@@ -16,7 +15,7 @@ beforeEach(() => {
   fixture.persist.mockImplementation(async (_db, receipt) => receipt);
   fixture.load.mockImplementation(async spec => ({spec, rows: [{id: "22222222-2222-4222-8222-222222222222", parentId: "22222222-2222-4222-8222-222222222222", accountId: "owned", categoryId: null, merchantId: null, date: "2026-09-02", amountMinor: "-9007199254740993", currency: "EUR", status: "posted", kind: "ordinary", tags: [], event: null, reviewReasons: [], version: 1, description: "synthetic"}], context: {workspaceId, capturedAt: "2026-10-07T00:00:00Z"}, sourceRevision: "v1"}));
 });
-const options = () => ({workspaceId, client: vi.fn((signal?: AbortSignal) => {void signal; const query = {select: () => query, eq: () => query, single: async () => ({data: {id: workspaceId, display_currency: "EUR"}, error: null})}; return {from: () => query} as unknown as SupabaseClient;}), checkpoint: vi.fn(async () => {})});
+const options = () => ({workspaceId, settings: fixture.settings, requireScopes: requireAiScope, now: () => new Date("2026-10-07T00:00:00Z"), client: vi.fn((signal?: AbortSignal) => {void signal; const query = {select: () => query, eq: () => query, single: async () => ({data: {id: workspaceId, display_currency: "EUR"}, error: null})}; return {from: () => query} as unknown as SupabaseClient;}), checkpoint: vi.fn(async () => {})});
 it("reads the frozen dates once, retains exact full receipts and checkpoints only after persistence", async () => {
   const dependencies = options();
   const progress = await gatherReviewInvestigation(request, dependencies);

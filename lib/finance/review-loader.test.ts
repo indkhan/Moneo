@@ -1,11 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { loadFinancialReviewEvidence } from "./review-loader";
-import { settingsSchema } from "@/lib/settings";
+import { DEFAULT_SETTINGS, type AiDataScope } from "@/lib/settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compareReviewEvidence } from "./review-freshness";
 
 vi.mock("./balances", async original => ({ ...await original<typeof import("./balances")>(), loadBalanceEvidence: async () => ({ accounts: [], snapshots: [], ledger: [], asOf: "2026-10-02T12:00:00Z" }) }));
 vi.mock("./model", () => ({ evaluatePlanForWorkspace: vi.fn(async () => ({ available: { status: "unavailable", missingInputs: ["balance"] }, forecast: [], input: { events: [] } })) }));
+
+const input = (scopes: readonly AiDataScope[] = DEFAULT_SETTINGS.ai_data_scopes) => ({ timezone: "Europe/Berlin", scopes, now: new Date("2026-10-02T12:00:00Z") });
 
 it.each(["goal_allocations", "financial_assumptions"])("retains %s revisions independently of available forecast evidence", async table => {
   let version = 1;
@@ -17,7 +19,7 @@ it.each(["goal_allocations", "financial_assumptions"])("retains %s revisions ind
   };
   const db = { from } as unknown as SupabaseClient;
   const workspace = { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" };
-  const settings = settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", "planning"] });
+  const settings = input(["accounts", "transactions", "planning"]);
   const first = await loadFinancialReviewEvidence(db, workspace, settings);
   const saved = Object.fromEntries(Object.entries(first).filter(([key]) => key !== "calculationEvidence"));
   version = 2;
@@ -34,7 +36,7 @@ it("omits all planning reads when its scope is disabled and gathers exact compar
       range: async () => ({ data: table === "effective_transactions" ? [{ id: "t", parent_transaction_id: "t", account_id: "a", amount_minor: "-9007199254740993", currency_code: "EUR", posted_on: "2026-10-01", status: "posted", kind: "ordinary", category_id: null, merchant_id: null, review_reasons: [] }] : [], error: null }) };
     return query;
   };
-  const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions"] }));
+  const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, input(["accounts", "transactions"]));
   expect(reads).not.toContain("imports"); expect(reads).not.toContain("source_transactions"); expect(reads).not.toContain("spending_plans");
   expect(evidence.cashflow.EUR.spendingMinor).toBe("9007199254740993");
   expect(evidence).toMatchObject({ sourceCoverage: { unresolvedSourceRows: null, scope: { from: "2026-07-05", to: "2026-10-02" } } });
@@ -54,7 +56,7 @@ it("loads older rollover evidence without extending the current cashflow summary
     const query = { select: () => query, eq: () => query, not: () => query, limit: () => query, is: () => query, gte: (_key: string, value: string) => { lowerBounds.push(value); return query; }, lte: () => query, order: () => query,
       range: async () => ({ data: tables[table] ?? [], error: null }) }; return query;
   };
-  const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, settingsSchema.parse({}));
+  const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, input());
   expect(lowerBounds).toEqual(["2026-01-01", "2026-04-06"]);
   expect(evidence.cashflow).toEqual({});
   expect((evidence.planning as { budgets: unknown[] }).budgets[0]).toMatchObject({ carriedMinor: "8800", remainingMinor: "9800", spentMinor: "0" });
@@ -66,7 +68,7 @@ it("includes the confirmed calendar anchor and source basis in planning evidence
     const query = {select: (columns: string) => {if (table === "financial_assumptions") assumptionColumns=columns; return query;},eq: () => query, not: () => query, limit: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
       range: async () => ({data: [],error: null})}; return query;
   };
-  await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},settingsSchema.parse({}));
+  await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},input());
   expect(assumptionColumns).toContain("schedule_anchor_on");
   expect(assumptionColumns).toContain("source");
 });
@@ -78,6 +80,6 @@ it("retains account/version provenance alongside the confirmed calendar anchor i
     const query = {select: (value: string) => {columns=value; return query;},eq: () => query, not: () => query, limit: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
       range: async () => ({data: table === "financial_assumptions" ? [Object.fromEntries(columns.split(",").map(column => {const key=column.trim().split("::")[0]; return [key,record[key as keyof typeof record]];}))] : [],error: null})}; return query;
   };
-  const evidence=await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},settingsSchema.parse({ai_data_scopes:["accounts","transactions","planning"]}));
+  const evidence=await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},input(["accounts","transactions","planning"]));
   expect((evidence.planning as {obligations: unknown[]}).obligations).toMatchObject([{account_id: "cash",version: 7,schedule_anchor_on: "2026-01-31",source: "user"}]);
 });

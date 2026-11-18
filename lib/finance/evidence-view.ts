@@ -38,7 +38,9 @@ export async function readEvidenceView(context: Awaited<ReturnType<typeof requir
         case "goals_list": result = await listGoals(context); break;
         case "goals_review": result = await loadReviewGoals(input, context.supabase, context.workspace.id); break;
         case "forecast_evaluate": result = await evaluateForecast(input, {...context, settings: {...context.settings, ai_data_scopes: receipt.scopes}}); break;
-        case "reviews_investigate": result = await loadFinancialReviewEvidence(context.supabase, context.workspace, context.settings, "query" in query ? query.query : undefined); break;
+        case "reviews_investigate":
+          requireAiScope(context.settings, "accounts", "transactions");
+          result = await loadFinancialReviewEvidence(context.supabase, context.workspace, { timezone: context.settings.timezone, scopes: context.settings.ai_data_scopes, now: new Date() }, "query" in query ? query.query : undefined); break;
         case "finance_entities": result = await loadInvestigationEntities(context); break;
         case "finance_detail": result = await investigationDetail(input, context, { canReadImports: imports }); break;
         case "transactions_previewCategory": {

@@ -274,7 +274,7 @@ it("investigates remaining evidence when planning is already revoked before a ne
   vi.mocked(requireWorkspace).mockResolvedValue(reduced as unknown as typeof current);
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   await expect(tools.reviews_investigate.execute()).resolves.toEqual({ source: "exact evidence" });
-  expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, reduced.settings, undefined);
+  expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, { timezone: reduced.settings.timezone, scopes: reduced.settings.ai_data_scopes, now: expect.any(Date) }, undefined);
 });
 it.each(["planning", "imports"] as const)("carries actual %s reads across a revocation after the read", async revoked => {
   await POST(request("Review my finances"));

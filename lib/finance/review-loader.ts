@@ -1,7 +1,7 @@
 import { netWorth } from "@/lib/finance/net-worth";
 import { loadNetWorthEvidence, netWorthModel } from "./net-worth-source";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
+import type { AiDataScope } from "@/lib/settings";
 import { loadBalanceEvidence } from "./balances";
 import { calendarDate } from "./calendar";
 import { buildReviewEvidence, buildPlanningReview, type ReviewTransaction } from "./review";
@@ -12,10 +12,11 @@ import { investigationSchema } from "./investigation";
 import { runInvestigation } from "./investigation-reader";
 import { toolSourceVersion } from "./tool-evidence";
 
-export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, settings: WorkspaceSettings, query?: unknown) {
-  requireAiScope(settings, "accounts", "transactions");
-  const balances = await loadBalanceEvidence(db, workspace.id, new Date().toISOString());
-  const to = calendarDate(balances.asOf, settings.timezone);
+export type ReviewEvidenceInput = { timezone: string; scopes: readonly AiDataScope[]; now: Date };
+
+export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, input: ReviewEvidenceInput, query?: unknown) {
+  const balances = await loadBalanceEvidence(db, workspace.id, input.now.toISOString());
+  const to = calendarDate(balances.asOf, input.timezone);
   const from = new Date(Date.parse(`${to}T00:00:00Z`) - 89 * 86400000).toISOString().slice(0, 10);
   const comparisonFrom = new Date(Date.parse(`${from}T00:00:00Z`) - 90 * 86400000).toISOString().slice(0, 10);
   async function rows<T>(table: string, columns: string, periodFrom?: string): Promise<T[]> {
@@ -31,7 +32,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     }
     return result;
   }
-  const budgets = settings.ai_data_scopes.includes("planning") ? await rows<Parameters<typeof buildPlanningReview>[0]["budgets"][number]>("spending_plans", "id, category_id, currency_code, limit_minor::text, enabled, rollover, rollover_from, version") : [];
+  const budgets = input.scopes.includes("planning") ? await rows<Parameters<typeof buildPlanningReview>[0]["budgets"][number]>("spending_plans", "id, category_id, currency_code, limit_minor::text, enabled, rollover, rollover_from, version") : [];
   const historyStart = budgets.filter(budget => budget.enabled && budget.rollover && budget.rollover_from &&
     Date.parse(`${to.slice(0, 7)}-01T00:00:00Z`) - Date.parse(`${budget.rollover_from}T00:00:00Z`) <= 3660 * 86400000)
     .map(budget => budget.rollover_from!).sort()[0];
@@ -44,22 +45,22 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     for (const row of transactions) if (row.refund_of_id) row.refund_category_id = originals.data.find(original => original.id === row.refund_of_id)?.category_id ?? row.refund_category_id;
   }
   const current = transactions.filter(row => row.posted_on >= from);
-  const sourceMetadata = await loadSourceCoverageMetadata(db, workspace.id, settings.ai_data_scopes.includes("imports"));
+  const sourceMetadata = await loadSourceCoverageMetadata(db, workspace.id, input.scopes.includes("imports"));
   const coverage = (scope: Parameters<typeof buildSourceCoverage>[0]) => buildSourceCoverage(scope, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
   const sourceCoverage = coverage({ from, to });
-  const base = { ...buildReviewEvidence(balances.accounts.filter(account => !account.archived_at), balances.snapshots, current, from, to, { ...balances, timeZone: settings.timezone, sourceMetadata }), sourceCoverage };
+  const base = { ...buildReviewEvidence(balances.accounts.filter(account => !account.archived_at), balances.snapshots, current, from, to, { ...balances, timeZone: input.timezone, sourceMetadata }), sourceCoverage };
   const defaultQuery = investigationSchema.parse({ version: 1, period: { from, to }, comparison: { from: comparisonFrom, to: new Date(Date.parse(`${from}T00:00:00Z`) - 86400000).toISOString().slice(0, 10) }, groupBy: ["category", "merchant"] });
-  const queryInvestigation = await runInvestigation(query ?? defaultQuery, { supabase: db, workspace }, { canReadImports: settings.ai_data_scopes.includes("imports") });
+  const queryInvestigation = await runInvestigation(query ?? defaultQuery, { supabase: db, workspace }, { canReadImports: input.scopes.includes("imports") });
   const investigation = { ...queryInvestigation, entities: { accounts: balances.accounts.map(a => ({ id: a.id, name: a.name })), categories, merchants } };
   const calculationEvidence = { balances: { accounts: balances.accounts, snapshots: balances.snapshots, ledger: balances.ledger }, transactions, categories, merchants, budgets, sourceMetadata };
-  if (!settings.ai_data_scopes.includes("planning")) return { ...base, investigation, queryInvestigation, calculationEvidence, sourceVersion: toolSourceVersion(calculationEvidence), planning: { unavailable: "AI access to planning is disabled in Settings" } };
+  if (!input.scopes.includes("planning")) return { ...base, investigation, queryInvestigation, calculationEvidence, sourceVersion: toolSourceVersion(calculationEvidence), planning: { unavailable: "AI access to planning is disabled in Settings" } };
   const [goals, allocations, budgetHistory, assumptions, wealth, plan] = await Promise.all([
     rows<Parameters<typeof buildPlanningReview>[0]["goals"][number]>("goals", "id, name, currency_code, target_minor::text, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on, target_date, status, version"),
     rows<{ goal_id: string; amount_minor: string }>("goal_allocations", "id, goal_id, account_id, amount_minor::text, version"),
     rows<NonNullable<Parameters<typeof buildPlanningReview>[0]["budgetHistory"]>[number]>("spending_plan_limits", "id, plan_id, limit_minor::text, enabled, version, effective_month"),
     rows<{ id: string; name: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; schedule_anchor_on: string | null; source: string; ends_on: string | null; confirmed: boolean; enabled: boolean; removed_at: string | null; version: number }>("financial_assumptions", "id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, source, ends_on, confirmed, enabled, removed_at, version"),
-    loadWealthItems(db, workspace.id), evaluatePlanForWorkspace(db, { ...workspace, timezone: settings.timezone }, 90, undefined,
-      { canReadImports: settings.ai_data_scopes.includes("imports"), sourceMetadata: Promise.resolve(sourceMetadata) }),
+    loadWealthItems(db, workspace.id), evaluatePlanForWorkspace(db, { ...workspace, timezone: input.timezone }, 90, undefined,
+      { canReadImports: input.scopes.includes("imports"), sourceMetadata: Promise.resolve(sourceMetadata) }),
   ]);
   const datedWealth = wealthEvidence(wealth, to);
   const budgetCoverage = Object.fromEntries(budgets.map(budget => [budget.id, coverage({ from: budget.rollover && budget.rollover_from ? budget.rollover_from : `${to.slice(0, 7)}-01`, to, currencyCode: budget.currency_code })]));
@@ -68,7 +69,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     wealth: { included: datedWealth.included, excludedLinked: datedWealth.excludedLinked, missingInputs: datedWealth.missingInputs, outdated: datedWealth.outdated, sourceCoverage: datedWealth.sourceCoverage, manualRecords: datedWealth.manualRecords, link: "/money/wealth" },
     forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceVersion: plan.sourceVersion, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
   const fullCalculationEvidence = JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input, forecastSource: plan.calculationEvidence }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
-  const worth = netWorthModel(await loadNetWorthEvidence(db, { id: workspace.id, timezone: settings.timezone }, { balances: Promise.resolve(balances) }));
+  const worth = netWorthModel(await loadNetWorthEvidence(db, { id: workspace.id, timezone: input.timezone }, { balances: Promise.resolve(balances) }));
   const [lastDay] = worth.points([to > worth.today ? worth.today : to]);
   return { ...base, accountBalanceTotals: base.netWorth, netWorth: Object.fromEntries([...netWorth(lastDay)].map(([currency, amount]) => [currency, amount.toString()])), investigation, queryInvestigation,
     calculationEvidence: fullCalculationEvidence, sourceVersion: toolSourceVersion(fullCalculationEvidence),
