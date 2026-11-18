@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7R8E6773C980PDFH00YC0QQ",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-239-lint-ban",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "AGENTS.md",
+    "eslint.config.mjs",
+    "lib/finance/account-liquidity-model.test.ts",
+    "lib/finance/capture-evidence.test.ts",
+    "lib/finance/capture-evidence.ts",
+    "lib/finance/direct-source-revisions.test.ts",
+    "lib/finance/evidence-receipts.ts",
+    "lib/finance/evidence-view.test.ts",
+    "lib/finance/finance-context.ts",
+    "lib/finance/forecast-provenance.test.ts",
+    "lib/finance/investigation-receipt.ts",
+    "lib/finance/model-recurring.test.ts",
+    "lib/finance/review-freshness.test.ts",
+    "lib/finance/review-freshness.ts",
+    "lib/finance/review-gather.test.ts",
+    "lib/finance/review-gather.ts",
+    "lib/finance/review-loader.test.ts",
+    "lib/finance/review-loader.ts",
+    "lib/finance/review-request.ts",
+    "lib/finance/snapshot-provenance.test.ts",
+    "lib/finance/tool-evidence.ts",
+    "lib/finance/workspace-buffer.test.ts",
+    "lib/settings.ts",
+    "lib/workspace-settings.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 3850,
+    "cache_read_tokens": 268234,
+    "output_tokens": 2462,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
