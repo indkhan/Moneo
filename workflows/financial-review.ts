@@ -152,6 +152,7 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
       })().catch(error => {if (!finished.signal.aborted) {monitorError = error; stopped.abort(error);}});
       try {
         const progress = await gatherReviewInvestigation(request, {workspaceId, client: service, signal: stopped.signal,
+          settings: client => loadWorkspaceSettings(client, workspaceId), requireScopes: requireAiScope, now: () => new Date(),
           checkpoint: value => checkpointReview(db, jobId, workspaceId, runId, value)}, job.data.review_progress ?? undefined);
         if (monitorError) throw monitorError;
         if (!await enterStage(db, jobId, workspaceId, runId, "gathering_evidence")) return null;
