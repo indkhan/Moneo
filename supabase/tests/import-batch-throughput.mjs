@@ -71,7 +71,7 @@ try {
       }
     }
     const perRow = rows => results.find(result => result.rows === rows).bufferBlocksPerRow;
-    assert(perRow(10000) <= 3 * perRow(1000), `Import work per row grows with import size: ${perRow(10000).toFixed(0)} buffer blocks per row at 10,000 rows against ${perRow(1000).toFixed(0)} at 1,000. A per-row query in import_batch_candidates or ingest_import_batch is reading the rows already ingested; give it an equality path its index can serve (issue #188).`);
+    assert(perRow(10000) <= 1.2 * perRow(1000), `Import work per row grows with import size: ${perRow(10000).toFixed(0)} buffer blocks per row at 10,000 rows against ${perRow(1000).toFixed(0)} at 1,000. A per-row query in import_batch_candidates or ingest_import_batch is reading the rows already ingested; give it an equality path its index can serve (issue #188).`);
     console.log(`PASS: ${perRow(1000).toFixed(0)} buffer blocks per row at 1,000 rows and ${perRow(10000).toFixed(0)} at 10,000`);
     throw rollback;
   });
