@@ -59,6 +59,10 @@ export async function loadWorkspaceSettings(supabase: SupabaseClient, workspaceI
   return readSettings(data);
 }
 
+export function aiScopeGuard(settings: WorkspaceSettings | undefined) {
+  return (...scopes: AiDataScope[]) => requireAiScope(settings, ...scopes);
+}
+
 export function requireAiScope(settings: WorkspaceSettings | undefined, ...scopes: AiDataScope[]) {
   for (const scope of scopes) if (!(settings ?? DEFAULT_SETTINGS).ai_data_scopes.includes(scope))
     throw new Error(`AI access to ${scope} is disabled in Settings`);

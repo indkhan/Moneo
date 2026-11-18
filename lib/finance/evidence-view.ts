@@ -1,6 +1,5 @@
-import type { requireWorkspace } from "@/lib/auth";
+import type { GuardedFinanceContext } from "./finance-context";
 import { z } from "zod";
-import { requireAiScope } from "@/lib/settings";
 import { loadEvidenceReceipt, evidenceFreshness } from "./evidence-receipts";
 import { loadInvestigationDataset, investigationDetail, loadInvestigationEntities } from "./investigation-reader";
 import { INVESTIGATION_CALCULATION_VERSION } from "./investigation-receipt";
@@ -10,12 +9,12 @@ import { loadFinancialReviewEvidence } from "./review-loader";
 import { categoryPreviewSchema, loadCategoryPreview } from "./edit-preview";
 import { retainToolSourceSupport } from "./tool-source-support";
 import {loadReviewGoals} from "./review-planning";
-export async function readEvidenceView(context: Awaited<ReturnType<typeof requireWorkspace>>, id: string, metricId?: string) {
+export async function readEvidenceView(context: GuardedFinanceContext, id: string, metricId?: string) {
   z.uuid().parse(id);
   const receipt = await loadEvidenceReceipt(context.supabase, context.workspace.id, id);
   if (!receipt) return null;
   if (receipt.workspaceId !== context.workspace.id) throw new Error("Evidence ownership mismatch");
-  requireAiScope(context.settings, ...receipt.scopes);
+  context.requireScopes(...receipt.scopes);
   const metric = metricId ? receipt.metrics.find(item => item.id === metricId) : null;
   if (metricId && !metric) throw new Error("Metric unavailable");
   let sourceVersion: string | null = null;
@@ -39,7 +38,7 @@ export async function readEvidenceView(context: Awaited<ReturnType<typeof requir
         case "goals_review": result = await loadReviewGoals(input, context.supabase, context.workspace.id); break;
         case "forecast_evaluate": result = await evaluateForecast(input, {...context, settings: {...context.settings, ai_data_scopes: receipt.scopes}}); break;
         case "reviews_investigate":
-          requireAiScope(context.settings, "accounts", "transactions");
+          context.requireScopes("accounts", "transactions");
           result = await loadFinancialReviewEvidence(context.supabase, context.workspace, { timezone: context.settings.timezone, scopes: context.settings.ai_data_scopes, now: new Date() }, "query" in query ? query.query : undefined); break;
         case "finance_entities": result = await loadInvestigationEntities(context); break;
         case "finance_detail": result = await investigationDetail(input, context, { canReadImports: imports }); break;

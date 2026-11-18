@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
+import { aiScopeGuard } from "@/lib/settings";
 import { reviewFreshness } from "@/lib/finance/review-freshness";
 import { ReviewVerification } from "@/components/review-verification";
 import { AiMessage } from "@/components/ai-message";
@@ -52,7 +53,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
         .maybeSingle()
     : { data: null, error: null };
   const evidence = analysis?.evidence as { period?: { from?: string; to?: string } } | null;
-  const freshness = analysis ? await reviewFreshness(supabase, workspace, analysis.evidence, settings, new Date()) : null;
+  const freshness = analysis ? await reviewFreshness(supabase, workspace, analysis.evidence, settings, aiScopeGuard(settings), new Date()) : null;
   const when = (iso: string) => new Date(iso).toLocaleString(workspace.locale, { timeZone: workspace.timezone });
   const STATE: Record<string, string> = { queued: "Waiting to start", running: "In progress", completed: "Finished", failed: "Did not finish", canceled: "Stopped" };
 
