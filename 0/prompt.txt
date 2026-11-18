@@ -1,0 +1,19 @@
+our ci is really really long and time taking and all we have to make it really fast 
+
+
+found these resourses and all check them
+
+
+
+[File: pasted-text.txt; ref=file_ba6de653-4274-484a-acc2-501cb6fc24b5]
+
+<t3_context version="1">
+<context kind="file" id="file_ba6de653-4274-484a-acc2-501cb6fc24b5">
+name: pasted-text.txt
+mimeType: text/plain;charset=utf-8
+sizeBytes: 88378
+attachmentId: 017d7882-28a4-4569-aac6-db40c51b6659-a19468d0-0628-46fc-8c0a-ec5cda2bf015-txt
+</context>
+</t3_context>
+
+[Attached file "pasted-text.txt" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\017d7882-28a4-4569-aac6-db40c51b6659-a19468d0-0628-46fc-8c0a-ec5cda2bf015-txt.txt]
