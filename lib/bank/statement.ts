@@ -61,7 +61,8 @@ export function preferredBalance(balances: BankBalance[], currencyCode: string) 
 export function bankObservation(balances: BankBalance[], currencyCode: string, fetchedAt: Date, timeZone: string) {
   const balance = preferredBalance(balances, currencyCode);
   if (!balance) return null;
-  const closesEarlierDay = BOOKED_BALANCE_TYPES.has(balance.balance_type) && balance.reference_date && balance.reference_date < calendarDate(fetchedAt, timeZone);
+  const referenceDate = balance.reference_date;
+  const closesEarlierDay = BOOKED_BALANCE_TYPES.has(balance.balance_type) && referenceDate && referenceDate < calendarDate(fetchedAt, timeZone);
   return { amountMinor: wealthAmount(balance.balance_amount.amount, currencyCode).toString(), balanceType: balance.balance_type,
-    asOf: closesEarlierDay ? calendarDayBoundary(balance.reference_date!, timeZone) : fetchedAt.toISOString() };
+    asOf: closesEarlierDay ? calendarDayBoundary(referenceDate, timeZone) : fetchedAt.toISOString() };
 }

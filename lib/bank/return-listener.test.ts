@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { defined } from "@/lib/testing";
 import { BANK_REDIRECT_URL, forwardTarget } from "./return-listener";
 
 it("forwards the bank's reply to Moneo's own callback with its query intact", () => {
@@ -10,5 +11,5 @@ it("forwards the bank's reply to Moneo's own callback with its query intact", ()
 it("forwards nothing else, and only ever to Moneo itself", () => {
   expect(forwardTarget("/", "http://localhost:3000")).toBeNull();
   expect(forwardTarget("/settings", "http://localhost:3000")).toBeNull();
-  expect(new URL(forwardTarget("//evil.example/api/bank/callback?code=1", "http://localhost:3000")!).origin).toBe("http://localhost:3000");
+  expect(new URL(defined(forwardTarget("//evil.example/api/bank/callback?code=1", "http://localhost:3000"))).origin).toBe("http://localhost:3000");
 });
