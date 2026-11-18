@@ -96,6 +96,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - *checkout
+      - name: Pull the backend images in the background
+        run: docker compose pull --quiet > "$RUNNER_TEMP/pull.log" 2>&1 &
       - *node
       - *modules
       - *install
@@ -116,6 +118,8 @@ jobs:
       E2E_BASE_URL: http://localhost:3100
     steps:
       - *checkout
+      - name: Pull the backend images in the background
+        run: docker compose pull --quiet > "$RUNNER_TEMP/pull.log" 2>&1 &
       - *node
       - *modules
       - *install
