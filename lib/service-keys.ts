@@ -1,13 +1,14 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
+import { serviceKeyFromEnv, serviceRoleConfig, type ServiceKeyVariable } from "@/lib/env";
 
 export const SERVICE_KEYS = {
   openai_api_key: "OPENAI_API_KEY",
   openrouter_api_key: "OPENROUTER_API_KEY",
   enable_banking_app_id: "ENABLE_BANKING_APP_ID",
   enable_banking_private_key: "ENABLE_BANKING_PRIVATE_KEY",
-} as const;
+} as const satisfies Record<string, ServiceKeyVariable>;
 export type ServiceKey = keyof typeof SERVICE_KEYS;
 export type ServiceKeyStatus = { source: "app" | "env" | null; hint: string | null };
 
@@ -17,9 +18,9 @@ let cache: { at: number; values: Partial<Record<ServiceKey, string>> } | null = 
 let warned = false;
 
 function db() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const config = serviceRoleConfig();
+  if (!config) return null;
+  return createClient(config.url, config.key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 async function stored(): Promise<Partial<Record<ServiceKey, string>>> {
@@ -41,13 +42,13 @@ async function stored(): Promise<Partial<Record<ServiceKey, string>>> {
 }
 
 export async function serviceKey(name: ServiceKey): Promise<string | undefined> {
-  return (await stored())[name] || process.env[SERVICE_KEYS[name]]?.trim() || undefined;
+  return (await stored())[name] || serviceKeyFromEnv(SERVICE_KEYS[name]) || undefined;
 }
 
 export async function serviceKeyStatus(): Promise<Record<ServiceKey, ServiceKeyStatus>> {
   const values = await stored();
   return Object.fromEntries(Object.entries(SERVICE_KEYS).map(([name, env]) => {
-    const app = values[name as ServiceKey], fromEnv = process.env[env]?.trim();
+    const app = values[name as ServiceKey], fromEnv = serviceKeyFromEnv(env);
     const value = app || fromEnv;
     return [name, { source: app ? "app" : fromEnv ? "env" : null, hint: value ? value.slice(-4) : null }];
   })) as Record<ServiceKey, ServiceKeyStatus>;

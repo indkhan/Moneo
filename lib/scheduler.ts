@@ -1,4 +1,4 @@
-import { loopbackUrl } from "@/lib/env";
+import { cronSecret, loopbackUrl } from "@/lib/env";
 
 export const CRON_JOBS = ["/api/cron/summaries", "/api/cron/reviews", "/api/cron/agent-backlog", "/api/cron/bank-sync", "/api/cron/scalable-sync", "/api/cron/scalable-history", "/api/cron/chat-titles"] as const;
 const HOUR = 3_600_000, FIRST_RUN = 60_000;
@@ -14,8 +14,8 @@ export async function runCronJobs(baseUrl: string, secret: string, fetcher: type
   }
 }
 
-export function startScheduler(env: NodeJS.ProcessEnv = process.env) {
-  const secret = env.CRON_SECRET;
+export function startScheduler(env?: NodeJS.ProcessEnv) {
+  const secret = cronSecret(env);
   if (!secret) return null;
   const baseUrl = loopbackUrl(env);
   let running = false;

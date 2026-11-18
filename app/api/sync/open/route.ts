@@ -6,6 +6,7 @@ import { serviceDb } from "@/lib/service-db";
 import { startBankSync } from "@/lib/bank/start-sync";
 import { scalableConfigured } from "@/lib/scalable/server";
 import { syncScalable } from "@/lib/scalable/sync";
+import { hasServiceRoleKey, isDesktopPreview } from "@/lib/env";
 
 const SCALABLE_EVERY_MS = 15 * 60_000, BANK_EVERY_MS = 60 * 60_000;
 const stamp = (value: string | null | undefined) => value ? Date.parse(value) : 0;
@@ -22,7 +23,7 @@ const bankDue = (connection: { last_synced_at: string | null; last_attempted_at:
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
-  if (process.env.MONEO_DESKTOP === "1" && process.env.MONEO_DESKTOP_PREVIEW === "1")
+  if (isDesktopPreview())
     return NextResponse.json({ refresh: false });
   const { supabase, workspace } = context;
   const [scalable, banks] = await Promise.all([
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
   if (scalable.error || banks.error) return NextResponse.json({ error: "Connections are unavailable" }, { status: 503 });
   const syncs: Promise<boolean>[] = [];
   if (scalableConfigured()) for (const row of scalable.data ?? []) if (scalableDue(row)) syncs.push(syncScalable(row.id, workspace.id).then(() => true, () => true));
-  if ((banks.data ?? []).length && process.env.SUPABASE_SERVICE_ROLE_KEY && await enableBankingConfigured()) for (const row of banks.data ?? [])
+  if ((banks.data ?? []).length && hasServiceRoleKey() && await enableBankingConfigured()) for (const row of banks.data ?? [])
     if (bankDue(row)) syncs.push(startBankSync(row.id, workspace.id, psuFrom(request)).then(async run => { if (!run) return false; await run.returnValue; return true; })
       .catch(async () => { await serviceDb().from("bank_connections").update({ last_error: "The bank sync could not start. Moneo tries again by itself." }).eq("id", row.id); return true; }));
   const ran = await Promise.all(syncs);

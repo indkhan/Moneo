@@ -17,6 +17,7 @@ import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
 import { AGENTS, WAVES, aiConfidence, anomalyFindings, budgetProposals, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
   daysBefore, payloadSchemas, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
+import { serviceRoleConfig } from "@/lib/env";
 
 class RunInactive extends Error {}
 type Db = SupabaseClient;
@@ -24,9 +25,9 @@ type Workspace = { id: string; display_currency: string; timezone: string; local
 type Context = { db: Db; runId: string; workspace: Workspace; settings: WorkspaceSettings; today: string; agent: AgentId };
 
 export function service(): Db {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Agent service is not configured");
-  return serviceClient(url, key);
+  const config = serviceRoleConfig();
+  if (!config) throw new Error("Agent service is not configured");
+  return serviceClient(config.url, config.key);
 }
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message);

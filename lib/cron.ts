@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
+import { cronSecret } from "@/lib/env";
 
 function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET;
+  const secret = cronSecret();
   if (!secret) return false;
   const given = Buffer.from(request.headers.get("authorization") ?? ""), expected = Buffer.from(`Bearer ${secret}`);
   return given.length === expected.length && timingSafeEqual(given, expected);

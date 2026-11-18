@@ -2,13 +2,14 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
+import { isDesktopRuntime } from "@/lib/env";
 
 export default async function Login() {
   await connection();
   let recovered = false;
   try { await requireWorkspace(); recovered = true; } catch { }
   if (recovered) redirect("/");
-  const desktop = process.env.MONEO_DESKTOP === "1";
+  const desktop = isDesktopRuntime();
   return <main className="mx-auto grid min-h-screen w-full max-w-md place-items-center px-4">
     <div className="rounded-xl border border-border bg-card p-6">
       <h1 className="text-base font-medium">Moneo could not sign you in</h1>
