@@ -127,7 +127,7 @@ The chat microphone can turn speech into text on the computer that runs Moneo, s
 3. Or choose **A model you already have**: a folder holding a Whisper or Moonshine model in ONNX format (`config.json`, the tokenizer files and an `onnx` folder), such as one from [onnx-community](https://huggingface.co/onnx-community). Type its full path, or click **Choose folder…** in the desktop app.
 4. Click **Try it**, say a sentence and check the text, then **Save preferences**.
 
-The model loads the first time you use the mic and is unloaded after five idle minutes. Moneo passes the names of your accounts, shops and categories to Whisper models so they spell them right. Intel Macs can't run these models yet. If the model is missing or fails, Moneo uses OpenAI when you have added a key, and says so. Downloaded models aren't part of backups and stay when you reset your data; delete the folder to remove them.
+Words appear while you speak: Moneo listens again about once a second, skipping a beat while the model is still busy, so a slower computer shows them less often. When you stop, the whole recording is transcribed once more and that text replaces the live words. The model loads the first time you use the mic and is unloaded after five idle minutes. Moneo passes the names of your accounts, shops and categories to Whisper models so they spell them right. Intel Macs can't run these models yet. If the model is missing or fails, Moneo uses OpenAI when you have added a key, and says so. Downloaded models aren't part of backups and stay when you reset your data; delete the folder to remove them.
 
 ### Speech to text with OpenRouter (optional)
 

@@ -64,6 +64,7 @@ function ModelPicker({ name, initial, placeholder, options, invalid, onChange }:
 }
 
 function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
+  const selectId = useId();
   const [voice, setVoice] = useState(value);
   const [state, setState] = useState<"idle" | "loading" | "playing" | "failed">("idle");
   const [needsKey, setNeedsKey] = useState(false);
@@ -84,9 +85,9 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
       setState("playing");
     } catch { setState("failed"); }
   }
-  return <div className="grid gap-1.5 text-sm font-medium"><label htmlFor="voice">Call voice</label>
+  return <div className="grid gap-1.5 text-sm font-medium"><label htmlFor={selectId}>Call voice</label>
     <div className="flex gap-2">
-      <select id="voice" name="voice" className={input} value={voice} onChange={event => { stop(); setVoice(event.target.value as typeof voice); }}>{VOICES.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}</option>)}</select>
+      <select id={selectId} name="voice" className={input} value={voice} onChange={event => { stop(); setVoice(event.target.value as typeof voice); }}>{VOICES.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}</option>)}</select>
       <button type="button" onClick={() => void play()} disabled={state === "loading"} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-60">
         {state === "loading" ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : state === "playing" ? <Square className="size-4 text-ai" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
         {state === "loading" ? "Loading…" : state === "playing" ? "Stop sample" : "Play sample"}</button>

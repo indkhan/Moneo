@@ -20,7 +20,7 @@ function modelFolder(name: string, type = "whisper", weights = ["encoder_model_q
   for (const file of weights) writeFileSync(path.join(folder, "onnx", file), "weights");
   return folder;
 }
-const runner = (result: string | Error) => ({ transcribe: vi.fn<SpeechModelRunner["transcribe"]>(async () => { if (result instanceof Error) throw result; return result; }) }) satisfies SpeechModelRunner;
+const runner = (result: string | Error, idle = true) => ({ idle: () => idle, transcribe: vi.fn<SpeechModelRunner["transcribe"]>(async () => { if (result instanceof Error) throw result; return result; }) }) satisfies SpeechModelRunner;
 const run = (ref: string | null, model: SpeechModelRunner) => transcribeWithFallback({ chosen: "local", engines: { local: localSpeech(ref, model), openai }, audio, hints });
 
 beforeEach(() => { home = mkdtempSync(path.join(tmpdir(), "moneo-speech-")); vi.stubEnv("MONEO_DATA_DIR", home); });
@@ -69,4 +69,14 @@ it.each([
 it("falls back to OpenAI when the model fails while transcribing", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   expect(await run(modelFolder("broken"), runner(new Error("onnx failed")))).toMatchObject({ ok: true, text: "from openai", engine: "openai", fellBack: true });
+});
+
+it("hears live words only while the model is free, so a slow computer never queues them up", async () => {
+  const folder = modelFolder("live-whisper");
+  const free = runner("spent twelve");
+  expect(await localSpeech(folder, free).interim!(audio, hints)).toBe("spent twelve");
+  expect(free.transcribe.mock.calls[0][0].prompt).toContain("Netto, Girokonto");
+  const busy = runner("unused", false);
+  expect(await localSpeech(folder, busy).interim!(audio, hints)).toBeNull();
+  expect(busy.transcribe).not.toHaveBeenCalled();
 });
