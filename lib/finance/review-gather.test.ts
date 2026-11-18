@@ -1,6 +1,6 @@
 import {beforeEach, expect, it, vi} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {DEFAULT_SETTINGS, requireAiScope} from "@/lib/settings";
+import {DEFAULT_SETTINGS, requireAiScope} from "@/lib/workspace-settings";
 import {resolveReviewRequest} from "./review-request";
 import {gatherReviewInvestigation} from "./review-gather";
 const fixture = vi.hoisted(() => ({load: vi.fn(), settings: vi.fn(), persist: vi.fn(), forecast: vi.fn()}));

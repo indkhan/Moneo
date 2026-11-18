@@ -1,4 +1,4 @@
-import type { AiDataScope } from "@/lib/settings";
+import type { AiDataScope } from "@/lib/workspace-settings";
 import type { EvidenceReceipt } from "./evidence-receipts";
 import { createEvidenceReceipt, evidenceFingerprint, type EvidenceReceiptInput } from "./evidence-receipts";
 import { sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";

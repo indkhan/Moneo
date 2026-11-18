@@ -1,12 +1,12 @@
 import { SafeForm } from "@/components/safe-form";
 import Link from "next/link";
 import { formatMoney } from "@/lib/finance/format";
-import type { evaluatePlan } from "@/lib/finance/model";
+import type { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { addScenarioEventSafely, createScenarioSafely } from "./actions";
 import { ScenarioEditor } from "./scenarios";
 import { button, cadenceLabels, card, eyebrow, field, formLabel } from "./ui";
 
-type Projection = Pick<Awaited<ReturnType<typeof evaluatePlan>>, "forecast" | "available">;
+type Projection = Pick<Awaited<ReturnType<typeof evaluatePlanForWorkspace>>, "forecast" | "available">;
 type Scenario = { id: string; name: string; description: string | null; version: number };
 
 function figures(plan: Projection) {

@@ -180,6 +180,11 @@ const layers = [
     bans: (target, local) => local && under(target, "lib/ai"),
     message: "Financial truth comes from code and data, never from AI. lib/finance must not import lib/ai; pass plain data in instead (AGENTS.md Non-negotiables).",
   },
+  {
+    applies: file => under(file, "lib/finance") && !isTest(file),
+    bans: target => ["lib/auth", "lib/settings"].includes(target),
+    message: "Financial calculations take plain inputs. The caller resolves the owner, settings, AI scopes and clock (lib/auth, lib/settings) and passes them in; setting types and AI scope names live in lib/workspace-settings (AGENTS.md Non-negotiables).",
+  },
 ];
 
 const noProcessEnv = {

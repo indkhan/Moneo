@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FinanceContext } from "./finance-context";
-import { settingsSchema } from "@/lib/settings";
+import { settingsSchema } from "@/lib/workspace-settings";
 import { getBalances } from "./tools";
 import { buildReviewEvidence } from "./review";
 import { toolResultReceipt } from "./tool-evidence";

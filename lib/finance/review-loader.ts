@@ -1,7 +1,7 @@
 import { netWorth } from "@/lib/finance/net-worth";
 import { loadNetWorthEvidence, netWorthModel } from "./net-worth-source";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AiDataScope } from "@/lib/settings";
+import type { AiDataScope } from "@/lib/workspace-settings";
 import { loadBalanceEvidence } from "./balances";
 import { calendarDate } from "./calendar";
 import { buildReviewEvidence, buildPlanningReview, type ReviewTransaction } from "./review";

@@ -2,7 +2,7 @@ import type { Db } from "@/lib/database";
 import type { GuardedFinanceContext } from "./finance-context";
 import type { EvidenceReceipt } from "./evidence-receipts";
 import { persistEvidenceReceipt, createEvidenceReceipt } from "./evidence-receipts";
-import type { AiDataScope } from "@/lib/settings";
+import type { AiDataScope } from "@/lib/workspace-settings";
 import { toolResultReceipt } from "./tool-evidence";
 import { loadInvestigationDataset, investigationScenarioSchema } from "./investigation-reader";
 import { investigationReceipt } from "./investigation-receipt";

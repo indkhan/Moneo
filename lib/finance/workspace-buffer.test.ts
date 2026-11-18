@@ -1,8 +1,7 @@
-﻿import { expect, it, vi } from "vitest";
+﻿import { expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePlanForWorkspace } from "./model";
 import { accountLiquidity, withInternalFunding, type ForecastInput } from "./calculations";
-vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 
 it.each([false, true])("loads workspace buffer without inventing account ownership (reversed=%s)", async reverse => {
   const accounts = [{ id: "empty", name: "Empty", type: "checking", currency_code: "EUR" }, { id: "funded", name: "Funded", type: "savings", currency_code: "EUR" }];

@@ -114,6 +114,7 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | No comments, except exact tool directives | `moneo/no-comments` (lint, autofix) |
 | `app/` → `components/` → `lib/`, `workflows/`; `lib/finance` never imports `lib/ai`; Electron only in `desktop/`; no app code in `desktop/src` | `moneo/import-boundaries` (lint) |
 | The modules every page loads (`lib/auth`, `lib/settings`, `lib/safe-action`, `lib/env`) never import `lib/ai` | `moneo/import-boundaries` (lint) |
+| `lib/finance` never imports `lib/auth` or `lib/settings`: callers resolve owner, settings, scopes and clock and pass plain inputs; setting types and AI scope names live in `lib/workspace-settings` | `moneo/import-boundaries` (lint) |
 | Dates use the owner's time zone from Settings (detected from their device, saved on first load); no function assumes one | required `timeZone` parameters (compiler); `no-restricted-syntax` (lint) |
 | No hard-coded port 3000 or app address outside `lib/env.ts` | `no-restricted-syntax` (lint) |
 | Application code reads configuration through the typed Zod accessors in `lib/env.ts`, never `process.env` (only `NODE_ENV`, which Next inlines, is allowed). `scripts/`, `desktop/`, `e2e/`, `next.config.ts`, `instrumentation.ts` (needs the literal `NEXT_RUNTIME`) and tests read it directly | `moneo/no-process-env` (lint), `lib/env.test.ts` |

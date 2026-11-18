@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { GuardedFinanceContext } from "./finance-context";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { aiScopeGuard, settingsSchema } from "@/lib/settings";
+import { aiScopeGuard, settingsSchema } from "@/lib/workspace-settings";
 import { listAccounts, listGoals } from "./tools";
 import { loadInvestigationEntities } from "./investigation-reader";
 import { captureToolEvidence } from "./capture-evidence";

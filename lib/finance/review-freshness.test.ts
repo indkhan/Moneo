@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { compareReviewEvidence, reviewFreshness } from "./review-freshness";
-import { aiScopeGuard, settingsSchema } from "@/lib/settings";
+import { aiScopeGuard, settingsSchema } from "@/lib/workspace-settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const fixture = vi.hoisted(() => ({ load: vi.fn(), view: vi.fn() }));

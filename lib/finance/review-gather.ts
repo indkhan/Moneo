@@ -1,5 +1,5 @@
 import type { Db } from "@/lib/database";
-import type {AiDataScope, WorkspaceSettings} from "@/lib/settings";
+import type {AiDataScope, WorkspaceSettings} from "@/lib/workspace-settings";
 import {investigate} from "./investigation";
 import {loadInvestigationDataset} from "./investigation-reader";
 import {investigationReceipt} from "./investigation-receipt";
