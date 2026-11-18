@@ -238,13 +238,15 @@ async function proposeOwnNames(db: Db, workspaceId: string, rows: TransferCandid
   const found = ownNameSuggestions(rows, seen, own, answered);
   if (!found.length) return 0;
   const byId = new Map(rows.map(row => [row.id, row]));
-  const cards = found.map(({ transactionId, name }) => {
-    const row = byId.get(transactionId)!, money = formatMoney(row.amountMinor < 0n ? -row.amountMinor : row.amountMinor, row.currencyCode, locale);
-    return { workspace_id: workspaceId, agent: "chat", kind: "own_transfer", conflict_key: `own_transfer:${transactionId}`, confidence: 70,
+  const cards = found.flatMap(({ transactionId, name }) => {
+    const row = byId.get(transactionId);
+    if (!row) return [];
+    const money = formatMoney(row.amountMinor < 0n ? -row.amountMinor : row.amountMinor, row.currencyCode, locale);
+    return [{ workspace_id: workspaceId, agent: "chat", kind: "own_transfer", conflict_key: `own_transfer:${transactionId}`, confidence: 70,
       title: (row.amountMinor < 0n ? `${money} to ${name}: your own account?` : `${money} from ${name}: your own account?`).slice(0, 200),
       detail: `You sent money under the name ${name} to one of your own accounts before. If this is yours too, Moneo remembers it as an account it doesn't track, moves every payment with it to transfers so none counts as spending or income, and doesn't ask again. Undoing any of them undoes them all.`,
       evidence: { facts: [], transactions: [{ id: row.id, date: row.postedOn, description: row.text ?? "", amountMinor: row.amountMinor.toString(), currency: row.currencyCode }], links: [] },
-      payload: ownTransferPayloadSchema.parse({ transactionId, name }) };
+      payload: ownTransferPayloadSchema.parse({ transactionId, name }) }];
   });
   const { data, error } = await db.from("agent_proposals").insert(cards).select("id");
   if (error && error.code !== "23505") throw new Error(error.message);
@@ -278,13 +280,15 @@ async function proposePairs(db: Db, workspaceId: string, pairs: { outId: string;
   const fresh = pairs.filter(pair => !answered.has(`own_transfer:${pair.outId}:${pair.inId}`));
   if (!fresh.length) return 0;
   const name = (id: string) => accounts.find(account => account.id === id)?.name ?? "another account";
-  const cards = fresh.map(({ outId, inId }) => {
-    const out = byId.get(outId)!, into = byId.get(inId)!, money = formatMoney(-out.amountMinor, out.currencyCode, locale);
-    return { workspace_id: workspaceId, agent: "chat", kind: "own_transfer", conflict_key: `own_transfer:${outId}:${inId}`, confidence: 60,
+  const cards = fresh.flatMap(({ outId, inId }) => {
+    const out = byId.get(outId), into = byId.get(inId);
+    if (!out || !into) return [];
+    const money = formatMoney(-out.amountMinor, out.currencyCode, locale);
+    return [{ workspace_id: workspaceId, agent: "chat", kind: "own_transfer", conflict_key: `own_transfer:${outId}:${inId}`, confidence: 60,
       title: `${money} from ${name(out.accountId)} to ${name(into.accountId)}: moved between your accounts?`.slice(0, 200),
       detail: "The same amount left one of your accounts and arrived in another within a few days, but nothing from the bank proves both sides are yours. If they are, they become one transfer and stop counting as spending and income.",
       evidence: { facts: [], transactions: [out, into].map(row => ({ id: row.id, date: row.postedOn, description: row.text ?? "", amountMinor: row.amountMinor.toString(), currency: row.currencyCode })), links: [] },
-      payload: ownTransferPayloadSchema.parse({ transactionId: outId, pairWith: inId }) };
+      payload: ownTransferPayloadSchema.parse({ transactionId: outId, pairWith: inId }) }];
   });
   const { data, error } = await db.from("agent_proposals").insert(cards).select("id");
   if (error && error.code !== "23505") throw new Error(error.message);
@@ -322,20 +326,25 @@ export async function linkOwnTransfers(db: Db, workspaceId: string, context: Tra
   const byId = new Map(rows.map(row => [row.id, row]));
   let linked = 0, marked = 0, skipped = 0;
   for (const pair of pairs) {
-    const out = byId.get(pair.outId)!, into = byId.get(pair.inId)!;
+    const out = byId.get(pair.outId), into = byId.get(pair.inId);
+    if (!out || !into) { skipped++; continue; }
     const { error } = await db.rpc("link_transactions", { p_operation: "transfer", p_primary_id: out.id, p_expected_version: out.version,
       p_other_id: into.id, p_other_version: into.version, p_fx_rate_id: null, p_fees: [], p_request_id: randomUUID() });
     if (error) skipped++; else linked++;
   }
   for (const item of single) {
-    const expectedVersion = byId.get(item.transactionId)!.version;
+    const target = byId.get(item.transactionId);
+    if (!target) { skipped++; continue; }
+    const expectedVersion = target.version;
     const { error } = item.identifierId
       ? await db.rpc("mark_own_account_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_identifier_id: item.identifierId })
       : await db.rpc("mark_own_iban_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_iban: item.iban ?? null });
     if (error) skipped++; else marked++;
   }
   for (const item of named) {
-    const { error } = await db.rpc("mark_own_named_transfer", { p_transaction_id: item.transactionId, p_expected_version: byId.get(item.transactionId)!.version, p_kind: item.account });
+    const target = byId.get(item.transactionId);
+    if (!target) { skipped++; continue; }
+    const { error } = await db.rpc("mark_own_named_transfer", { p_transaction_id: item.transactionId, p_expected_version: target.version, p_kind: item.account });
     if (error) skipped++; else marked++;
   }
   const handled = new Set([...pairs.flatMap(pair => [pair.outId, pair.inId]), ...single.map(item => item.transactionId), ...named.map(item => item.transactionId)]);
@@ -343,7 +352,9 @@ export async function linkOwnTransfers(db: Db, workspaceId: string, context: Tra
   const exchangeLegs: [string, string | null][] = [...exchanges.pairs.flatMap((pair): [string, string][] => [[pair.outId, pair.inId], [pair.inId, pair.outId]]),
     ...exchanges.single.map((id): [string, null] => [id, null])];
   for (const [id, other] of exchangeLegs) {
-    const { error } = await db.rpc("mark_own_exchange", { p_transaction_id: id, p_expected_version: byId.get(id)!.version, p_counterpart_id: other });
+    const leg = byId.get(id);
+    if (!leg) { skipped++; continue; }
+    const { error } = await db.rpc("mark_own_exchange", { p_transaction_id: id, p_expected_version: leg.version, p_counterpart_id: other });
     if (error) skipped++; else marked++;
     handled.add(id);
   }
@@ -362,13 +373,14 @@ export async function confirmOwnAccount(db: Db, workspaceId: string, transaction
   const strangers = target.ibans.filter(iban => own.tracked.get(iban) !== target.accountId && !own.tracked.has(iban) && !own.untracked.has(iban));
   const identity = strangers.length === 1 ? { iban: strangers[0] } : { name_key: nameKey(name) };
   const saved = await db.from("own_account_identifiers").insert({ workspace_id: workspaceId, account_id: null, label: name, confirmed: true, ...identity }).select("id").single();
-  let identifierId = saved.data?.id as string | undefined;
+  let identifierId: string;
   if (saved.error?.code === "23505") {
     const existing = await db.from("own_account_identifiers").select("id").eq("workspace_id", workspaceId).match(identity).single();
     if (existing.error) throw new Error(existing.error.message);
     identifierId = existing.data.id;
   } else if (saved.error) throw new Error(saved.error.message);
-  const marked = await db.rpc("mark_own_account_transfer", { p_transaction_id: transactionId, p_expected_version: target.version, p_identifier_id: identifierId ?? null });
+  else identifierId = saved.data.id;
+  const marked = await db.rpc("mark_own_account_transfer", { p_transaction_id: transactionId, p_expected_version: target.version, p_identifier_id: identifierId });
   if (marked.error) throw new Error(marked.error.message);
   const linked = await linkOwnTransfers(db, workspaceId, context);
   const open = await db.from("agent_proposals").select("id, payload").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "own_transfer").in("status", ["proposed", "failed"]).limit(5000);
@@ -380,11 +392,11 @@ export async function confirmOwnAccount(db: Db, workspaceId: string, transaction
   if (asked.size) {
     const answered = await db.from("transactions").select("id").eq("workspace_id", workspaceId).eq("kind", "transfer").in("id", [...asked.keys()]);
     if (answered.error) throw new Error(answered.error.message);
-    const closed = (answered.data ?? []).map(row => asked.get(row.id as string)!);
+    const closed = (answered.data ?? []).flatMap(row => { const proposalId = asked.get(row.id as string); return proposalId === undefined ? [] : [proposalId]; });
     if (closed.length) {
       const result = await db.from("agent_proposals").update({ status: "accepted", decided_at: new Date().toISOString(), result: { href: "/money/transactions?kind=transfer", undo: "Undo from the transaction" } }).in("id", closed);
       if (result.error) throw new Error(result.error.message);
     }
   }
-  return { ...linked, identifierId: identifierId! };
+  return { ...linked, identifierId };
 }
