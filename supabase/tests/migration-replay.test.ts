@@ -1,11 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { applicationMigrationSql, canonicalFunctionDefinition, replayMigrations, runIsolatedFixture } from "./migration-replay.mjs";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFile, readdir } from "node:fs/promises";
+
+const migrationFiles = (await readdir("supabase/migrations")).filter(file => file.endsWith(".sql"));
+const migrationText = new Map(await Promise.all(migrationFiles.map(async file => [file, await readFile(`supabase/migrations/${file}`, "utf8")] as const)));
 
 it("keeps application changes while excluding Supabase storage from fresh replay", () => {
-  const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql"));
-  for (const file of migrations) {
-    const sql = applicationMigrationSql(file, readFileSync(`supabase/migrations/${file}`, "utf8"));
+  for (const [file, text] of migrationText) {
+    const sql = applicationMigrationSql(file, text);
     expect(sql, file).not.toMatch(/\bstorage\./);
     if (file === "202610270003_chat_attachments.sql") expect(sql).toContain("messages_attachments_check");
     if (file === "202610200003_remove_artifacts_and_library.sql") expect(sql).toContain("function public.reset_workspace()");
@@ -15,7 +17,7 @@ it("keeps application changes while excluding Supabase storage from fresh replay
 
 it("keeps catalog-driven migration rewrites inside the disposable schema", () => {
   for (const file of ["202610200003_remove_artifacts_and_library.sql", "202610310001_conflict_errors_as_409.sql"]) {
-    const sql = applicationMigrationSql(file, readFileSync(`supabase/migrations/${file}`, "utf8"), "qa_replay");
+    const sql = applicationMigrationSql(file, migrationText.get(file)!, "qa_replay");
     expect(sql).toMatch(/n\.nspname\s*=\s*'qa_replay'/);
     expect(sql).not.toMatch(/n\.nspname\s*=\s*'public'/);
   }
