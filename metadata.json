@@ -1,0 +1,64 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7RAD98EYHYCT8ERRHZHGZWP",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-243-finance-indexed",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/finance/account-closing.ts",
+    "lib/finance/calculations.ts",
+    "lib/finance/calendar.ts",
+    "lib/finance/dashboard-spending.ts",
+    "lib/finance/evidence-receipts.ts",
+    "lib/finance/expenditure.ts",
+    "lib/finance/format.ts",
+    "lib/finance/fx.ts",
+    "lib/finance/insights.ts",
+    "lib/finance/investigation-reader.ts",
+    "lib/finance/investigation-receipt.ts",
+    "lib/finance/investigation.ts",
+    "lib/finance/iou.ts",
+    "lib/finance/net-worth-checks.ts",
+    "lib/finance/net-worth-source.ts",
+    "lib/finance/net-worth.ts",
+    "lib/finance/own-transfers.ts",
+    "lib/finance/recurring.ts",
+    "lib/finance/review-controller.ts",
+    "lib/finance/review-loader.ts",
+    "lib/finance/spending-plans.ts",
+    "lib/finance/tool-evidence.ts",
+    "lib/finance/transaction-input.ts",
+    "lib/finance/transit.ts",
+    "lib/finance/wealth.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 112,
+    "cache_creation_tokens": 137079,
+    "cache_read_tokens": 6333805,
+    "output_tokens": 41097,
+    "api_call_count": 56
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
