@@ -3,6 +3,7 @@ import { start } from "workflow/api";
 import { serviceDb } from "@/lib/service-db";
 import { requireWorkspace } from "@/lib/auth";
 import { importFile } from "@/workflows/import-file";
+import { hasServiceRoleKey } from "@/lib/env";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -10,7 +11,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const id = z.uuid().safeParse((await params).id);
   const input = z.object({ action: z.enum(["cancel", "resume"]), requestId: z.uuid() }).strict().safeParse(await request.json().catch(() => null));
   if (!id.success || !input.success) return Response.json({ error: "Invalid import control" }, { status: 400 });
-  if (input.data.action === "resume" && !process.env.SUPABASE_SERVICE_ROLE_KEY) return Response.json({ error: "Import service is not configured" }, { status: 503 });
+  if (input.data.action === "resume" && !hasServiceRoleKey()) return Response.json({ error: "Import service is not configured" }, { status: 503 });
   const result = await context.supabase.rpc("control_import", { p_import_id: id.data, p_action: input.data.action, p_request_id: input.data.requestId });
   if (result.error) return Response.json({ error: result.error.message }, { status: result.error.code === "P0002" ? 404 : 400 });
   if (input.data.action === "resume" && result.data.started) {

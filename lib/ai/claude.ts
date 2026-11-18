@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import type { ToolSet } from "ai";
 import { claudeCode, createAiSdkMcpServer, type ClaudeCodeSettings, type MessageInjector } from "ai-sdk-provider-claude-code";
 import { z } from "zod";
+import { childProcessEnv, dataDir } from "@/lib/env";
 
 export class ClaudeError extends Error {}
 
@@ -23,7 +24,7 @@ export function claudeExecutable(): string | null {
 }
 
 const PAID_ROUTES = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"];
-export function claudeEnv(env: Record<string, string | undefined> = process.env) {
+export function claudeEnv(env: Record<string, string | undefined> = childProcessEnv()) {
   return { ...env, ...Object.fromEntries(PAID_ROUTES.map(key => [key, undefined])) } as NodeJS.ProcessEnv;
 }
 
@@ -40,7 +41,7 @@ export function accountFrom(output: string): ClaudeAccount {
 }
 
 const cache = globalThis as typeof globalThis & { moneoClaudeAccount?: { at: number; value: Promise<ClaudeAccount> } };
-const connectionFile = () => path.join(process.env.MONEO_DATA_DIR ?? path.join(process.cwd(), ".data"), "claude-connected");
+const connectionFile = () => path.join(dataDir(), "claude-connected");
 
 export async function setClaudeConnected(connected: boolean) {
   await mkdir(path.dirname(connectionFile()), { recursive: true });

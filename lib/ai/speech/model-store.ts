@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { dataDir } from "@/lib/env";
 import { localModel, type LocalSpeechModel, type ModelPrecision } from "./local-models";
 
 export type ModelFamily = "whisper" | "moonshine";
@@ -9,7 +10,7 @@ export type ModelFolder = { folder: string; family: ModelFamily; dtype: ModelPre
 const ONNX_RUNTIME_PLATFORMS = ["win32-x64", "win32-arm64", "linux-x64", "linux-arm64", "darwin-arm64"];
 export const localSpeechSupported = () => ONNX_RUNTIME_PLATFORMS.includes(`${process.platform}-${process.arch}`);
 
-export const speechModelsDir = () => path.join(/*turbopackIgnore: true*/ process.env.MONEO_DATA_DIR ?? path.join(/*turbopackIgnore: true*/ process.cwd(), ".data"), "speech-models");
+export const speechModelsDir = () => path.join(/*turbopackIgnore: true*/ dataDir(), "speech-models");
 export const modelFolder = (model: Pick<LocalSpeechModel, "id">, dir = speechModelsDir()) => path.join(/*turbopackIgnore: true*/ dir, model.id);
 
 const size = (file: string) => fs.stat(/*turbopackIgnore: true*/ file).then(stat => stat.isFile() ? stat.size : -1, () => -1);

@@ -6,6 +6,7 @@ import { mapRows, parseCsv, parseExcel } from "@/lib/import/csv";
 import { importRowPayload } from "@/lib/import/row";
 import { reviewErrorMessage } from "@/lib/import/review-error";
 import { pendingSettlementSchema } from "@/lib/finance/pending-holds";
+import { hasServiceRoleKey } from "@/lib/env";
 
 const reviewSchema = z.object({ sourceId: z.string().min(1), action: z.enum(["accept", "reject", "undo"]),
   decisionId: z.uuid().optional(), expectedRouteId: z.string().uuid().nullable().optional(), accountId: z.string().uuid().optional(),
@@ -37,7 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const { data: imported, error: importError } = await supabase.from("imports")
         .select("mapping, route_accounts, storage_path, file_hash").eq("id", id).eq("workspace_id", workspace.id).single();
       if (importError) throw importError;
-      if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Import service is not configured");
+      if (!hasServiceRoleKey()) throw new Error("Import service is not configured");
       if (!imported.storage_path.startsWith(`${workspace.id}/`)) throw new Error("Import file is outside the workspace");
       const service = serviceDb();
       const file = await service.storage.from("imports").download(imported.storage_path);

@@ -181,6 +181,26 @@ const layers = [
   },
 ];
 
+const noProcessEnv = {
+  meta: {
+    type: "problem",
+    schema: [],
+    messages: {
+      banned: "Read configuration through the typed accessors in lib/env.ts. Add one there with a Zod schema if it is missing, so a bad value names its variable and a missing optional provider never stops the app (AGENTS.md Rules).",
+    },
+  },
+  create(context) {
+    return {
+      MemberExpression(node) {
+        if (node.object.name !== "process" || node.property.name !== "env" || node.computed) return;
+        const parent = node.parent;
+        const buildMode = parent.type === "MemberExpression" && parent.object === node && !parent.computed && parent.property.name === "NODE_ENV";
+        if (!buildMode) context.report({ node, messageId: "banned" });
+      },
+    };
+  },
+};
+
 const importBoundaries = {
   meta: { type: "problem", schema: [], messages: { crossed: "'{{source}}' crosses a boundary. {{why}}" } },
   create(context) {
@@ -209,10 +229,15 @@ export default defineConfig([
   ...nextVitals,
   ...nextTypescript,
   {
-    plugins: { moneo: { rules: { "no-comments": noComments, "import-boundaries": importBoundaries } } },
+    plugins: { moneo: { rules: { "no-comments": noComments, "import-boundaries": importBoundaries, "no-process-env": noProcessEnv } } },
     rules: { "moneo/no-comments": "error", "moneo/import-boundaries": "error" },
   },
   { linterOptions: { reportUnusedDisableDirectives: "error" } },
+  {
+    files: ["app/**", "components/**", "lib/**", "workflows/**", "proxy.ts", "instrumentation-node.ts"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "**/*.live.test.ts", "lib/env.ts", "lib/property-check.ts"],
+    rules: { "moneo/no-process-env": "error" },
+  },
   {
     files: ["app/**", "components/**", "lib/**", "workflows/**"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/service-db.ts", "lib/service-keys.ts", "lib/supabase-server.ts", "workflows/financial-review.ts"],

@@ -1,16 +1,15 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { getSupabaseConfig } from "@/lib/env";
+import { supabaseClientConfig } from "@/lib/env";
 import { supabaseFetch } from "@/lib/supabase-fetch";
 
 export async function createClient() {
-  const config = getSupabaseConfig();
-  if (config.status !== "configured") throw new Error(config.detail);
+  const config = supabaseClientConfig();
   const cookieStore = await cookies();
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    config.url,
+    config.key,
     {
       global: { fetch: supabaseFetch },
       cookies: {

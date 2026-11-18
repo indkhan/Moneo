@@ -3,13 +3,14 @@ import { serviceClient } from "@/lib/service-db";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { settingsSchema } from "@/lib/settings";
 import { dueSummaryPeriod } from "@/lib/summary-schedule";
+import { serviceRoleConfig } from "@/lib/env";
 
 export const maxDuration = 60;
 
 export const GET = cronRoute(async () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return Response.json({ error: "Summary service unavailable" }, { status: 503 });
-  const db = serviceClient(url, key);
+  const service = serviceRoleConfig();
+  if (!service) return Response.json({ error: "Summary service unavailable" }, { status: 503 });
+  const db = serviceClient(service.url, service.key);
   const { data, error, count } = await db.from("workspace_settings").select("*", { count: "exact" }).neq("summary_cadence", "none").order("workspace_id").limit(500);
   if (error) return Response.json({ error: "Summary preferences unavailable" }, { status: 503 });
   let started = 0, failed = 0, invalid = 0;

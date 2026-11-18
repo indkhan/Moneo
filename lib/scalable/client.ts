@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
+import { scalableMcpOrigin } from "@/lib/env";
 
-const ISSUER = process.env.SCALABLE_MCP_ORIGIN || "https://mcp.scalable.capital";
-export const SCALABLE_MCP_URL = `${ISSUER}/mcp`;
+export const scalableMcpUrl = () => `${scalableMcpOrigin()}/mcp`;
 const SCOPE = "openid profile offline_access";
 const PROTOCOL_VERSION = "2025-06-18";
 
@@ -27,7 +27,7 @@ async function json<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
 }
 
 export async function registerClient(redirectUri: string, fetcher: typeof fetch = fetch) {
-  const response = await fetcher(`${ISSUER}/register`, {
+  const response = await fetcher(`${scalableMcpOrigin()}/register`, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ client_name: "Moneo", redirect_uris: [redirectUri], grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"], token_endpoint_auth_method: "none", scope: SCOPE }),
@@ -36,9 +36,9 @@ export async function registerClient(redirectUri: string, fetcher: typeof fetch 
 }
 
 export function authorizeUrl(input: { clientId: string; redirectUri: string; state: string; challenge: string }) {
-  const url = new URL(`${ISSUER}/authorize`);
+  const url = new URL(`${scalableMcpOrigin()}/authorize`);
   url.search = new URLSearchParams({ response_type: "code", client_id: input.clientId, redirect_uri: input.redirectUri, scope: SCOPE,
-    state: input.state, code_challenge: input.challenge, code_challenge_method: "S256", resource: SCALABLE_MCP_URL }).toString();
+    state: input.state, code_challenge: input.challenge, code_challenge_method: "S256", resource: scalableMcpUrl() }).toString();
   return url.toString();
 }
 
@@ -46,9 +46,9 @@ export type ScalableTokens = { accessToken: string; refreshToken: string | null;
 const tokenSchema = z.object({ access_token: z.string().min(1), refresh_token: z.string().min(1).optional(), expires_in: z.number().positive().optional() });
 
 async function token(params: Record<string, string>, fetcher: typeof fetch, previousRefresh: string | null = null): Promise<ScalableTokens> {
-  const response = await fetcher(`${ISSUER}/token`, {
+  const response = await fetcher(`${scalableMcpOrigin()}/token`, {
     method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...params, resource: SCALABLE_MCP_URL }).toString(),
+    body: new URLSearchParams({ ...params, resource: scalableMcpUrl() }).toString(),
   });
   const body = await json(response, tokenSchema);
   return { accessToken: body.access_token, refreshToken: body.refresh_token ?? previousRefresh, expiresAt: Date.now() + (body.expires_in ?? 300) * 1000 };
@@ -81,7 +81,7 @@ export function scalableMcp(accessToken: string, fetcher: typeof fetch = fetch) 
   let sessionId: string | null = null, protocol = PROTOCOL_VERSION, nextId = 0;
   async function rpc(method: string, params?: unknown, notification = false) {
     const id = ++nextId;
-    const response = await fetcher(SCALABLE_MCP_URL, {
+    const response = await fetcher(scalableMcpUrl(), {
       method: "POST",
       headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json", accept: "application/json, text/event-stream",
         "mcp-protocol-version": protocol, ...(sessionId ? { "mcp-session-id": sessionId } : {}) },
