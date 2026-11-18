@@ -52,15 +52,20 @@ it("keyset-pages more than 10,000 eligible postings and drops the whole boundary
   expect(content).toContain("Statement intervals, missing statements and account completeness are unknown");
 });
 
-it("recognizes an existing confirmed schedule through owned evidence after run keys change", async () => {
+const confirmedRent = () => {
   postings = ["2026-03-01", "2026-02-01", "2026-01-01"].map((posted_on, index) => ({id: `rent-${index}`, posted_on, description: "Rent", amount_minor: "-1000", account_id: "cash", currency_code: "EUR", merchant_id: null, version: 0}));
   stored = [{id: "existing", account_id: "cash", currency_code: "EUR", cadence: "monthly", normalized_label: "rent", status: "confirmed", recurring_series_transactions: [{transaction_id: "rent-0"}]}];
+};
+
+it("recognizes an existing confirmed schedule through owned evidence after run keys change", async () => {
+  confirmedRent();
   const text = renderedText(await RecurringPage());
   expect(text).toContain("Confirmed");
   expect(text).not.toContain("confidence 70%");
 });
 
 it("does not label an intentionally disabled user schedule as used in forecast", async () => {
+  confirmedRent();
   stored = stored.map(row => ({...row, assumption: {source: "user",confirmed: true,enabled: false,removed_at: null}}));
   const text = renderedText(await RecurringPage());
   expect(text).toContain("intentional Plan schedule");

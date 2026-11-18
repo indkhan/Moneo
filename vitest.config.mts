@@ -10,6 +10,9 @@ export default defineConfig({
   } },
   test: {
     environment: "node",
+    isolate: false,
+    sequence: { shuffle: true },
+    setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
     exclude: [...configDefaults.exclude, ".qa/**", ".claude/**", ".next-desktop/**", "desktop/.build/**", "desktop/.cache/**", "desktop/release/**", "desktop/release-preview/**"],
   },
