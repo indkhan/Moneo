@@ -110,9 +110,13 @@ jobs:
       - *node
       - *modules
       - *install
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Start the test backend, the QA app and the browser install together
         run: |
-          npx playwright install --with-deps chromium > "$RUNNER_TEMP/playwright.log" 2>&1 &
+          npx playwright install --only-shell chromium > "$RUNNER_TEMP/playwright.log" 2>&1 &
           playwright=$!
           (
             for attempt in 1 2 3 4; do
