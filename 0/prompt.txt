@@ -1,0 +1,122 @@
+Act as the implementation sub-agent for this task.
+
+Fix GitHub issue #240 in Moneo: replace repeated effects and timers with controlled lifecycle APIs. The owner chose clean-up, small shared hooks where the pattern really repeats, and a lint ban:
+
+1. **Recount and classify** the `useEffect` and raw `setTimeout`/`setInterval` uses in `app/` and `components/`. The issue's 75 and 25 are historical counts. Sort them into: derived state, event handling, real subscriptions, polling, delayed dismiss, and other.
+2. **Remove effects that only derive state or handle events.** Compute the value during render, or move it into the event handler.
+3. **Shared hooks, only for patterns that really repeat:**
+   - `usePolling`: abortable, never overlapping, stops on unmount and when hidden if that already exists.
+   - `useTimeout`: delayed dismiss, cleaned up on unmount.
+   Put them in `components/` or `lib/` according to the import boundaries. Test them with fake timers and controlled promises, never real waits.
+4. **Make sure** subscriptions, aborts and timer cleanup are correct, and that Strict Mode doesn't double subscriptions or writes.
+5. **Lint:** reject raw `setInterval`/`setTimeout` in `app/` and `components/` outside those hooks. Give the hooks scoped exceptions, and make the message point to the hooks. Add an AGENTS.md rules-table row.
+6. **Screens:** verify the changed screens with the verify-ui skill (light/dark/mobile).
+7. **If it gets too big for one reviewable PR:** do the hooks, the lint rule with an allowlist of the unmigrated files, and the most-used half of the call sites. List the rest in the PR body.
+
+## Rules
+- Read AGENTS.md first and follow it exactly. Read `gh issue view 240`.
+- Branch `t3/issue-240-lifecycle-hooks` from current `origin/main`. Commit each step, ending each message with:
+  Co-Authored-By: Claude <noreply@anthropic.com>
+- **Don't end your turn while a command is still running.** Wait for it in the same turn.
+- **Never kill a process you didn't start yourself in this session, verified by PID.**
+- Run one `npm ci` at a time. If it stalls, retry once with `--prefer-offline`.
+- The QA app on port 3100 and the moneo-qa backend are shared: never run `npm run qa:reset` or `docker compose -p moneo-qa down`, and never touch the owner's backend.
+- **Run `npm run lint` and `npm run typecheck` yourself and quote their last lines in your final reply.** Also run `npm test`, `npm run build` and `npm run check:bundle`.
+- Link the screenshots in the PR body from a commit, then remove them from the branch.
+- Push and open a PR to `main` (`Closes #240`), ending the body with:
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  Never merge.
+- Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>bkgfm6ssm</task-id>
+<tool-use-id>toolu_01QghGgNVCWNQUpd76ELADx5</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cdbe1c0dbb24bec2\a2a2ced7-2f2e-4b6b-8a54-85f47f03f73b\tasks\bkgfm6ssm.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-117c919d-65b3fe02faed0b6a"; python - &lt;&lt;'EOF'
+def sub(p, a, b):
+    s=open(p,encoding='utf-8',newline='').read()
+    nl = "\r\n" if "\r\n" in s else "\n"
+    a=a.replace("\n",nl); b=b.replace("\n",nl)
+    assert s.count(a)==1,(p,a[:70],s.count(a))
+    open(p,'w',encoding='utf-8',newline='').write(s.replace(a,b))
+p="eslint.config.mjs"
+sub(p,"""const assumedTimeZone = {""","""const rawTimer = {
+  selector: ":matches(CallExpression[callee
+
+... [850 characters truncated] ...
+
+ess, assumedTimeZone, ...exactMoney, rawTimer] },
+  },
+  {
+    files: ["lib/schema.ts", "lib/import/csv.ts"],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, ...exactMoney] },
+  },""")
+EOF
+timeout 300 npx eslint app components lib/use-*.ts 2&gt;&amp;1 | tail -40" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bdxup87y6</task-id>
+<tool-use-id>toolu_01XyzCpNndy1xwbVSUUmQqEX</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cdbe1c0dbb24bec2\a2a2ced7-2f2e-4b6b-8a54-85f47f03f73b\tasks\bdxup87y6.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-117c919d-65b3fe02faed0b6a"; npx vitest run lib/use-polling.test.ts lib/use-timeout.test.ts 2&gt;&amp;1 | tail -25; for f in bn8t6ggs6 bkgfm6ssm; do echo "== $f"; cat "C:/Users/mgsuk/AppData/Local/Temp/claude/cdbe1c0dbb24bec2/a2a2ced7-2f2e-4b6b-8a54-85f47f03f73b/tasks/$f.output" | tail -40; done" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bn8t6ggs6</task-id>
+<tool-use-id>toolu_01UgD7m4FLztJ6CM6L2DWsUL</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cdbe1c0dbb24bec2\a2a2ced7-2f2e-4b6b-8a54-85f47f03f73b\tasks\bn8t6ggs6.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-117c919d-65b3fe02faed0b6a"; python - &lt;&lt;'EOF'
+def sub(p, a, b):
+    s=open(p,encoding='utf-8',newline='').read()
+    nl = "\r\n" if "\r\n" in s else "\n"
+    a=a.replace("\n",nl); b=b.replace("\n",nl)
+    assert s.count(a)==1,(p,a[:70],s.count(a))
+    open(p,'w',encoding='utf-8',newline='').write(s.replace(a,b))
+p="components/ai-panel-dialog.tsx"
+sub(p,"""  useEffect(() =&gt; {
+    if (!open) return;
+    const timer = window.setTimeout(() =&gt; { void load(); }, 0);
+    const changed""","""  useTimeout(() =&gt; { void load(); }, open ? 0 : null);
+  useEffect(() =&gt; {
+    if (!open) return;
+    const changed""")
+sub(p,"return () =&gt; { window.clearTimeout(timer); ++counter.current;","return () =&gt; { ++counter.current;")
+sub(p,'import { usePolling } from "@/lib/use-polling";','import { usePolling } from "@/lib/use-polling";\nimport { useTimeout } from "@/lib/use-timeout";')
+EOF
+npx tsc --noEmit -p . 2&gt;&amp;1 | tail -20" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Note: the T3 server restarted, and this background work was cancelled before it finished. It will not report back on its own, so resume or restart what you still need and wait for its result:
+- shell: cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-117c919d-65b3fe02faed0b6a"; printf 'export const a = () => window.setTimeout(() => 1, 5);\nexport const b = () => set…
+- monitor: Wait for full lint to finish (id bdjyos97o)
+- monitor: Wait for full lint to finish (id bkon1seop)
+- monitor: Lint result (id bxoqsnkl8)
+
+Continue where you left off. Your last turn was cut short, so a command or other action it started may have finished or may still be running. Before you repeat one that changes state, confirm it did not take effect and is not still running; if you cannot tell, say so instead of repeating it.
+
+---
+
+Note: the T3 server restarted, and this background work was cancelled before it finished. It will not report back on its own, so resume or restart what you still need and wait for its result:
+- shell: cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-117c919d-65b3fe02faed0b6a"; printf 'export const a = () => window.setTimeout(() => 1, 5);\nexport const b = () => set…
+- monitor: Wait for full lint to finish (id bdjyos97o)
+- monitor: Wait for full lint to finish (id bkon1seop)
+- monitor: Lint result (id bxoqsnkl8)
+
+User message:
+You were interrupted. Continue #240 from where you stopped: your uncommitted changes are still in your worktree. Commit in steps, merge origin/main (resolve conflicts keeping main's changes), push and open the PR. Run `npm run lint`, `npm run typecheck` and `npm test` yourself and quote their last lines. Never kill a process you didn't start. Don't end your turn while a command is still running. Final line: PR <full URL>, head <SHA>.
