@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
+import { evaluatePlanForWorkspace } from "./model";
 import { requireWorkspace } from "@/lib/auth";
 import { loadBalanceEvidence } from "./balances";
 
@@ -20,6 +20,10 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
   } },
 }) }));
 afterEach(() => vi.useRealTimers());
+async function evaluatePlan(horizonDays = 30) {
+  const { supabase, workspace } = await requireWorkspace();
+  return evaluatePlanForWorkspace(supabase, workspace, horizonDays);
+}
 
 it("reuses the page's in-flight evidence without scanning the ledger and wealth again", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));

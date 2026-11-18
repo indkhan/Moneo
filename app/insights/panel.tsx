@@ -12,13 +12,13 @@ import { type ReviewTransaction } from "@/lib/finance/review";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
-import type { evaluatePlan } from "@/lib/finance/model";
+import type { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { dismissInsight, dismissInsights, muteInsightType } from "./actions";
 import { buildSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "@/lib/finance/source-coverage";
 
 const card = "min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7";
 
-type Projection = Awaited<ReturnType<typeof evaluatePlan>>;
+type Projection = Awaited<ReturnType<typeof evaluatePlanForWorkspace>>;
 type Budget = { id: string; category_id: string; currency_code: string; limit_minor: string; enabled: boolean; rollover: boolean; rollover_from: string };
 type Goal = { id: string; name: string; target_minor: string; recorded_saved_minor: string | null; saved_as_of: string | null; status: string };
 type Recurring = { id: string; label: string; evidence_invalidated: boolean; evidence_baseline: { id: string }[] | null; invalidated_assumption_version: number | null };

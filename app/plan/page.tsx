@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
 import { accountLiquidity, availableToSpend, forecastDaily, usableForecastInput } from "@/lib/finance/calculations";
-import { evaluatePlan } from "@/lib/finance/model";
+import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { CoverageNote } from "@/components/coverage-note";
 import { calendarDate } from "@/lib/finance/calendar";
 import { SourceCoverageDetails } from "@/app/source-coverage";
@@ -26,7 +26,7 @@ export const metadata = { title: "Plan" };
 
 const pill = "inline-flex h-11 items-center max-lg:h-9 max-lg:rounded-full gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
 
-type Plan = Awaited<ReturnType<typeof evaluatePlan>>;
+type Plan = Awaited<ReturnType<typeof evaluatePlanForWorkspace>>;
 function fromUsableAccounts(plan: Plan): Plan {
   const { input, excluded } = usableForecastInput(plan.input);
   return excluded.length ? { ...plan, input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input) } : plan;
@@ -40,7 +40,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const requestedHorizon = z.coerce.number().int().min(1).max(365).safeParse(params.horizon ?? 30);
   const horizon = requestedHorizon.success ? requestedHorizon.data : 30;
   const [realPlan, { data: goals, error: goalsError }, { data: allocations, error: allocationsError }, { data: accounts, error: accountsError }, { data: assumptions, error: assumptionsError }, { data: scenarios, error: scenariosError }] = await Promise.all([
-    evaluatePlan(horizon),
+    evaluatePlanForWorkspace(supabase, workspace, horizon),
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date, priority, status, notes, version, planned_monthly_minor::text, contribution_starts_on, recorded_saved_minor::text, saved_as_of")
       .eq("workspace_id", workspace.id).order("priority").order("created_at", { ascending: false }),
     supabase.from("goal_allocations").select("id, goal_id, account_id, amount_minor::text, version").eq("workspace_id", workspace.id),
@@ -56,7 +56,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const selectedScenario = scenarios?.find(item => item.id === params.scenario);
   const scenarioId = selectedScenario?.id;
   const realUsable = fromUsableAccounts(realPlan);
-  const fullProjection = scenarioId ? await evaluatePlan(horizon, scenarioId) : realPlan;
+  const fullProjection = scenarioId ? await evaluatePlanForWorkspace(supabase, workspace, horizon, scenarioId) : realPlan;
   const realProjection = scenarioId ? fromUsableAccounts(fullProjection) : realUsable;
   const leftOut = fullProjection.input.accounts.filter(account => !realProjection.input.accounts.some(used => used.id === account.id));
   const liquidityParams = { ...params, horizon: String(horizon), scenario: scenarioId };

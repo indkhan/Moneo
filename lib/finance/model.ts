@@ -1,6 +1,5 @@
 import { accountLiquidity, availableToSpend, forecastDaily, type ForecastEvent, type ForecastInput } from "./calculations";
 import { convertFx } from "./fx";
-import { requireWorkspace } from "../auth";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
 import { calendarDate } from "./calendar";
 import { buildDebtForecast, loadWealthItems } from "./wealth";
@@ -52,11 +51,6 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
       ...forecastCases(amount, uncertaintyBps) });
   }
   return events;
-}
-
-export async function evaluatePlan(horizonDays = 30, scenarioId?: string, canReadImports = true) {
-  const { supabase, workspace } = await requireWorkspace();
-  return evaluatePlanForWorkspace(supabase, workspace, horizonDays, scenarioId, { canReadImports });
 }
 
 export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, horizonDays = 30, scenarioId?: string,
