@@ -79,6 +79,11 @@ jobs:
       - *node
       - *modules
       - *install
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-.next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-.next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
       - run: npm run check:bundle
 
@@ -114,6 +119,11 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - uses: actions/cache@v4
+        with:
+          path: .next-qa/cache
+          key: next-.next-qa-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-.next-qa-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - name: Start the test backend, the QA app and the browser install together
         run: |
           npx playwright install --only-shell chromium > "$RUNNER_TEMP/playwright.log" 2>&1 &
