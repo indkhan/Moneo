@@ -1,11 +1,11 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReadonlyDb } from "@/lib/database";
 import { z } from "zod";
 import { allPages } from "@/lib/all-pages";
 import { perClient } from "@/lib/per-client";
 import { investigate, investigationIdentity, investigationSpan, investigationSchema, resolveInvestigation, type InvestigationEntities, type InvestigationRow, type InvestigationSpec } from "./investigation";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
-type Context = { supabase: SupabaseClient; workspace: { id: string } };
+type Context = { supabase: ReadonlyDb; workspace: { id: string } };
 const MAX_ROWS = 100_000;
 
 async function allRows<T>(query: (count?: "exact") => { range(from: number, to: number): PromiseLike<{ data: unknown[] | null; error: unknown; count?: number | null }> }): Promise<T[]> {
@@ -17,7 +17,7 @@ const counted = (count?: "exact") => count ? { count } : undefined;
 export async function loadInvestigationEntities(context: Context): Promise<InvestigationEntities> {
   const { supabase, workspace } = context;
   const [accounts, categories, merchants, labels] = await Promise.all([
-    ...["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(count => supabase.from(table).select(table === "accounts" ? "id, name, version" : "id, name", counted(count)).eq("workspace_id", workspace.id).order("id"))),
+    ...(["accounts", "categories", "merchants"] as const).map(table => allRows<{ id: string; name: string }>(count => supabase.from(table).select(table === "accounts" ? "id, name, version" : "id, name", counted(count)).eq("workspace_id", workspace.id).order("id"))),
     allRows<{ tags: string[]; event_name: string | null }>(count => supabase.from("transactions").select("tags, event_name", counted(count)).eq("workspace_id", workspace.id).order("id")),
   ]) as [{ id: string; name: string }[], { id: string; name: string }[], { id: string; name: string }[], { tags: string[]; event_name: string | null }[]];
   return { accounts, categories, merchants, labels: { tags: [...new Set(labels.flatMap(r => r.tags ?? []))].sort(), events: [...new Set(labels.flatMap(r => r.event_name ? [r.event_name] : []))].sort() } };
@@ -27,9 +27,9 @@ type LedgerRow = {
   posted_on: string; amount_minor: string; currency_code: string; status: InvestigationRow["status"]; kind: InvestigationRow["kind"];
   tags: string[]; event_name: string | null; review_reasons: string[]; version: number; description: string; refund_of_id: string | null;
 };
-const sourcesFor = perClient((supabase: SupabaseClient, workspaceId: string) =>
+const sourcesFor = perClient((supabase: ReadonlyDb, workspaceId: string) =>
   allRows<Source>(count => supabase.from("source_transactions").select("id, import_id, status, review_reasons, normalized_row, fee_evidence, imports(run_version, status, undone_at), transaction_sources(transaction_id)", counted(count)).eq("workspace_id", workspaceId).order("id")));
-const ratesFor = perClient((supabase: SupabaseClient, workspaceId: string) =>
+const ratesFor = perClient((supabase: ReadonlyDb, workspaceId: string) =>
   allRows<{ id: string; from_currency: string; to_currency: string; rate_text: string; rate_date: string; source: string }>(count => supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source", counted(count)).eq("workspace_id", workspaceId).order("id")));
 type Source = { id: string; import_id: string; status: string; review_reasons: string[]; normalized_row: unknown; fee_evidence: unknown;
   imports: { run_version: number; status: string; undone_at: string | null } | null; transaction_sources: { transaction_id: string }[] | { transaction_id: string } | null };

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReadonlyDb } from "@/lib/database";
 import { z } from "zod";
 import type { AiDataScope } from "@/lib/settings";
 import { type ChartDataset, chartColumnSchema } from "./chart-spec";
@@ -82,9 +82,9 @@ export function shapeDataQuery(raw: unknown): DataQueryResult {
   return { columns, rows: parsed.rows.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]]))), truncated: parsed.truncated };
 }
 
-export async function runDataQuery(supabase: SupabaseClient, sql: string, scopes: readonly AiDataScope[], maxRows = MAX_ROWS): Promise<DataQueryResult> {
+export async function runDataQuery(supabase: ReadonlyDb, sql: string, scopes: readonly AiDataScope[], maxRows = MAX_ROWS): Promise<DataQueryResult> {
   const input = dataQueryInput.parse({ sql, maxRows });
-  const { data, error } = await supabase.rpc("data_query", { p_sql: input.sql, p_scopes: scopes, p_max_rows: input.maxRows ?? MAX_ROWS });
+  const { data, error } = await supabase.rpc("data_query", { p_sql: input.sql, p_scopes: [...scopes], p_max_rows: input.maxRows ?? MAX_ROWS });
   if (error) throw error;
   return shapeDataQuery(data);
 }

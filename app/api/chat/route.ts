@@ -5,7 +5,7 @@ import { modelForSettings, SYSTEM_PROMPT, withTools } from "@/lib/ai/provider";
 import { CHAT_MAX_STEPS, moneoToolName } from "@/lib/ai/claude";
 import { DataQueryError, dataQueryChartDataset, dataQueryDescription, dataQueryInput, dataQueryOutput, runDataQuery } from "@/lib/ai/data-query";
 import { aiConfigured } from "@/lib/ai/configured";
-import { requireWorkspace } from "@/lib/auth";
+import { requireWorkspace, type ReadonlyWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { calendarDate } from "@/lib/finance/calendar";
 import { reportedUsage } from "@/lib/ai/usage";
@@ -149,14 +149,14 @@ export async function POST(request: Request) {
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
   const readScopes = new Set<AiDataScope>();
-  async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
+  async function scopedTool<T>(scopes: AiDataScope[], run: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
     const latest = await requireWorkspace();
     if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
     requireAiScope(latest.settings, ...scopes);
     const usedScopes = [...scopes,
       ...(includePlanning && latest.settings.ai_data_scopes.includes("planning") ? ["planning" as const] : []),
       ...(includeImports && latest.settings.ai_data_scopes.includes("imports") ? ["imports" as const] : [])];
-    const result = await read(latest);
+    const result = await run(latest);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (stop.signal.aborted) throw new Error("Request canceled");
@@ -164,8 +164,11 @@ export async function POST(request: Request) {
     for (const scope of usedScopes) readScopes.add(scope);
     return result;
   }
+  function aiEvidence<T>(scopes: AiDataScope[], read: (latest: ReadonlyWorkspace) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
+    return scopedTool(scopes, read, includePlanning, includeImports);
+  }
   let entityNames: Promise<EntityNames> | undefined;
-  function namesFor(latest: typeof context): Promise<EntityNames> {
+  function namesFor(latest: ReadonlyWorkspace): Promise<EntityNames> {
     return entityNames ??= Promise.all((["account", "category", "merchant"] as const).map(async dimension => {
       if (!latest.settings.ai_data_scopes.includes(dimension === "account" ? "accounts" : "transactions")) return [dimension, new Map<string, string>()] as const;
       const table = dimension === "account" ? "accounts" : dimension === "category" ? "categories" : "merchants";
@@ -327,7 +330,7 @@ ${artifactBrief}` : ""}`,
           loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId)) }) } : {}),
         ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate the selected query or an explicitly dated default review, with exact spending changes, account evidence, classification limitations and permitted planning evidence. Read-only.", inputSchema: z.object({ query: investigationSchema.optional() }).strict(), execute: ({ query } = {}) => aiEvidence(["accounts", "transactions"], latest =>
           loadFinancialReviewEvidence(latest.supabase, latest.workspace, { timezone: latest.settings.timezone, scopes: latest.settings.ai_data_scopes, now: new Date() }, query), true, true) }) } : {}),
-        ...(canInvestigate ? { reviews_start: tool({ description: "Investigate the current user's finance question through a bounded, durable, cancelable review. Preserve their chosen dates, entities and focus in query/focus; the application binds the exact question and visible navigation context. Use ordinary finance queries for quick answers, and this tool when follow-up evidence gathering or a saved report is useful. Do not start when the user declines investigation or only asks what a review does. Repeated calls reuse one job; no canonical financial changes.", inputSchema: reviewRequestSchema.omit({question: true, version: true, context: true, allowedScopes: true}), execute: (input = {includePlanning: false, output: "answer", budget: {maxQueries: 6, maxSupportRecords: 60, maxOutputTokens: 4000, maxDurationMs: 90000}}) => aiEvidence(["accounts", "transactions"], async latest => {
+        ...(canInvestigate ? { reviews_start: tool({ description: "Investigate the current user's finance question through a bounded, durable, cancelable review. Preserve their chosen dates, entities and focus in query/focus; the application binds the exact question and visible navigation context. Use ordinary finance queries for quick answers, and this tool when follow-up evidence gathering or a saved report is useful. Do not start when the user declines investigation or only asks what a review does. Repeated calls reuse one job; no canonical financial changes.", inputSchema: reviewRequestSchema.omit({question: true, version: true, context: true, allowedScopes: true}), execute: (input = {includePlanning: false, output: "answer", budget: {maxQueries: 6, maxSupportRecords: 60, maxOutputTokens: 4000, maxDurationMs: 90000}}) => scopedTool(["accounts", "transactions"], async latest => {
           if (stop.signal.aborted) throw new Error("Request canceled");
           if (!serviceRoleConfig()) throw new Error("Financial review service is not configured");
           const specification = resolveReviewRequest({...input, version: 1, question: message, context: capturedContext, allowedScopes: settings.ai_data_scopes}, calendarDate(new Date(), settings.timezone));
@@ -353,7 +356,7 @@ ${artifactBrief}` : ""}`,
             catch (error) { if (error instanceof DataQueryError) return { error: error.message }; throw error; }
           }, false, false) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
-          execute: () => aiEvidence(["accounts", "transactions"], async latest => {
+          execute: () => scopedTool(["accounts", "transactions"], async latest => {
             const found = await proposeRepayments({ ...latest, chatRequestId: requestId });
             proposalCards.push(...found.map(item => item.id as string));
             return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };

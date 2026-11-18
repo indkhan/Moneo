@@ -1,5 +1,5 @@
 import { cache } from "react";
-import type { Db } from "@/lib/database";
+import type { ReadonlyDb } from "@/lib/database";
 import { detectRecurring, type RecurringSeries } from "@/lib/finance/recurring";
 import { normalizeLabel } from "./series";
 
@@ -28,7 +28,7 @@ export function rankSuggestions<T extends { series: { label: string; currencyCod
   return { likely, lessLikely };
 }
 
-export const loadSuggestions = cache(async (supabase: Db, workspace: { id: string }) => {
+export const loadSuggestions = cache(async (supabase: ReadonlyDb, workspace: { id: string }) => {
   const storedQuery = Promise.resolve(supabase.from("recurring_series")
     .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id), assumption:financial_assumptions(id,name,amount_minor::text,cadence,starts_on,source,confirmed,enabled,removed_at,category:categories(name))")
     .eq("workspace_id", workspace.id));

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Db } from "@/lib/database";
+import type { ReadonlyDb } from "@/lib/database";
 import { calendarDate } from "@/lib/finance/calendar";
 import type { WealthItem } from "@/lib/finance/wealth";
 import { coveredRows, latestSnapshotFirst, rowAgainstSnapshot, type BalanceSnapshot, type BalanceTransaction } from "@/lib/finance/balances";
@@ -124,7 +124,7 @@ export function netWorth(point: NetWorthPoint): Map<string, bigint> {
 
 type WealthEvent = { id: string; item_id: string; before: WealthItem | null; after: WealthItem; created_at: string; undone_at: string | null };
 
-export async function loadWealthEvents(db: Db, workspaceId: string): Promise<WealthEvent[]> {
+export async function loadWealthEvents(db: ReadonlyDb, workspaceId: string): Promise<WealthEvent[]> {
   const rows: WealthEvent[] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await db.from("wealth_events").select("id, item_id, before, after, created_at, undone_at").eq("workspace_id", workspaceId)
@@ -150,7 +150,7 @@ export function firstSyncedOn(valuations: Valuation[], knownIds: Set<string>): s
   return valuations.reduce<string | null>((first, row) => knownIds.has(row.item_id) && !row.removed && (first === null || row.as_of < first) ? row.as_of : first, null);
 }
 
-export async function loadScalableHistory(db: Db, workspaceId: string) {
+export async function loadScalableHistory(db: ReadonlyDb, workspaceId: string) {
   const rows: CalculatedValue[] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await db.from("scalable_value_history").select("on_date, currency_code, total_minor::text").eq("workspace_id", workspaceId).order("on_date").range(offset, offset + 999);

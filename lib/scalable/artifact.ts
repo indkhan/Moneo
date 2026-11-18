@@ -1,11 +1,11 @@
-import type { requireWorkspace } from "@/lib/auth";
+import type { ReadonlyWorkspace } from "@/lib/auth";
 import { activeScalableConnection, investmentsPortfolio, investmentsSecurity, investmentsTransactions, investmentsWatchlist, PERIODS, toMinor, type securityInput } from "./live";
 import type { ScalablePortfolio } from "./portfolio";
 import { withScalable } from "./server";
 import type { ScalableMcp } from "./client";
 import type { z } from "zod";
 
-type Context = Awaited<ReturnType<typeof requireWorkspace>>;
+type Context = ReadonlyWorkspace;
 
 const live = async <T>(context: Context, read: (mcp: ScalableMcp) => Promise<T>) => {
   const connection = await activeScalableConnection(context.workspace.id);
