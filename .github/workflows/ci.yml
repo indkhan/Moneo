@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, t3/speed-up-ci]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -13,18 +13,45 @@ permissions:
   contents: read
 
 jobs:
-  checks:
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - &checkout
+        uses: actions/checkout@v4
+      - &node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - &modules
+        uses: actions/cache@v4
+        id: modules
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json') }}
+      - &install
+        if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci
       - run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *node
+      - *modules
+      - *install
       - run: npm run typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *node
+      - *modules
+      - *install
       - run: npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest.json"
       - name: Slowest test files
         env:
@@ -43,6 +70,15 @@ jobs:
           for (const f of slow) console.log(`::error file=${f.file}::${f.file} took ${f.seconds.toFixed(1)} s; a test file may take at most ${limit} s. Split it, or mock the slow part (AGENTS.md Tests).`);
           if (slow.length) process.exit(1);
           EOF
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *node
+      - *modules
+      - *install
       - run: npm run build
       - run: npm run check:bundle
 
@@ -50,12 +86,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - *checkout
+      - *node
+      - *modules
+      - *install
       - name: Start the test backend
         run: |
           for attempt in 1 2 3 4; do
@@ -70,26 +104,42 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      E2E_PRODUCTION_BUILD: "1"
+      E2E_BASE_URL: http://localhost:3100
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Start the test backend
+      - *checkout
+      - *node
+      - *modules
+      - *install
+      - name: Start the test backend, the QA app and the browser install together
         run: |
-          for attempt in 1 2 3 4; do
-            npm run setup -- --qa && exit 0
-            echo "::warning::Starting the test backend failed (attempt $attempt); the image registry limits pulls. Trying again."
-            sleep $((attempt * 30))
-          done
-          exit 1
+          npx playwright install --with-deps chromium > "$RUNNER_TEMP/playwright.log" 2>&1 &
+          playwright=$!
+          (
+            for attempt in 1 2 3 4; do
+              npm run setup -- --qa && exit 0
+              echo "::warning::Starting the test backend failed (attempt $attempt); the image registry limits pulls. Trying again."
+              sleep $((attempt * 30))
+            done
+            exit 1
+          ) &
+          backend=$!
+          until [ -s .env.qa ] || ! kill -0 $backend 2>/dev/null; do sleep 1; done
+          nohup node scripts/qa-server.mjs --production > "$RUNNER_TEMP/qa-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/qa-server.pid"
+          wait $backend
+          wait $playwright || { cat "$RUNNER_TEMP/playwright.log"; exit 1; }
       - run: npm run qa:auth
-      - run: npx playwright install --with-deps chromium
+      - name: Wait for the QA app
+        run: |
+          until curl -s -o /dev/null http://localhost:3100/api/health; do
+            kill -0 "$(cat "$RUNNER_TEMP/qa-server.pid")" 2>/dev/null || { cat "$RUNNER_TEMP/qa-server.log"; exit 1; }
+            sleep 2
+          done
       - name: Browser journeys
         run: npm run test:e2e -- --workers=1 --retries=1 e2e/net-worth.gated.spec.ts e2e/import-journey.mocked.spec.ts
+      - name: QA app log
+        if: failure()
+        run: cat "$RUNNER_TEMP/qa-server.log"
       - name: Upload failure traces and screenshots
         if: failure()
         uses: actions/upload-artifact@v4
