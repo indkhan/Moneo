@@ -87,7 +87,7 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
         if (error) throw new Error(error.message);
         return { href: `/money/transactions?transaction=${payload.transactionId}`, undo: "Undo from the transaction" };
       }
-      await confirmOwnAccount(supabase, workspace.id, payload.transactionId, payload.name);
+      await confirmOwnAccount(supabase, workspace.id, payload.transactionId, payload.name, { locale: workspace.locale, timezone: workspace.timezone, now: new Date() });
       return { href: `/money/transactions?transaction=${payload.transactionId}`, undo: "Undo from the transaction" };
     }
     case "finding":

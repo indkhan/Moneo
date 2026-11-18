@@ -18,6 +18,7 @@ import { closingAnswerSchema, closingPlan } from "@/lib/finance/account-closing"
 import { stableId } from "@/lib/import/row";
 
 const transfersPageLinksThemOnRequest = () => undefined;
+const transferContext = ({ locale, timezone }: { locale: string; timezone: string }) => ({ locale, timezone, now: new Date() });
 const version = z.coerce.number().int().min(1).max(2147483646);
 const accountType = z.enum(accountTypes);
 
@@ -87,7 +88,7 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
         if (linked.error) throw new Error(linked.error.message);
       }
     }
-    if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id).catch(transfersPageLinksThemOnRequest);
+    if (!plan.into && plan.target) await linkOwnTransfers(supabase, workspace.id, transferContext(workspace)).catch(transfersPageLinksThemOnRequest);
     const fresh = await supabase.from("accounts").select("version").eq("id", accountId).single();
     if (fresh.error) throw new Error(fresh.error.message);
     const { error } = await supabase.rpc("edit_money_metadata", { p_entity_type: "account", p_id: accountId, p_expected_version: fresh.data.version, p_patch: { archived: true }, p_request_id: stableId(`${requestId}:archive`) });
@@ -172,7 +173,7 @@ export async function addOwnAccount(form: FormData) {
   const { error } = await supabase.from("own_account_identifiers").insert({ workspace_id: workspace.id, iban, account_id: accountId,
     label: z.string().trim().min(1).max(120).parse(form.get("label")) });
   if (error) throw new Error(error.code === "23505" ? "That IBAN is already saved" : error.message);
-  transfersRedirect(await linkOwnTransfers(supabase, workspace.id));
+  transfersRedirect(await linkOwnTransfers(supabase, workspace.id, transferContext(workspace)));
 }
 
 export async function removeOwnAccount(form: FormData) {
@@ -185,7 +186,7 @@ export async function removeOwnAccount(form: FormData) {
 
 export async function findTransfersBetweenOwnAccounts() {
   const { supabase, workspace } = await requireWorkspace();
-  transfersRedirect(await linkOwnTransfers(supabase, workspace.id));
+  transfersRedirect(await linkOwnTransfers(supabase, workspace.id, transferContext(workspace)));
 }
 
 export async function addAccountSafely(_state: SafeState, form: FormData) { return safely(form, addAccount); }
