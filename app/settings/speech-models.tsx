@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, FolderOpen, Loader2, Mic, Square } from "lucide-react";
+import { usePolling } from "@/lib/use-polling";
 import { LOCAL_SPEECH_MODELS, localModel, modelBytes } from "@/lib/ai/speech/local-models";
 import { startModelTrial, type VoiceRecording } from "@/lib/ai/voice-recorder";
 
@@ -38,11 +39,7 @@ export function SpeechModels({ initial, hidden, onChange }: { initial: string | 
     if (customPath) overview(customPath).then(next => setCustom(next.custom ?? null), () => setCustom(null));
   }, [hidden, customPath, refresh]);
   const downloading = info?.models.some(model => model.status.state === "downloading");
-  useEffect(() => {
-    if (!downloading) return;
-    const timer = setInterval(refresh, 1000);
-    return () => clearInterval(timer);
-  }, [downloading, refresh]);
+  usePolling(refresh, 1000, !!downloading);
   useEffect(() => () => recording.current?.cancel(), []);
 
   const checkFolder = (folder: string) => {
