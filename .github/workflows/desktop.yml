@@ -119,6 +119,12 @@ jobs:
       - name: Fetch the native backend
         run: node scripts/desktop/fetch-backend.mjs --platform ${{ matrix.id }}
 
+      - uses: actions/cache@v4
+        with:
+          path: .next-desktop/cache
+          key: next-.next-desktop-${{ matrix.id }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-.next-desktop-${{ matrix.id }}-${{ hashFiles('package-lock.json') }}-
+
       - run: npm run desktop:build
 
       - name: Package
