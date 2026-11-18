@@ -4,7 +4,8 @@ import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStor
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
-import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, deviceTimeZone, INSIGHT_TYPES, SPEECH_ENGINES, VOICES, type WorkspaceSettings } from "@/lib/settings";
+import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, deviceTimeZone, SPEECH_ENGINES, VOICES, type WorkspaceSettings } from "@/lib/settings";
+import { INSIGHT_TYPES } from "@/lib/insight-types";
 import { SPEECH_ENGINE_LABELS } from "@/lib/ai/speech/engine";
 import { saveSettings } from "./actions";
 import { SpeechModels } from "./speech-models";

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { INSIGHT_TYPES } from "@/lib/settings";
+import { INSIGHT_TYPES } from "@/lib/insight-types";
 import { formatMoney } from "./format";
 import { buildReviewInvestigation, type ReviewTransaction } from "./review";
 import { minorDigits } from "./fx";
