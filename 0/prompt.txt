@@ -1,0 +1,14 @@
+Act as the implementation sub-agent for this task.
+
+Repo indkhan/Moneo. Work on GitHub issue #239 (read it with `gh issue view 239`, and AGENTS.md). This is PR 3 of several, one area per PR. Merged so far: #294 (own-transfers take `{ locale, timezone, now }` from callers) and #296 (the review pipeline: `loadFinancialReviewEvidence` takes `{ timezone, scopes, now }`, and scope checks moved to callers; read its PR body for the pattern and the list of where each check happens).
+
+Your area: the remaining lib/finance files that use request state at runtime or type against it:
+- `lib/finance/tools.ts` and `lib/finance/investigation-reader.ts` call `requireWorkspace` from `@/lib/auth`.
+- `lib/finance/capture-evidence.ts` and `lib/finance/evidence-view.ts` call `requireAiScope` and type against `typeof requireWorkspace`.
+- `lib/finance/tool-source-support.ts` types against `typeof requireWorkspace`.
+
+Owner's decision: callers (chat/voice tools in `app/api/chat/route.ts` and `lib/ai/`, pages, route handlers, server actions, workflows) resolve the owner/workspace, settings, AI data scopes and clock; lib/finance takes plain inputs (db client, workspace fields it needs, narrow settings, allowed scopes, `now`). Authorization (sign-in and AI scope checks) must stay enforced at every public entry point. Never lose a check: for every entry point reaching these functions, list in the PR body where its auth/scope check now happens. Replace `typeof requireWorkspace` types with a plain structural type (one shared type in lib/finance if several files need it). Type-only/constant imports (`AiDataScope`, `AI_DATA_SCOPES`, `WorkspaceSettings` types) can stay; the final PR moves them. No DI framework. Behaviour must not change. Don't add the lint ban yet.
+
+Steps: create branch `t3/issue-239-tools` from origin/main. Run existing tests first. Migrate and update every caller (`git grep`). Drop request-state `vi.mock`s from tests where they become unnecessary. Commit in steps. Before opening the PR, merge origin/main again (keep main's changes on conflicts; run `npm run feature-map`/`npm run db:types` only if checks need them).
+
+Rules: run `npm test`, `npm run lint`, `npm run typecheck` and `npm run build` yourself and quote their last lines. Tests use only the moneo-qa test backend; never the owner's backend (.env, Docker project `moneo`, port 3000). Never run `qa:reset` or `docker compose -p moneo-qa down`. Never kill a process you didn't start (verify by PID). Don't end your turn while a command is still running. No comments in code. Commits end with "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>". Open the PR (body ends with "🤖 Generated with [Claude Code](https://claude.com/claude-code)"), never merge it. Final line: PR <full URL>, head <SHA>.

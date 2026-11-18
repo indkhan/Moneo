@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7R6TC1P0702NBX1DNP229KH",
+  "session_id": "4f6b82d4-1146-4528-94bd-d4545ba847bc",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T20:50:53.5384227Z",
+  "branch": "t3/issue-239-tools",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/plan/page.test.tsx",
+    "lib/finance/account-liquidity-adapters.test.ts",
+    "lib/finance/balance-evidence.test.ts",
+    "lib/finance/finance-context.ts",
+    "lib/finance/investigation-reader.ts",
+    "lib/finance/search-evidence.test.ts",
+    "lib/finance/snapshot-provenance.test.ts",
+    "lib/finance/tool-source-support.test.ts",
+    "lib/finance/tool-source-support.ts",
+    "lib/finance/tools-expenditure.test.ts",
+    "lib/finance/tools.test.ts",
+    "lib/finance/tools.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "5bd893c10d7d",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 84,
+    "cache_creation_tokens": 125574,
+    "cache_read_tokens": 4862789,
+    "output_tokens": 26776,
+    "api_call_count": 42
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
