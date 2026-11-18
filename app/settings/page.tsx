@@ -38,13 +38,15 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
   });
 }
 
+const updatesSectionIsHiddenWhenStatusIsUnavailable = () => null;
+
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ usage?: string; chatgpt?: string; claude?: string }> }) {
   const context = await requireWorkspace();
   const query = await searchParams;
   const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
   const connections = await modelConnections();
-  const [runs, update, ai] = await Promise.all([loadRuns(context), isDesktop() ? desktopUpdate("status").catch(() => null) : null, chatgptStatus()]);
+  const [runs, update, ai] = await Promise.all([loadRuns(context), isDesktop() ? desktopUpdate("status").catch(updatesSectionIsHiddenWhenStatusIsUnavailable) : null, chatgptStatus()]);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
     <div className="mt-8 grid gap-8 max-lg:mt-4 max-lg:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">

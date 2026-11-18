@@ -5,6 +5,7 @@ import { isDesktop } from "@/lib/desktop-bridge";
 import { LOCAL_SPEECH_MODELS, localModel } from "@/lib/ai/speech/local-models";
 import { modelDownloads } from "@/lib/ai/speech/model-download";
 import { inspectFolder, localSpeechSupported, speechModelsDir } from "@/lib/ai/speech/model-store";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 const startSchema = z.object({ model: z.string().refine(id => Boolean(localModel(id)), "Unknown model") });
 const noStore = { headers: { "Cache-Control": "no-store" } };
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!await signedIn()) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const input = startSchema.safeParse(await request.json().catch(() => null));
+  const input = startSchema.safeParse(await jsonBodyOrNull(request));
   if (!input.success) return Response.json({ error: "Choose one of the suggested models" }, { status: 400 });
   const model = localModel(input.data.model)!;
   void modelDownloads.start(model);

@@ -21,6 +21,11 @@ it("is hidden when nothing is waiting", async () => {
   expect(await render()).toBe("");
 });
 
+it("says the cards could not be checked when loading them fails, instead of looking empty", async () => {
+  vi.mocked(openStandaloneProposals).mockRejectedValue(new Error("database down"));
+  expect(await render()).toContain('role="alert"');
+});
+
 it("lists transaction and balance cards with their count, open and filterable", async () => {
   vi.mocked(openStandaloneProposals).mockResolvedValue([
     { id: "t", kind: "transaction_create", title: "Spent €12.00 · Lunch", detail: "Today", status: "proposed", accounts: [{ id: "a", name: "Wallet" }], selected: "a", createsCash: false },

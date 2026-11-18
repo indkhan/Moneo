@@ -7,6 +7,7 @@ import { serviceDb } from "@/lib/service-db";
 import { BANK_REDIRECT_URL } from "@/lib/bank/return-listener";
 import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 import { hasServiceRoleKey } from "@/lib/env";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 const bodySchema = z.object({ aspspName: z.string().trim().min(1).max(200), country: z.string().regex(/^[A-Z]{2}$/) }).strict();
 
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   try { context = await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
   if (fromRemoteDevice(request.headers)) return NextResponse.json({ error: connectOnComputer("The bank login") }, { status: 409 });
   if (!(await enableBankingConfigured()) || !hasServiceRoleKey()) return NextResponse.json({ error: "Bank sync is not configured" }, { status: 503 });
-  const body = bodySchema.safeParse(await request.json().catch(() => null));
+  const body = bodySchema.safeParse(await jsonBodyOrNull(request));
   if (!body.success) return NextResponse.json({ error: "Choose a bank" }, { status: 400 });
   try {
     const client = await enableBankingClient();

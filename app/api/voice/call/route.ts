@@ -4,13 +4,14 @@ import { requireWorkspace } from "@/lib/auth";
 import { VOICE_INSTRUCTIONS, VOICE_MODEL, seedInput } from "@/lib/ai/voice-call";
 import { voiceApiKey } from "@/lib/ai/configured";
 import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 const inputSchema = z.object({ sdp: z.string().min(1).max(20_000), conversationId: z.uuid() }).strict();
 
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
-  const parsed = inputSchema.safeParse(await request.json().catch(() => null));
+  const parsed = inputSchema.safeParse(await jsonBodyOrNull(request));
   if (!parsed.success) return Response.json({ error: "Invalid call request" }, { status: 400 });
   const apiKey = await voiceApiKey();
   if (!apiKey) return Response.json({ error: VOICE_NEEDS_OPENAI_KEY }, { status: 503 });

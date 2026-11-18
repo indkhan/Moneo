@@ -4,10 +4,12 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { isDesktopRuntime } from "@/lib/env";
 
+const signInFailureShowsTheSetupHelpBelow = () => undefined;
+
 export default async function Login() {
   await connection();
   let recovered = false;
-  try { await requireWorkspace(); recovered = true; } catch { }
+  try { await requireWorkspace(); recovered = true; } catch { signInFailureShowsTheSetupHelpBelow(); }
   if (recovered) redirect("/");
   const desktop = isDesktopRuntime();
   return <main className="mx-auto grid min-h-screen w-full max-w-md place-items-center px-4">

@@ -34,7 +34,7 @@ export async function loadOrganizeInput(db: Db, workspaceId: string): Promise<Or
     db.from("accounts").select("id, name").eq("workspace_id", workspaceId).limit(500),
     db.from("organizer_ops").select("identity_key, category_id").eq("workspace_id", workspaceId).eq("suppressed", true).not("category_id", "is", null).limit(5000),
     db.from("organize_questions").select("transaction_ids").eq("workspace_id", workspaceId).in("status", ["open", "dismissed"]).limit(5000),
-    loadLoanPayoutIds(db, workspaceId).catch(() => new Set<string>()),
+    loadLoanPayoutIds(db, workspaceId),
   ]);
   const corrected = new Set(corrections.map(row => row.transaction_id));
   const asked = new Set((checked(questions) as { transaction_ids: string[] }[]).flatMap(row => row.transaction_ids));

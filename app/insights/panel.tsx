@@ -67,7 +67,7 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
     const [effective, older, loans] = await Promise.all([
       rows<ReviewTransaction & { account_id: string }>("effective_transactions", columns, first),
       byIds<ReviewTransaction & { account_id: string }>(canonicalColumns, missingBaselineIds),
-      loadLoanPayoutIds(db, workspaceId).catch(() => new Set<string>()),
+      loadLoanPayoutIds(db, workspaceId),
     ]);
     const transactions = effective.map(row => loans.has(row.parent_transaction_id ?? row.id) ? { ...row, kind: "transfer" as const } : row);
     for (const row of older) recurringEvidence.set(row.id, row);

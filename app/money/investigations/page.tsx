@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { awaitedLater } from "@/lib/awaited-later";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
@@ -40,8 +41,7 @@ export default async function InvestigationPage({ searchParams }: { searchParams
   let spec: InvestigationSpec | undefined;
   let result: Awaited<ReturnType<typeof runInvestigation>> | undefined;
   let error: string | undefined;
-  const entitiesRead = loadInvestigationEntities(context);
-  entitiesRead.catch(() => undefined);
+  const entitiesRead = awaitedLater(loadInvestigationEntities(context));
   const params = await searchParams;
   try {
     spec = parseInvestigationParams(params, { from: monthStart, to: today });
