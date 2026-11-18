@@ -6,6 +6,7 @@ import { readResponse, type ChatAnswer } from "./use-chat-request";
 import { VoiceCallController, type CallAsk } from "./voice-call-controller";
 import { boundTranscript } from "./voice-call-record";
 import { VoicePlayback } from "./voice-playback";
+import { announceCallRecord, indexedDbStore, postCallRecord, saveOrQueue } from "./voice-record-queue";
 
 export type CallStatus = "connecting" | "live" | "ended" | "error";
 
@@ -26,7 +27,6 @@ function level(analyser: AnalyserNode | null, buffer: Uint8Array<ArrayBuffer>) {
 
 const sessionAlreadyClosed = () => undefined;
 const screenMayStillSleep = () => undefined;
-const callRecordIsNotSavedWhenOffline = () => undefined;
 const trace = process.env.NODE_ENV === "production" ? undefined : (message: string) => console.info(`[call ${new Date().toISOString().slice(11, 23)}] ${message}`);
 
 class Connection {
@@ -37,8 +37,9 @@ class Connection {
   readonly aborts = new Map<string, AbortController>();
   readonly callId = crypto.randomUUID();
   startedAt: number | null = null;
+  workspaceId: string | null = null;
   constructor(public onAnswer?: (question: string, answer: ChatAnswer) => void, public onEnded?: () => void) {}
-  set(patch: Partial<Pick<Connection, "channel" | "mic" | "micLevel" | "moneoLevel" | "onAnswer" | "onEnded">>) { Object.assign(this, patch); }
+  set(patch: Partial<Pick<Connection, "channel" | "mic" | "micLevel" | "moneoLevel" | "onAnswer" | "onEnded" | "workspaceId">>) { Object.assign(this, patch); }
 }
 
 export function useVoiceCall(conversationId: string, onAnswer?: (question: string, answer: ChatAnswer) => void, onEnded?: () => void) {
@@ -92,7 +93,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       const answer = awaitedLater(fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) })
-        .then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? "Could not start the call"); return body.sdp as string; }));
+        .then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? "Could not start the call"); live.set({ workspaceId: body.workspaceId }); return body.sdp as string; }));
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       if (closed) { stream.getTracks().forEach(track => track.stop()); return; }
       live.set({ mic: stream });
@@ -105,15 +106,17 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     const analyser = (source: MediaStream) => { const node = context!.createAnalyser(); node.fftSize = 512; context!.createMediaStreamSource(source).connect(node); return node; };
     function saveRecord() {
       const transcript = boundTranscript(controller.captions);
-      if (live.startedAt === null || !transcript.length) return;
+      if (live.startedAt === null || !live.workspaceId || !transcript.length) return;
       const seconds = Math.min(86_400, Math.round((Date.now() - live.startedAt) / 1000));
       live.startedAt = null;
       const finished = live.onEnded;
       live.set({ onAnswer: undefined });
-      void fetch("/api/voice/calls", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: live.callId, conversationId, durationSeconds: seconds, transcript,
-          tasks: controller.tasks.slice(-30).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300), ...(task.title && { title: task.title }), status: task.status })) }) })
-        .then(response => { if (response.ok) finished?.(); }, callRecordIsNotSavedWhenOffline);
+      const record = { id: live.callId, workspaceId: live.workspaceId, conversationId, durationSeconds: seconds, transcript,
+        tasks: controller.tasks.slice(-30).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300), ...(task.title && { title: task.title }), status: task.status })) };
+      void saveOrQueue(indexedDbStore, postCallRecord, record).then(result => {
+        if (result.kind === "saved") finished?.();
+        else announceCallRecord(result);
+      });
     }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
     const buffer = new Uint8Array(512);

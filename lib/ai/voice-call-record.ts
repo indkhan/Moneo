@@ -18,6 +18,7 @@ const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)
 
 export const callRecordSchema = z.object({
   id: z.uuid(),
+  workspaceId: z.uuid(),
   conversationId: z.uuid(),
   durationSeconds: z.number().int().min(0).max(86_400),
   transcript: z.array(callTurnSchema).min(1).max(400).refine(turns => bytes(turns) <= MAX_TRANSCRIPT_BYTES, "Transcript is too large"),

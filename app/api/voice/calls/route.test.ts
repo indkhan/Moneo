@@ -13,20 +13,21 @@ vi.mock("@/lib/ai/voice-call-record", async original => ({ ...await original<typ
 const conversationId = "00000000-0000-4000-8000-000000000002";
 const callId = "00000000-0000-4000-8000-000000000001";
 const requestId = "00000000-0000-4000-8000-000000000003";
-const record = { id: callId, conversationId, durationSeconds: 75, transcript: [{ role: "user", text: "How much at Netto?" }, { role: "assistant", text: "42 euros" }], tasks: [{ requestId, text: "How much at Netto?", status: "done" }] };
-let conversation: unknown, insertError: { code: string } | null;
+const workspaceId = "00000000-0000-4000-8000-0000000000a1";
+const record = { id: callId, workspaceId, conversationId, durationSeconds: 75, transcript: [{ role: "user", text: "How much at Netto?" }, { role: "assistant", text: "42 euros" }], tasks: [{ requestId, text: "How much at Netto?", status: "done" }] };
+let conversation: unknown, existingCall: unknown, insertError: { code: string } | null;
 const inserts: [string, unknown][] = [];
 const eqs: unknown[][] = [];
 
 beforeEach(() => {
-  vi.clearAllMocks(); inserts.length = 0; eqs.length = 0; insertError = null;
+  vi.clearAllMocks(); inserts.length = 0; eqs.length = 0; insertError = null; existingCall = { id: callId };
   conversation = { id: conversationId, deleted_at: null };
   const supabase = { from: (table: string) => {
-    const query = { select: () => query, eq: (...args: unknown[]) => { eqs.push(args); return query; }, maybeSingle: async () => ({ data: conversation, error: null }),
+    const query = { select: () => query, eq: (...args: unknown[]) => { eqs.push(args); return query; }, maybeSingle: async () => ({ data: table === "voice_calls" ? existingCall : conversation, error: null }),
       insert: async (row: unknown) => { inserts.push([table, row]); return { error: table === "voice_calls" ? insertError : null }; } };
     return query;
   } };
-  vi.mocked(requireWorkspace).mockResolvedValue({ supabase, workspace: { id: "workspace" }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(requireWorkspace).mockResolvedValue({ supabase, workspace: { id: workspaceId }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
 });
 const request = (body: unknown) => new Request("http://localhost/api/voice/calls", { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
 
@@ -37,7 +38,7 @@ it("requires a signed-in workspace", async () => {
 });
 it.each([
   ["not json", "{"], ["empty transcript", { ...record, transcript: [] }], ["bad conversation", { ...record, conversationId: "nope" }],
-  ["extra field", { ...record, workspace_id: "other" }], ["bad status", { ...record, tasks: [{ requestId, text: "x", status: "weird" }] }],
+  ["extra field", { ...record, workspace_id: "other" }], ["no workspace", { ...record, workspaceId: undefined }], ["bad status", { ...record, tasks: [{ requestId, text: "x", status: "weird" }] }],
 ])("rejects %s", async (_name, body) => {
   expect((await POST(request(body))).status).toBe(400);
   expect(inserts).toEqual([]);
@@ -51,7 +52,7 @@ it("rejects a transcript over 40 KB and a body over 64 KB", async () => {
 it("refuses a deleted conversation and only reads this workspace's", async () => {
   conversation = { id: conversationId, deleted_at: "2026-10-01" };
   expect((await POST(request(record))).status).toBe(404);
-  expect(eqs).toContainEqual(["workspace_id", "workspace"]);
+  expect(eqs).toContainEqual(["workspace_id", workspaceId]);
   expect(inserts).toEqual([]);
   expect(after).not.toHaveBeenCalled();
 });
@@ -59,21 +60,31 @@ it("saves the call under the workspace and summarizes it after responding", asyn
   const response = await POST(request(record));
   expect(response.status).toBe(201);
   expect(await response.json()).toEqual({ id: callId });
-  expect(inserts).toEqual([["voice_calls", { id: callId, workspace_id: "workspace", conversation_id: conversationId, duration_seconds: 75, transcript: record.transcript, tasks: record.tasks, request_ids: [requestId] }]]);
+  expect(inserts).toEqual([["voice_calls", { id: callId, workspace_id: workspaceId, conversation_id: conversationId, duration_seconds: 75, transcript: record.transcript, tasks: record.tasks, request_ids: [requestId] }]]);
   expect(summarizeCall).not.toHaveBeenCalled();
   expect(after).toHaveBeenCalledTimes(1);
   await after.mock.calls[0][0]();
-  expect(summarizeCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ workspaceId: "workspace", callId, transcript: record.transcript }));
+  expect(summarizeCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ workspaceId, callId, transcript: record.transcript }));
 });
 it("creates the conversation of a new chat whose call asked nothing", async () => {
   conversation = null;
   expect((await POST(request({ ...record, tasks: [] }))).status).toBe(201);
-  expect(inserts[0]).toEqual(["conversations", { id: conversationId, workspace_id: "workspace", title: "Voice call" }]);
+  expect(inserts[0]).toEqual(["conversations", { id: conversationId, workspace_id: workspaceId, title: "Voice call" }]);
   expect(inserts[1][0]).toBe("voice_calls");
 });
 it("treats a repeated save of the same call as done, without a second summary", async () => {
   insertError = { code: "23505" };
   const response = await POST(request(record));
   expect(response.status).toBe(200);
+  expect(eqs).toContainEqual(["workspace_id", workspaceId]);
   expect(after).not.toHaveBeenCalled();
+});
+it("does not call a record saved when its id belongs to another workspace's call", async () => {
+  insertError = { code: "23505" }; existingCall = null;
+  expect((await POST(request(record))).status).toBe(409);
+  expect(after).not.toHaveBeenCalled();
+});
+it("refuses a record queued for a different workspace", async () => {
+  expect((await POST(request({ ...record, workspaceId: "00000000-0000-4000-8000-0000000000b2" }))).status).toBe(409);
+  expect(inserts).toEqual([]);
 });
