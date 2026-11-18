@@ -38,8 +38,8 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
   const entries = [...byId.values(), ...unidentified].sort((a, b) => a.row.date.localeCompare(b.row.date) || a.row.id.localeCompare(b.row.id)
     || a.row.amount.localeCompare(b.row.amount) || a.row.description.localeCompare(b.row.description));
   const rows = entries.map(entry => entry.row);
-  if (!rows.length) return null;
-  const last = rows[rows.length - 1];
+  const last = rows.at(-1);
+  if (!last) return null;
   const csv = Papa.unparse({ fields: [...headers], data: rows.map(row => headers.map(header => row[header])) }, { newline: "\n" });
   const mapping: ImportMapping = {
     accountName: account.accountName, currencyCode: account.currencyCode,
