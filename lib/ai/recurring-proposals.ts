@@ -37,9 +37,9 @@ type Schedule = { id: string; name: string; amount_minor: string; currency_code:
 
 async function activeSchedules({ supabase, workspace }: Context) {
   const { data, error } = await supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, account_id, category:categories(name)")
-    .eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", recurringCadences).order("name").limit(500);
+    .eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", recurringCadences).order("name").limit(500).overrideTypes<Schedule[], { merge: false }>();
   if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as Schedule[];
+  return data ?? [];
 }
 
 function pick<T extends { id: string; name: string }>(items: T[], target: string | undefined, what: string) {

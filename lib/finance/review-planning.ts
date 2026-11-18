@@ -1,7 +1,7 @@
 import {z} from "zod";
-import type {SupabaseClient} from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 
-export async function loadReviewGoals(input: unknown, db: SupabaseClient, workspaceId: string) {
+export async function loadReviewGoals(input: unknown, db: Db, workspaceId: string) {
   const args = z.object({goalIds: z.array(z.uuid()).min(1).max(20).optional(), limit: z.number().int().min(1).max(10)}).strict().parse(input);
   let query = db.from("goals").select("id, name, version, target_minor::text, currency_code, target_date, status, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on")
     .eq("workspace_id", workspaceId).order("id").limit(args.limit + 1);

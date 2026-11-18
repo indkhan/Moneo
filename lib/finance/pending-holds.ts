@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 
 const minor = z.string().regex(/^\d{1,19}$/).refine(value => BigInt(value) <= 9223372036854775807n, "Amount exceeds supported integer range");
 export const pendingSettlementSchema = z.object({
@@ -13,7 +13,7 @@ export function releasedPendingMinor(resolutions: PendingResolution[]): bigint {
   return resolutions.reduce((total, row) => total + (row.undone_at ? 0n : BigInt(row.released_minor)), 0n);
 }
 
-export async function loadPendingResolutions(db: SupabaseClient, workspaceId: string, pendingId: string): Promise<PendingResolution[]> {
+export async function loadPendingResolutions(db: Db, workspaceId: string, pendingId: string): Promise<PendingResolution[]> {
   const rows: PendingResolution[] = [];
   for (let offset = 0; ; offset += 500) {
     const page = await db.from("pending_hold_resolutions").select("id, released_minor::text, operation, note, undone_at")

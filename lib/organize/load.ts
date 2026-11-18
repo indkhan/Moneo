@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { loadRawContext } from "@/lib/bank/raw-context";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { MAX_ORGANIZATION_RULES, organizationRuleSchema } from "@/lib/import/organization";
@@ -20,7 +20,7 @@ type Row = { id: string; version: number; description: string; amount_minor: str
 const toHistory = (row: Row): HistoryRow => ({ id: row.id, version: row.version, description: row.description, amountMinor: BigInt(row.amount_minor), currency: row.currency_code,
   date: row.posted_on, identityId: row.identity_id, categoryId: row.category_id, merchantId: row.merchant_id, kind: row.kind, reviewReasons: row.review_reasons ?? [] });
 
-export async function loadOrganizeInput(db: SupabaseClient, workspaceId: string): Promise<OrganizeInput> {
+export async function loadOrganizeInput(db: Db, workspaceId: string): Promise<OrganizeInput> {
   const [targets, recent, corrections, rules, memory, categories, merchants, accounts, suppressedOps, questions, loans] = await Promise.all([
     pages<Row>(offset => db.from("transactions").select(COLUMNS).eq("workspace_id", workspaceId).eq("status", "posted").is("organized_by", null)
       .or("merchant_id.is.null,category_id.is.null").order("posted_on", { ascending: false }).order("id").range(offset, offset + 999)),
@@ -75,11 +75,9 @@ export async function loadOrganizeInput(db: SupabaseClient, workspaceId: string)
   };
 }
 
-export async function loadJudgedLabels(db: SupabaseClient, workspaceId: string, now = new Date()) {
+export async function loadJudgedLabels(db: Db, workspaceId: string, now = new Date()) {
   const ops = checked(await db.from("organizer_ops").select("id, created_at, undone_at, category_id, merchant_id, transactions(category_id, merchant_id, organized_by, organize_op_id)")
-    .eq("workspace_id", workspaceId).eq("after->>organized_by", "ai").order("created_at", { ascending: false }).limit(1000)) as unknown as
-    { id: string; created_at: string; undone_at: string | null; category_id: string | null; merchant_id: string | null;
-      transactions: { category_id: string | null; merchant_id: string | null; organized_by: string | null; organize_op_id: string | null } | null }[];
+    .eq("workspace_id", workspaceId).eq("after->>organized_by", "ai").order("created_at", { ascending: false }).limit(1000));
   return ops.map(op => {
     const label: AiLabel = { id: op.id, createdAt: op.created_at, undoneAt: op.undone_at, categoryId: op.category_id, merchantId: op.merchant_id };
     const row: LabelledRow | null = op.transactions && { categoryId: op.transactions.category_id, merchantId: op.transactions.merchant_id, organizedBy: op.transactions.organized_by, organizeOpId: op.transactions.organize_op_id };

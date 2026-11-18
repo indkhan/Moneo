@@ -5,6 +5,7 @@ import { serviceDb } from "@/lib/service-db";
 import { requireWorkspace } from "@/lib/auth";
 import { parseCsv, parseExcel, workbookScopeSchema, validateImportConfirmation } from "@/lib/import/csv";
 import { importFile } from "@/workflows/import-file";
+import { jsonObject, type Json } from "@/lib/database";
 import { hasServiceRoleKey } from "@/lib/env";
 
 export async function POST(request: Request) {
@@ -33,7 +34,10 @@ export async function POST(request: Request) {
     const existing = await supabase.from("imports").select("id, status, mapping").eq("workspace_id", workspace.id).eq("file_hash", hash).neq("status", "undone").maybeSingle();
     if (existing.error) throw existing.error;
     const scopeIdentity = (value: unknown) => JSON.stringify(workbookScopeSchema.parse(value).tables.sort((a, b) => a.sheetId - b.sheetId || a.headerRow - b.headerRow));
-    const differs = (previous: {mapping?: {workbookScope?: unknown}}) => workbookScope && (!previous.mapping?.workbookScope || scopeIdentity(previous.mapping.workbookScope) !== scopeIdentity(workbookScope));
+    const differs = (previous: { mapping: Json }) => {
+      const previousScope = jsonObject.safeParse(previous.mapping).data?.workbookScope;
+      return workbookScope && (!previousScope || scopeIdentity(previousScope) !== scopeIdentity(workbookScope));
+    };
     if (existing.data && differs(existing.data)) return NextResponse.json({error: "This file already has a different reviewed workbook scope. Review or undo that import before changing its scope.", importId: existing.data.id}, {status: 409});
     if (existing.data)
       return NextResponse.json({ importId: existing.data.id, status: existing.data.status });

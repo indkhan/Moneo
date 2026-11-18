@@ -42,6 +42,7 @@ import { titleChatTurn } from "@/lib/ai/chat-title";
 import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
 import { ownerBrief } from "@/lib/ai/owner-brief";
 import { awaitedLater } from "@/lib/awaited-later";
+import { jsonObject } from "@/lib/database";
 import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
 import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
 import { serviceRoleConfig } from "@/lib/env";
@@ -128,7 +129,10 @@ export async function POST(request: Request) {
   const replaceable = ADDS_TO_RUNNING.test(message) ? undefined
     : runningTasks.at(-1) ?? (lastAnswered?.requestId && lastAnswered.requestId !== requestId ? { requestId: lastAnswered.requestId, text: lastAnswered.text } : undefined);
   const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
-  const replayed = replayableHistory(history ?? [], regenerates).filter(item => !running.has(item.request_id)).reverse().map(item => item.context?.via === "call" ? { ...item, context: withoutCallBrief(item.context) } : item);
+  const replayed = replayableHistory(history ?? [], regenerates).filter(item => !running.has(item.request_id ?? "")).reverse().map(item => {
+    const context = jsonObject.safeParse(item.context);
+    return context.success && context.data.via === "call" ? { ...item, context: withoutCallBrief(context.data) } : item;
+  });
   const textMessages = [...replayed, submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)

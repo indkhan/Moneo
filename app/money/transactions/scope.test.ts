@@ -1,10 +1,12 @@
 import { expect, it } from "vitest";
 import { scopeLedger } from "./scope";
 
+type Chain = Record<"eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "ilike" | "is" | "contains", (column: string, value: never) => Chain>;
+
 const recorder = () => {
   const calls: string[] = [];
-  const q: Record<string, unknown> = {};
-  for (const name of ["eq", "neq", "gt", "gte", "lt", "lte", "ilike", "is", "contains"]) q[name] = (column: string, value: unknown) => { calls.push(`${name}:${column}:${value}`); return q; };
+  const q = {} as Chain;
+  for (const name of ["eq", "neq", "gt", "gte", "lt", "lte", "ilike", "is", "contains"] as const) q[name] = (column: string, value: unknown) => { calls.push(`${name}:${column}:${value}`); return q; };
   return { q, calls };
 };
 

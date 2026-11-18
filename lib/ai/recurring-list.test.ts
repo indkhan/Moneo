@@ -6,7 +6,7 @@ vi.mock("@/lib/recurring/suggestions", async importOriginal => ({ ...await impor
 
 it("gives pending suggestions the same exact fields as schedules, so pages never parse formatted money", async () => {
   const query: Record<string, unknown> = {};
-  for (const name of ["select", "eq", "is", "in", "order", "limit", "or", "range"]) query[name] = () => query;
+  for (const name of ["select", "eq", "is", "in", "order", "limit", "or", "range", "filter", "overrideTypes"]) query[name] = () => query;
   query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve);
   const result = await listRecurring({ supabase: { from: () => query }, workspace: { id: "w", timezone: "Europe/Berlin", locale: "en-IE" } } as never);
   expect(result.suggestions[0]).toMatchObject({ amount_min_minor: "-2000", amount_max_minor: "-1500", currency_code: "EUR", direction: "out", occurrences: 3 });

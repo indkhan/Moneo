@@ -14,7 +14,7 @@ let postings: {id: string; posted_on: string; description: string; amount_minor:
 vi.mock("@/lib/auth", () => ({requireWorkspace: async () => ({workspace: {id: "workspace", locale: "en-US"}, supabase: {
   from: (table: string) => {
     const read: typeof reads[number] = {table, orders: [], columns: ""}; reads.push(read);
-    const query = {select: (columns: string) => {read.columns = columns; return query;}, eq: () => query, in: () => query, is: () => query,
+    const query = {select: (columns: string) => {read.columns = columns; return query;}, eq: () => query, in: () => query, is: () => query, filter: () => query, overrideTypes: () => query,
       order: (column: string) => {read.orders.push(column); return query;}, limit: () => query,
       or: (cursor: string) => {read.cursor = cursor; return query;},
       range: async (from: number, to: number) => {

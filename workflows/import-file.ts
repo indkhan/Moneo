@@ -85,9 +85,8 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
       if (!firstSource.account_id || !mapped[0]) throw new Error("Legacy import route evidence is unavailable");
       frozenAccounts.set(JSON.stringify([mapped[0].accountName, mapped[0].currencyCode]), firstSource.account_id);
       const byNumber = new Map(mapped.map(row => [row.rowNumber, row]));
-      type LegacySource = { row_number: number; transaction_sources: { transactions: { account_id: string } | null }[] | { transactions: { account_id: string } | null } | null };
       for (let offset = 0; ; offset += 500) {
-        const sources = checked(await db.from("source_transactions").select("row_number, transaction_sources(transactions(account_id))").eq("workspace_id", workspaceId).eq("import_id", importId).order("id").range(offset, offset + 499)) as unknown as LegacySource[];
+        const sources = checked(await db.from("source_transactions").select("row_number, transaction_sources(transactions(account_id))").eq("workspace_id", workspaceId).eq("import_id", importId).order("id").range(offset, offset + 499)) ?? [];
         for (const source of sources) {
           const mappedRow = byNumber.get(source.row_number);
           const links = Array.isArray(source.transaction_sources) ? source.transaction_sources : [source.transaction_sources];

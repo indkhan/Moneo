@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { payloadSchemas } from "@/lib/ai/agent-team";
 
-type Context = { supabase: SupabaseClient; workspace: { id: string } };
+type Context = { supabase: Db; workspace: { id: string } };
 
 export const scheduleFields = z.object({
   name: z.string().trim().min(1).max(120),

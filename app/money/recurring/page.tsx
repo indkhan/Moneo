@@ -15,7 +15,6 @@ import { RecurringReview } from "./review";
 
 export const metadata = { title: "Recurring" };
 
-type Schedule = { id: string; name: string; category: { name: string } | null; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; schedule_anchor_on: string | null; source: string };
 const UPCOMING_DAYS = 30;
 
 export default async function RecurringPage() {
@@ -35,7 +34,7 @@ export default async function RecurringPage() {
   const liveAccounts = (accounts ?? []).filter(account => !account.archived_at).map(account => ({ id: account.id as string, name: account.name as string, currencyCode: account.currency_code as string }));
   const names: Record<string, string> = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
 
-  const schedules = ((scheduleData ?? []) as unknown as Schedule[]).map(item => {
+  const schedules = (scheduleData ?? []).map(item => {
     const dated = { ...item, account_id: item.account_id ?? "unassigned" };
     const upcoming = expandSchedule(dated, today, UPCOMING_DAYS);
     const amount = BigInt(item.amount_minor);

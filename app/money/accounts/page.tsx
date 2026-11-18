@@ -49,7 +49,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
   ]);
   if (historyError || viewsError || bankError || identifierError) throw new Error("Could not load account and saved view history");
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
-  const stillFed = new Set((bankAccounts ?? []).filter(connected => (connected.bank_connections as unknown as { status: string } | null)?.status !== "revoked").map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
+  const stillFed = new Set((bankAccounts ?? []).filter(connected => connected.bank_connections?.status !== "revoked").map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
   const today = calendarDate(evidence.asOf, timeZone);
   const trendFrom = calendarDate(new Date(Date.parse(evidence.asOf) - TREND_DAYS * 86400000), timeZone);

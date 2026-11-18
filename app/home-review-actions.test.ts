@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { categorizeGroups, skipUncategorized } from "./home-review-actions";
 
-const fixture = vi.hoisted(() => ({ rpc: vi.fn(), suggestions: vi.fn(), upsert: vi.fn() }));
+const fixture = vi.hoisted(() => ({ rpc: vi.fn(), suggestions: vi.fn(), upsert: vi.fn(), update: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ supabase: { rpc: fixture.rpc,
-  from: (table: string) => ({ select: () => ({ eq: () => ({ in: async (_column: string, ids: string[]) => ({ data: ids.map(id => ({ id, version: 2 })), error: null }) }) }), upsert: (...args: unknown[]) => { fixture.upsert(table, ...args); return { select: () => ({ single: async () => ({ data: { id: "00000000-0000-4000-8000-000000000009" }, error: null }) }) }; } }) }, workspace: { id: "owned" } }) }));
+  from: (table: string) => ({ select: () => ({ eq: () => ({ in: async (_column: string, ids: string[]) => ({ data: ids.map(id => ({ id, version: 2 })), error: null }) }) }), update: (...args: unknown[]) => ({ eq: async (...filter: unknown[]) => { fixture.update(table, ...args, ...filter); return { error: null }; } }), upsert: (...args: unknown[]) => { fixture.upsert(table, ...args); return { select: () => ({ single: async () => ({ data: { id: "00000000-0000-4000-8000-000000000009" }, error: null }) }) }; } }) }, workspace: { id: "owned" } }) }));
 vi.mock("@/lib/import/organization-loader", () => ({ loadOrganizationSuggestions: fixture.suggestions }));
 vi.mock("@/lib/finance/iou", () => ({ loadLoanPayoutIds: vi.fn() }));
 
@@ -50,5 +50,5 @@ it("categorizes every row of a group, including ones the organizer would not pro
 
 it("remembers Skip all so the Home card stays hidden until new rows arrive", async () => {
   expect(await skipUncategorized()).toBeUndefined();
-  expect(fixture.upsert).toHaveBeenCalledWith("workspace_settings", { workspace_id: "owned", uncategorized_skipped_at: expect.any(String) }, { onConflict: "workspace_id" });
+  expect(fixture.update).toHaveBeenCalledWith("workspace_settings", { uncategorized_skipped_at: expect.any(String) }, "workspace_id", "owned");
 });

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { modelForSettings } from "@/lib/ai/provider";
 import { aiConfigured } from "@/lib/ai/configured";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
@@ -6,7 +6,7 @@ import { stableId } from "@/lib/import/row";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
 
-export async function startSyncAgentRun(db: SupabaseClient, workspaceId: string, importIds: string[]) {
+export async function startSyncAgentRun(db: Db, workspaceId: string, importIds: string[]) {
   const landed = await db.from("imports").select("id").eq("workspace_id", workspaceId).in("id", importIds).eq("status", "completed").gt("new_rows", 0).limit(1);
   if (landed.error) throw new Error(landed.error.message);
   return landed.data.length ? startAgentRun(db, workspaceId, { trigger: "sync" }) : null;
@@ -14,7 +14,7 @@ export async function startSyncAgentRun(db: SupabaseClient, workspaceId: string,
 
 export const FIRST_REVIEW_DEADLINE_MS = 24 * 3_600_000;
 
-export async function maybeStartFirstReview(db: SupabaseClient, workspaceId: string, now = Date.now()) {
+export async function maybeStartFirstReview(db: Db, workspaceId: string, now = Date.now()) {
   const jobId = stableId(`${workspaceId}:first-financial-review`);
   const existing = await db.from("background_jobs").select("status").eq("id", jobId).maybeSingle();
   if (existing.error) throw existing.error;

@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 
-export async function claimBankSync(db: SupabaseClient, connectionId: string, workspaceId: string) {
+export async function claimBankSync(db: Db, connectionId: string, workspaceId: string) {
   const token = randomUUID();
   const claimed = await db.rpc("claim_bank_sync", { p_connection_id: connectionId, p_workspace_id: workspaceId, p_token: token });
   if (claimed.error) throw new Error(claimed.error.message);
   return claimed.data === true ? token : null;
 }
 
-export async function holdBankSync(db: SupabaseClient, connectionId: string, token: string) {
+export async function holdBankSync(db: Db, connectionId: string, token: string) {
   const held = await db.rpc("hold_bank_sync", { p_connection_id: connectionId, p_token: token });
   if (held.error) throw new Error(held.error.message);
   return held.data === true;

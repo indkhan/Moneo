@@ -64,6 +64,10 @@ jobs:
             sleep $((attempt * 30))
           done
           exit 1
+      - name: Check the generated database types are current
+        run: |
+          npm run db:types
+          git diff --exit-code lib/database.types.ts || { echo "::error file=lib/database.types.ts::The migrations and lib/database.types.ts disagree. Run npm run db:types and commit the result."; exit 1; }
       - run: npm run test:db
 
   browser:
