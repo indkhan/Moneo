@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { requireWorkspace } from "@/lib/auth";
+import type { ReadonlyWorkspace, requireWorkspace } from "@/lib/auth";
 import { investmentsPortfolio, investmentsSecurity, investmentsTransactions, investmentsWatchlist, securityInput, transactionsInput } from "@/lib/scalable/live";
 import { orderInputSchema, proposeScalableCancel, proposeScalableOrder } from "@/lib/scalable/orders";
 import { withScalable } from "@/lib/scalable/server";
@@ -14,7 +14,7 @@ export const TRADE_INTENT = /\b(buy|sell|kauf\w*|verkauf\w*|orders?|purchase|inv
 
 export function investmentTools({ connectionId, tradingAccess, message, priorUserText, evidence, context, onCard }: {
   connectionId: string; tradingAccess: "full" | "read" | null; message: string; priorUserText: string[];
-  evidence: <T>(read: (latest: Context) => Promise<T>) => Promise<T>;
+  evidence: <T>(read: (latest: ReadonlyWorkspace) => Promise<T>) => Promise<T>;
   context: () => Promise<Context & { chatRequestId: string }>;
   onCard: (proposalId: string) => void;
 }) {

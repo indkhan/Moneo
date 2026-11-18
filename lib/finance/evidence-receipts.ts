@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { Db } from "@/lib/database";
+import type { Db, ReadonlyDb } from "@/lib/database";
 import { AI_DATA_SCOPES } from "@/lib/workspace-settings";
 import { minorDigits } from "./fx";
 
@@ -92,7 +92,7 @@ export function evidenceFreshness(receipt: FinancialEvidenceReceipt, sourceVersi
       ? { status: "stale" as const, reason: "Sources, classifications, coverage or calculation rules have changed. This retained result remains the original dated evidence." }
       : { status: "current" as const, reason: "Current source versions and calculation rules match this retained evidence." };
 }
-export async function loadEvidenceReceipt(db: Db, workspaceId: string, id: string): Promise<EvidenceReceipt | null> {
+export async function loadEvidenceReceipt(db: ReadonlyDb, workspaceId: string, id: string): Promise<EvidenceReceipt | null> {
   z.uuid().parse(workspaceId); z.uuid().parse(id);
   const result = await db.from("financial_evidence_receipts").select("receipt").eq("workspace_id", workspaceId).eq("id", id).maybeSingle();
   if (result.error) throw result.error;

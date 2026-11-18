@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireWorkspace } from "@/lib/auth";
+import type { ReadonlyWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, listWealth, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
@@ -12,7 +12,7 @@ import { readableToolOutput, type EntityNames } from "@/lib/ai/tool-output";
 import { securityInput } from "@/lib/scalable/live";
 import { scalableActivity, scalablePortfolio, scalableSecurity, scalableWatchlist } from "@/lib/scalable/artifact";
 
-type Context = Awaited<ReturnType<typeof requireWorkspace>>;
+type Context = ReadonlyWorkspace;
 const empty = z.object({}).strict();
 export type QueryShared = { entities?: Promise<InvestigationEntities>; results?: Map<string, Promise<unknown>> };
 const imports = (context: Context) => context.settings.ai_data_scopes.includes("imports");

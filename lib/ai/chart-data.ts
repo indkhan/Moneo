@@ -1,5 +1,5 @@
+import type { ReadonlyDb } from "@/lib/database";
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { archiveDates, dayRange, netWorthSeries } from "@/lib/finance/net-worth";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
@@ -29,7 +29,7 @@ export function chartDataScopes(dataset: ChartDataInput["dataset"]): AiDataScope
   return ["accounts", "transactions"];
 }
 
-type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; display_currency: string; locale: string } };
+type Context = { supabase: ReadonlyDb; workspace: { id: string; timezone: string; display_currency: string; locale: string } };
 const DAY = 86_400_000;
 const daysBetween = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) / DAY + 1;
 

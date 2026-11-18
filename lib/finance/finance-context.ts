@@ -1,8 +1,8 @@
-import type { Db } from "@/lib/database";
+import type { ReadonlyDb } from "@/lib/database";
 import type { AiDataScope, WorkspaceSettings } from "@/lib/workspace-settings";
 
 export type FinanceContext = {
-  supabase: Db;
+  supabase: ReadonlyDb;
   workspace: { id: string; display_currency: string; timezone: string };
   settings: Pick<WorkspaceSettings, "timezone" | "ai_data_scopes">;
 };

@@ -1,7 +1,7 @@
+import type { ReadonlyDb } from "@/lib/database";
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
-export async function agentFindings(supabase: SupabaseClient, workspaceId: string, { includeDecided = false } = {}) {
+export async function agentFindings(supabase: ReadonlyDb, workspaceId: string, { includeDecided = false } = {}) {
   const runs = await supabase.from("agent_runs").select("id, status, trigger, created_at, briefing").eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false }).limit(5);
   if (runs.error) throw new Error(runs.error.message);
@@ -22,7 +22,7 @@ export const agentDecisionSchema = z.object({
   decision: z.enum(["accept", "reject"]).describe("accept also covers 'mark as seen/watched/acknowledged'; reject dismisses"),
 }).strict();
 
-export async function openAgentProposalIds(supabase: SupabaseClient, workspaceId: string, ids: string[]) {
+export async function openAgentProposalIds(supabase: ReadonlyDb, workspaceId: string, ids: string[]) {
   const { data, error } = await supabase.from("agent_proposals").select("id").eq("workspace_id", workspaceId).in("id", ids)
     .not("run_id", "is", null).in("status", ["proposed", "failed"]);
   if (error) throw new Error(error.message);
