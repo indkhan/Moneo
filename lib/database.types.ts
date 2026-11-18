@@ -2588,6 +2588,11 @@ isOneToOne: false
 "import_batch_candidates":
 { Args: { "p_import_id": string,"p_offset": number,"p_run_version": number,"p_workspace_id": string }; Returns: Json
                            },
+"import_rows_progress":
+{ Args: { "p_first_row": number,"p_import_id": string,"p_last_row": number }; Returns: {
+              "classification_review_rows": number,"matched_rows": number,"new_rows": number,"rejected_rows": number,"review_rows": number
+            }[]
+                           },
 "ingest_import_batch":
 { Args: { "p_decisions": Json,"p_import_id": string,"p_offset": number,"p_run_version": number,"p_workspace_id": string }; Returns: Json
                            },
