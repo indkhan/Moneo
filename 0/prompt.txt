@@ -1,0 +1,3 @@
+[User attached one or more files without additional text. Respond using the conversation context and the attached files.]
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\017d7882-28a4-4569-aac6-db40c51b6659-f7994ef3-43d2-42bb-8271-1650e1f1960a.png]
