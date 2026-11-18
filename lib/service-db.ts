@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import { serviceRoleConfig } from "@/lib/env";
 
 const TRANSIENT = /is not reachable|socket hang up|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|UND_ERR_SOCKET|fetch failed|bad gateway|service unavailable|gateway time-?out/i;
 const TRANSIENT_STATUS = new Set([502, 503, 504]);
@@ -44,7 +45,7 @@ export function serviceClient(url: string, key: string) {
 }
 
 export function serviceDb() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("The service database is not configured");
-  return serviceClient(url, key);
+  const config = serviceRoleConfig();
+  if (!config) throw new Error("The service database is not configured");
+  return serviceClient(config.url, config.key);
 }

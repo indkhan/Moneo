@@ -16,12 +16,12 @@ import type {ReviewProgress} from "@/lib/finance/review-controller";
 import {buildReviewPrompt, prioritizeReviewReceipts, withFormattedValue} from "@/lib/finance/review-prompt";
 import {synthesizeReview} from "@/lib/finance/review-synthesis";
 import type { requireWorkspace } from "@/lib/auth";
+import { serviceRoleConfig } from "@/lib/env";
 
 function service(signal?: AbortSignal) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new FatalError("Financial review service is not configured");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, ...(signal ? {global: {fetch: (input, init) =>
+  const config = serviceRoleConfig();
+  if (!config) throw new FatalError("Financial review service is not configured");
+  return createClient(config.url, config.key, { auth: { persistSession: false, autoRefreshToken: false }, ...(signal ? {global: {fetch: (input, init) =>
     fetch(input, {...init, signal: AbortSignal.any([signal, ...(init?.signal ? [init.signal] : [])])})}} : {}) });
 }
 

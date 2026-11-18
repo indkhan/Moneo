@@ -1,16 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
-import { hasSupabase } from "@/lib/env";
+import { hasSupabase, ownerCredentials, supabaseClientConfig } from "@/lib/env";
 import { supabaseFetch } from "@/lib/supabase-fetch";
 
 export async function proxy(request: NextRequest) {
   if (request.headers.has("tailscale-funnel-request")) return new NextResponse("Moneo is private to your own devices.", { status: 403 });
   let response = NextResponse.next({ request });
   if (!hasSupabase() || request.headers.has("authorization")) return response;
+  const config = supabaseClientConfig();
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    config.url,
+    config.key,
     {
       global: { fetch: supabaseFetch },
       cookies: {
@@ -27,8 +28,8 @@ export async function proxy(request: NextRequest) {
   const { data, error } = await supabase.auth.getClaims();
   if (data?.claims || isAuthRetryableFetchError(error)) return response;
   if (request.headers.has("x-moneo-test")) return new NextResponse("Browser tests need a QA session.", { status: 401 });
-  const email = process.env.MONEO_OWNER_EMAIL, password = process.env.MONEO_OWNER_PASSWORD;
-  if (email && password) await supabase.auth.signInWithPassword({ email, password });
+  const owner = ownerCredentials();
+  if (owner) await supabase.auth.signInWithPassword(owner);
   return response;
 }
 

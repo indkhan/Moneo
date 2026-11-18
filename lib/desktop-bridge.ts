@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { desktopBridgeUrl } from "@/lib/env";
 
-const bridge = () => process.env.MONEO_DESKTOP === "1" ? process.env.MONEO_DESKTOP_BRIDGE : undefined;
+const bridge = desktopBridgeUrl;
 export const isDesktop = () => Boolean(bridge());
 
 const CONTINUE_PAGE = "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Return to Moneo</title>"

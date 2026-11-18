@@ -6,12 +6,13 @@ import { requireWorkspace } from "@/lib/auth";
 import { parseCsv, parseExcel, workbookScopeSchema, validateImportConfirmation } from "@/lib/import/csv";
 import { importFile } from "@/workflows/import-file";
 import { jsonObject, type Json } from "@/lib/database";
+import { hasServiceRoleKey } from "@/lib/env";
 
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
   catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return NextResponse.json({ error: "Import service is not configured" }, { status: 503 });
+  if (!hasServiceRoleKey()) return NextResponse.json({ error: "Import service is not configured" }, { status: 503 });
 
   try {
     const form = await request.formData();

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ArtifactThumbnail } from "@/components/artifact-frame";
-import { usePolling } from "@/lib/ai/use-polling";
+import { usePolling } from "@/lib/use-polling";
 
 export function ArtifactPreview({ id, title, hasPage, building }: { id: string; title: string; hasPage: boolean; building: boolean }) {
   const router = useRouter();

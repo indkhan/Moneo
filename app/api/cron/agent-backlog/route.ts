@@ -2,13 +2,14 @@ import { cronRoute } from "@/lib/cron";
 import { serviceClient } from "@/lib/service-db";
 import { startBacklogRun } from "@/lib/ai/agent-dispatch";
 import { maybeStartFirstReview } from "@/lib/import/follow-up";
+import { serviceRoleConfig } from "@/lib/env";
 
 export const maxDuration = 60;
 
 export const GET = cronRoute(async () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return Response.json({ error: "Agent service unavailable" }, { status: 503 });
-  const db = serviceClient(url, key);
+  const service = serviceRoleConfig();
+  if (!service) return Response.json({ error: "Agent service unavailable" }, { status: 503 });
+  const db = serviceClient(service.url, service.key);
   const { data, error } = await db.from("workspaces").select("id").order("id").limit(100);
   if (error) return Response.json({ error: "Workspaces unavailable" }, { status: 503 });
   let started = 0, failed = 0;

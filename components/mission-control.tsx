@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { usePolling } from "@/lib/use-polling";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ChevronRight, CircleDashed, CircleSlash, Info, LoaderCircle, Play, Sparkles, Square, Wrench, X } from "lucide-react";
@@ -89,21 +90,15 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
     const response = await fetch(`/api/agents/runs/${run.id}`, { cache: "no-store" });
     if (response.ok) setRun(await response.json());
   }
-  useEffect(() => {
-    if (!active) return;
-    let stopped = false;
-    let failures = 0;
-    const tick = async () => {
-      try {
-        const response = await fetch(`/api/agents/runs/${initial.id}`, { cache: "no-store" });
-        if (!response.ok) throw new Error();
-        const next = await response.json();
-        if (!stopped) { setRun(next); failures = 0; setLost(false); }
-      } catch { failures += 1; if (failures >= 3 && !stopped) setLost(true); }
-    };
-    const timer = window.setInterval(() => void tick(), 1200);
-    return () => { stopped = true; window.clearInterval(timer); };
-  }, [active, initial.id]);
+  const failures = useRef(0);
+  usePolling(async signal => {
+    try {
+      const response = await fetch(`/api/agents/runs/${initial.id}`, { cache: "no-store", signal });
+      if (!response.ok) throw new Error();
+      const next = await response.json();
+      if (!signal.aborted) { setRun(next); failures.current = 0; setLost(false); }
+    } catch { failures.current += 1; if (failures.current >= 3 && !signal.aborted) setLost(true); }
+  }, 1200, active);
 
   async function control(action: "cancel" | "resume") {
     if (controlling) return;

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { authorizeUrl, exchangeCode, pkcePair, refreshTokens, rpcMessage, SCALABLE_MCP_URL, scalableMcp, ScalableError } from "./client";
+import { authorizeUrl, exchangeCode, pkcePair, refreshTokens, rpcMessage, scalableMcpUrl, scalableMcp, ScalableError } from "./client";
 
 const reply = (body: unknown, init: ResponseInit & { headers?: Record<string, string> } = {}) =>
   new Response(typeof body === "string" ? body : JSON.stringify(body), { status: 200, ...init, headers: { "content-type": "application/json", ...init.headers } });
@@ -13,7 +13,7 @@ describe("Scalable OAuth", () => {
 
   it("asks for offline access to the MCP resource", () => {
     const url = new URL(authorizeUrl({ clientId: "c1", redirectUri: "http://localhost:3000/api/scalable/callback", state: "s", challenge: "x" }));
-    expect(Object.fromEntries(url.searchParams)).toMatchObject({ client_id: "c1", code_challenge_method: "S256", resource: SCALABLE_MCP_URL, state: "s" });
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({ client_id: "c1", code_challenge_method: "S256", resource: scalableMcpUrl(), state: "s" });
     expect(url.searchParams.get("scope")).toContain("offline_access");
   });
 

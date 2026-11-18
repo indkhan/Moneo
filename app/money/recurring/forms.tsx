@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { Modal } from "@/components/command-palette";
 import { cadenceWords, recurringCadences } from "@/lib/finance/cadences";
 import type { ActionState } from "./actions";
@@ -30,10 +30,13 @@ export function ScheduleDialog({ title, trigger, triggerLabel, triggerClassName,
 }) {
   const [openedAt, setOpenedAt] = useState<number | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
-  const [state, submit, pending] = useActionState<ActionState, FormData>(action, {});
+  const [state, submit, pending] = useActionState<ActionState, FormData>(async (previous, data) => {
+    const next = await action(previous, data);
+    if (next.done) onDone?.();
+    return next;
+  }, {});
   const [removed, removeSubmit, removing] = useActionState<ActionState, FormData>(remove ?? (async () => ({})), {});
   const [values, setValues] = useState(defaults);
-  useEffect(() => { if (state.done) onDone?.(); }, [state.done]); // eslint-disable-line react-hooks/exhaustive-deps
   const [accountId, setAccountId] = useState(accounts?.[0]?.id ?? "");
   const open = openedAt !== null && Math.max(state.done ?? 0, removed.done ?? 0) < openedAt;
   const close = () => setOpenedAt(null);

@@ -9,7 +9,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ChevronLeft, Menu, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, SquarePen, Trash2, X } from "lucide-react";
 import { ChatForm } from "@/components/chat-form";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
-import { usePolling } from "@/lib/ai/use-polling";
+import { usePolling } from "@/lib/use-polling";
+import { useDelay } from "@/lib/use-timeout";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
 import { VOICE_CALL_TITLE, VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
@@ -87,22 +88,23 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   useEffect(() => { latest.current = { selectedId, draftId }; if (selectedId) load(selectedId); });
   const followOutput = useFollowOutput(end, [entry?.messages.length, active], activeId);
   const resuming = entry?.running && !active ? activeId : null;
-  usePolling(() => void json<Loaded>(`/api/conversations/${resuming}`)
+  usePolling(signal => json<Loaded>(`/api/conversations/${resuming}`, { signal })
     .then(data => { if (!data.running) { setEntries(current => ({ ...current, [resuming!]: loaded(data) })); retitle(resuming!, data.selected.title); } }).catch(() => {}), 3000, !!resuming);
 
   const waitingOnCall = entry?.messages.some(item => item.call && (item.call.summaryStatus === "pending" || item.call.unfinished.some(task => task.status === "running"))) ? activeId : null;
   const tries = useRef(0);
   useEffect(() => { tries.current = 0; }, [waitingOnCall]);
-  usePolling(() => { if (++tries.current <= 60) fetchEntry(waitingOnCall!).then(data => { setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) })); retitle(waitingOnCall!, data.selected.title); }).catch(() => {}); }, 3000, !!waitingOnCall);
+  usePolling(signal => ++tries.current > 60 ? undefined : json<Loaded>(`/api/conversations/${waitingOnCall}`, { signal }).then(data => { setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) })); retitle(waitingOnCall!, data.selected.title); }).catch(() => {}), 3000, !!waitingOnCall);
 
+  const [later, cancelLater] = useDelay();
   useEffect(() => {
     const q = query.trim();
     if (!q) return;
     const controller = new AbortController();
-    const timer = setTimeout(() => json<{ threads: HistoryThread[] }>(`/api/conversations?${new URLSearchParams({ view: "threads", q })}`, { signal: controller.signal })
+    later(() => json<{ threads: HistoryThread[] }>(`/api/conversations?${new URLSearchParams({ view: "threads", q })}`, { signal: controller.signal })
       .then(data => { setResults(data.threads); setSearching(false); }).catch(cause => { if (!controller.signal.aborted) { setResults(null); setSearching(false); setNotice(cause.message); } }), 250);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [query]);
+    return () => { cancelLater(); controller.abort(); };
+  }, [query, later, cancelLater]);
 
   function open(event: React.MouseEvent, id: string | null) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;

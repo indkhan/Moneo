@@ -116,6 +116,8 @@ When a correction could recur, enforce it (skill `review-to-rule`) and add a row
 | The modules every page loads (`lib/auth`, `lib/settings`, `lib/safe-action`, `lib/env`) never import `lib/ai` | `moneo/import-boundaries` (lint) |
 | Dates use the owner's time zone from Settings (detected from their device, saved on first load); no function assumes one | required `timeZone` parameters (compiler); `no-restricted-syntax` (lint) |
 | No hard-coded port 3000 or app address outside `lib/env.ts` | `no-restricted-syntax` (lint) |
+| Application code reads configuration through the typed Zod accessors in `lib/env.ts`, never `process.env` (only `NODE_ENV`, which Next inlines, is allowed). `scripts/`, `desktop/`, `e2e/`, `next.config.ts`, `instrumentation.ts` (needs the literal `NEXT_RUNTIME`) and tests read it directly | `moneo/no-process-env` (lint), `lib/env.test.ts` |
+| Client code never calls `setTimeout` or `setInterval`; repeat with `usePolling`/`useNow` (`lib/use-polling.ts`, `lib/use-now.ts`), delay with `useTimeout`/`useDelay` (`lib/use-timeout.ts`) | `no-restricted-syntax` (lint, `app/` and `components/`) |
 | Tests never wait on a real timer, skip from inside a test, read migration text, or touch port 3000 | `no-restricted-syntax` (lint) |
 | One way to make a database client: `serviceDb()` for the service role, `createClient()` in `lib/supabase-server.ts` for the owner | `no-restricted-imports` (lint) |
 | Secret-bearing server modules (`lib/supabase-server.ts`, `lib/service-db.ts`, `lib/service-keys.ts`, `lib/bank/server.ts`, `lib/scalable/server.ts`) can't reach a client bundle | `import "server-only"` (Next build fails on a client import; Vitest aliases it to an empty module) |

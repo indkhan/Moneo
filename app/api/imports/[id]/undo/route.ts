@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/auth";
 import { serviceDb } from "@/lib/service-db";
+import { hasServiceRoleKey } from "@/lib/env";
 
 type UndoPreview = {
   import_id: string;
@@ -70,7 +71,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 }
 
 async function resetBankSyncWindow(context: Awaited<ReturnType<typeof requireWorkspace>>, importId: string) {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  if (!hasServiceRoleKey()) return;
   const imported = await context.supabase.from("imports").select("mapping").eq("id", importId).eq("workspace_id", context.workspace.id).maybeSingle();
   const accountName = (imported.data?.mapping as { accountName?: unknown } | null)?.accountName;
   if (typeof accountName !== "string") return;

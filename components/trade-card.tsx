@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useNow } from "@/lib/use-now";
 import Link from "next/link";
 import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import type { ChatProposal } from "@/lib/ai/iou-actions";
@@ -11,15 +12,8 @@ import type { TradeReview } from "@/lib/scalable/orders";
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { trade: TradeReview };
 
 function useSecondsLeft(expiresAt: string | null) {
-  const left = () => expiresAt ? Math.max(0, Math.floor((Date.parse(expiresAt) - Date.now()) / 1000)) : null;
-  const [seconds, setSeconds] = useState(left);
-  useEffect(() => {
-    if (!expiresAt) return;
-    const timer = setInterval(() => setSeconds(left()), 1000);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expiresAt]);
-  return seconds;
+  const now = useNow(1000, !!expiresAt);
+  return expiresAt ? Math.max(0, Math.floor((Date.parse(expiresAt) - now) / 1000)) : null;
 }
 
 export function TradeCard({ id, proposal, locale = "en-GB", onChange }: { id: string; proposal: Proposal; locale?: string; onChange: (next: Proposal) => void }) {
