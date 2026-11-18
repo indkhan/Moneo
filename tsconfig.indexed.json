@@ -5,5 +5,5 @@
     "incremental": false
   },
   "include": ["lib/bank/**/*.ts", "lib/finance/**/*.ts"],
-  "exclude": ["node_modules", "lib/finance/**/*.test.ts"]
+  "exclude": ["node_modules"]
 }
