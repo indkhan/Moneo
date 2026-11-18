@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { FatalError, RetryableError, getStepMetadata, getWorkflowMetadata } from "workflow";
 import { getRun } from "workflow/api";
 import { modelForSettings } from "@/lib/ai/provider";
-import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
+import { aiScopeGuard, loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { captureToolEvidence } from "@/lib/finance/capture-evidence";
 import { loadEvidenceReceipt, evidenceFingerprint, type EvidenceReceipt } from "@/lib/finance/evidence-receipts";
@@ -15,7 +15,7 @@ import {resolveReviewRequest, scheduledReviewRequest} from "@/lib/finance/review
 import type {ReviewProgress} from "@/lib/finance/review-controller";
 import {buildReviewPrompt, prioritizeReviewReceipts, withFormattedValue} from "@/lib/finance/review-prompt";
 import {synthesizeReview} from "@/lib/finance/review-synthesis";
-import type { requireWorkspace } from "@/lib/auth";
+import type { GuardedFinanceContext } from "@/lib/finance/finance-context";
 import { serviceRoleConfig } from "@/lib/env";
 
 function service(signal?: AbortSignal) {
@@ -169,7 +169,7 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
     if (workspace.error) throw workspace.error;
     reviewScopes(settings);
     const raw = await loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, { timezone: settings.timezone, scopes: settings.ai_data_scopes, now: new Date() });
-    const captureContext = { supabase: db, workspace: { ...workspace.data, id: workspaceId, timezone: settings.timezone }, settings } as Awaited<ReturnType<typeof requireWorkspace>>;
+    const captureContext: GuardedFinanceContext = { supabase: db, workspace: { ...workspace.data, id: workspaceId, timezone: settings.timezone }, settings, requireScopes: aiScopeGuard(settings) };
     const receipts = await captureToolEvidence("reviews_investigate", {}, raw, captureContext, db);
     const summary = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== "calculationEvidence")) as Omit<typeof raw, "calculationEvidence">;
     return { ...summary, verification: { version: 1, method: "structured-evidence-v1", receiptIds: receipts.map(receipt => receipt.id) } };

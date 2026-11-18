@@ -1,13 +1,14 @@
 import { expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { requireWorkspace } from "@/lib/auth";
-import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { aiScopeGuard, DEFAULT_SETTINGS, type WorkspaceSettings } from "@/lib/settings";
+import type { GuardedFinanceContext } from "./finance-context";
 import { captureToolEvidence } from "./capture-evidence";
 import { investigationSchema, type InvestigationRow } from "./investigation";
 const fixture = vi.hoisted(() => ({ dataset: vi.fn(), balances: vi.fn() }));
 vi.mock("./investigation-reader", async original => ({ ...await original<typeof import("./investigation-reader")>(), loadInvestigationDataset: fixture.dataset }));
 vi.mock("./tools", async original => ({ ...await original<typeof import("./tools")>(), getBalances: fixture.balances }));
-const context = { workspace: { id: "00000000-0000-4000-8000-000000000001", timezone: "UTC" }, settings: DEFAULT_SETTINGS } as Awaited<ReturnType<typeof requireWorkspace>>;
+const guarded = (settings: WorkspaceSettings) => ({ workspace: { id: "00000000-0000-4000-8000-000000000001", display_currency: "EUR", timezone: "UTC" }, settings, requireScopes: aiScopeGuard(settings) }) as unknown as GuardedFinanceContext;
+const context = guarded(DEFAULT_SETTINGS);
 it("retains owned ordinary query inputs, exact results and capture scopes before publication", async () => {
   const insert = vi.fn(async () => ({ error: null }));
   const service = { from: () => ({ insert }) } as unknown as SupabaseClient;
@@ -20,12 +21,12 @@ it("retains owned ordinary query inputs, exact results and capture scopes before
 });
 it("does not persist or expose newly revoked scopes", async () => {
   const insert = vi.fn();
-  await expect(captureToolEvidence("analytics_cashflow", {}, {}, { ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: [] } }, { from: () => ({ insert }) } as unknown as SupabaseClient)).rejects.toThrow(/disabled/);
+  await expect(captureToolEvidence("analytics_cashflow", {}, {}, guarded({ ...DEFAULT_SETTINGS, ai_data_scopes: [] }), { from: () => ({ insert }) } as unknown as SupabaseClient)).rejects.toThrow(/disabled/);
   expect(insert).not.toHaveBeenCalled();
 });
 it.each(["planning", "imports"] as const)("rejects revocation of actually read optional %s scope before receipt capture", async revoked => {
   const insert = vi.fn(async () => ({ error: null }));
-  const latest = { ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(scope => scope !== revoked) } };
+  const latest = guarded({ ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(scope => scope !== revoked) });
   const capture = captureToolEvidence as unknown as (...args: unknown[]) => Promise<unknown>;
   await expect(capture("reviews_investigate", {}, { planning: { secret: "Synthetic optional result" }, sourceCoverage: { imports: "Synthetic read" } }, latest, { from: () => ({ insert }) }, ["accounts", "transactions", "planning", "imports"])).rejects.toThrow(new RegExp(revoked));
   expect(insert).not.toHaveBeenCalled();

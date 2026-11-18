@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { aiScopeGuard } from "@/lib/settings";
 import { readEvidenceView } from "@/lib/finance/evidence-view";
 import { formatMoney } from "@/lib/finance/format";
 import { financialMetricHref, financialQualificationText } from "@/lib/finance/evidence-receipts";
@@ -27,7 +28,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!parsed.success) notFound();
   const { locale, timezone } = context.workspace;
   const back = parsed.data.from ? { href: parsed.data.from, label: "← Back to the review" } : { href: "/ai/activity?filter=analyses", label: "← AI review history" };
-  const failed = await readEvidenceView(context, id, parsed.data.metric).then(view => ({ view, failure: null }), (cause: unknown) => {
+  const failed = await readEvidenceView({ ...context, requireScopes: aiScopeGuard(context.settings) }, id, parsed.data.metric).then(view => ({ view, failure: null }), (cause: unknown) => {
     const message = cause instanceof Error ? cause.message : "";
     return { view: null, failure: /mismatch|Metric unavailable/.test(message) ? null : /^AI access to /.test(message) ? "scope" as const : "service" as const };
   });

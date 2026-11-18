@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { aiScopeGuard } from "@/lib/settings";
 import { readEvidenceView } from "@/lib/finance/evidence-view";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -9,7 +10,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const parsed = z.object({ id: z.uuid(), metric: z.string().min(1).max(200).optional(), source: z.string().min(1).max(200).optional() }).safeParse({ id, metric: query.get("metric") ?? undefined, source: query.get("source") ?? undefined });
   if (!parsed.success) return Response.json({ error: "Invalid evidence request" }, { status: 400 });
   try {
-    const view = await readEvidenceView(context, id, parsed.data.metric);
+    const view = await readEvidenceView({ ...context, requireScopes: aiScopeGuard(context.settings) }, id, parsed.data.metric);
     if (!view) return Response.json({ error: "Evidence unavailable" }, { status: 404 });
     if (parsed.data.source) {
       const source = view.supportingRecords.find(record => record.id === parsed.data.source);

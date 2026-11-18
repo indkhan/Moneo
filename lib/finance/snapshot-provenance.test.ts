@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { requireWorkspace } from "@/lib/auth";
+import type { FinanceContext } from "./finance-context";
 import { settingsSchema } from "@/lib/settings";
 import { getBalances } from "./tools";
 import { buildReviewEvidence } from "./review";
@@ -19,7 +19,7 @@ it.each(["manual", "import:00000000-0000-4000-8000-000000000002:row:7", "unknown
     const query = { select: () => query, eq: () => query, order: () => query, range: async (from: number, to: number) => ({ data: rows.slice(from, to + 1), error: null }) };
     return query;
   } } as unknown as SupabaseClient;
-  const context = { supabase: db, workspace: { id: workspaceId, timezone: "UTC" }, settings: settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions"] }) } as Awaited<ReturnType<typeof requireWorkspace>>;
+  const context = { supabase: db, workspace: { id: workspaceId, display_currency: "EUR", timezone: "UTC" }, settings: settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions"] }) } as FinanceContext;
   const direct = await getBalances(context, false, true);
   const review = buildReviewEvidence(accounts, snapshots, [], "2026-07-04", "2026-10-01", { asOf: now, ledger: [], timeZone: "UTC" });
   for (const [name, result, ids] of [

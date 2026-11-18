@@ -1,7 +1,6 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { cashflow } from "./tools";
-import type { requireWorkspace } from "@/lib/auth";
-vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
+import type { FinanceContext } from "./finance-context";
 
 const account = "00000000-0000-4000-8000-000000000001";
 const rows = [{ id: "eur", parent_transaction_id: "eur", account_id: account, posted_on: "2026-10-07", amount_minor: "-100", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [], version: 0 }, { id: "usd", parent_transaction_id: "usd", account_id: account, posted_on: "2026-10-07", amount_minor: "-101", currency_code: "USD", status: "posted", kind: "ordinary", review_reasons: [], version: 2 }];
@@ -12,7 +11,7 @@ function context(rates = [{ id: "dated-rate", from_currency: "USD", to_currency:
     const query = { select: () => query, eq: () => query, gte: () => query, lte: () => query, order: () => query, in: (key: string, values: string[]) => { calls.push([key, values]); accountIds = values; return query; }, range: async () => ({ data: table === "fx_rates" ? rates : rows.filter(row => !accountIds || accountIds.includes(row.account_id)), error: null }) };
     return query;
   } };
-  return { value: { supabase, workspace: { id: "synthetic-workspace", display_currency: "EUR" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>, calls };
+  return { value: { supabase, workspace: { id: "synthetic-workspace", display_currency: "EUR" } } as unknown as FinanceContext, calls };
 }
 const period = { from: "2026-10-01", to: "2026-10-07", currencyCode: "EUR" };
 it("keeps unspecified currency accounting unchanged and enables explicit exact base reporting", async () => {
