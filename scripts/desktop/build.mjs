@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -15,13 +15,28 @@ function fail(message) {
   process.exit(1);
 }
 
+function withTraceProbe(run) {
+  const dataFolder = path.join(root, ".data");
+  const probe = path.join(dataFolder, "trace-probe");
+  const hadFolder = existsSync(dataFolder);
+  if (!hadFolder) mkdirSync(dataFolder);
+  const addedProbe = !existsSync(probe);
+  if (addedProbe) writeFileSync(probe, "");
+  try {
+    return run();
+  } finally {
+    if (addedProbe) rmSync(probe, { force: true });
+    if (!hadFolder) rmSync(dataFolder, { recursive: true, force: true });
+  }
+}
+
 function buildNext() {
   const envFiles = [".env", ".env.local", ".env.production", ".env.production.local"].filter(name => existsSync(path.join(root, name)));
   const leaking = envFiles.filter(name => /^\s*NEXT_PUBLIC_/m.test(readFileSync(path.join(root, name), "utf8")));
   if (leaking.length) fail(`${leaking.join(", ")} set NEXT_PUBLIC_* variables, which Next.js would build into the app. Build the desktop app from a checkout without them (CI, or a fresh worktree).`);
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("NEXT_PUBLIC_")));
   Object.assign(env, { MONEO_DESKTOP_BUILD: "1", NEXT_DIST_DIR: distDir, NEXT_TELEMETRY_DISABLED: "1" });
-  const result = spawnSync(process.execPath, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "build"], { cwd: root, env, stdio: "inherit" });
+  const result = withTraceProbe(() => spawnSync(process.execPath, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "build"], { cwd: root, env, stdio: "inherit" }));
   if (result.status !== 0) fail("next build failed");
 }
 
