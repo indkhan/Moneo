@@ -1,13 +1,13 @@
 import "server-only";
 import { serviceDb } from "@/lib/service-db";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
-import { getEnv } from "@/lib/env";
+import { getEnv, hasBankTokenKey, hasServiceRoleKey } from "@/lib/env";
 import { refreshTokens, scalableMcp, ScalableError, type ScalableMcp, type ScalableTokens } from "./client";
 
 export const scalableRedirectUri = () => new URL("/api/scalable/callback", getEnv().NEXT_PUBLIC_APP_URL).toString();
 
 export function scalableConfigured() {
-  return Boolean(process.env.BANK_TOKEN_ENCRYPTION_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return hasBankTokenKey() && hasServiceRoleKey();
 }
 
 export const sealTokens = (tokens: ScalableTokens, connectionId: string) => encryptToken(JSON.stringify(tokens), connectionId);

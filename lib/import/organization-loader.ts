@@ -1,10 +1,10 @@
-import type {SupabaseClient} from '@supabase/supabase-js';
+import type { Db } from "@/lib/database";
 import {z} from 'zod';
 import {versionedRows} from '@/lib/finance/transaction-input';
-import {MAX_ORGANIZATION_RULES,organizationProposals,organizationRuleSchema,type OrganizationRow} from '@/lib/import/organization';
+import {MAX_ORGANIZATION_RULES,organizationKindSchema,organizationProposals,organizationRuleSchema,type OrganizationRow} from '@/lib/import/organization';
 
 const columns='id,version,description,merchant_id,category_id,kind,review_reasons,posted_on,amount_minor::text,currency_code,status,organized_by';
-export async function loadOrganizationSuggestions(db:SupabaseClient,workspaceId:string,selection:unknown) {
+export async function loadOrganizationSuggestions(db:Db,workspaceId:string,selection:unknown) {
  z.uuid().parse(workspaceId);const selected=versionedRows.parse(selection),ids=selected.map(row=>row.id);
  const [current,history,corrections,rules]=await Promise.all([
   db.from('transactions').select(columns).eq('workspace_id',workspaceId).neq('status','voided').in('id',ids),
@@ -17,7 +17,7 @@ export async function loadOrganizationSuggestions(db:SupabaseClient,workspaceId:
  if(byId.size!==selected.length||current.data.length!==byId.size||selected.some(row=>byId.get(row.id)?.version!==row.version))throw new Error('The selected history changed; reload suggestions');
  const corrected=new Set(corrections.data.filter(event=>event.origin!=='ai').map(event=>event.transaction_id));
  const toRow=(row:typeof current.data[number]):OrganizationRow=>({id:row.id,version:row.version,description:row.description,
-  merchantId:row.merchant_id,categoryId:row.category_id,kind:row.kind,reviewReasons:row.review_reasons,userCorrected:corrected.has(row.id)});
+  merchantId:row.merchant_id,categoryId:row.category_id,kind:organizationKindSchema.parse(row.kind),reviewReasons:row.review_reasons,userCorrected:corrected.has(row.id)});
  const approved=rules.data.map(rule=>organizationRuleSchema.parse({id:rule.id,version:rule.version,descriptionKey:rule.description_key,
   merchantId:rule.merchant_id,categoryId:rule.category_id,approvedBy:rule.approved_by,enabled:rule.enabled}));
  return {rows:selected.map(row=>byId.get(row.id)!),proposals:organizationProposals(current.data.map(toRow),history.data.filter(row=>row.organized_by!=='ai').map(toRow),approved),historyLimit:2000,historyCount:history.data.length};

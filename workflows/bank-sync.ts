@@ -107,7 +107,7 @@ async function stageBankImports(connectionId: string, workspaceId: string, lease
   const connection = await db.from("bank_connections").select("status, valid_until").eq("id", connectionId).eq("workspace_id", workspaceId).single();
   if (connection.error) throw new Error(connection.error.message);
   if (connection.data.status !== "active") return staged;
-  if (Date.parse(connection.data.valid_until) <= Date.now()) {
+  if (connection.data.valid_until !== null && Date.parse(connection.data.valid_until) <= Date.now()) {
     await db.from("bank_connections").update({ status: "expired", last_error: CONSENT_ENDED }).eq("id", connectionId);
     return staged;
   }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { AI_DATA_SCOPES } from "@/lib/settings";
 import { minorDigits } from "./fx";
 
@@ -92,7 +92,7 @@ export function evidenceFreshness(receipt: FinancialEvidenceReceipt, sourceVersi
       ? { status: "stale" as const, reason: "Sources, classifications, coverage or calculation rules have changed. This retained result remains the original dated evidence." }
       : { status: "current" as const, reason: "Current source versions and calculation rules match this retained evidence." };
 }
-export async function loadEvidenceReceipt(db: SupabaseClient, workspaceId: string, id: string): Promise<EvidenceReceipt | null> {
+export async function loadEvidenceReceipt(db: Db, workspaceId: string, id: string): Promise<EvidenceReceipt | null> {
   z.uuid().parse(workspaceId); z.uuid().parse(id);
   const result = await db.from("financial_evidence_receipts").select("receipt").eq("workspace_id", workspaceId).eq("id", id).maybeSingle();
   if (result.error) throw result.error;
@@ -101,7 +101,7 @@ export async function loadEvidenceReceipt(db: SupabaseClient, workspaceId: strin
   if (receipt.workspaceId !== workspaceId || receipt.id !== id) throw new Error("Evidence ownership mismatch");
   return receipt;
 }
-export async function persistEvidenceReceipt(db: SupabaseClient, receipt: EvidenceReceipt): Promise<EvidenceReceipt> {
+export async function persistEvidenceReceipt(db: Db, receipt: EvidenceReceipt): Promise<EvidenceReceipt> {
   const validated = parseStoredReceipt(receipt);
   const result = await db.from("financial_evidence_receipts").insert({ id: validated.id, workspace_id: validated.workspaceId, scopes: validated.scopes, receipt: validated });
   if (result.error && result.error.code !== "23505") throw result.error;

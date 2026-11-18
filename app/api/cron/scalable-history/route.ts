@@ -5,11 +5,12 @@ import { rebuildScalableHistory } from "@/lib/scalable/history-job";
 import { backfillScalableTransfers } from "@/lib/scalable/transfers";
 import { scalableConfigured } from "@/lib/scalable/server";
 import { loadWorkspaceSettings } from "@/lib/settings";
+import { supabaseUrl } from "@/lib/env";
 
 export const maxDuration = 300;
 
 export const GET = cronRoute(async () => {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !scalableConfigured()) return Response.json({ error: "Scalable history unavailable" }, { status: 503 });
+  if (!supabaseUrl() || !scalableConfigured()) return Response.json({ error: "Scalable history unavailable" }, { status: 503 });
   const db = serviceDb();
   const { data, error } = await db.from("scalable_connections").select("id, workspace_id, portfolio, history_status, history_checked_on, transfers_backfilled_at").eq("status", "active").order("id").limit(100);
   if (error) return Response.json({ error: "Scalable connections unavailable" }, { status: 503 });

@@ -1,8 +1,8 @@
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 
 export const categoryPreviewSchema = z.object({ transactionIds: z.array(z.uuid()).min(1).max(50).refine(ids => new Set(ids).size === ids.length), categoryId: z.uuid() }).strict();
-export async function loadCategoryPreview(db: SupabaseClient, workspaceId: string, transactionIds: string[], categoryId: string) {
+export async function loadCategoryPreview(db: Db, workspaceId: string, transactionIds: string[], categoryId: string) {
   const input = categoryPreviewSchema.parse({ transactionIds, categoryId });
   const [entries, category] = await Promise.all([
     db.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code, category_id, tags, event_name")

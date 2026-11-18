@@ -42,8 +42,10 @@ import { titleChatTurn } from "@/lib/ai/chat-title";
 import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
 import { ownerBrief } from "@/lib/ai/owner-brief";
 import { awaitedLater } from "@/lib/awaited-later";
+import { jsonObject } from "@/lib/database";
 import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
 import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
+import { serviceRoleConfig } from "@/lib/env";
 
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
@@ -127,7 +129,10 @@ export async function POST(request: Request) {
   const replaceable = ADDS_TO_RUNNING.test(message) ? undefined
     : runningTasks.at(-1) ?? (lastAnswered?.requestId && lastAnswered.requestId !== requestId ? { requestId: lastAnswered.requestId, text: lastAnswered.text } : undefined);
   const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
-  const replayed = replayableHistory(history ?? [], regenerates).filter(item => !running.has(item.request_id)).reverse().map(item => item.context?.via === "call" ? { ...item, context: withoutCallBrief(item.context) } : item);
+  const replayed = replayableHistory(history ?? [], regenerates).filter(item => !running.has(item.request_id ?? "")).reverse().map(item => {
+    const context = jsonObject.safeParse(item.context);
+    return context.success && context.data.via === "call" ? { ...item, context: withoutCallBrief(context.data) } : item;
+  });
   const textMessages = [...replayed, submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)
@@ -320,7 +325,7 @@ ${artifactBrief}` : ""}`,
           loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings, query), true, true) }) } : {}),
         ...(canInvestigate ? { reviews_start: tool({ description: "Investigate the current user's finance question through a bounded, durable, cancelable review. Preserve their chosen dates, entities and focus in query/focus; the application binds the exact question and visible navigation context. Use ordinary finance queries for quick answers, and this tool when follow-up evidence gathering or a saved report is useful. Do not start when the user declines investigation or only asks what a review does. Repeated calls reuse one job; no canonical financial changes.", inputSchema: reviewRequestSchema.omit({question: true, version: true, context: true, allowedScopes: true}), execute: (input = {includePlanning: false, output: "answer", budget: {maxQueries: 6, maxSupportRecords: 60, maxOutputTokens: 4000, maxDurationMs: 90000}}) => aiEvidence(["accounts", "transactions"], async latest => {
           if (stop.signal.aborted) throw new Error("Request canceled");
-          if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
+          if (!serviceRoleConfig()) throw new Error("Financial review service is not configured");
           const specification = resolveReviewRequest({...input, version: 1, question: message, context: capturedContext, allowedScopes: settings.ai_data_scopes}, calendarDate(new Date(), settings.timezone));
           if (specification.includePlanning) requireAiScope(latest.settings, "planning");
           return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId, specification), href: "/ai" };

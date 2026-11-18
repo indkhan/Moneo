@@ -9,6 +9,7 @@ import { loadLoanPayoutIds } from "@/lib/finance/iou";
 
 const PAGE = 1000;
 const SUGGESTION_BATCH = 50;
+const categorizePayload = z.object({ patch: z.object({ category_id: z.string().optional() }).optional(), rows: z.array(z.object({ id: z.string() })).optional() });
 
 export async function loadUncategorizedGroups() {
   const { supabase, workspace } = await requireWorkspace();
@@ -21,8 +22,9 @@ export async function loadUncategorizedGroups() {
   if (categories.error || proposals.error) throw new Error((categories.error ?? proposals.error)!.message);
   const picked = new Map<string, string>();
   for (const { payload } of proposals.data ?? []) {
-    const category = payload?.patch?.category_id;
-    if (typeof category === "string") for (const row of payload.rows ?? []) picked.set(row.id, category);
+    const proposal = categorizePayload.safeParse(payload);
+    const category = proposal.success ? proposal.data.patch?.category_id : undefined;
+    if (proposal.success && category) for (const row of proposal.data.rows ?? []) picked.set(row.id, category);
   }
   const spending = rows.filter(row => !loans.has(row.id));
   const groups = groupUncategorized(spending, picked);
@@ -44,14 +46,14 @@ async function loadAllUncategorized(supabase: Awaited<ReturnType<typeof requireW
     const page = await supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code, merchants(name)").eq("workspace_id", workspaceId).eq("status", "posted").is("category_id", null).neq("kind", "transfer")
       .order("posted_on", { ascending: false }).order("id", { ascending: false }).range(offset, offset + PAGE - 1);
     if (page.error) throw new Error(page.error.message);
-    rows.push(...(page.data as unknown as UncategorizedRow[]));
+    rows.push(...page.data);
     if (page.data.length < PAGE) return rows;
   }
 }
 
 export async function skipUncategorized(): Promise<string | undefined> {
   const { supabase, workspace } = await requireWorkspace();
-  const { error } = await supabase.from("workspace_settings").upsert({ workspace_id: workspace.id, uncategorized_skipped_at: new Date().toISOString() }, { onConflict: "workspace_id" });
+  const { error } = await supabase.from("workspace_settings").update({ uncategorized_skipped_at: new Date().toISOString() }).eq("workspace_id", workspace.id);
   if (error) {
     console.error("skipUncategorized failed", { code: error.code });
     return "Could not save. Try again.";

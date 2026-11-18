@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { expenditurePosting, reportExpenditure, type ExpenditureRate } from "@/lib/finance/expenditure";
 import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
 import { allPages } from "@/lib/all-pages";
@@ -46,7 +46,7 @@ export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[],
   return { currencyCode, trend, thisMonth, lastMonthToDate, months, categories, merchants };
 }
 
-export const loadHomeSpending = cache(async (db: SupabaseClient, workspaceId: string, currencyCode: string, today: string) => {
+export const loadHomeSpending = cache(async (db: Db, workspaceId: string, currencyCode: string, today: string) => {
   const [year, month] = today.split("-").map(Number);
   const from = day(year, month - MONTHS, 1);
   async function loadRows() {

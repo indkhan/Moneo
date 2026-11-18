@@ -4,13 +4,14 @@ import path from "node:path";
 import { z } from "zod";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 import { serviceKey } from "@/lib/service-keys";
+import { dataDir } from "@/lib/env";
 
 const remoteRevokeIsBestEffort = () => undefined;
 const AUTH = "https://auth.openai.com/api/accounts";
 const RESOURCE = "https://api.openai.com/v1";
 const SCOPE = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
 const PLAN_SCOPE = "chatgpt.tokens.use.direct";
-const file = () => path.join(process.env.MONEO_DATA_DIR ?? path.join(process.cwd(), ".data"), "chatgpt.json");
+const file = () => path.join(dataDir(), "chatgpt.json");
 const AAD = "moneo:chatgpt";
 
 export type AiSource = "chatgpt" | "claude" | "api_key";

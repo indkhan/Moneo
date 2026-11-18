@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useNow } from "@/lib/use-now";
 import { VoiceKeyToast } from "@/components/voice-key-toast";
 import { ArrowUp, Check, Mic, X } from "lucide-react";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
@@ -18,16 +19,13 @@ export function VoiceInput({ onSend, onDone, disabled = false, compact = false }
   const done = useRef<HTMLButtonElement>(null);
   const words = useRef<HTMLParagraphElement>(null);
   const wasActive = useRef(false);
-  const [now, setNow] = useState(0);
+  const now = useNow(1000, status === "recording");
   const access = useAiAccess();
   const [needsKey, setNeedsKey] = useState(false);
   useEffect(() => {
     if (status === "recording") done.current?.focus();
     if (status === "idle" && wasActive.current && (!document.activeElement || document.activeElement === document.body)) mic.current?.focus();
     wasActive.current = status !== "idle";
-    if (status !== "recording") return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
   }, [status]);
   useEffect(() => { words.current?.scrollTo({ top: words.current.scrollHeight }); }, [voice.text]);
 

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 
 const ok = <T,>(result: { data: T | null; error: { message: string } | null }): T => { if (result.error) throw new Error(result.error.message); return result.data as T; };
 const COLUMNS = "id, description, amount_minor::text, currency_code, posted_on, category_id, merchant_id, identity_id, organized_by, ai_confidence, ai_reason, organize_op_id";
@@ -11,7 +11,7 @@ export const PAGE_SIZE = 50;
 export type Row = { id: string; description: string; amount_minor: string; currency_code: string; posted_on: string; category_id: string | null; merchant_id: string | null;
   identity_id: string | null; organized_by: string | null; ai_confidence: string | null; ai_reason: string | null; organize_op_id: string | null };
 
-export async function loadNames(db: SupabaseClient, workspaceId: string) {
+export async function loadNames(db: Db, workspaceId: string) {
   const [categories, merchants] = await Promise.all([
     db.from("categories").select("id, name").eq("workspace_id", workspaceId).order("name").limit(501),
     db.from("merchants").select("id, name").eq("workspace_id", workspaceId).order("name").limit(501),
@@ -22,7 +22,7 @@ export async function loadNames(db: SupabaseClient, workspaceId: string) {
 
 export type Answered = { id: string; question: string; identityName: string | null; batchId: string; applied: number };
 
-export async function loadRecentAnswers(db: SupabaseClient, workspaceId: string, limit = 5): Promise<Answered[]> {
+export async function loadRecentAnswers(db: Db, workspaceId: string, limit = 5): Promise<Answered[]> {
   const rows = ok(await db.from("organize_questions").select("id, question, identity_id, answer").eq("workspace_id", workspaceId).eq("status", "answered")
     .not("answer->>batchId", "is", null).order("answered_at", { ascending: false }).limit(limit)) as { id: string; question: string; identity_id: string | null; answer: { batchId: string; applied?: number } }[];
   if (!rows.length) return [];
@@ -40,12 +40,12 @@ export async function loadRecentAnswers(db: SupabaseClient, workspaceId: string,
 export type Decision = Row & { source: Source; opCreatedAt: string | null };
 export type RunGroup = { key: string; createdAt: string; opIds: string[] };
 
-export async function loadDecisions(db: SupabaseClient, workspaceId: string, options: { source?: Source; page?: number; pageSize?: number } = {}) {
+export async function loadDecisions(db: Db, workspaceId: string, options: { source?: Source; page?: number; pageSize?: number } = {}) {
   const pageSize = options.pageSize ?? PAGE_SIZE, offset = (options.page ?? 0) * pageSize;
   const { data, error, count } = await db.from("transactions").select(COLUMNS, { count: "exact" }).eq("workspace_id", workspaceId).in("organized_by", options.source ? [options.source] : [...SOURCES])
     .order("posted_on", { ascending: false }).order("id", { ascending: false }).range(offset, offset + pageSize - 1);
   if (error) throw new Error(error.message);
-  const rows = (data ?? []) as unknown as Row[];
+  const rows = data ?? [];
   const opIds = rows.map(row => row.organize_op_id).filter((id): id is string => !!id);
   const ops = opIds.length ? ok(await db.from("organizer_ops").select("id, created_at").eq("workspace_id", workspaceId).in("id", opIds)) as { id: string; created_at: string }[] : [];
   const created = new Map(ops.map(op => [op.id, op.created_at]));
@@ -53,7 +53,7 @@ export async function loadDecisions(db: SupabaseClient, workspaceId: string, opt
   return { decisions, total: count ?? decisions.length };
 }
 
-export async function loadRunGroups(db: SupabaseClient, workspaceId: string, limit = 5): Promise<RunGroup[]> {
+export async function loadRunGroups(db: Db, workspaceId: string, limit = 5): Promise<RunGroup[]> {
   const ops = ok(await db.from("organizer_ops").select("id, run_id, proposal_id, created_at").eq("workspace_id", workspaceId).is("undone_at", null)
     .order("created_at", { ascending: false }).limit(1000)) as { id: string; run_id: string | null; proposal_id: string | null; created_at: string }[];
   const groups = new Map<string, RunGroup>();
@@ -69,10 +69,9 @@ export async function loadRunGroups(db: SupabaseClient, workspaceId: string, lim
 
 export type MemoryEntry = { id: string; identityId: string; identityName: string; categoryId: string | null; merchantId: string | null; purpose: string | null; source: string; covered: number; examples: string[] };
 
-export async function loadMemory(db: SupabaseClient, workspaceId: string): Promise<MemoryEntry[]> {
+export async function loadMemory(db: Db, workspaceId: string): Promise<MemoryEntry[]> {
   const memory = ok(await db.from("organize_memory").select("id, identity_id, category_id, merchant_id, purpose, source, organize_identities(display_name)").eq("workspace_id", workspaceId)
-    .order("updated_at", { ascending: false }).limit(500)) as unknown as { id: string; identity_id: string; category_id: string | null; merchant_id: string | null; purpose: string | null; source: string;
-    organize_identities: { display_name: string } | null }[];
+    .order("updated_at", { ascending: false }).limit(500));
   if (!memory.length) return [];
   const covered = new Map<string, { count: number; examples: string[] }>();
   const ids = memory.map(item => item.identity_id);
@@ -90,7 +89,7 @@ export async function loadMemory(db: SupabaseClient, workspaceId: string): Promi
     purpose: item.purpose, source: item.source, covered: covered.get(item.identity_id)?.count ?? 0, examples: covered.get(item.identity_id)?.examples ?? [] }));
 }
 
-export async function loadAiCreated(db: SupabaseClient, workspaceId: string) {
+export async function loadAiCreated(db: Db, workspaceId: string) {
   const [categories, merchants] = await Promise.all([
     db.from("categories").select("id, name, owner_touched").eq("workspace_id", workspaceId).eq("created_by", "ai").order("name").limit(200),
     db.from("merchants").select("id, name, owner_touched").eq("workspace_id", workspaceId).eq("created_by", "ai").order("name").limit(200),

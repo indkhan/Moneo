@@ -133,6 +133,13 @@ const unexplainedIgnoredFailure = {
 
 const typedAsyncFiles = ["lib/**/*.ts", "lib/**/*.tsx", "workflows/**/*.ts", "app/**/actions.ts", "app/**/*-actions.ts", "app/**/*-action.ts", "app/**/route.ts"];
 
+const rawTimer = {
+  selector: ":matches(CallExpression[callee.name=/^(setTimeout|setInterval)$/], CallExpression[callee.object.name='window'][callee.property.name=/^(setTimeout|setInterval)$/])",
+  message: "A raw timer outlives its component and doubles under Strict Mode. Repeat work with usePolling or useNow (lib/use-polling.ts, lib/use-now.ts); delay with useTimeout or useDelay (lib/use-timeout.ts) (AGENTS.md Rules).",
+};
+
+const serverActionFilesWithTimers = ["app/settings/ai-access.tsx"];
+
 const assumedTimeZone = {
   selector: ":matches(Literal[value='Europe/Berlin'], TemplateElement[value.raw=/Europe.Berlin/])",
   message: "Never assume where the owner lives. Take the time zone from workspace.timezone or settings.timezone (set in Settings, detected from their device) and pass it in (AGENTS.md Rules).",
@@ -174,6 +181,26 @@ const layers = [
   },
 ];
 
+const noProcessEnv = {
+  meta: {
+    type: "problem",
+    schema: [],
+    messages: {
+      banned: "Read configuration through the typed accessors in lib/env.ts. Add one there with a Zod schema if it is missing, so a bad value names its variable and a missing optional provider never stops the app (AGENTS.md Rules).",
+    },
+  },
+  create(context) {
+    return {
+      MemberExpression(node) {
+        if (node.object.name !== "process" || node.property.name !== "env" || node.computed) return;
+        const parent = node.parent;
+        const buildMode = parent.type === "MemberExpression" && parent.object === node && !parent.computed && parent.property.name === "NODE_ENV";
+        if (!buildMode) context.report({ node, messageId: "banned" });
+      },
+    };
+  },
+};
+
 const importBoundaries = {
   meta: { type: "problem", schema: [], messages: { crossed: "'{{source}}' crosses a boundary. {{why}}" } },
   create(context) {
@@ -202,10 +229,15 @@ export default defineConfig([
   ...nextVitals,
   ...nextTypescript,
   {
-    plugins: { moneo: { rules: { "no-comments": noComments, "import-boundaries": importBoundaries } } },
+    plugins: { moneo: { rules: { "no-comments": noComments, "import-boundaries": importBoundaries, "no-process-env": noProcessEnv } } },
     rules: { "moneo/no-comments": "error", "moneo/import-boundaries": "error" },
   },
   { linterOptions: { reportUnusedDisableDirectives: "error" } },
+  {
+    files: ["app/**", "components/**", "lib/**", "workflows/**", "proxy.ts", "instrumentation-node.ts"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "**/*.live.test.ts", "lib/env.ts", "lib/property-check.ts"],
+    rules: { "moneo/no-process-env": "error" },
+  },
   {
     files: ["app/**", "components/**", "lib/**", "workflows/**"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/service-db.ts", "lib/service-keys.ts", "lib/supabase-server.ts", "workflows/financial-review.ts"],
@@ -232,6 +264,11 @@ export default defineConfig([
     files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts", "lib/finance/format.ts", "lib/schema.ts", "lib/import/csv.ts", "workflows/**"],
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney] },
+  },
+  {
+    files: ["app/**", "components/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "app/api/**", ...typedAsyncFiles, ...serverActionFilesWithTimers],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney, rawTimer] },
   },
   {
     files: ["lib/schema.ts", "lib/import/csv.ts"],

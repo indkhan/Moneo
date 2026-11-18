@@ -74,7 +74,7 @@ export async function archiveWithAnswer(_state: { error?: string }, form: FormDa
     const post = async (target: string, row: { amountMinor: bigint; description: string }, part: string) => {
       const { data, error } = await supabase.rpc("create_manual_transaction", { p_account_id: target, p_posted_on: today, p_description: row.description, p_amount_minor: row.amountMinor.toString(), p_status: "posted", p_category_id: null, p_note: "Added when archiving an account", p_request_id: stableId(`${requestId}:${part}`) });
       if (error) throw new Error(error.message);
-      const saved = await supabase.from("transactions").select("id, kind, version").eq("id", data.id).single();
+      const saved = await supabase.from("transactions").select("id, kind, version").eq("id", z.uuid().parse(data.id)).single();
       if (saved.error) throw new Error(saved.error.message);
       return saved.data as { id: string; kind: string; version: number };
     };

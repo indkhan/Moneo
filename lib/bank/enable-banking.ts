@@ -1,6 +1,7 @@
 import { createPrivateKey, sign } from "node:crypto";
 import { z } from "zod";
 import { serviceKey } from "@/lib/service-keys";
+import { enableBankingApiUrl, hasBankTokenKey } from "@/lib/env";
 
 const amountSchema = z.object({ currency: z.string().regex(/^[A-Z]{3}$/), amount: z.string().regex(/^-?\d+(?:\.\d+)?$/) });
 
@@ -69,7 +70,6 @@ function retryAfterSeconds(value: string | null, now = Date.now()) {
 }
 
 export type EnableBankingCredentials = { appId: string; privateKey: string };
-const apiUrl = () => z.string().url().default("https://api.enablebanking.com").parse(process.env.ENABLE_BANKING_API_URL || undefined);
 
 async function credentials(): Promise<EnableBankingCredentials | null> {
   const [appId, privateKey] = await Promise.all([serviceKey("enable_banking_app_id"), serviceKey("enable_banking_private_key")]);
@@ -77,7 +77,7 @@ async function credentials(): Promise<EnableBankingCredentials | null> {
 }
 
 export async function enableBankingConfigured() {
-  return !!process.env.BANK_TOKEN_ENCRYPTION_KEY && !!(await credentials());
+  return hasBankTokenKey() && !!(await credentials());
 }
 
 export function signJwt(appId: string, privateKeyPem: string, now = Math.floor(Date.now() / 1000)): string {
@@ -101,7 +101,7 @@ export async function checkEnableBankingCredentials(input: EnableBankingCredenti
 }
 
 function clientFor({ appId, privateKey }: EnableBankingCredentials, fetcher: typeof fetch) {
-  const base = apiUrl();
+  const base = enableBankingApiUrl();
   async function call<T>(schema: z.ZodType<T>, method: string, path: string, options: { body?: unknown; psu?: PsuContext } = {}): Promise<T> {
     const response = await fetcher(`${base}${path}`, {
       method,

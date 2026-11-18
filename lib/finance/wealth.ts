@@ -1,5 +1,5 @@
 import { minorDigits } from "./fx";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/database";
 import { buildSourceCoverage, type SourceCoverage } from "./source-coverage";
 import { parseIouName } from "./iou";
 import { formatMoney } from "./format";
@@ -108,7 +108,7 @@ export function wealthOverview(items: Pick<WealthItem, "id" | "name" | "kind" | 
   };
 }
 
-export async function loadWealthItems(client: SupabaseClient, workspaceId: string, includeRemoved = false): Promise<WealthItem[]> {
+export async function loadWealthItems(client: Db, workspaceId: string, includeRemoved = false): Promise<WealthItem[]> {
   const rows: WealthItem[] = [];
   for (let offset = 0; ; offset += 500) {
     let query = client.from("wealth_items").select("id, name, kind, currency_code, amount_minor::text, quantity_text, unit_price_text, cost_basis_minor::text, as_of, linked_account_id, payment_account_id, annual_rate_text, monthly_payment_minor::text, next_payment_on, payment_assumption_id, payment_transaction_id, version, removed_at")

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
+import { useTimeout } from "@/lib/use-timeout";
 import { appUpdate, type AppUpdateState } from "./app-update-actions";
 
 const button = "min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50";
@@ -25,11 +26,7 @@ export function AppUpdate({ initial }: { initial: AppUpdateState }) {
   const [pending, start] = useTransition();
   const run = (action: "check" | "install") => start(async () => setState(await appUpdate(action, state)));
   const working = state.state === "downloading" || state.state === "installing";
-  useEffect(() => {
-    if (!working) return;
-    const timer = setTimeout(async () => setState(await appUpdate("status", state).catch(() => state)), 1_000);
-    return () => clearTimeout(timer);
-  }, [working, state]);
+  useTimeout(async () => setState(await appUpdate("status", state).catch(() => state)), working ? 1_000 : null, state);
   const text = describe(state);
   return <section id="updates" aria-labelledby="updates-title" className="scroll-mt-20 rounded-xl border border-border bg-card p-6">
     <h2 id="updates-title" className="text-sm font-medium">App updates</h2>

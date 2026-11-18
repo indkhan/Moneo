@@ -31,7 +31,7 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
     supabase.from("agent_proposals").select("run_id, kind").eq("workspace_id", workspace.id).eq("status", "proposed").not("run_id", "is", null).limit(1000),
   ]);
   const limits = new Map<string, number>(), onHome = new Map<string, number>();
-  for (const row of counts.data ?? []) { const tally = row.kind === "budget" ? limits : onHome; tally.set(row.run_id, (tally.get(row.run_id) ?? 0) + 1); }
+  for (const row of counts.data ?? []) { if (!row.run_id) continue; const tally = row.kind === "budget" ? limits : onHome; tally.set(row.run_id, (tally.get(row.run_id) ?? 0) + 1); }
   const page = (runs.data ?? []).slice(0, PAGE);
   const when = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone });
   const activeRun = !before.success ? page.find(run => run.status === "queued" || run.status === "running") : undefined;

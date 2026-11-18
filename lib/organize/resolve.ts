@@ -1,11 +1,14 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import type { Db } from "@/lib/database";
+
+const resolution = z.object({ resolved: z.number(), created: z.number() });
 import { loadRawContext } from "@/lib/bank/raw-context";
 import { loadOwnAccounts } from "@/lib/finance/own-transfers";
 import { identityCandidate } from "./identity";
 
 const PAGE = 500, MAX_ROWS = 10_000;
 
-export async function resolveNewIdentities(db: SupabaseClient, workspaceId: string) {
+export async function resolveNewIdentities(db: Db, workspaceId: string) {
   const own = await loadOwnAccounts(db, workspaceId);
   const ownIbans = new Set([...own.tracked.keys(), ...own.untracked.keys()]);
   let after = "00000000-0000-0000-0000-000000000000", resolved = 0, created = 0;
@@ -24,7 +27,8 @@ export async function resolveNewIdentities(db: SupabaseClient, workspaceId: stri
     if (items.length) {
       const result = await db.rpc("resolve_organize_identities", { p_workspace: workspaceId, p_items: items });
       if (result.error) throw new Error(result.error.message);
-      resolved += result.data.resolved; created += result.data.created;
+      const outcome = resolution.parse(result.data);
+      resolved += outcome.resolved; created += outcome.created;
     }
     if (rows.length < PAGE) break;
   }
