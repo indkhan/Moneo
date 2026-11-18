@@ -23,7 +23,7 @@ export async function openStandaloneProposals(supabase: SupabaseClient, workspac
   if (error) throw new Error(error.message);
   return Promise.all((data ?? []).map(async ({ payload, evidence, ...row }) => {
     const transactions = cardTransactions(evidence), proposal = transactions.length ? { ...row, transactions } : row;
-    if (proposal.kind === "cash_withdrawal") return { ...proposal, ...await cashAccountOptions(supabase, workspaceId, payload).catch(() => ({})) };
-    return proposal.kind === "transaction_create" ? { ...proposal, ...await transactionAccountOptions(supabase, workspaceId, payload).catch(() => ({})) } : proposal;
+    if (proposal.kind === "cash_withdrawal") return { ...proposal, ...await cashAccountOptions(supabase, workspaceId, payload) };
+    return proposal.kind === "transaction_create" ? { ...proposal, ...await transactionAccountOptions(supabase, workspaceId, payload) } : proposal;
   }));
 }

@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { groupUncategorized, type UncategorizedRow } from "@/lib/import/uncategorized-groups";
+
+const groupsStayUnsuggestedWhenHistoryIsUnavailable = () => null;
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 
 const PAGE = 1000;
@@ -17,7 +19,7 @@ export async function loadUncategorizedGroups() {
     loadAllUncategorized(supabase, workspace.id),
     supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).order("name").limit(500),
     supabase.from("agent_proposals").select("payload").eq("workspace_id", workspace.id).eq("kind", "categorize").in("status", ["proposed", "failed"]).limit(200),
-    loadLoanPayoutIds(supabase, workspace.id).catch(() => new Set<string>()),
+    loadLoanPayoutIds(supabase, workspace.id),
   ]);
   if (categories.error || proposals.error) throw new Error((categories.error ?? proposals.error)!.message);
   const picked = new Map<string, string>();
@@ -31,7 +33,7 @@ export async function loadUncategorizedGroups() {
   const open = groups.filter(group => !group.suggested);
   for (let offset = 0; offset < open.length; offset += SUGGESTION_BATCH) {
     const batch = open.slice(offset, offset + SUGGESTION_BATCH);
-    const history = await loadOrganizationSuggestions(supabase, workspace.id, batch.map(group => group.rows[0])).catch(() => null);
+    const history = await loadOrganizationSuggestions(supabase, workspace.id, batch.map(group => group.rows[0])).catch(groupsStayUnsuggestedWhenHistoryIsUnavailable);
     for (const proposal of history?.proposals ?? []) {
       const group = batch.find(item => item.rows[0].id === proposal.transactionId);
       if (group && proposal.categoryId) group.suggested = proposal.categoryId;

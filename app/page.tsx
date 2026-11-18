@@ -43,6 +43,8 @@ import { shownBalance } from "./money/accounts/history";
 import { Phone } from "lucide-react";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
 
+const upcomingEventsShowNoPriceChangeWhenLookupFails = () => new Map<string, never>();
+
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
   const accountId = typeof params?.account === "string" ? params.account : undefined;
@@ -84,7 +86,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     sourceMetadataPromise,
     loadNetWorthEvidence(supabase, workspace, { balances: balanceEvidencePromise, items: allWealthPromise, events: wealthEventsPromise }),
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
-    loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
+    loadPriceChanges(supabase, workspace.id).catch(upcomingEventsShowNoPriceChangeWhenLookupFails),
     loadSyncProblems(supabase, workspace.id),
     loadImportStates(supabase, workspace.id),
     supabase.from("scalable_connections").select("portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),

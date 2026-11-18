@@ -13,7 +13,7 @@ it("loads insight evidence in parallel batches without losing refund categories 
   const db = { from: (table: string) => {
     const filters: { gte?: string; ids?: string[] } = {};
     const rows = () => (tables[table] ?? []).filter(row => (!filters.gte || String(row.posted_on) >= filters.gte) && (!filters.ids || filters.ids.includes(String(row.id))));
-    const query = { select: () => query, eq: () => query, order: () => query, lte: () => query,
+    const query = { select: () => query, eq: () => query, is: () => query, limit: () => query, order: () => query, lte: () => query,
       gte: (_column: string, value: string) => { filters.gte = value; return query; },
       in: (_column: string, ids: string[]) => { filters.ids = ids; return query; },
       range: async (from: number, to: number) => ({ data: rows().slice(from, to + 1), error: null }),

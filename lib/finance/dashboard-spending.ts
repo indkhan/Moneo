@@ -59,7 +59,7 @@ export const loadHomeSpending = cache(async (db: Db, workspaceId: string, curren
     if (rows.length > ROW_LIMIT) throw new Error("Spending history exceeds the Home summary limit");
     return rows;
   }
-  const [rows, rates, loans] = await Promise.all([loadRows(), loadExpenditureRates(db, workspaceId, { currencyCode, from, to: today }), loadLoanPayoutIds(db, workspaceId).catch(() => new Set<string>())]);
+  const [rows, rates, loans] = await Promise.all([loadRows(), loadExpenditureRates(db, workspaceId, { currencyCode, from, to: today }), loadLoanPayoutIds(db, workspaceId)]);
   const summary = summarizeSpending(rows.map(row => loans.has(row.parent_transaction_id ?? row.id) ? { ...row, kind: "transfer" } : row), rates, currencyCode, today);
   async function names(table: "categories" | "merchants", groups: { id: string | null }[]) {
     const ids = groups.flatMap(group => group.id ? [group.id] : []);

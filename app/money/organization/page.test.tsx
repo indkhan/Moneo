@@ -13,7 +13,7 @@ const snapshots=[{id:id(1),version:0,description:'Northstar purchase',posted_on:
 function client({review=false,count=1}={}) {
  const from=(table:string)=>{
   let single=false;
-  const q={select:()=>q,eq:(...args:unknown[])=>{calls.push([table,...args]);return q;},neq:()=>q,or:(...args:unknown[])=>{calls.push([table,'or',...args]);return q;},in:()=>q,
+  const q={select:()=>q,eq:(...args:unknown[])=>{calls.push([table,...args]);return q;},neq:()=>q,is:()=>q,or:(...args:unknown[])=>{calls.push([table,'or',...args]);return q;},in:()=>q,
    order:()=>q,limit:()=>q,maybeSingle:()=>{single=true;return q;},then:(resolve:(v:unknown)=>unknown)=>resolve({data:table==='transactions'?Array.from({length:count},(_,n)=>({id:id(n+1),version:0,posted_on:'2026-09-01'})):
     table==='organization_reviews'?(single?(review?{id:id(30),snapshots,patch:{category_id:id(20)},merchant_name:'Northstar Market',rule_key:'northstar market',status:'pending'}:null):[]):table==='categories'?[{id:id(20),name:'Groceries'}]:[],error:null})};return q;
  };return {from};

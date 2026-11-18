@@ -4,12 +4,13 @@ import { serviceDb } from "@/lib/service-db";
 import { requireWorkspace } from "@/lib/auth";
 import { importFile } from "@/workflows/import-file";
 import { hasServiceRoleKey } from "@/lib/env";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const id = z.uuid().safeParse((await params).id);
-  const input = z.object({ action: z.enum(["cancel", "resume"]), requestId: z.uuid() }).strict().safeParse(await request.json().catch(() => null));
+  const input = z.object({ action: z.enum(["cancel", "resume"]), requestId: z.uuid() }).strict().safeParse(await jsonBodyOrNull(request));
   if (!id.success || !input.success) return Response.json({ error: "Invalid import control" }, { status: 400 });
   if (input.data.action === "resume" && !hasServiceRoleKey()) return Response.json({ error: "Import service is not configured" }, { status: 503 });
   const result = await context.supabase.rpc("control_import", { p_import_id: id.data, p_action: input.data.action, p_request_id: input.data.requestId });

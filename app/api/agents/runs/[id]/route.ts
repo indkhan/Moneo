@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { loadAgentRun } from "@/lib/ai/agent-state";
 import { cancelAgentRun, resumeAgentRun } from "@/lib/ai/agent-dispatch";
 import { service } from "@/lib/ai/agent-runtime";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 async function owned(params: Promise<{ id: string }>) {
   const context = await requireWorkspace();
@@ -22,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let target: Awaited<ReturnType<typeof owned>>;
   try { target = await owned(params); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
-  const action = z.object({ action: z.enum(["cancel", "resume"]) }).strict().safeParse(await request.json().catch(() => null));
+  const action = z.object({ action: z.enum(["cancel", "resume"]) }).strict().safeParse(await jsonBodyOrNull(request));
   if (!action.success) return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   const visible = await target.context.supabase.from("agent_runs").select("id").eq("workspace_id", target.context.workspace.id).eq("id", target.id).maybeSingle();
   if (visible.error || !visible.data) return NextResponse.json({ error: "Run not found" }, { status: 404 });

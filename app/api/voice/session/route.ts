@@ -4,6 +4,7 @@ import { chooseSpeechEngine, speechAvailability } from "@/lib/ai/speech/choose";
 import { loadSpeechHints } from "@/lib/ai/speech/hints";
 import { batchEngines } from "@/lib/ai/speech/registry";
 import { voiceApiKey } from "@/lib/ai/configured";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 const VOICE_MODEL = "gpt-live-transcribe";
 const inputSchema = z.object({}).strict();
@@ -12,7 +13,7 @@ const secretSchema = z.object({ value: z.string().min(1), expires_at: z.number()
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
-  if (!inputSchema.safeParse(await request.json().catch(() => null)).success) return Response.json({ error: "Invalid request" }, { status: 400 });
+  if (!inputSchema.safeParse(await jsonBodyOrNull(request)).success) return Response.json({ error: "Invalid request" }, { status: 400 });
   const { supabase, workspace, settings } = context;
   const engines = batchEngines(settings);
   const choice = chooseSpeechEngine(settings.speech_engine, await speechAvailability(engines));

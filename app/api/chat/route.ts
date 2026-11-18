@@ -46,6 +46,7 @@ import { jsonObject } from "@/lib/database";
 import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
 import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
 import { serviceRoleConfig } from "@/lib/env";
+import { jsonBodyOrNull } from "@/lib/json-body";
 
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
@@ -64,10 +65,13 @@ const inputSchema = z.object({
   attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional(),
 }).strict();
 
+const chatKeepsItsTitleWhenNamingFails = () => null;
+const cancelIsCheckedAgainOnTheNextStep = () => null;
+
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
-  const body = await request.json().catch(() => null);
+  const body = await jsonBodyOrNull(request);
   const parsed = inputSchema.safeParse(body);
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
@@ -109,13 +113,13 @@ export async function POST(request: Request) {
       : ((await historyPromise).data ?? []).filter(item => item.role === "user").map(item => item.content as string).reverse();
     return titleChatTurn({ supabase, workspaceId: workspace.id, conversationId, message, viaCall, settled: !!existing.data?.title_settled, earlier, model: () => modelForSettings(settings, "titles") });
   }
-  const chatTitle = writeChatTitle().catch(() => null);
-  const scalablePromise = settings.ai_data_scopes.includes("accounts") ? activeScalableConnection(workspace.id).catch(() => null) : Promise.resolve(null);
+  const chatTitle = writeChatTitle().catch(chatKeepsItsTitleWhenNamingFails);
+  const scalablePromise = settings.ai_data_scopes.includes("accounts") ? awaitedLater(activeScalableConnection(workspace.id)) : Promise.resolve(null);
   const briefPromise = ownerBrief(context).catch(error => { console.error("owner brief failed", error); return null; });
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
   const stop = new AbortController();
   async function stopIfCanceled() {
-    const saved = await Promise.resolve(supabase.from("chat_requests").select("status").eq("workspace_id", workspace.id).eq("id", requestId).maybeSingle()).catch(() => null);
+    const saved = await Promise.resolve(supabase.from("chat_requests").select("status").eq("workspace_id", workspace.id).eq("id", requestId).maybeSingle()).catch(cancelIsCheckedAgainOnTheNextStep);
     if (saved?.data?.status === "canceled") stop.abort();
   }
   async function complete(emit: (event: ChatStreamEvent) => void): Promise<[unknown, number]> {
@@ -431,7 +435,7 @@ ${artifactBrief}` : ""}`,
 export async function PATCH(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
-  const parsed = z.object({ requestId: z.uuid() }).strict().safeParse(await request.json().catch(() => null));
+  const parsed = z.object({ requestId: z.uuid() }).strict().safeParse(await jsonBodyOrNull(request));
   if (!parsed.success) return Response.json({ error: "Invalid cancellation" }, { status: 400 });
   const result = await context.supabase.rpc("cancel_chat_request", { p_request_id: parsed.data.requestId });
   if (result.error) return Response.json({ error: result.error.message }, { status: result.error.code === "P0002" ? 404 : 400 });
