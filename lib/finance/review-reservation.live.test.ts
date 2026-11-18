@@ -3,10 +3,11 @@ import {mkdirSync, readFileSync, unlinkSync, writeFileSync} from "node:fs";
 import postgres from "postgres";
 import {expect, it} from "vitest";
 import {resolveReviewRequest} from "./review-request";
+import { defined } from "@/lib/testing";
 
 it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("elects only one synthesis caller when two database transactions overlap", async () => {
   process.loadEnvFile(".env.qa");
-  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const connection = new URL(defined(process.env.SUPABASE_DB_URL));
   const db = postgres(connection.toString(), {max: 2, connection: {application_name: "qa_mne019_reservation_race"}, onnotice: () => {}});
   const nonce = randomUUID(), schema = `qa_reservation_${nonce.replaceAll("-", "")}`, marker = `mne019-reservation:${nonce}`;
   const journal = `.qa/mne019-reservation-${nonce}.json`, job = randomUUID(), workspace = randomUUID();
@@ -34,28 +35,28 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("elects only o
         values($1,$2,'financial_review',$3,'running','owned-race',$4::jsonb)`, [job, workspace, randomUUID(), tx.json(specification)]);
     });
     created = true;
-    const reserve = async (tx: postgres.TransactionSql) => (await tx.unsafe(`select ${schema}.reserve_financial_investigation_synthesis($1,$2,'owned-race',$3::jsonb) as accepted`, [job, workspace, tx.json(progress)]))[0].accepted as boolean;
+    const reserve = async (tx: postgres.TransactionSql) => defined((await tx.unsafe(`select ${schema}.reserve_financial_investigation_synthesis($1,$2,'owned-race',$3::jsonb) as accepted`, [job, workspace, tx.json(progress)]))[0]).accepted as boolean;
     const first = await db.begin(async leader => {
       await leader.unsafe("set local lock_timeout='5s'; set local statement_timeout='15s'; set local role service_role");
-      const [{pid: leaderPid}] = await leader`select pg_backend_pid() as pid`;
+      const { pid: leaderPid } = defined((await leader`select pg_backend_pid() as pid`)[0]);
       const accepted = await reserve(leader);
       expect(accepted).toBe(true);
       let ready!: (pid: number) => void;
       const competingPid = new Promise<number>(resolve => {ready = resolve;});
       contender = db.begin(async other => {
         await other.unsafe("set local lock_timeout='5s'; set local statement_timeout='15s'; set local role service_role");
-        const [{pid}] = await other`select pg_backend_pid() as pid`;
+        const { pid } = defined((await other`select pg_backend_pid() as pid`)[0]);
         ready(pid);
         return reserve(other);
       });
       void contender.catch(() => {});
       const pid = await competingPid;
-      await expect.poll(async () => (await leader`select ${leaderPid}::integer = any(pg_blocking_pids(${pid}::integer)) as blocked`)[0].blocked,
+      await expect.poll(async () => defined((await leader`select ${leaderPid}::integer = any(pg_blocking_pids(${pid}::integer)) as blocked`)[0]).blocked,
         {timeout: 3000, interval: 50}).toBe(true);
       return accepted;
     });
     expect([first, await contender]).toEqual([true, false]);
-    expect((await db.unsafe(`select review_progress->>'synthesisAttempted' as attempted from ${schema}.background_jobs where id=$1`, [job]))[0].attempted).toBe("true");
+    expect(defined((await db.unsafe(`select review_progress->>'synthesisAttempted' as attempted from ${schema}.background_jobs where id=$1`, [job]))[0]).attempted).toBe("true");
   } finally {
     await contender?.catch(() => {});
     try {

@@ -3,20 +3,21 @@ import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { expect, it } from "vitest";
 import { resolveBalances } from "./balances";
+import { defined } from "@/lib/testing";
 
 it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches balance evidence on dated and row-boundary fixtures and refuses conflicting reservations", async () => {
   process.loadEnvFile(".env.qa");
-  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const connection = new URL(defined(process.env.SUPABASE_DB_URL));
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");
   const asOf = "2026-10-02T12:00:00Z";
   try {
     try { await db.begin(async tx => {
-      if (!(await tx`select to_regclass('public.goal_reservation_events') present`)[0].present)
+      if (!defined((await tx`select to_regclass('public.goal_reservation_events') present`)[0]).present)
         await tx.unsafe(readFileSync("supabase/migrations/202610010034_goal_reservations.sql", "utf8"));
       const actor = randomUUID();
       await tx`insert into auth.users(id,email) values(${actor},${`qa-${actor}@example.invalid`})`;
-      const [{ id: workspace }] = await tx`select id from public.workspaces where owner_id=${actor}`;
+      const { id: workspace } = defined((await tx`select id from public.workspaces where owner_id=${actor}`)[0]);
       for (const fixture of ["current", "stale", "same_day", "conflicting_ties", "after_row", "same_instant_unknown"] as const) {
         const account = { id: randomUUID(), name: fixture, currency_code: "EUR" };
         await tx`insert into public.accounts(id,workspace_id,name,currency_code) values(${account.id},${workspace},${fixture},'EUR')`;
@@ -37,11 +38,11 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches balance evidenc
         for (const row of ledger) await tx`insert into public.transactions(id,workspace_id,account_id,amount_minor,currency_code,posted_on,posted_at,description,status)
           values(${row.id},${workspace},${account.id},${row.amount_minor},'EUR',${row.posted_on},${row.posted_at ?? null},'Synthetic golden ledger',${row.status})`;
         if (afterRow) await tx`insert into public.transaction_sources(transaction_id,source_transaction_id) values(${original},${source})`;
-        if (fixture === "conflicting_ties") snapshots.push({ ...snapshots[0], id: randomUUID(), amount_minor: "9007199254740992" });
+        if (fixture === "conflicting_ties") snapshots.push({ ...defined(snapshots[0]), id: randomUUID(), amount_minor: "9007199254740992" });
         for (const snapshot of snapshots) await tx`insert into public.balance_snapshots(id,workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,source_transaction_id)
           values(${snapshot.id},${workspace},${account.id},${snapshot.amount_minor},'EUR',${snapshot.as_of},'synthetic',${snapshot.boundary_kind},${snapshot.source_transaction_id})`;
-        const [sql] = await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`;
-        const application = resolveBalances([account], snapshots, ledger, asOf, "Europe/Berlin")[0].balance;
+        const sql = defined((await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`)[0]);
+        const application = defined(resolveBalances([account], snapshots, ledger, asOf, "Europe/Berlin")[0]).balance;
         if (fixture === "conflicting_ties") {
           expect(application.conflicts).toHaveLength(1);
           expect(application.status).toBe("current");

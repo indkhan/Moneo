@@ -3,23 +3,24 @@ import { readFileSync } from "node:fs";
 import postgres from "postgres";
 import { expect, it } from "vitest";
 import { createEvidenceReceipt } from "./evidence-receipts";
+import { defined } from "@/lib/testing";
 
 it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("enforces owned scope reads, server-only writes and immutable receipts in a rolled-back disposable schema", async () => {
   process.loadEnvFile(".env.qa");
-  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const connection = new URL(defined(process.env.SUPABASE_DB_URL));
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const disposable = `qa_evidence_${randomUUID().replaceAll("-", "")}`, owner = randomUUID(), foreign = randomUUID();
   const rolledBack = new Error("Successful rollback");
   try {
     try { await db.begin(async tx => {
       await tx.unsafe(`create schema ${disposable}; grant usage on schema ${disposable} to authenticated,anon,service_role`);
-      const migration = readFileSync("supabase/migrations/202610060014_verified_financial_evidence.sql", "utf8")
-        .split("-- Verified chat publication:")[0]
+      const migration = defined(readFileSync("supabase/migrations/202610060014_verified_financial_evidence.sql", "utf8")
+        .split("-- Verified chat publication:")[0])
         .replaceAll("public.financial_evidence_receipts", `${disposable}.financial_evidence_receipts`)
         .replaceAll("public.prevent_financial_evidence_update", `${disposable}.prevent_financial_evidence_update`);
       await tx.unsafe(migration);
       await tx`insert into auth.users(id,email) values(${owner},${`qa-${owner}@example.invalid`}),(${foreign},${`qa-${foreign}@example.invalid`})`;
-      const [{ id: workspaceId }] = await tx`select id from public.workspaces where owner_id=${owner}`;
+      const { id: workspaceId } = defined((await tx`select id from public.workspaces where owner_id=${owner}`)[0]);
       const receipt = createEvidenceReceipt({ workspaceId, fetchedAt: "2026-10-01T00:00:00Z", calculationVersion: "test-v1", sourceVersion: "test-source-v1",
         query: { kind: "synthetic" }, scopes: ["transactions"], sources: [], metrics: [{ id: "spending", label: "Spending", valueMinor: "0", currency: "EUR", period: { from: "2026-09-01", to: "2026-09-30" }, qualifiers: ["partial_coverage"], sourceIds: [], calculation: "sum empty reviewed selection" }] });
       await tx.unsafe(`insert into ${disposable}.financial_evidence_receipts(id,workspace_id,scopes,receipt) values($1,$2,array['transactions'],$3::jsonb)`, [receipt.id, workspaceId, tx.json(receipt)]);
@@ -46,19 +47,19 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("enforces owned sc
 
 it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("concurrent captures retain exactly one immutable receipt and clean the disposable fixture", async () => {
   process.loadEnvFile(".env.qa");
-  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const connection = new URL(defined(process.env.SUPABASE_DB_URL));
   const db = postgres(connection.toString(), { max: 3, onnotice: () => {} });
   const disposable = `qa_evidence_${randomUUID().replaceAll("-", "")}`, owner = randomUUID();
   try {
     const workspaceId = await db.begin(async tx => {
       await tx.unsafe(`create schema ${disposable}`);
-      const migration = readFileSync("supabase/migrations/202610060014_verified_financial_evidence.sql", "utf8")
-        .split("-- Verified chat publication:")[0]
+      const migration = defined(readFileSync("supabase/migrations/202610060014_verified_financial_evidence.sql", "utf8")
+        .split("-- Verified chat publication:")[0])
         .replaceAll("public.financial_evidence_receipts", `${disposable}.financial_evidence_receipts`)
         .replaceAll("public.prevent_financial_evidence_update", `${disposable}.prevent_financial_evidence_update`);
       await tx.unsafe(migration);
       await tx`insert into auth.users(id,email) values(${owner},${`qa-${owner}@example.invalid`})`;
-      const [{ id }] = await tx`select id from public.workspaces where owner_id=${owner}`;
+      const { id } = defined((await tx`select id from public.workspaces where owner_id=${owner}`)[0]);
       return id as string;
     });
     const receipt = createEvidenceReceipt({ workspaceId, fetchedAt: "2026-10-01T00:00:00Z", calculationVersion: "concurrency-v1", sourceVersion: "v1", query: { kind: "synthetic" }, scopes: [], sources: [], metrics: [] });

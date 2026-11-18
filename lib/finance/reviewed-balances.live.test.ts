@@ -3,22 +3,23 @@ import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { expect, it } from "vitest";
 import { coveredTransaction, resolveBalances, type BalanceSnapshot, type BalanceTransaction } from "./balances";
+import { defined } from "@/lib/testing";
 
 it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL and TS cash through fees, later postings, correction and soft undo", async () => {
   process.loadEnvFile(".env.qa");
-  const connection = new URL(process.env.SUPABASE_DB_URL!);
+  const connection = new URL(defined(process.env.SUPABASE_DB_URL));
   const db = postgres(connection.toString(), { max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");
   const actor = randomUUID();
   try { try { await db.begin(async tx => {
-    const [applied] = await tx`select name,statements from supabase_migrations.schema_migrations where version='202610060001'`;
+    const applied = defined((await tx`select name,statements from supabase_migrations.schema_migrations where version='202610060001'`)[0]);
     expect(applied, "Deploy migration 202610060001 before running this live test").toBeDefined();
     expect(applied.name).toBe("reviewed_balance_boundary");
     expect(applied.statements.join("\n").replaceAll("\r\n", "\n").trim(), "Deployed migration must match the checked-in SQL").toBe(
       readFileSync("supabase/migrations/202610060001_reviewed_balance_boundary.sql", "utf8").replaceAll("\r\n", "\n").trim(),
     );
     await tx`insert into auth.users(id,email) values(${actor},${`qa-${actor}@example.invalid`})`;
-    const [{ id: workspace }] = await tx`select id from public.workspaces where owner_id=${actor}`;
+    const { id: workspace } = defined((await tx`select id from public.workspaces where owner_id=${actor}`)[0]);
     const account = { id: randomUUID(), name: "Synthetic fee parity", currency_code: "EUR" };
     await tx`insert into public.accounts(id,workspace_id,name,currency_code) values(${account.id},${workspace},${account.name},'EUR')`;
     const ledger: BalanceTransaction[] = [
@@ -30,30 +31,30 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL an
       values(${row.id},${workspace},${account.id},${row.amount_minor},'EUR',${row.posted_on},${row.posted_at ?? null},'Synthetic fee posting','posted')`;
     const link = randomUUID();
     await tx`insert into public.transaction_links(id,workspace_id,primary_transaction_id,counterpart_transaction_id,operation,request_id,input,before_rows,after_rows,actor_id)
-      values(${link},${workspace},${ledger[0].id},${ledger[2].id},'transfer',${randomUUID()},'{}','{}','{}',${actor})`;
-    for (const row of [ledger[0], ledger[2]]) await tx`insert into public.transaction_link_fees(workspace_id,link_id,transaction_id,fee_minor,treatment,note)
+      values(${link},${workspace},${defined(ledger[0]).id},${defined(ledger[2]).id},'transfer',${randomUUID()},'{}','{}','{}',${actor})`;
+    for (const row of [defined(ledger[0]), defined(ledger[2])]) await tx`insert into public.transaction_link_fees(workspace_id,link_id,transaction_id,fee_minor,treatment,note)
       values(${workspace},${link},${row.id},50,'additional','Synthetic verified fee')`;
-    const effective = ledger.map(row => ({ ...row, amount_minor: row.id === ledger[1].id ? row.amount_minor : (BigInt(row.amount_minor) - 50n).toString() }));
+    const effective = ledger.map(row => ({ ...row, amount_minor: row.id === defined(ledger[1]).id ? row.amount_minor : (BigInt(row.amount_minor) - 50n).toString() }));
     const snapshot: BalanceSnapshot = { id: randomUUID(), account_id: account.id, amount_minor: "9007199254740993", currency_code: "EUR", as_of: "2026-10-06T12:00:00.000Z", provenance: "manual", boundary_kind: "reviewed_activity", covered_transactions: effective.slice(0, 2).map(coveredTransaction) };
     await tx`insert into public.balance_snapshots(id,workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,covered_transactions,actor_id)
-      values(${snapshot.id!},${workspace},${account.id},${snapshot.amount_minor},'EUR',${snapshot.as_of},'manual','reviewed_activity',${tx.json(snapshot.covered_transactions!)},${actor})`;
-    const actualRecords = await tx`select public.balance_review_record(t) record from public.transactions t where t.id in(${ledger[0].id},${ledger[1].id}) order by t.id`;
-    expect(actualRecords.map(row => row.record).sort((a, b) => a.id.localeCompare(b.id))).toEqual([...snapshot.covered_transactions!].sort((a, b) => a.id.localeCompare(b.id)));
+      values(${defined(snapshot.id)},${workspace},${account.id},${snapshot.amount_minor},'EUR',${snapshot.as_of},'manual','reviewed_activity',${tx.json(defined(snapshot.covered_transactions))},${actor})`;
+    const actualRecords = await tx`select public.balance_review_record(t) record from public.transactions t where t.id in(${defined(ledger[0]).id},${defined(ledger[1]).id}) order by t.id`;
+    expect(actualRecords.map(row => row.record).sort((a, b) => a.id.localeCompare(b.id))).toEqual([...defined(snapshot.covered_transactions)].sort((a, b) => a.id.localeCompare(b.id)));
     const asOf = "2026-10-06T14:00:00.000Z";
     async function parity(expected: string | null) {
-      const [sql] = await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`;
-      const ts = resolveBalances([account], [snapshot], effective, asOf, "Europe/Berlin")[0].balance;
+      const sql = defined((await tx`select public.reservation_balance_evidence(${account.id},${asOf},'Europe/Berlin') evidence`)[0]);
+      const ts = defined(resolveBalances([account], [snapshot], effective, asOf, "Europe/Berlin")[0]).balance;
       expect(sql.evidence).toMatchObject({ status: ts.status, amount_minor: ts.amount_minor, estimated_amount_minor: ts.estimated_amount_minor });
       expect(ts.amount_minor).toBe(expected);
     }
     await parity("9007199254740693");
-    await tx`update public.transaction_link_fees set fee_minor=75 where transaction_id=${ledger[0].id}`;
-    effective[0].amount_minor = "-175";
+    await tx`update public.transaction_link_fees set fee_minor=75 where transaction_id=${defined(ledger[0]).id}`;
+    defined(effective[0]).amount_minor = "-175";
     await parity(null);
-    await tx`update public.transaction_link_fees set fee_minor=50 where transaction_id=${ledger[0].id}`;
-    effective[0].amount_minor = "-150";
+    await tx`update public.transaction_link_fees set fee_minor=50 where transaction_id=${defined(ledger[0]).id}`;
+    defined(effective[0]).amount_minor = "-150";
     await parity("9007199254740693");
-    await tx`update public.balance_snapshots set undone_at=now(),undone_by=${actor},version=2 where id=${snapshot.id!}`;
+    await tx`update public.balance_snapshots set undone_at=now(),undone_by=${actor},version=2 where id=${defined(snapshot.id)}`;
     snapshot.undone_at = asOf;
     await parity(null);
     throw rollback;
