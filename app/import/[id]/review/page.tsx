@@ -17,6 +17,8 @@ function SourceFields({ row }: { row: SourceRow }) {
     <div key={column} className="contents"><dt className="font-medium text-muted-foreground">{column}</dt><dd className="break-words [overflow-wrap:anywhere]">{String(value) || "—"}</dd></div>)}</dl>;
 }
 
+const rowIsShownAsUnreadable = () => undefined;
+
 const PAGE_SIZE = 100;
 const HISTORY_SIZE = 20;
 
@@ -94,7 +96,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
           const route = JSON.parse(key);
           return route[0] === mapped.accountName && route[1] === mapped.currencyCode;
         })?.[1] as string ?? null;
-      } catch {}
+      } catch { rowIsShownAsUnreadable(); }
       const frozen = destinations.data?.find(account => account.id === frozenId);
       const eligible = destinations.error ? [] : (destinations.data ?? []).filter(account => !account.archived_at && account.currency_code === currency);
       return <article className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-6" key={row.id}>
