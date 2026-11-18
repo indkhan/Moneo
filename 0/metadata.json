@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7RAPKSTQ8SFKYJ9BTPNKAS9",
+  "session_id": "c2e755c7-96fd-48e4-adc1-67122b6ced7d",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T21:58:45.4789757Z",
+  "branch": "t3/issue-243-finance-indexed",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/finance/own-transfers.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "289b1e0d86ad",
+  "checkpoint_transcript_start": 430,
+  "transcript_lines_at_start": 430,
+  "compact_transcript_start": 57,
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 29875,
+    "cache_read_tokens": 2393249,
+    "output_tokens": 10988,
+    "api_call_count": 13
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
