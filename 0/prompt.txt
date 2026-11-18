@@ -1,0 +1,13 @@
+Act as the implementation sub-agent for this task.
+
+Repo indkhan/Moneo. Final PR for GitHub issue #239 (read it with `gh issue view 239`, and AGENTS.md). Merged so far: #294 (own-transfers), #296 (review pipeline), #300 (finance tools, investigation, evidence; added `lib/finance/finance-context.ts` with `FinanceContext`/`ScopeGuard`, and `aiScopeGuard` in `lib/settings.ts`). Read those PR bodies for the pattern.
+
+This PR finishes it:
+1. `lib/finance/model.ts`: `evaluatePlan` still calls `requireWorkspace()` from `@/lib/auth`. Move sign-in to its callers (or remove it if `evaluatePlanForWorkspace` already covers every caller), keeping authorization at every public entry point. List in the PR body where each entry point's check happens.
+2. Recount with `git grep -n 'from "@/lib/\(auth\|settings\)"' -- 'lib/finance/*.ts'` (non-test). Remaining imports are type-only or constants (`AiDataScope`, `AI_DATA_SCOPES`, `WorkspaceSettings`, `settingsSchema`?). Move the pure, request-free pieces those files need into a plain module with no auth/DB/cookie imports (e.g. `lib/ai-data-scopes.ts`, like #294 did with `lib/insight-types.ts`), re-export or update `lib/settings.ts` and every importer, so `lib/finance` imports neither `@/lib/auth` nor `@/lib/settings`. Type-only imports count too: the goal is no dependency on those modules.
+3. Add the lint ban: extend `moneo/import-boundaries` in `eslint.config.mjs` (or `no-restricted-imports` for `lib/finance/**`) so importing `@/lib/auth` or `@/lib/settings` from `lib/finance` fails with a message saying what to do instead (the caller resolves owner/settings/scopes/clock and passes plain inputs; types live in the plain module). Confirm the rule fires on a deliberate import, then remove it. Add or update the AGENTS.md rules-table row (the existing import-boundaries row is a good place).
+4. Then close the loop on #239's acceptance list in the PR body (each item: where it's met).
+
+Behaviour must not change. Create branch `t3/issue-239-lint-ban` from origin/main. Commit in steps. Before opening the PR, merge origin/main again.
+
+Rules: run `npm test`, `npm run lint`, `npm run typecheck` and `npm run build` yourself and quote their last lines. Tests use only the moneo-qa test backend; never the owner's backend (.env, Docker project `moneo`, port 3000). Never run `qa:reset` or `docker compose -p moneo-qa down`. Never kill a process you didn't start (verify by PID). Don't end your turn while a command is still running. No comments in code. Commits end with "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>". Open the PR (body ends with "🤖 Generated with [Claude Code](https://claude.com/claude-code)" and "Closes #239"), never merge it. Final line: PR <full URL>, head <SHA>.
