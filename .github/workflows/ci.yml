@@ -33,6 +33,10 @@ jobs:
         if: steps.modules.outputs.cache-hit != 'true'
         run: npm ci
       - run: npm run lint
+      - name: EXPERIMENT eslint concurrency auto
+        run: TIMING=10 npx eslint --concurrency auto .
+      - name: EXPERIMENT eslint concurrency 2
+        run: npx eslint --concurrency 2 .
 
   typecheck:
     runs-on: ubuntu-latest
