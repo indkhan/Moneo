@@ -8,6 +8,7 @@ import { GripHorizontal, Plus, X } from "lucide-react";
 import { HomeCardSize } from "@/components/cards/card-view";
 import { CARD_SIZES, type CardSize } from "@/lib/cards/sizes";
 import { distanceToBox, dropSide, moveWidget, type Point } from "@/lib/home-grid-drop";
+import { useTimeout } from "@/lib/use-timeout";
 import { resizeHomeCard, saveHomeLayout } from "./dashboard-actions";
 import { SectionFallback } from "./section-fallback";
 
@@ -75,11 +76,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
   }, [layout.items, adding]);
   const remember = () => { for (const [node, at] of measure()) rects.current.set(node.dataset.widget!, at); };
 
-  useEffect(() => {
-    if (!notice || notice.action) return;
-    const timer = setTimeout(() => setNotice(null), 6000);
-    return () => clearTimeout(timer);
-  }, [notice]);
+  useTimeout(() => setNotice(null), notice && !notice.action ? 6000 : null, notice);
   useEffect(() => {
     if (!selected) return;
     const away = (event: PointerEvent) => { if (!(event.target as Element).closest(`[data-widget="${CSS.escape(selected)}"]`)) setSelected(null); };

@@ -133,6 +133,13 @@ const unexplainedIgnoredFailure = {
 
 const typedAsyncFiles = ["lib/**/*.ts", "lib/**/*.tsx", "workflows/**/*.ts", "app/**/actions.ts", "app/**/*-actions.ts", "app/**/*-action.ts", "app/**/route.ts"];
 
+const rawTimer = {
+  selector: ":matches(CallExpression[callee.name=/^(setTimeout|setInterval)$/], CallExpression[callee.object.name='window'][callee.property.name=/^(setTimeout|setInterval)$/])",
+  message: "A raw timer outlives its component and doubles under Strict Mode. Repeat work with usePolling or useNow (lib/use-polling.ts, lib/use-now.ts); delay with useTimeout or useDelay (lib/use-timeout.ts) (AGENTS.md Rules).",
+};
+
+const serverActionFilesWithTimers = ["app/settings/ai-access.tsx"];
+
 const assumedTimeZone = {
   selector: ":matches(Literal[value='Europe/Berlin'], TemplateElement[value.raw=/Europe.Berlin/])",
   message: "Never assume where the owner lives. Take the time zone from workspace.timezone or settings.timezone (set in Settings, detected from their device) and pass it in (AGENTS.md Rules).",
@@ -257,6 +264,11 @@ export default defineConfig([
     files: ["app/**", "components/**", "lib/**", "workflows/**", "*.ts"],
     ignores: ["**/*.test.ts", "**/*.test.tsx", "lib/env.ts", "lib/finance/format.ts", "lib/schema.ts", "lib/import/csv.ts", "workflows/**"],
     rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney] },
+  },
+  {
+    files: ["app/**", "components/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "app/api/**", ...typedAsyncFiles, ...serverActionFilesWithTimers],
+    rules: { "no-restricted-syntax": ["error", ...hardCodedAddress, assumedTimeZone, ...exactMoney, rawTimer] },
   },
   {
     files: ["lib/schema.ts", "lib/import/csv.ts"],
