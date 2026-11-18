@@ -47,7 +47,7 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
       if (!signal.aborted) { setReview(data); setLost(false); }
     } catch { if (!signal.aborted) setLost(true); }
   };
-  usePolling(refresh, 3000, !!jobId && !lost && (!review || running), { immediate: true });
+  usePolling(refresh, 3000, !!jobId && (running || (!review && !lost)), { immediate: true });
 
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
