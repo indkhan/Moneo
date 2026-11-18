@@ -1,0 +1,82 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7REATN3GNX4SDDTPXKF2S2D",
+  "strategy": "manual-commit",
+  "branch": "t3/issue-243-finance-tests-indexed",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/finance/account-closing.test.ts",
+    "lib/finance/account-liquidity-adapters.test.ts",
+    "lib/finance/account-liquidity-model.test.ts",
+    "lib/finance/account-liquidity.test.ts",
+    "lib/finance/balances.test.ts",
+    "lib/finance/calculations.test.ts",
+    "lib/finance/calendar.property.test.ts",
+    "lib/finance/capture-evidence.test.ts",
+    "lib/finance/dashboard-spending.test.ts",
+    "lib/finance/direct-source-revisions.test.ts",
+    "lib/finance/evidence-receipts.test.ts",
+    "lib/finance/evidence-view.test.ts",
+    "lib/finance/expenditure.test.ts",
+    "lib/finance/forecast-provenance.test.ts",
+    "lib/finance/insights.test.ts",
+    "lib/finance/investigation-reader.test.ts",
+    "lib/finance/investigation-receipt.test.ts",
+    "lib/finance/investigation.test.ts",
+    "lib/finance/iou.test.ts",
+    "lib/finance/model-balances.test.ts",
+    "lib/finance/model-recurring.test.ts",
+    "lib/finance/model.test.ts",
+    "lib/finance/money.property.test.ts",
+    "lib/finance/net-worth-source.test.ts",
+    "lib/finance/net-worth.test.ts",
+    "lib/finance/own-transfers.test.ts",
+    "lib/finance/recover-reviews.test.ts",
+    "lib/finance/recurring-patterns.test.ts",
+    "lib/finance/recurring.test.ts",
+    "lib/finance/review-controller.test.ts",
+    "lib/finance/review-freshness.test.ts",
+    "lib/finance/review-gather.test.ts",
+    "lib/finance/review-loader.test.ts",
+    "lib/finance/review-prompt.test.ts",
+    "lib/finance/review.test.ts",
+    "lib/finance/reviewed-balances.test.ts",
+    "lib/finance/reviewed-model.test.ts",
+    "lib/finance/search-evidence.test.ts",
+    "lib/finance/snapshot-provenance.test.ts",
+    "lib/finance/source-coverage.test.ts",
+    "lib/finance/tool-evidence.test.ts",
+    "lib/finance/transit.test.ts",
+    "lib/finance/wealth.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
