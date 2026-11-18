@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M7QSJND96207F8KAC419FQ0N",
+  "session_id": "2abf0484-5d45-49d9-8fd6-279861df8ce0",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T17:00:35.4106925Z",
+  "branch": "t3/research-self-hosted-voice",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "research/voice-duplex/experiments/expG/bench_transformers.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "420a78154b45",
+  "checkpoint_transcript_start": 869,
+  "transcript_lines_at_start": 869,
+  "compact_transcript_start": 100,
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 211067,
+    "cache_read_tokens": 2129886,
+    "output_tokens": 9395,
+    "api_call_count": 10
+  },
+  "redaction": {
+    "replacements": 7,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 5,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 6
+  }
+}
