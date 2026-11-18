@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>bhzhqq3tl</task-id>
+<tool-use-id>toolu_015Cz5ZfbuLFCUmEK92scAPs</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\cdbe1c0dbb24bec2\a2a2ced7-2f2e-4b6b-8a54-85f47f03f73b\tasks\bhzhqq3tl.output</output-file>
+<status>completed</status>
+<summary>Background command "cd "C:/Users/mgsuk/.t3/worktrees/Moneo/t3-117c919d-65b3fe02faed0b6a"; rm -f components/zz-temp.ts; git add lib app/ai components/auto-refresh.tsx components/ai-panel-dialog.tsx components/chat-workspace.tsx &amp;&amp; git commit -q -m "Add shared polling, timeout and clock hooks and move existing polling callers to them
+
+usePolling moves out of lib/ai, aborts its request when it stops, never starts a second request while one runs, and pauses in a hidden tab. useTimeout, useDelay and 
+
+... [627 characters truncated] ...
+
+ate).
+
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" &amp;&amp; git add eslint.config.mjs AGENTS.md &amp;&amp; git commit -q -m "Ban raw setTimeout and setInterval in client code
+
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" &amp;&amp; git status --short &amp;&amp; git merge origin/main 2&gt;&amp;1 | tail -5" completed (exit code 0)</summary>
+</task-notification>
