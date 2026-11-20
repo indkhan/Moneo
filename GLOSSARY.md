@@ -54,7 +54,7 @@ A one-off message on Home when a sync or import shows that a Tracked pledge was 
 _Avoid_: alert, notification, reminder
 
 **Declined suggestion**:
-A memory Moneo asked to keep and the owner said no to. Moneo doesn't suggest it again.
+A memory Moneo asked to keep and the owner said no to. Moneo doesn't suggest it again for six months, but the owner can still keep it or say it again.
 
 **Source**:
 The owner's message, typed or spoken in a call, that a memory came from, with the words it quotes.

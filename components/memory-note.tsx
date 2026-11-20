@@ -6,7 +6,7 @@ import { confirmMemory, declineMemory, loadNotedMemories, undoMemory, type Noted
 import { MEMORY_KIND_LABELS, readMemoryNote } from "@/lib/ai/memory-note";
 
 const button = "min-h-8 rounded-md border border-border px-2.5 text-xs hover:bg-muted disabled:opacity-50";
-const unavailableShowsNothing = (): Record<string, NotedMemory> => ({});
+const UNAVAILABLE = "unavailable" as const;
 
 function Row({ memory, prefix, children }: { memory: NotedMemory; prefix?: string; children?: React.ReactNode }) {
   return <li className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
@@ -19,16 +19,17 @@ function Row({ memory, prefix, children }: { memory: NotedMemory; prefix?: strin
 export function MemoryNoteView({ source }: { source: string }) {
   const note = useMemo(() => readMemoryNote(source), [source]);
   const ids = note ? [...new Set([...note.saved, ...note.ended, ...note.used])].join(",") : "";
-  const [memories, setMemories] = useState<Record<string, NotedMemory>>();
+  const [memories, setMemories] = useState<Record<string, NotedMemory> | typeof UNAVAILABLE>();
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
   useEffect(() => {
-    if (ids) loadNotedMemories(ids.split(",")).then(setMemories, () => setMemories(unavailableShowsNothing()));
+    if (ids) loadNotedMemories(ids.split(",")).then(setMemories, () => setMemories(UNAVAILABLE));
   }, [ids]);
   if (!note || !memories) return null;
+  if (memories === UNAVAILABLE) return <p className="my-3 text-xs text-muted-foreground">Memory changed in this answer. <Link href="/ai/memory" className="underline">See what Moneo knows about you</Link></p>;
   const act = (memory: NotedMemory, run: (id: string) => Promise<void>, status: string) => start(async () => {
     setError(undefined);
-    try { await run(memory.id); setMemories(current => ({ ...current, [memory.id]: { ...memory, status } })); }
+    try { await run(memory.id); setMemories(current => current === UNAVAILABLE ? current : { ...current, [memory.id]: { ...memory, status } }); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "That did not work"); }
   });
   const known = (list: string[]) => list.flatMap(id => memories[id] ? [memories[id]] : []);

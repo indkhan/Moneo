@@ -96,3 +96,14 @@ export function Change({ before, beforeDates, after, afterDates }: { before: Mem
     </div>
   </section></li>;
 }
+
+export function Declined({ row, dates }: { row: MemoryRow; dates: Dates }) {
+  return <li><section aria-label={`Declined suggestion: ${row.statement}`} className={card}>
+    <p><span className="mr-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{MEMORY_KIND_LABELS[row.kind]}</span>{row.statement}</p>
+    <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={dates} /></span><Source row={row} /></div>
+    <div className="mt-3 flex flex-wrap gap-2">
+      <Button action={confirmMemorySafely} memory={row.id} label="Keep it" name={`Keep ${row.statement}`} />
+      <Forget row={row} />
+    </div>
+  </section></li>;
+}

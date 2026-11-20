@@ -24,10 +24,11 @@ describe("memoryBrief", () => {
     for (const stale of ["half the rent", "Freelancing", "No takeout"]) expect(brief.text).not.toContain(stale);
   });
 
-  it("keeps preferences and pledges when a long history would overflow the prompt, and counts what was left out", () => {
+  it("keeps preferences and pledges when a long history or many unconfirmed suggestions would overflow the prompt, and counts what was left out", () => {
     const facts = Array.from({ length: 200 }, (_, index) => memory({ statement: `Background fact number ${index} about the owner's life and spending` }));
     const pledge = memory({ kind: "pledge", statement: "Cutting out food delivery" }), preference = memory({ kind: "preference", statement: "Be blunt" });
-    const brief = memoryBrief([...facts, pledge, preference], today, 2000);
+    const waiting = Array.from({ length: 10 }, (_, index) => memory({ status: "suggested", statement: `A long unconfirmed suggestion number ${index} `.repeat(6) }));
+    const brief = memoryBrief([...waiting, ...facts, pledge, preference], today, 2000);
     expect(brief.text.length).toBeLessThanOrEqual(2000);
     expect(brief.ids.slice(0, 2)).toEqual([preference.id, pledge.id]);
     expect(brief.omitted).toBe(202 - brief.ids.length);

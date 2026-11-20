@@ -5,7 +5,7 @@ import { MEMORY_COLUMNS, isCurrent, trueUntil, type MemoryRow } from "@/lib/ai/m
 import { MEMORY_KINDS, MEMORY_KIND_LABELS, type MemoryKind } from "@/lib/ai/memory-note";
 import { calendarDate } from "@/lib/finance/calendar";
 import { loadMemory, loadNames, type MemoryEntry } from "@/lib/organize/surfaces";
-import { Change, MemoryItem, Suggested, type Dates } from "./memory-item";
+import { Change, Declined, MemoryItem, Suggested, type Dates } from "./memory-item";
 
 export const metadata = { title: "What Moneo knows about you" };
 
@@ -58,6 +58,7 @@ async function loadPayees(db: Awaited<ReturnType<typeof requireWorkspace>>["supa
 
 function Now({ rows, today, dates, payees }: { rows: MemoryRow[]; today: string; dates: (row: MemoryRow) => Dates; payees: { id: string; name: string; summary: string }[] }) {
   const suggested = rows.filter(row => row.status === "suggested");
+  const declined = rows.filter(row => row.status === "declined");
   const current = rows.filter(row => isCurrent(row, today));
   const ofKind = (kind: MemoryKind) => current.filter(row => row.kind === kind)
     .sort((a, b) => kind === "plan" ? (a.valid_from ?? "9999").localeCompare(b.valid_from ?? "9999") : 0);
@@ -81,11 +82,15 @@ function Now({ rows, today, dates, payees }: { rows: MemoryRow[]; today: string;
           </ul>}
       </section>;
     })}
+    {declined.length > 0 && <details className="text-sm">
+      <summary className="cursor-pointer text-muted-foreground">You chose not to keep {declined.length === 1 ? "1 suggestion" : `${declined.length} suggestions`}</summary>
+      <ul className="mt-2 space-y-2">{declined.map(row => <Declined key={row.id} row={row} dates={dates(row)} />)}</ul>
+    </details>}
   </div>;
 }
 
 function History({ rows, today, dates }: { rows: MemoryRow[]; today: string; dates: (row: MemoryRow) => Dates }) {
-  const successor = new Map(rows.filter(row => row.replaces && row.status !== "suggested").map(row => [row.replaces, row]));
+  const successor = new Map(rows.filter(row => row.replaces && row.status !== "suggested" && row.status !== "declined").map(row => [row.replaces, row]));
   const changes = rows.filter(row => row.status === "replaced" || row.status === "ended" || (row.status === "active" && !isCurrent(row, today)))
     .sort((a, b) => (b.closed_at ?? b.valid_until ?? "").localeCompare(a.closed_at ?? a.valid_until ?? ""));
   if (!changes.length) return <p className="text-sm text-muted-foreground">Nothing has changed yet. When you tell Moneo something new that replaces what it knew, or that something is no longer true, the earlier version is kept here.</p>;

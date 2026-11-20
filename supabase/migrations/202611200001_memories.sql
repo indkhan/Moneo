@@ -27,10 +27,11 @@ create index memories_workspace_status on public.memories(workspace_id, status, 
 create index memories_search on public.memories using gin(search);
 create index memories_conversation on public.memories(conversation_id) where conversation_id is not null;
 create unique index memories_one_current_copy on public.memories(workspace_id, kind, public.memory_text(statement)) where status in ('active','suggested');
-create unique index memories_replaced_once on public.memories(replaces) where replaces is not null and status <> 'suggested';
+create unique index memories_replaced_once on public.memories(replaces) where replaces is not null and status not in ('suggested','declined');
 
 alter table public.memories enable row level security;
 create policy own_memories on public.memories for select to authenticated using (workspace_id in (select public.owned_workspace_ids()));
+revoke all on public.memories from public, anon, authenticated;
 grant select on public.memories to authenticated;
 grant all on public.memories to service_role;
 
@@ -66,9 +67,12 @@ begin
     raise exception 'The quote must be at least three words the owner wrote or said in this message' using errcode='22023';
   end if;
   select * into saved from public.memories where workspace_id=ws and kind=p_kind and public.memory_text(statement)=public.memory_text(p_statement)
-    and (status in ('active','suggested') or (status='declined' and closed_at > now() - interval '180 days'))
+    and (status in ('active','suggested') or (status='declined' and not p_sure and closed_at > now() - interval '180 days'))
     order by status='declined' limit 1;
   if found then return jsonb_build_object('id', saved.id, 'status', saved.status, 'alreadyKnown', true); end if;
+  if p_sure then
+    delete from public.memories where workspace_id=ws and kind=p_kind and status='declined' and public.memory_text(statement)=public.memory_text(p_statement);
+  end if;
   if p_replaces is not null then
     select * into old from public.memories where id=p_replaces and workspace_id=ws for update;
     if not found or old.status <> 'active' then raise exception 'Only an active memory can be replaced' using errcode='22023'; end if;
@@ -100,17 +104,16 @@ begin
     raise exception 'The quote must be at least three words the owner wrote or said in this message' using errcode='22023';
   end if;
   if p_ended_on > p_today then
-    update public.memories set valid_until=greatest(p_ended_on, valid_from) where id=p_id;
-  else
-    update public.memories set status='ended', closed_at=now(), ended_on=greatest(p_ended_on, valid_from) where id=p_id;
+    raise exception 'A memory can only be ended on or before today; to say when it will stop, save it again with an end date' using errcode='22023';
   end if;
+  update public.memories set status='ended', closed_at=now(), ended_on=greatest(p_ended_on, valid_from) where id=p_id;
 end $$;
 
 create function public.confirm_memory(p_id uuid, p_today date) returns void language plpgsql security definer set search_path='' as $$
 declare target public.memories%rowtype; old public.memories%rowtype;
 begin
   select * into target from public.memories where id=p_id and public.owns_workspace(workspace_id) for update;
-  if not found or target.status <> 'suggested' then raise exception 'Only a suggested memory can be saved' using errcode='22023'; end if;
+  if not found or target.status not in ('suggested','declined') then raise exception 'Only a suggested or declined memory can be saved' using errcode='22023'; end if;
   if target.replaces is not null then
     select * into old from public.memories where id=target.replaces for update;
     if not found or old.status <> 'active' then
@@ -118,7 +121,7 @@ begin
     end if;
     update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(old.valid_from, target.valid_from, p_today) where id=old.id;
   end if;
-  update public.memories set status='active' where id=p_id;
+  update public.memories set status='active', closed_at=null where id=p_id;
 exception when unique_violation then
   raise exception 'Moneo already remembers this; edit that memory instead' using errcode='22023';
 end $$;

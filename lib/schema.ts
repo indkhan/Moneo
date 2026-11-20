@@ -1434,9 +1434,16 @@ export const memories = pgTable("memories", {
   search: tsvector("search").generatedAlwaysAs(sql`to_tsvector('simple', statement || ' ' || coalesce(quote, ''))`),
 }, table => [
   index("memories_workspace_status").on(table.workspaceId, table.status, table.createdAt.desc()),
+  index("memories_search").using("gin", table.search),
   index("memories_conversation").on(table.conversationId).where(sql`${table.conversationId} is not null`),
-  uniqueIndex("memories_replaced_once").on(table.replaces).where(sql`${table.replaces} is not null and ${table.status} <> 'suggested'`),
+  uniqueIndex("memories_one_current_copy").on(table.workspaceId, table.kind, sql`public.memory_text(${table.statement})`).where(sql`${table.status} in ('active','suggested')`),
+  uniqueIndex("memories_replaced_once").on(table.replaces).where(sql`${table.replaces} is not null and ${table.status} not in ('suggested','declined')`),
   check("memories_kind_check", sql`${table.kind} in ('pledge','plan','fact','explanation','preference')`),
-  check("memories_status_check", sql`${table.status} in ('suggested','active','replaced','ended')`),
+  check("memories_statement_check", sql`length(btrim(${table.statement})) between 1 and 500`),
+  check("memories_quote_check", sql`length(btrim(${table.quote})) between 1 and 500`),
+  check("memories_status_check", sql`${table.status} in ('suggested','active','replaced','ended','declined')`),
   check("memories_saved_by_check", sql`${table.savedBy} in ('ai','owner')`),
+  check("memories_check", sql`${table.validUntil} is null or ${table.validFrom} is null or ${table.validUntil} >= ${table.validFrom}`),
+  check("memories_check1", sql`(${table.status} in ('replaced','ended','declined')) = (${table.closedAt} is not null)`),
+  check("memories_check2", sql`${table.savedBy} = 'owner' or ${table.quote} is not null`),
 ]);

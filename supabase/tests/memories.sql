@@ -29,6 +29,10 @@ begin
     raise exception 'Saved a memory on another owner''s request' using errcode='ZX001';
   exception when insufficient_privilege then null; end;
   begin
+    truncate public.memories;
+    raise exception 'The owner role could empty every memory table directly' using errcode='ZX001';
+  exception when insufficient_privilege then null; end;
+  begin
     insert into public.memories(workspace_id,kind,statement,saved_by) values(workspace,'fact','Written around the quote check','owner');
     raise exception 'Memories were writable without the memory functions' using errcode='ZX001';
   exception when insufficient_privilege then null; end;
@@ -50,7 +54,22 @@ begin
   perform public.decline_memory(suggested);
   result:=public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',false,'2026-11-20');
   if result->>'status'<>'declined' or (result->>'id')::uuid<>suggested then raise exception 'A memory the owner declined was suggested again'; end if;
-  perform public.forget_memory(suggested);
+  result:=public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20');
+  if result->>'status'<>'active' or exists(select 1 from public.memories where id=suggested)
+    then raise exception 'The owner saying it clearly after declining it did not keep it'; end if;
+  perform public.undo_memory((result->>'id')::uuid);
+
+  first:=(public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20')->>'id')::uuid;
+  suggested:=(public.save_memory(takeout,'pledge','Cutting out all takeout','cut out takeout for the gym',false,'2026-11-20',null,null,first)->>'id')::uuid;
+  perform public.decline_memory(suggested);
+  perform public.confirm_memory(suggested,'2026-11-20');
+  if (select status from public.memories where id=suggested)<>'active' or (select status from public.memories where id=first)<>'replaced'
+    then raise exception 'The owner could not keep a suggestion they declined earlier'; end if;
+  second:=(public.save_memory(takeout,'pledge','Cutting out takeout and sweets','cut out takeout for the gym',false,'2026-11-20',null,null,suggested)->>'id')::uuid;
+  perform public.decline_memory(second);
+  edited:=public.edit_memory(suggested,'pledge','Cutting out takeout and coffee',null,null);
+  if (select status from public.memories where id=suggested)<>'replaced' then raise exception 'A declined suggestion locked the memory it would have replaced'; end if;
+  perform public.forget_memory(edited);
 
   first:=(public.save_memory(rent,'fact','Partner pays half the rent','My partner pays half the rent',true,'2026-10-05','2026-10-01')->>'id')::uuid;
   second:=(public.save_memory(rent_change,'fact','Partner pays all of the rent','my partner pays all of the rent',true,'2026-11-20','2026-11-01',null,first)->>'id')::uuid;
@@ -72,9 +91,10 @@ begin
   if (select status from public.memories where id=suggested)<>'active' or (select ended_on from public.memories where id=first)<>'2026-11-20'
     then raise exception 'Saving an undated suggestion did not end the old memory today'; end if;
 
-  perform public.end_memory(suggested,'2026-12-31','2026-11-20');
-  if (select status from public.memories where id=suggested)<>'active' or (select valid_until from public.memories where id=suggested)<>'2026-12-31'
-    then raise exception 'Something that stops being true later was ended today'; end if;
+  begin
+    perform public.end_memory(suggested,'2026-12-31','2026-11-20');
+    raise exception 'A memory was ended on a day still to come, overwriting when it stops without history' using errcode='ZX001';
+  exception when invalid_parameter_value then null; end;
   perform public.end_memory(suggested,'2026-11-20','2026-11-20');
   second:=(public.save_memory(rent_change,'fact','Partner pays all of the rent','my partner pays all of the rent',true,'2026-11-20')->>'id')::uuid;
   begin
