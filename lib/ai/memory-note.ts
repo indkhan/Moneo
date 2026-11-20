@@ -4,19 +4,17 @@ export const MEMORY_KINDS = ["pledge", "plan", "fact", "explanation", "preferenc
 export type MemoryKind = typeof MEMORY_KINDS[number];
 export const MEMORY_KIND_LABELS: Record<MemoryKind, string> = { pledge: "Pledge", plan: "Plan", fact: "Fact", explanation: "Explanation", preference: "Preference" };
 
-const noted = z.object({ id: z.uuid(), kind: z.enum(MEMORY_KINDS), statement: z.string().max(500) }).strict();
-export const memoryNoteSchema = z.object({
-  saved: z.array(noted).max(20),
-  ended: z.array(noted).max(20),
-  used: z.array(noted).max(20),
-}).strict();
+const MAX_NOTED = 20;
+const ids = z.array(z.uuid()).max(MAX_NOTED);
+export const memoryNoteSchema = z.object({ saved: ids, ended: ids, used: ids }).strict();
 export type MemoryNote = z.infer<typeof memoryNoteSchema>;
-export type NotedMemory = z.infer<typeof noted>;
 
 export const MEMORY_NOTE_FENCE = "moneo-memory";
 export function memoryNoteBlock(note: MemoryNote) {
-  if (!note.saved.length && !note.ended.length && !note.used.length) return null;
-  return "```" + MEMORY_NOTE_FENCE + "\n" + JSON.stringify(note) + "\n```";
+  const noted = (list: string[]) => [...new Set(list)].slice(0, MAX_NOTED);
+  const saved = noted(note.saved), ended = noted(note.ended), used = noted(note.used.filter(id => !note.saved.includes(id)));
+  if (!saved.length && !ended.length && !used.length) return null;
+  return "```" + MEMORY_NOTE_FENCE + "\n" + JSON.stringify({ saved, ended, used }) + "\n```";
 }
 
 const unreadableNoteShowsNothing = () => null;

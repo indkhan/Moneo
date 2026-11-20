@@ -2457,7 +2457,7 @@ isOneToOne: false
 { Args: { "p_repayment_id": string }; Returns: undefined
                            },
 "confirm_memory":
-{ Args: { "p_id": string }; Returns: undefined
+{ Args: { "p_id": string,"p_today": string }; Returns: undefined
                            },
 "confirm_organize_memory":
 { Args: { "p_apply_to_existing": boolean,"p_category": string,"p_identity": string,"p_merchant": string,"p_purpose"?: string }; Returns: Json
@@ -2600,7 +2600,7 @@ isOneToOne: false
 { Args: { "p_expected_version": number,"p_id": string,"p_record": Json,"p_remove": boolean,"p_request_id": string }; Returns: Json
                            },
 "end_memory":
-{ Args: { "p_conversation_id"?: string,"p_ended_on": string,"p_id": string,"p_quote"?: string }; Returns: undefined
+{ Args: { "p_ended_on": string,"p_id": string,"p_quote"?: string,"p_request_id"?: string }; Returns: undefined
                            },
 "fail_financial_review":
 { Args: { "p_error": string,"p_job_id": string,"p_run_id": string,"p_stage": string,"p_workspace_id": string }; Returns: string
@@ -2894,14 +2894,11 @@ isOneToOne: false
 "memory_text":
 { Args: { "value": string }; Returns: string
                            },
-"owned_conversation_workspace":
-{ Args: { "p_conversation_id": string }; Returns: string
-                           },
 "owned_workspace_ids":
 { Args: Record<PropertyKey, never>; Returns: string[]
                            },
 "owner_said":
-{ Args: { "p_conversation_id": string,"p_quote": string,"p_workspace_id": string }; Returns: boolean
+{ Args: { "p_quote": string,"p_request_id": string,"p_workspace_id": string }; Returns: boolean
                            },
 "owns_workspace":
 { Args: { "target": string }; Returns: boolean
@@ -2976,6 +2973,12 @@ isOneToOne: false
                            },
 "replace_scalable_value_history":
 { Args: { "p_checked_on": string,"p_connection_id": string,"p_rows": Json }; Returns: number
+                           },
+"replaced_on":
+{ Args: { "p_new_from": string,"p_old_from": string,"p_today": string }; Returns: string
+                           },
+"request_workspace":
+{ Args: { "p_request_id": string }; Returns: string
                            },
 "reservation_balance_evidence":
 { Args: { "p_account_id": string,"p_as_of": string,"p_timezone": string }; Returns: Json
@@ -3126,7 +3129,7 @@ isOneToOne: false
 { Args: { "p_source_id": string }; Returns: Json
                            },
 "save_memory":
-{ Args: { "p_conversation_id": string,"p_kind": string,"p_quote": string,"p_replaces"?: string,"p_request_id": string,"p_statement": string,"p_sure": boolean,"p_valid_from"?: string,"p_valid_until"?: string }; Returns: Json
+{ Args: { "p_kind": string,"p_quote": string,"p_replaces"?: string,"p_request_id": string,"p_statement": string,"p_sure": boolean,"p_today": string,"p_valid_from"?: string,"p_valid_until"?: string }; Returns: Json
                            },
 "save_organization_rule":
 { Args: { "p_category": string,"p_enabled": boolean,"p_expected_version": number,"p_key": string,"p_merchant": string,"p_workspace": string }; Returns: Json

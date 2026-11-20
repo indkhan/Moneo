@@ -63,7 +63,7 @@ function Forget({ row }: { row: MemoryRow }) {
   return <details>
     <summary className={`${quiet} inline-flex cursor-pointer items-center`}>Forget</summary>
     <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-      <p>Deletes this memory with all its versions, earlier and later, and the words of yours it came from. This can&apos;t be undone.</p>
+      <p>Deletes this memory with all its versions, earlier and later, and the quote of your words it kept. It also disappears from the memory notes under answers. The chats themselves stay, including anything you or Moneo wrote there; delete a chat to remove that. This can&apos;t be undone.</p>
       <Button action={forgetMemorySafely} memory={row.id} label="Forget permanently" name={`Forget ${row.statement} permanently`} tone="primary" />
     </div>
   </details>;
@@ -81,7 +81,7 @@ export function Suggested({ row, dates }: { row: MemoryRow; dates: Dates }) {
 }
 
 export function Change({ before, beforeDates, after, afterDates }: { before: MemoryRow; beforeDates: Dates; after: MemoryRow | null; afterDates: Dates | null }) {
-  const label = before.status === "replaced" ? "Replaced" : before.status === "ended" ? "No longer true" : "Time ran out";
+  const label = before.status === "ended" ? "No longer true" : before.status !== "replaced" ? "Time ran out" : after?.saved_by === "owner" ? "You corrected it" : "Changed";
   return <li><section aria-label={`${label}: ${before.statement}`} className={card}>
     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}{beforeDates.changed && ` · ${beforeDates.changed}`} · {MEMORY_KIND_LABELS[before.kind]}</p>
     <p className="mt-2"><span className="text-muted-foreground">Before: </span>{before.statement}</p>

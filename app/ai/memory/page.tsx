@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { MEMORY_COLUMNS, isCurrent, type MemoryRow } from "@/lib/ai/memory";
+import { MEMORY_COLUMNS, isCurrent, trueUntil, type MemoryRow } from "@/lib/ai/memory";
 import { MEMORY_KINDS, MEMORY_KIND_LABELS, type MemoryKind } from "@/lib/ai/memory-note";
 import { calendarDate } from "@/lib/finance/calendar";
 import { loadMemory, loadNames, type MemoryEntry } from "@/lib/organize/surfaces";
@@ -24,8 +24,9 @@ export default async function MemoryPage({ searchParams }: { searchParams: Promi
   const view = (await searchParams).view === "history" ? "history" : "now";
   const today = calendarDate(new Date(), settings.timezone);
   const day = (value: string) => new Intl.DateTimeFormat(workspace.locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+  const until = (row: MemoryRow) => { const last = trueUntil(row); return last ? day(last) : null; };
   const dates = (row: MemoryRow): Dates => ({
-    from: row.valid_from && day(row.valid_from), until: (row.valid_until ?? row.ended_on) && day(row.valid_until ?? row.ended_on ?? today),
+    from: row.valid_from && day(row.valid_from), until: until(row),
     said: day(calendarDate(row.created_at, settings.timezone)), changed: row.closed_at && day(calendarDate(row.closed_at, settings.timezone)),
   });
   const loaded = await supabase.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(1000);

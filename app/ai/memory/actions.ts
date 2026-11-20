@@ -22,7 +22,9 @@ async function end(form: FormData) {
 }
 async function forget(form: FormData) { await call(({ supabase }) => supabase.rpc("forget_memory", { p_id: memoryId(form) })); }
 async function undo(form: FormData) { await call(({ supabase }) => supabase.rpc("undo_memory", { p_id: memoryId(form) })); }
-async function confirm(form: FormData) { await call(({ supabase }) => supabase.rpc("confirm_memory", { p_id: memoryId(form) })); }
+async function confirm(form: FormData) {
+  await call(({ supabase, settings }) => supabase.rpc("confirm_memory", { p_id: memoryId(form), p_today: calendarDate(new Date(), settings.timezone) }));
+}
 async function edit(form: FormData) {
   const input = z.object({
     kind: z.enum(MEMORY_KINDS), statement: z.string().trim().min(3, "Write what Moneo should remember").max(300),

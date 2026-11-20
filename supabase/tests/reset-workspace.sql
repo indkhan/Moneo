@@ -60,7 +60,7 @@ begin
     if target_table='transaction_splits' then data := data || jsonb_build_object('parent_transaction_id',md5('transactions'||seed_ws)::uuid,'split_set_id',md5('transaction_split_sets'||seed_ws)::uuid,'ordinal',1); end if;
     if target_table='summary_runs' then data := data || '{"period_start":"2026-10-01"}'::jsonb; end if;
     if target_table='spending_plan_limits' then data := data || jsonb_build_object('plan_id',md5('spending_plans'||seed_ws)::uuid,'enabled',true,'effective_month','2026-10-01','version',99); end if;
-    if target_table='memories' then data := data || '{"kind":"fact","statement":"Synthetic foreign","saved_by":"owner","status":"active"}'::jsonb; end if;
+    if target_table='memories' then data := data || '{"kind":"fact","statement":"Synthetic foreign","saved_by":"ai","quote":"Synthetic foreign words","status":"active"}'::jsonb; end if;
     if target_table='insight_dismissals' then data := data || jsonb_build_object('evidence_key',repeat('a',64),'insight_type','data_quality'); end if;
     if target_table='import_staging' then data := data || jsonb_build_object('stage_version',1,'rows','[]'::jsonb,'route_accounts','{}'::jsonb); end if;
     if target_table='import_control_events' then data := data || jsonb_build_object('action','cancel'); end if;
