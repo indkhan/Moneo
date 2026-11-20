@@ -2450,6 +2450,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"close_replaced":
+{ Args: { "p_new_from": string,"p_old": string,"p_today": string }; Returns: undefined
+                           },
 "confirm_ai_organization":
 { Args: { "p_transaction_ids": (string)[] }; Returns: number
                            },
@@ -2601,6 +2604,9 @@ isOneToOne: false
                            },
 "edit_wealth_item":
 { Args: { "p_expected_version": number,"p_id": string,"p_record": Json,"p_remove": boolean,"p_request_id": string }; Returns: Json
+                           },
+"end_lapsed_copy":
+{ Args: { "p_except"?: string,"p_kind": string,"p_statement": string,"p_today": string,"p_workspace_id": string }; Returns: undefined
                            },
 "end_memory":
 { Args: { "p_ended_on": string,"p_id": string,"p_quote"?: string,"p_request_id"?: string,"p_today": string }; Returns: undefined
@@ -2896,6 +2902,9 @@ isOneToOne: false
       } },
 "memory_text":
 { Args: { "value": string }; Returns: string
+                           },
+"move_dated_predecessor":
+{ Args: { "p_new_from": string,"p_start": string,"p_today": string }; Returns: undefined
                            },
 "owned_workspace_ids":
 { Args: Record<PropertyKey, never>; Returns: string[]

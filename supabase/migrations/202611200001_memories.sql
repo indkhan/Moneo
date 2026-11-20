@@ -58,6 +58,41 @@ create function public.replaced_on(p_new_from date, p_today date) returns date l
   select coalesce(p_new_from, p_today) - 1
 $$;
 
+create function public.move_dated_predecessor(p_start uuid, p_new_from date, p_today date) returns void language plpgsql security definer set search_path='' as $$
+declare cur uuid := p_start; row public.memories%rowtype;
+begin
+  while cur is not null loop
+    select * into row from public.memories where id=cur;
+    exit when not found or row.status <> 'replaced';
+    if row.ended_on is not null then
+      update public.memories set ended_on=public.replaced_on(p_new_from, p_today) where id=cur;
+      exit;
+    end if;
+    cur := row.replaces;
+  end loop;
+end $$;
+revoke all on function public.move_dated_predecessor(uuid,date,date) from public, anon, authenticated;
+
+create function public.close_replaced(p_old uuid, p_new_from date, p_today date) returns void language plpgsql security definer set search_path='' as $$
+declare old public.memories%rowtype;
+begin
+  select * into old from public.memories where id=p_old;
+  if old.valid_from is not null and old.valid_from > p_today then
+    update public.memories set status='replaced', closed_at=now(), ended_on=null where id=p_old;
+    perform public.move_dated_predecessor(old.replaces, p_new_from, p_today);
+  else
+    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(p_new_from, p_today) where id=p_old;
+  end if;
+end $$;
+revoke all on function public.close_replaced(uuid,date,date) from public, anon, authenticated;
+
+create function public.end_lapsed_copy(p_workspace_id uuid, p_kind text, p_statement text, p_today date, p_except uuid default null) returns void language sql security definer set search_path='' as $$
+  update public.memories set status='ended', closed_at=now(), ended_on=valid_until
+    where workspace_id=p_workspace_id and kind=p_kind and status='active' and valid_until < p_today and id is distinct from p_except
+      and public.memory_text(statement)=public.memory_text(p_statement)
+$$;
+revoke all on function public.end_lapsed_copy(uuid,text,text,date,uuid) from public, anon, authenticated;
+
 create function public.save_memory(p_request_id uuid, p_kind text, p_statement text, p_quote text, p_sure boolean, p_today date,
   p_valid_from date default null, p_valid_until date default null, p_replaces uuid default null, p_restated boolean default false)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -70,13 +105,14 @@ begin
     select * into old from public.memories where id=p_replaces and workspace_id=ws for update;
     if not found or old.status <> 'active' then raise exception 'Only an active memory can be replaced' using errcode='22023'; end if;
   end if;
+  perform public.end_lapsed_copy(ws, p_kind, p_statement, p_today, p_replaces);
   select * into saved from public.memories where workspace_id=ws and kind=p_kind and public.memory_text(statement)=public.memory_text(p_statement)
     and id is distinct from p_replaces
     and (status='active' or (status='suggested' and not p_sure) or (status='declined' and not (p_sure or p_restated) and closed_at > now() - interval '180 days'))
     order by status='active' desc, status='suggested' desc limit 1;
   if found then return jsonb_build_object('id', saved.id, 'status', saved.status, 'alreadyKnown', true); end if;
   if p_sure and p_replaces is not null then
-    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(p_valid_from, p_today) where id=p_replaces;
+    perform public.close_replaced(p_replaces, p_valid_from, p_today);
   end if;
   begin
     insert into public.memories(workspace_id, kind, statement, quote, status, valid_from, valid_until, replaces, conversation_id, request_id, saved_by)
@@ -114,15 +150,16 @@ begin
     if not found or old.status <> 'active' then
       raise exception 'What this would replace has changed since. Tell Moneo again if it is still true' using errcode='22023';
     end if;
-    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(target.valid_from, p_today) where id=old.id;
+    perform public.close_replaced(old.id, target.valid_from, p_today);
   end if;
+  perform public.end_lapsed_copy(target.workspace_id, target.kind, target.statement, p_today, target.replaces);
   update public.memories set status='active', closed_at=null where id=p_id;
 exception when unique_violation then
   raise exception 'Moneo already remembers this; edit that memory instead' using errcode='22023';
 end $$;
 
 create function public.undo_memory(p_id uuid) returns void language plpgsql security definer set search_path='' as $$
-declare target public.memories%rowtype;
+declare target public.memories%rowtype; restored public.memories%rowtype;
 begin
   select * into target from public.memories where id=p_id and public.owns_workspace(workspace_id) for update;
   if not found then raise exception 'Memory unavailable' using errcode='P0002'; end if;
@@ -131,7 +168,8 @@ begin
   elsif target.status in ('active','suggested') and target.saved_by = 'ai' then
     delete from public.memories where id=p_id;
     if target.status = 'active' and target.replaces is not null then
-      update public.memories set status='active', closed_at=null, ended_on=null where id=target.replaces and status='replaced';
+      update public.memories set status='active', closed_at=null, ended_on=null where id=target.replaces and status='replaced' returning * into restored;
+      if restored.valid_from is not null then perform public.move_dated_predecessor(restored.replaces, restored.valid_from, restored.valid_from); end if;
     end if;
   else
     raise exception 'This memory has changed since; edit it instead' using errcode='22023';
@@ -153,7 +191,7 @@ begin
   select * into target from public.memories where id=p_id and public.owns_workspace(workspace_id) for update;
   if not found or target.status <> 'active' then raise exception 'Only an active memory can be edited' using errcode='22023'; end if;
   update public.memories set status='replaced', closed_at=now(), ended_on=null where id=p_id;
-  update public.memories set ended_on=public.replaced_on(p_valid_from, p_today) where id=target.replaces and status='replaced' and ended_on is not null;
+  perform public.move_dated_predecessor(target.replaces, p_valid_from, p_today);
   insert into public.memories(workspace_id, kind, statement, status, valid_from, valid_until, replaces, saved_by)
     values (target.workspace_id, p_kind, btrim(p_statement), 'active', p_valid_from, p_valid_until, p_id, 'owner')
     returning id into edited;

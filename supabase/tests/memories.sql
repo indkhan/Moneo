@@ -156,6 +156,24 @@ begin
   if public.forget_memory(edited)<>3 then raise exception 'Forget did not remove every version of the memory'; end if;
   if exists(select 1 from public.memories where workspace_id=workspace) then raise exception 'Forget left versions of the memory behind'; end if;
 
+  first:=(public.save_memory(takeout,'pledge','No takeout in October','cut out takeout for the gym',true,'2026-10-01','2026-10-01','2026-10-31')->>'id')::uuid;
+  result:=public.save_memory(takeout,'pledge','No takeout in October','cut out takeout for the gym',true,'2026-11-20','2026-11-01','2026-11-30');
+  if result->>'alreadyKnown'='true' or (select status from public.memories where id=first)<>'ended'
+    then raise exception 'Repeating a pledge whose time ran out was taken as already remembered'; end if;
+  perform public.forget_memory(first); perform public.forget_memory((result->>'id')::uuid);
+
+  first:=(public.save_memory(rent,'fact','Rent is 900','My partner pays half the rent',true,'2026-11-20')->>'id')::uuid;
+  second:=(public.save_memory(rent_change,'fact','Rent is 1000','my partner pays all of the rent',true,'2026-11-20','2026-12-01',null,first)->>'id')::uuid;
+  edited:=(public.save_memory(rent_change,'fact','Rent is 1000 from January','my partner pays all of the rent',true,'2026-11-20','2027-01-01',null,second)->>'id')::uuid;
+  if (select ended_on from public.memories where id=first)<>'2026-12-31' or (select ended_on from public.memories where id=second) is not null
+    then raise exception 'Moving when a change starts left the wrong memory true in between'; end if;
+  perform public.undo_memory(edited);
+  if (select ended_on from public.memories where id=first)<>'2026-11-30' then raise exception 'Undoing a moved start did not move the old end back'; end if;
+  edited:=public.edit_memory(second,'fact','Rent is 1000','2027-02-01',null,'2026-11-20');
+  edited:=public.edit_memory(edited,'fact','Rent is 1000','2027-03-01',null,'2026-11-20');
+  if (select ended_on from public.memories where id=first)<>'2027-02-28' then raise exception 'A second edit did not move the old memory''s end date'; end if;
+  perform public.forget_memory(edited);
+
   perform public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20');
   perform public.reset_workspace();
   if exists(select 1 from public.memories m join public.workspaces w on w.id=m.workspace_id where w.owner_id=actor)

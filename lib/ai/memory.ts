@@ -34,6 +34,8 @@ export function turnReadOtherText(turn: { attachments: number; context: Record<s
   return turn.attachments > 0 || turn.context?.about !== undefined || turn.tools.some(name => !OWN_TOOLS.has(name));
 }
 
+const currentStatus = (row: MemoryRow, today: string) => row.status === "active" && !isCurrent(row, today) ? "lapsed"
+  : row.status === "replaced" && isCurrent(row, today) ? "true now, replaced after its trueUntil date" : row.status;
 export const trueUntil = (row: Pick<MemoryRow, "valid_until" | "ended_on">) => row.ended_on && (!row.valid_until || row.ended_on < row.valid_until) ? row.ended_on : row.valid_until;
 
 const KIND_ORDER: MemoryKind[] = ["preference", "pledge", "plan", "fact", "explanation"];
@@ -99,21 +101,22 @@ export async function loadMemoryBrief(db: ReadonlyDb, workspaceId: string, today
 const conversationHref = (id: string | null) => id ? `/ai?conversation=${id}` : null;
 const readable = (row: MemoryRow, timeZone: string) => ({
   id: row.id, kind: row.kind, statement: row.statement, ownerWords: row.quote,
-  status: row.status === "active" && !isCurrent(row, calendarDate(new Date(), timeZone)) ? "lapsed" : row.status,
+  status: currentStatus(row, calendarDate(new Date(), timeZone)),
   trueFrom: row.valid_from, trueUntil: trueUntil(row), saidOn: calendarDate(row.created_at, timeZone),
   changedOn: row.closed_at ? calendarDate(row.closed_at, timeZone) : null, savedBy: row.saved_by, conversation: conversationHref(row.conversation_id),
 });
 
 export async function searchMemories(db: ReadonlyDb, workspaceId: string, timeZone: string, input: z.infer<typeof memorySearchInput>) {
-  const statuses = input.includePast ? ["active", "replaced", "ended"] : ["active"];
-  const query = () => db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).in("status", statuses).order("created_at", { ascending: false }).limit(30);
+  const today = calendarDate(new Date(), timeZone);
+  const query = () => db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).in("status", ["active", "replaced", "ended"]).order("created_at", { ascending: false }).limit(60);
+  const found = (rows: MemoryRow[]) => ({ memories: rows.filter(row => input.includePast || isCurrent(row, today)).slice(0, 30).map(row => readable(row, timeZone)) });
   const words = await query().textSearch("search", input.query, { type: "websearch", config: "simple" });
   if (words.error) throw new Error(words.error.message);
-  if (words.data?.length) return { memories: (words.data as MemoryRow[]).map(row => readable(row, timeZone)) };
+  if (words.data?.length) return found(words.data as MemoryRow[]);
   const pattern = `%${input.query.replace(/[\\%_]/g, character => `\\${character}`)}%`;
   const loose = await query().or(`statement.ilike.${JSON.stringify(pattern)},quote.ilike.${JSON.stringify(pattern)}`);
   if (loose.error) throw new Error(loose.error.message);
-  return { memories: ((loose.data ?? []) as MemoryRow[]).map(row => readable(row, timeZone)) };
+  return found((loose.data ?? []) as MemoryRow[]);
 }
 
 export async function memoryHistory(db: ReadonlyDb, workspaceId: string, timeZone: string, input: z.infer<typeof memoryHistoryInput>) {
