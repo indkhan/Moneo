@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, primaryKey, foreignKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, primaryKey, foreignKey, customType, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const dashboardLayouts = pgTable("dashboard_layouts", {
   workspaceId: uuid("workspace_id").primaryKey().references((): AnyPgColumn => workspaces.id, { onDelete: "cascade" }),
@@ -1265,6 +1265,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   speechEngine: text("speech_engine").notNull().default("openai"),
   speechLocalModel: text("speech_local_model"),
   speechOpenrouterModel: text("speech_openrouter_model"),
+  aiMemory: boolean("ai_memory").notNull().default(true),
   uncategorizedSkippedAt: timestamp("uncategorized_skipped_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -1415,4 +1416,27 @@ export const agentProposals = pgTable("agent_proposals", {
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),
   check("agent_proposals_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("agent_proposals_title_check", sql`char_length(${table.title}) between 1 and 200`),
+]);
+
+const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
+
+export const memories = pgTable("memories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), statement: text("statement").notNull(), quote: text("quote"),
+  status: text("status").notNull().default("active"),
+  validFrom: date("valid_from"), validUntil: date("valid_until"), endedOn: date("ended_on"),
+  replaces: uuid("replaces").references((): AnyPgColumn => memories.id, { onDelete: "set null" }),
+  conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+  requestId: uuid("request_id"), savedBy: text("saved_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  search: tsvector("search").generatedAlwaysAs(sql`to_tsvector('simple', statement || ' ' || coalesce(quote, ''))`),
+}, table => [
+  index("memories_workspace_status").on(table.workspaceId, table.status, table.createdAt.desc()),
+  index("memories_conversation").on(table.conversationId).where(sql`${table.conversationId} is not null`),
+  uniqueIndex("memories_replaced_once").on(table.replaces).where(sql`${table.replaces} is not null and ${table.status} <> 'suggested'`),
+  check("memories_kind_check", sql`${table.kind} in ('pledge','plan','fact','explanation','preference')`),
+  check("memories_status_check", sql`${table.status} in ('suggested','active','replaced','ended')`),
+  check("memories_saved_by_check", sql`${table.savedBy} in ('ai','owner')`),
 ]);

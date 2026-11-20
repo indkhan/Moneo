@@ -999,6 +999,38 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"memories": {
+                  Row: {
+                    "closed_at": string | null,"conversation_id": string | null,"created_at": string,"ended_on": string | null,"id": string,"kind": string,"quote": string | null,"replaces": string | null,"request_id": string | null,"saved_by": string,"search": unknown,"statement": string,"status": string,"valid_from": string | null,"valid_until": string | null,"workspace_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "closed_at"?: string | null,"conversation_id"?: string | null,"created_at"?: string,"ended_on"?: string | null,"id"?: string,"kind": string,"quote"?: string | null,"replaces"?: string | null,"request_id"?: string | null,"saved_by": string,"search"?: never,"statement": string,"status"?: string,"valid_from"?: string | null,"valid_until"?: string | null,"workspace_id": string
+                  }
+                  Update: {
+                    "closed_at"?: string | null,"conversation_id"?: string | null,"created_at"?: string,"ended_on"?: string | null,"id"?: string,"kind"?: string,"quote"?: string | null,"replaces"?: string | null,"request_id"?: string | null,"saved_by"?: string,"search"?: never,"statement"?: string,"status"?: string,"valid_from"?: string | null,"valid_until"?: string | null,"workspace_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "memories_conversation_id_fkey"
+      columns: ["conversation_id"]
+isOneToOne: false
+      referencedRelation: "conversations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "memories_replaces_fkey"
+      columns: ["replaces"]
+isOneToOne: false
+      referencedRelation: "memories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "memories_workspace_id_fkey"
+      columns: ["workspace_id"]
+isOneToOne: false
+      referencedRelation: "workspaces"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"merchants": {
                   Row: {
                     "created_at": string,"created_by": string,"id": string,"name": string,"normalized_name": string,"owner_touched": boolean,"workspace_id": string
@@ -2219,14 +2251,14 @@ isOneToOne: false
                   ]
                 },"workspace_settings": {
                   Row: {
-                    "ai_data_scopes": (string)[],"ai_models": NonNullable<Json>,"artifact_scalable_data": string,"locale": string,"muted_insight_types": (string)[],"speech_engine": string,"speech_local_model": string | null,"speech_openrouter_model": string | null,"summary_cadence": string,"summary_time": string,"theme": string,"timezone": string,"uncategorized_skipped_at": string | null,"updated_at": string,"voice": string,"workspace_id": string
+                    "ai_data_scopes": (string)[],"ai_memory": boolean,"ai_models": NonNullable<Json>,"artifact_scalable_data": string,"locale": string,"muted_insight_types": (string)[],"speech_engine": string,"speech_local_model": string | null,"speech_openrouter_model": string | null,"summary_cadence": string,"summary_time": string,"theme": string,"timezone": string,"uncategorized_skipped_at": string | null,"updated_at": string,"voice": string,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone": string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id": string
+                    "ai_data_scopes"?: (string)[],"ai_memory"?: boolean,"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone": string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id": string
                   }
                   Update: {
-                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone"?: string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id"?: string
+                    "ai_data_scopes"?: (string)[],"ai_memory"?: boolean,"ai_models"?: NonNullable<Json>,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone"?: string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -2424,6 +2456,9 @@ isOneToOne: false
 "confirm_iou_repayment":
 { Args: { "p_repayment_id": string }; Returns: undefined
                            },
+"confirm_memory":
+{ Args: { "p_id": string }; Returns: undefined
+                           },
 "confirm_organize_memory":
 { Args: { "p_apply_to_existing": boolean,"p_category": string,"p_identity": string,"p_merchant": string,"p_purpose"?: string }; Returns: Json
                            },
@@ -2549,6 +2584,9 @@ isOneToOne: false
 "edit_goal_plan":
 { Args: { "p_expected_version": number,"p_goal_id": string,"p_patch": Json,"p_request_id": string }; Returns: string
                            },
+"edit_memory":
+{ Args: { "p_id": string,"p_kind": string,"p_statement": string,"p_valid_from": string,"p_valid_until": string }; Returns: string
+                           },
 "edit_money_metadata":
 { Args: { "p_entity_type": string,"p_expected_version": number,"p_id": string,"p_patch": Json,"p_request_id": string }; Returns: string
                            },
@@ -2560,6 +2598,9 @@ isOneToOne: false
                            },
 "edit_wealth_item":
 { Args: { "p_expected_version": number,"p_id": string,"p_record": Json,"p_remove": boolean,"p_request_id": string }; Returns: Json
+                           },
+"end_memory":
+{ Args: { "p_conversation_id"?: string,"p_ended_on": string,"p_id": string,"p_quote"?: string }; Returns: undefined
                            },
 "fail_financial_review":
 { Args: { "p_error": string,"p_job_id": string,"p_run_id": string,"p_stage": string,"p_workspace_id": string }; Returns: string
@@ -2581,6 +2622,9 @@ isOneToOne: false
                            },
 "forecast_preference_record":
 { Args: { "item": Omit<Database["public"]['Tables']["forecast_preferences"]['Row'], Database["public"]['Tables']["forecast_preferences"]['ComputedFields']> }; Returns: Json
+                           },
+"forget_memory":
+{ Args: { "p_id": string }; Returns: number
                            },
 "hold_bank_sync":
 { Args: { "p_connection_id": string,"p_token": string }; Returns: boolean
@@ -2847,8 +2891,17 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"memory_text":
+{ Args: { "value": string }; Returns: string
+                           },
+"owned_conversation_workspace":
+{ Args: { "p_conversation_id": string }; Returns: string
+                           },
 "owned_workspace_ids":
 { Args: Record<PropertyKey, never>; Returns: string[]
+                           },
+"owner_said":
+{ Args: { "p_conversation_id": string,"p_quote": string,"p_workspace_id": string }; Returns: boolean
                            },
 "owns_workspace":
 { Args: { "target": string }; Returns: boolean
@@ -3072,6 +3125,9 @@ isOneToOne: false
 "reviewed_import_source_row":
 { Args: { "p_source_id": string }; Returns: Json
                            },
+"save_memory":
+{ Args: { "p_conversation_id": string,"p_kind": string,"p_quote": string,"p_replaces"?: string,"p_request_id": string,"p_statement": string,"p_sure": boolean,"p_valid_from"?: string,"p_valid_until"?: string }; Returns: Json
+                           },
 "save_organization_rule":
 { Args: { "p_category": string,"p_enabled": boolean,"p_expected_version": number,"p_key": string,"p_merchant": string,"p_workspace": string }; Returns: Json
                            },
@@ -3192,6 +3248,9 @@ isOneToOne: false
                            },
 "undo_manual_transaction":
 { Args: { "p_entry_id": string,"p_entry_version": number,"p_expected_version": number }; Returns: undefined
+                           },
+"undo_memory":
+{ Args: { "p_id": string }; Returns: undefined
                            },
 "undo_money_metadata":
 { Args: { "p_event_id": string,"p_expected_version": number,"p_request_id": string }; Returns: string
