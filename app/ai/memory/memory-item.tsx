@@ -3,7 +3,7 @@ import { SafeForm } from "@/components/safe-form";
 import type { SafeState } from "@/lib/safe-action";
 import type { MemoryRow } from "@/lib/ai/memory";
 import { MEMORY_KIND_LABELS } from "@/lib/ai/memory-note";
-import { confirmMemorySafely, editMemorySafely, endMemorySafely, forgetMemorySafely, undoMemorySafely } from "./actions";
+import { confirmMemorySafely, declineMemorySafely, editMemorySafely, endMemorySafely, forgetMemorySafely, undoMemorySafely } from "./actions";
 
 export type Dates = { from: string | null; until: string | null; said: string; changed: string | null };
 
@@ -63,7 +63,7 @@ function Forget({ row }: { row: MemoryRow }) {
   return <details>
     <summary className={`${quiet} inline-flex cursor-pointer items-center`}>Forget</summary>
     <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-      <p>Deletes this memory with all its versions, earlier and later, and the quote of your words it kept. It also disappears from the memory notes under answers. The chats themselves stay, including anything you or Moneo wrote there; delete a chat to remove that. This can&apos;t be undone.</p>
+      <p>Deletes this memory with all its versions, earlier and later, and the quote of your words it kept. It also disappears from the memory notes under answers. The chats themselves stay, including anything you or Moneo wrote there and Moneo&apos;s record of saving it; delete a chat to remove that. This can&apos;t be undone.</p>
       <Button action={forgetMemorySafely} memory={row.id} label="Forget permanently" name={`Forget ${row.statement} permanently`} tone="primary" />
     </div>
   </details>;
@@ -75,7 +75,7 @@ export function Suggested({ row, dates }: { row: MemoryRow; dates: Dates }) {
     <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={dates} /></span><Source row={row} /></div>
     <div className="mt-3 flex flex-wrap gap-2">
       <Button action={confirmMemorySafely} memory={row.id} label="Save" name={`Save ${row.statement}`} tone="primary" />
-      <Button action={undoMemorySafely} memory={row.id} label="Not now" name={`Don't save ${row.statement}`} />
+      <Button action={declineMemorySafely} memory={row.id} label="Not now" name={`Don't save ${row.statement}`} />
     </div>
   </section></li>;
 }

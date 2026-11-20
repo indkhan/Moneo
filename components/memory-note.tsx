@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { confirmMemory, loadNotedMemories, undoMemory, type NotedMemory } from "@/lib/ai/memory-actions";
+import { confirmMemory, declineMemory, loadNotedMemories, undoMemory, type NotedMemory } from "@/lib/ai/memory-actions";
 import { MEMORY_KIND_LABELS, readMemoryNote } from "@/lib/ai/memory-note";
 
 const button = "min-h-8 rounded-md border border-border px-2.5 text-xs hover:bg-muted disabled:opacity-50";
@@ -34,7 +34,7 @@ export function MemoryNoteView({ source }: { source: string }) {
   const known = (list: string[]) => list.flatMap(id => memories[id] ? [memories[id]] : []);
   const removed = note.saved.length + note.ended.length - known(note.saved).length - known(note.ended).length;
   const asked = known(note.saved).filter(memory => memory.status === "suggested");
-  const kept = known(note.saved).filter(memory => memory.status !== "suggested" && memory.status !== "dismissed");
+  const kept = known(note.saved).filter(memory => memory.status !== "suggested" && memory.status !== "declined");
   const ended = known(note.ended);
   const used = known(note.used);
   const changed = kept.length + ended.length + removed;
@@ -43,7 +43,7 @@ export function MemoryNoteView({ source }: { source: string }) {
       <p className="mb-1 font-medium text-foreground">Save this?</p>
       <ul><Row memory={memory}>
         <button className={button} disabled={pending} onClick={() => act(memory, confirmMemory, "active")}>Save</button>
-        <button className={button} disabled={pending} onClick={() => act(memory, undoMemory, "dismissed")}>Not now</button>
+        <button className={button} disabled={pending} onClick={() => act(memory, declineMemory, "declined")}>Not now</button>
       </Row></ul>
     </div>)}
     {changed > 0 && <details>

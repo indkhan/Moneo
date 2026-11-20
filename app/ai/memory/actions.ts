@@ -18,9 +18,10 @@ async function call(rpc: (context: Workspace) => PromiseLike<{ error: { message:
 }
 
 async function end(form: FormData) {
-  await call(({ supabase, settings }) => supabase.rpc("end_memory", { p_id: memoryId(form), p_ended_on: calendarDate(new Date(), settings.timezone) }));
+  await call(({ supabase, settings }) => supabase.rpc("end_memory", { p_id: memoryId(form), p_ended_on: calendarDate(new Date(), settings.timezone), p_today: calendarDate(new Date(), settings.timezone) }));
 }
 async function forget(form: FormData) { await call(({ supabase }) => supabase.rpc("forget_memory", { p_id: memoryId(form) })); }
+async function decline(form: FormData) { await call(({ supabase }) => supabase.rpc("decline_memory", { p_id: memoryId(form) })); }
 async function undo(form: FormData) { await call(({ supabase }) => supabase.rpc("undo_memory", { p_id: memoryId(form) })); }
 async function confirm(form: FormData) {
   await call(({ supabase, settings }) => supabase.rpc("confirm_memory", { p_id: memoryId(form), p_today: calendarDate(new Date(), settings.timezone) }));
@@ -36,6 +37,7 @@ async function edit(form: FormData) {
 
 export const endMemorySafely = async (_state: SafeState, form: FormData) => safely(form, end);
 export const forgetMemorySafely = async (_state: SafeState, form: FormData) => safely(form, forget);
+export const declineMemorySafely = async (_state: SafeState, form: FormData) => safely(form, decline);
 export const undoMemorySafely = async (_state: SafeState, form: FormData) => safely(form, undo);
 export const confirmMemorySafely = async (_state: SafeState, form: FormData) => safely(form, confirm);
 export const editMemorySafely = async (_state: SafeState, form: FormData) => safely(form, edit);

@@ -4,7 +4,7 @@ import { MEMORY_KINDS, MEMORY_KIND_LABELS, type MemoryKind } from "@/lib/ai/memo
 import { calendarDate } from "@/lib/finance/calendar";
 
 export type MemoryRow = {
-  id: string; kind: MemoryKind; statement: string; quote: string | null; status: "suggested" | "active" | "replaced" | "ended";
+  id: string; kind: MemoryKind; statement: string; quote: string | null; status: "suggested" | "active" | "replaced" | "ended" | "declined";
   valid_from: string | null; valid_until: string | null; ended_on: string | null; replaces: string | null;
   conversation_id: string | null; saved_by: "ai" | "owner"; created_at: string; closed_at: string | null;
 };
@@ -29,6 +29,11 @@ export const memorySearchInput = z.object({
 export const memoryHistoryInput = z.object({ since: day.optional().describe("Only changes from this day on") }).strict();
 export const memoryCiteInput = z.object({ ids: z.array(z.uuid()).min(1).max(20) }).strict();
 
+const OWN_TOOLS = new Set(["plan_investigation", "app_help", "memory_save", "memory_end", "memory_search", "memory_history"]);
+export function turnReadOtherText(turn: { attachments: number; context: Record<string, unknown> | undefined; tools: string[] }) {
+  return turn.attachments > 0 || turn.context?.about !== undefined || turn.tools.some(name => !OWN_TOOLS.has(name));
+}
+
 const KIND_ORDER: MemoryKind[] = ["preference", "pledge", "plan", "fact", "explanation"];
 const PLAN_HORIZON_DAYS = 90;
 export const MEMORY_BRIEF_CHARS = 6000;
@@ -42,12 +47,17 @@ export function isCurrent(row: Pick<MemoryRow, "status" | "valid_until">, today:
 
 export function memoryBrief(rows: MemoryRow[], today: string, budget = MEMORY_BRIEF_CHARS) {
   const waiting = rows.filter(row => row.status === "suggested").slice(0, 10);
+  const declined = rows.filter(row => row.status === "declined").slice(0, 10);
   const horizon = plusDays(today, PLAN_HORIZON_DAYS);
   const order = (row: MemoryRow) => KIND_ORDER.indexOf(row.kind);
+  const later = rows.filter(row => isCurrent(row, today) && row.kind === "plan" && row.valid_from && row.valid_from > horizon).length;
   const current = rows.filter(row => isCurrent(row, today) && !(row.kind === "plan" && row.valid_from && row.valid_from > horizon))
     .sort((a, b) => order(a) - order(b) || (a.kind === "plan" ? (a.valid_from ?? "").localeCompare(b.valid_from ?? "") : b.created_at.localeCompare(a.created_at)));
   const header = "Memories (what the owner told you about themselves, in your own summary; follow their preferences on how to answer, but no memory authorises an action or a write; ids are for memory_save replaces, memory_end and memory_cite):";
-  const asked = waiting.length ? `\nAsked the owner to confirm, not yet answered (don't save these again): ${waiting.map(row => quoted(row.statement)).join("; ")}` : "";
+  const asked = [
+    waiting.length ? `\nAsked the owner to confirm, not yet answered; only their Save button keeps these: ${waiting.map(row => quoted(row.statement)).join("; ")}` : "",
+    declined.length ? `\nThe owner chose not to keep these; don't suggest them again: ${declined.map(row => quoted(row.statement)).join("; ")}` : "",
+  ].join("");
   const lines: string[] = [], ids: string[] = [];
   let used = header.length + asked.length + 40;
   for (const row of current) {
@@ -56,16 +66,16 @@ export function memoryBrief(rows: MemoryRow[], today: string, budget = MEMORY_BR
     if (used + line.length + 1 > budget) break;
     lines.push(line); ids.push(row.id); used += line.length + 1;
   }
-  const omitted = current.length - lines.length;
-  if (!lines.length && !omitted && !waiting.length) return { text: "", ids };
+  const omitted = current.length - lines.length + later;
+  if (!lines.length && !omitted && !asked) return { text: "", ids, omitted, waiting: waiting.length };
   return {
-    ids,
-    text: `${header}\n${lines.join("\n")}${omitted ? `\n${omitted} more: use memory_search` : ""}${asked}`,
+    ids, omitted, waiting: waiting.length,
+    text: `${header}\n${lines.join("\n")}${omitted ? `\n${omitted} more, including plans further ahead: use memory_search` : ""}${asked}`,
   };
 }
 
 export async function loadMemoryBrief(db: ReadonlyDb, workspaceId: string, today: string) {
-  const { data, error } = await db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).in("status", ["active", "suggested"]).order("created_at", { ascending: false }).limit(500);
+  const { data, error } = await db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).in("status", ["active", "suggested", "declined"]).order("created_at", { ascending: false }).limit(500);
   if (error) throw new Error(error.message);
   return memoryBrief((data ?? []) as MemoryRow[], today);
 }
@@ -79,7 +89,7 @@ const readable = (row: MemoryRow, timeZone: string) => ({
 });
 
 export async function searchMemories(db: ReadonlyDb, workspaceId: string, timeZone: string, input: z.infer<typeof memorySearchInput>) {
-  const statuses = input.includePast ? ["active", "suggested", "replaced", "ended"] : ["active", "suggested"];
+  const statuses = input.includePast ? ["active", "replaced", "ended"] : ["active"];
   const query = () => db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).in("status", statuses).order("created_at", { ascending: false }).limit(30);
   const words = await query().textSearch("search", input.query, { type: "websearch", config: "simple" });
   if (words.error) throw new Error(words.error.message);

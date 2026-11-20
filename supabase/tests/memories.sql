@@ -39,6 +39,19 @@ begin
     then raise exception 'Saving the same memory twice, as a regenerated answer does, kept two copies'; end if;
   perform public.undo_memory((result->>'id')::uuid);
 
+  first:=(public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20')->>'id')::uuid;
+  second:=(public.save_memory(takeout,'pledge','Cutting out all takeout','cut out takeout for the gym',true,'2026-11-20',null,null,first)->>'id')::uuid;
+  perform public.undo_memory(second);
+  perform public.undo_memory(first);
+  if exists(select 1 from public.memories where workspace_id=workspace)
+    then raise exception 'Taking back a failed turn newest first left one of its memories behind'; end if;
+
+  suggested:=(public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',false,'2026-11-20')->>'id')::uuid;
+  perform public.decline_memory(suggested);
+  result:=public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',false,'2026-11-20');
+  if result->>'status'<>'declined' or (result->>'id')::uuid<>suggested then raise exception 'A memory the owner declined was suggested again'; end if;
+  perform public.forget_memory(suggested);
+
   first:=(public.save_memory(rent,'fact','Partner pays half the rent','My partner pays half the rent',true,'2026-10-05','2026-10-01')->>'id')::uuid;
   second:=(public.save_memory(rent_change,'fact','Partner pays all of the rent','my partner pays all of the rent',true,'2026-11-20','2026-11-01',null,first)->>'id')::uuid;
   if (select status from public.memories where id=first)<>'replaced' or (select ended_on from public.memories where id=first)<>'2026-10-31'
@@ -59,12 +72,21 @@ begin
   if (select status from public.memories where id=suggested)<>'active' or (select ended_on from public.memories where id=first)<>'2026-11-20'
     then raise exception 'Saving an undated suggestion did not end the old memory today'; end if;
 
-  perform public.end_memory(suggested,'2026-11-20');
+  perform public.end_memory(suggested,'2026-12-31','2026-11-20');
+  if (select status from public.memories where id=suggested)<>'active' or (select valid_until from public.memories where id=suggested)<>'2026-12-31'
+    then raise exception 'Something that stops being true later was ended today'; end if;
+  perform public.end_memory(suggested,'2026-11-20','2026-11-20');
+  second:=(public.save_memory(rent_change,'fact','Partner pays all of the rent','my partner pays all of the rent',true,'2026-11-20')->>'id')::uuid;
+  begin
+    perform public.undo_memory(suggested);
+    raise exception 'Bringing back a memory said again since kept two copies' using errcode='ZX001';
+  exception when invalid_parameter_value then null; end;
+  perform public.undo_memory(second);
   perform public.undo_memory(suggested);
   if (select status from public.memories where id=suggested)<>'active' or (select ended_on from public.memories where id=suggested) is not null
     then raise exception 'Undoing an end did not make the memory true again'; end if;
   begin
-    perform public.end_memory(suggested,'2026-11-20',rent_change,'tip twenty percent always');
+    perform public.end_memory(suggested,'2026-11-20','2026-11-20',rent_change,'tip twenty percent always');
     raise exception 'Ended a memory on words the owner never said' using errcode='ZX001';
   exception when invalid_parameter_value then null; end;
 
@@ -78,7 +100,7 @@ begin
   exception when invalid_parameter_value then null; end;
 
   suggested:=(public.save_memory(rent_change,'fact','Partner pays a third of the rent','my partner pays all of the rent',false,'2026-11-20',null,null,edited)->>'id')::uuid;
-  perform public.end_memory(edited,'2026-11-20');
+  perform public.end_memory(edited,'2026-11-20','2026-11-20');
   begin
     perform public.confirm_memory(suggested,'2026-11-20');
     raise exception 'A stale suggestion was saved next to what it was meant to replace' using errcode='ZX001';

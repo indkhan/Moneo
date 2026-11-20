@@ -26,6 +26,11 @@ export async function undoMemory(memoryId: string) {
   await settle((await supabase.rpc("undo_memory", { p_id: z.uuid().parse(memoryId) })).error);
 }
 
+export async function declineMemory(memoryId: string) {
+  const { supabase } = await requireWorkspace();
+  await settle((await supabase.rpc("decline_memory", { p_id: z.uuid().parse(memoryId) })).error);
+}
+
 export async function confirmMemory(memoryId: string) {
   const { supabase, settings } = await requireWorkspace();
   await settle((await supabase.rpc("confirm_memory", { p_id: z.uuid().parse(memoryId), p_today: calendarDate(new Date(), settings.timezone) })).error);

@@ -53,5 +53,8 @@ _Avoid_: delete, remove
 A one-off message on Home when a sync or import shows that a Tracked pledge was just broken or is close to its limit.
 _Avoid_: alert, notification, reminder
 
+**Declined suggestion**:
+A memory Moneo asked to keep and the owner said no to. Moneo doesn't suggest it again.
+
 **Source**:
-The exact chat message or voice-call moment a memory came from.
+The owner's message, typed or spoken in a call, that a memory came from, with the words it quotes.

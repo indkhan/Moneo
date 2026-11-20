@@ -2540,6 +2540,9 @@ isOneToOne: false
 "data_query":
 { Args: { "p_max_rows"?: number,"p_scopes": (string)[],"p_sql": string }; Returns: Json
                            },
+"decline_memory":
+{ Args: { "p_id": string }; Returns: undefined
+                           },
 "decline_recurring_series":
 { Args: { "p_account_id": string,"p_amount_max_minor": number,"p_amount_min_minor": number,"p_cadence": string,"p_confidence": number,"p_currency_code": string,"p_label": string,"p_occurrences": number,"p_transaction_ids": (string)[] }; Returns: {
               "account_id": string,
@@ -2600,7 +2603,7 @@ isOneToOne: false
 { Args: { "p_expected_version": number,"p_id": string,"p_record": Json,"p_remove": boolean,"p_request_id": string }; Returns: Json
                            },
 "end_memory":
-{ Args: { "p_ended_on": string,"p_id": string,"p_quote"?: string,"p_request_id"?: string }; Returns: undefined
+{ Args: { "p_ended_on": string,"p_id": string,"p_quote"?: string,"p_request_id"?: string,"p_today": string }; Returns: undefined
                            },
 "fail_financial_review":
 { Args: { "p_error": string,"p_job_id": string,"p_run_id": string,"p_stage": string,"p_workspace_id": string }; Returns: string
