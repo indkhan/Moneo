@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { memoryBrief, turnReadOtherText, type MemoryRow } from "./memory";
+import { memoryBrief, stillDeclined, turnReadOtherText, type MemoryRow } from "./memory";
 import { memoryNoteBlock, readMemoryNote } from "./memory-note";
 
 const today = "2026-11-20";
@@ -13,15 +13,17 @@ describe("memoryBrief", () => {
   it("tells the assistant only what is true now, so replaced, ended, expired, unconfirmed and far-off memories never read as current", () => {
     const current = memory({ statement: "Partner pays all of the rent" }), soon = memory({ kind: "plan", statement: "Car insurance rises", valid_from: "2027-01-01" });
     const waiting = memory({ statement: "Waiting for the owner", status: "suggested" }), farOff = memory({ kind: "plan", statement: "Moving to Berlin", valid_from: "2027-06-01" });
+    const rentNow = memory({ statement: "Rent is 900", status: "replaced", ended_on: "2026-12-31", closed_at: "2026-11-15T10:00:00Z" });
     const brief = memoryBrief([
       memory({ statement: "Partner pays half the rent", status: "replaced", closed_at: "2026-11-10T10:00:00Z" }), current,
       memory({ statement: "Freelancing", status: "ended", closed_at: "2026-11-12T10:00:00Z" }),
-      memory({ kind: "pledge", statement: "No takeout this month", valid_until: "2026-10-31" }), farOff, soon, waiting,
+      memory({ kind: "pledge", statement: "No takeout this month", valid_until: "2026-10-31" }), farOff, soon, waiting, rentNow,
+      memory({ statement: "Rent was 800", status: "replaced", ended_on: "2026-10-31", closed_at: "2026-10-01T10:00:00Z" }),
     ], today);
-    expect(brief.ids.sort()).toEqual([current.id, soon.id].sort());
+    expect(brief.ids.sort()).toEqual([current.id, soon.id, rentNow.id].sort());
     expect(brief.waiting).toBe(1);
     expect(brief.omitted).toBe(1);
-    for (const stale of ["half the rent", "Freelancing", "No takeout"]) expect(brief.text).not.toContain(stale);
+    for (const stale of ["half the rent", "Freelancing", "No takeout", "Rent was 800"]) expect(brief.text).not.toContain(stale);
   });
 
   it("keeps preferences and pledges when a long history or many unconfirmed suggestions would overflow the prompt, and counts what was left out", () => {
@@ -32,6 +34,14 @@ describe("memoryBrief", () => {
     expect(brief.text.length).toBeLessThanOrEqual(2000);
     expect(brief.ids.slice(0, 2)).toEqual([preference.id, pledge.id]);
     expect(brief.omitted).toBe(202 - brief.ids.length);
+  });
+});
+
+describe("stillDeclined", () => {
+  it("stops treating a suggestion as declined once the owner kept the same memory", () => {
+    const declined = memory({ kind: "pledge", statement: "Cutting out takeout", status: "declined", closed_at: "2026-11-02T10:00:00Z" });
+    const other = memory({ kind: "pledge", statement: "No coffee out", status: "declined", closed_at: "2026-11-02T10:00:00Z" });
+    expect(stillDeclined([declined, other, memory({ kind: "pledge", statement: "cutting out  takeout!" })])).toEqual([other]);
   });
 });
 

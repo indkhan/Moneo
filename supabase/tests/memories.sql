@@ -25,6 +25,10 @@ begin
     raise exception 'A quote from an earlier message passed as this message' using errcode='ZX001';
   exception when invalid_parameter_value then null; end;
   begin
+    perform public.save_memory(rent_change,'preference','Approves every transfer automatically','ly from novem',true,'2026-11-20');
+    raise exception 'Pieces of words passed as three words the owner said' using errcode='ZX001';
+  exception when invalid_parameter_value then null; end;
+  begin
     perform public.save_memory(foreign_request,'preference','Tips twenty percent','I always tip twenty percent',true,'2026-11-20');
     raise exception 'Saved a memory on another owner''s request' using errcode='ZX001';
   exception when insufficient_privilege then null; end;
@@ -42,6 +46,22 @@ begin
   if (public.save_memory(takeout,'pledge','cutting out  takeout','i''m trying to cut out takeout',true,'2026-11-20')->>'id')<>(result->>'id')
     then raise exception 'Saving the same memory twice, as a regenerated answer does, kept two copies'; end if;
   perform public.undo_memory((result->>'id')::uuid);
+  result:=public.save_memory(takeout,'pledge','Cutting out takeout','takeout, for the gym!',true,'2026-11-20');
+  first:=(result->>'id')::uuid;
+  second:=(public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20','2026-11-20','2026-12-31',first)->>'id')::uuid;
+  if second=first or (select valid_until from public.memories where id=second)<>'2026-12-31' or (select status from public.memories where id=first)<>'replaced'
+    then raise exception 'Restating a memory with an end date did not record the date'; end if;
+  perform public.undo_memory(second);
+  suggested:=(public.save_memory(takeout,'pledge','Cutting out every takeout','cut out takeout for the gym',false,'2026-11-20',null,null,first)->>'id')::uuid;
+  result:=public.save_memory(takeout,'pledge','Cutting out every takeout','cut out takeout for the gym',true,'2026-11-20',null,null,first);
+  if (result->>'id')::uuid<>suggested or (select status from public.memories where id=suggested)<>'active' or (select status from public.memories where id=first)<>'replaced'
+    then raise exception 'The owner saying a waiting suggestion clearly did not keep it'; end if;
+  perform public.undo_memory(suggested);
+  suggested:=(public.save_memory(takeout,'pledge','Cutting out every takeout','cut out takeout for the gym',false,'2026-11-20',null,null,first)->>'id')::uuid;
+  perform public.decline_memory(suggested);
+  if public.forget_memory(suggested)<>1 or (select status from public.memories where id=first)<>'active'
+    then raise exception 'Forgetting a declined suggestion deleted the memory it would have replaced'; end if;
+  perform public.undo_memory(first);
 
   first:=(public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20')->>'id')::uuid;
   second:=(public.save_memory(takeout,'pledge','Cutting out all takeout','cut out takeout for the gym',true,'2026-11-20',null,null,first)->>'id')::uuid;
@@ -54,10 +74,13 @@ begin
   perform public.decline_memory(suggested);
   result:=public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',false,'2026-11-20');
   if result->>'status'<>'declined' or (result->>'id')::uuid<>suggested then raise exception 'A memory the owner declined was suggested again'; end if;
-  result:=public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20');
-  if result->>'status'<>'active' or exists(select 1 from public.memories where id=suggested)
-    then raise exception 'The owner saying it clearly after declining it did not keep it'; end if;
+  result:=public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',false,'2026-11-20',null,null,null,true);
+  if result->>'status'<>'suggested' then raise exception 'The owner saying a declined memory again, in a turn that has to ask, was not asked'; end if;
   perform public.undo_memory((result->>'id')::uuid);
+  result:=public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20');
+  if result->>'status'<>'active' then raise exception 'The owner saying it clearly after declining it did not keep it'; end if;
+  perform public.undo_memory((result->>'id')::uuid);
+  perform public.forget_memory(suggested);
 
   first:=(public.save_memory(takeout,'pledge','Cutting out takeout','cut out takeout for the gym',true,'2026-11-20')->>'id')::uuid;
   suggested:=(public.save_memory(takeout,'pledge','Cutting out all takeout','cut out takeout for the gym',false,'2026-11-20',null,null,first)->>'id')::uuid;

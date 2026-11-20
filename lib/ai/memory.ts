@@ -19,8 +19,8 @@ export const memorySaveInput = z.object({
   sure: z.boolean().describe("false only when it seems important but you are unsure what they meant; they are then asked before it is kept"),
   from: day.optional().describe("First day it is true, when they said one"),
   until: day.optional().describe("Last day it is true, when they said one, e.g. the end of \"this month\""),
-  replaces: z.uuid().optional().describe("Id of the remembered memory this updates or contradicts; the old one is kept as history"),
-}).strict();
+  replaces: z.uuid().optional().describe("Id of the remembered memory this updates or contradicts, also when only its dates change; the old one is kept as history"),
+}).strict().refine(input => !input.from || !input.until || input.until >= input.from, { message: "until must be on or after from", path: ["until"] });
 export const memoryEndInput = z.object({ id: z.uuid(), quote: ownerWords, on: day.optional().describe("The last day it was true, today or earlier, when they said one, e.g. \"I stopped freelancing in March\"") }).strict();
 export const memorySearchInput = z.object({
   query: z.string().trim().min(2).max(200),
@@ -34,6 +34,8 @@ export function turnReadOtherText(turn: { attachments: number; context: Record<s
   return turn.attachments > 0 || turn.context?.about !== undefined || turn.tools.some(name => !OWN_TOOLS.has(name));
 }
 
+export const trueUntil = (row: Pick<MemoryRow, "valid_until" | "ended_on">) => row.ended_on && (!row.valid_until || row.ended_on < row.valid_until) ? row.ended_on : row.valid_until;
+
 const KIND_ORDER: MemoryKind[] = ["preference", "pledge", "plan", "fact", "explanation"];
 const PLAN_HORIZON_DAYS = 90;
 export const MEMORY_BRIEF_CHARS = 6000;
@@ -42,14 +44,21 @@ const DECLINED_DAYS = 180;
 const plusDays = (isoDay: string, days: number) => new Date(Date.parse(`${isoDay}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 const quoted = (value: string) => JSON.stringify(value.replace(/\s+/g, " ").trim());
 
-export function isCurrent(row: Pick<MemoryRow, "status" | "valid_until">, today: string) {
+export function isCurrent(row: Pick<MemoryRow, "status" | "valid_until" | "ended_on">, today: string) {
+  if (row.status === "replaced") return row.ended_on !== null && row.ended_on >= today;
   return row.status === "active" && !(row.valid_until && row.valid_until < today);
+}
+
+const sameWords = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+export function stillDeclined(rows: MemoryRow[]) {
+  const kept = new Set(rows.filter(row => row.status === "active" || row.status === "suggested").map(row => `${row.kind}|${sameWords(row.statement)}`));
+  return rows.filter(row => row.status === "declined" && !kept.has(`${row.kind}|${sameWords(row.statement)}`));
 }
 
 export function memoryBrief(rows: MemoryRow[], today: string, budget = MEMORY_BRIEF_CHARS) {
   const waiting = rows.filter(row => row.status === "suggested").slice(0, 10);
   const declinedSince = plusDays(today, -DECLINED_DAYS);
-  const declined = rows.filter(row => row.status === "declined" && row.closed_at && row.closed_at.slice(0, 10) >= declinedSince).slice(0, 10);
+  const declined = stillDeclined(rows).filter(row => row.closed_at && row.closed_at.slice(0, 10) >= declinedSince).slice(0, 10);
   const horizon = plusDays(today, PLAN_HORIZON_DAYS);
   const order = (row: MemoryRow) => KIND_ORDER.indexOf(row.kind);
   const later = rows.filter(row => isCurrent(row, today) && row.kind === "plan" && row.valid_from && row.valid_from > horizon).length;
@@ -59,7 +68,8 @@ export function memoryBrief(rows: MemoryRow[], today: string, budget = MEMORY_BR
   const lines: string[] = [], ids: string[] = [];
   let used = header.length + 60;
   for (const row of current) {
-    const dates = [row.valid_from && `from ${row.valid_from}`, row.valid_until && `until ${row.valid_until}`].filter(Boolean).join(", ");
+    const last = trueUntil(row);
+    const dates = [row.valid_from && `from ${row.valid_from}`, last && `until ${last}`, row.status === "replaced" && "already replaced after that"].filter(Boolean).join(", ");
     const line = `- ${row.id} ${MEMORY_KIND_LABELS[row.kind]}: ${quoted(row.statement)}${dates ? ` (${dates})` : ""}`;
     if (used + line.length + 1 > budget) break;
     lines.push(line); ids.push(row.id); used += line.length + 1;
@@ -81,13 +91,12 @@ export function memoryBrief(rows: MemoryRow[], today: string, budget = MEMORY_BR
 }
 
 export async function loadMemoryBrief(db: ReadonlyDb, workspaceId: string, today: string) {
-  const { data, error } = await db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).in("status", ["active", "suggested", "declined"]).order("created_at", { ascending: false }).limit(500);
+  const { data, error } = await db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).or(`status.in.(active,suggested,declined),and(status.eq.replaced,ended_on.gte.${today})`).order("created_at", { ascending: false }).limit(500);
   if (error) throw new Error(error.message);
   return memoryBrief((data ?? []) as MemoryRow[], today);
 }
 
 const conversationHref = (id: string | null) => id ? `/ai?conversation=${id}` : null;
-export const trueUntil = (row: Pick<MemoryRow, "valid_until" | "ended_on">) => row.ended_on && (!row.valid_until || row.ended_on < row.valid_until) ? row.ended_on : row.valid_until;
 const readable = (row: MemoryRow, timeZone: string) => ({
   id: row.id, kind: row.kind, statement: row.statement, ownerWords: row.quote,
   status: row.status === "active" && !isCurrent(row, calendarDate(new Date(), timeZone)) ? "lapsed" : row.status,

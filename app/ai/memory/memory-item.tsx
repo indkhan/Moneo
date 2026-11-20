@@ -37,7 +37,8 @@ export function MemoryItem({ row, dates, kinds }: { row: MemoryRow; dates: Dates
   return <li><section aria-label={`Memory: ${row.statement}`} className={card}>
     <p>{row.statement}</p>
     <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={dates} /></span><Source row={row} /></div>
-    <div className="mt-3 flex flex-wrap items-start gap-2">
+    {row.status === "replaced" ? <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>Already replaced from {dates.until ? `the day after ${dates.until}` : "a later date"}.</span><Forget row={row} /></div>
+    : <div className="mt-3 flex flex-wrap items-start gap-2">
       <details className="min-w-0 open:basis-full">
         <summary className={`${quiet} inline-flex cursor-pointer items-center`}>Edit</summary>
         <SafeForm action={editMemorySafely} className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -55,7 +56,7 @@ export function MemoryItem({ row, dates, kinds }: { row: MemoryRow; dates: Dates
       </details>
       <Button action={endMemorySafely} memory={row.id} label="No longer true" name={`${row.statement} is no longer true`} />
       <Forget row={row} />
-    </div>
+    </div>}
   </section></li>;
 }
 

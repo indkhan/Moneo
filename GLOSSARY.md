@@ -5,7 +5,7 @@ A personal-finance app one owner runs on their own computer. This glossary cover
 ## Memory
 
 **Memory**:
-Something the owner told Moneo about themselves that Moneo keeps and uses in later chats, voice calls and briefings. Every memory has exactly one kind: Pledge, Plan, Fact, Explanation or Preference.
+Something the owner told Moneo about themselves that Moneo keeps and uses in later chats and voice calls. Every memory has exactly one kind: Pledge, Plan, Fact, Explanation or Preference.
 _Avoid_: note, saved info, context
 
 **Pledge**:

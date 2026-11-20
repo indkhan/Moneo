@@ -1,5 +1,5 @@
 create function public.memory_text(value text) returns text language sql immutable set search_path='' as $$
-  select btrim(regexp_replace(lower(translate(coalesce(value, ''), '’‘“”', '''''""')), '\s+', ' ', 'g'))
+  select btrim(regexp_replace(lower(coalesce(value, '')), '[^[:alnum:]]+', ' ', 'g'))
 $$;
 
 create table public.memories (
@@ -26,7 +26,7 @@ create table public.memories (
 create index memories_workspace_status on public.memories(workspace_id, status, created_at desc);
 create index memories_search on public.memories using gin(search);
 create index memories_conversation on public.memories(conversation_id) where conversation_id is not null;
-create unique index memories_one_current_copy on public.memories(workspace_id, kind, public.memory_text(statement)) where status in ('active','suggested');
+create unique index memories_one_current_copy on public.memories(workspace_id, kind, public.memory_text(statement)) where status = 'active';
 create unique index memories_replaced_once on public.memories(replaces) where replaces is not null and status not in ('suggested','declined');
 
 alter table public.memories enable row level security;
@@ -38,9 +38,9 @@ grant all on public.memories to service_role;
 create function public.owner_said(p_workspace_id uuid, p_request_id uuid, p_quote text) returns boolean language sql stable security definer set search_path='' as $$
   select coalesce(array_length(string_to_array(public.memory_text(p_quote), ' '), 1), 0) >= 3 and (
     exists (select 1 from public.chat_requests r where r.id=p_request_id and r.workspace_id=p_workspace_id
-      and position(public.memory_text(p_quote) in public.memory_text(r.message)) > 0)
+      and position(' '||public.memory_text(p_quote)||' ' in ' '||public.memory_text(r.message)||' ') > 0)
     or exists (select 1 from public.chat_steers s where s.chat_request_id=p_request_id and s.workspace_id=p_workspace_id
-      and position(public.memory_text(p_quote) in public.memory_text(s.content)) > 0))
+      and position(' '||public.memory_text(p_quote)||' ' in ' '||public.memory_text(s.content)||' ') > 0))
 $$;
 revoke all on function public.owner_said(uuid,uuid,text) from public, anon, authenticated;
 
@@ -59,23 +59,28 @@ create function public.replaced_on(p_old_from date, p_new_from date, p_today dat
 $$;
 
 create function public.save_memory(p_request_id uuid, p_kind text, p_statement text, p_quote text, p_sure boolean, p_today date,
-  p_valid_from date default null, p_valid_until date default null, p_replaces uuid default null)
+  p_valid_from date default null, p_valid_until date default null, p_replaces uuid default null, p_restated boolean default false)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare ws uuid := public.request_workspace(p_request_id); saved public.memories%rowtype; old public.memories%rowtype;
 begin
   if not public.owner_said(ws, p_request_id, p_quote) then
-    raise exception 'The quote must be at least three words the owner wrote or said in this message' using errcode='22023';
-  end if;
-  select * into saved from public.memories where workspace_id=ws and kind=p_kind and public.memory_text(statement)=public.memory_text(p_statement)
-    and (status in ('active','suggested') or (status='declined' and not p_sure and closed_at > now() - interval '180 days'))
-    order by status='declined' limit 1;
-  if found then return jsonb_build_object('id', saved.id, 'status', saved.status, 'alreadyKnown', true); end if;
-  if p_sure then
-    delete from public.memories where workspace_id=ws and kind=p_kind and status='declined' and public.memory_text(statement)=public.memory_text(p_statement);
+    raise exception 'The quote must be at least three whole words the owner wrote or said in this message' using errcode='22023';
   end if;
   if p_replaces is not null then
     select * into old from public.memories where id=p_replaces and workspace_id=ws for update;
     if not found or old.status <> 'active' then raise exception 'Only an active memory can be replaced' using errcode='22023'; end if;
+  end if;
+  select * into saved from public.memories where workspace_id=ws and kind=p_kind and public.memory_text(statement)=public.memory_text(p_statement)
+    and id is distinct from p_replaces
+    and (status in ('active','suggested') or (status='declined' and not (p_sure or p_restated) and closed_at > now() - interval '180 days'))
+    order by status='active' desc, status='suggested' desc limit 1 for update;
+  if found and saved.status='suggested' and p_sure then
+    perform public.confirm_memory(saved.id, p_today);
+    return jsonb_build_object('id', saved.id, 'status', 'active', 'alreadyKnown', false);
+  end if;
+  if found then return jsonb_build_object('id', saved.id, 'status', saved.status, 'alreadyKnown', true); end if;
+  if p_sure and p_replaces is not null then
+    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(old.valid_from, p_valid_from, p_today) where id=p_replaces;
   end if;
   begin
     insert into public.memories(workspace_id, kind, statement, quote, status, valid_from, valid_until, replaces, conversation_id, request_id, saved_by)
@@ -83,14 +88,8 @@ begin
         p_valid_from, p_valid_until, p_replaces, r.conversation_id, p_request_id, 'ai' from public.chat_requests r where r.id=p_request_id
       returning * into saved;
   exception when unique_violation then
-    select * into saved from public.memories where workspace_id=ws and kind=p_kind and status in ('active','suggested')
-      and public.memory_text(statement)=public.memory_text(p_statement);
-    if not found then raise exception 'Only an active memory can be replaced' using errcode='22023'; end if;
-    return jsonb_build_object('id', saved.id, 'status', saved.status, 'alreadyKnown', true);
+    raise exception 'Moneo already remembers this or it already changed; read the memories again' using errcode='22023';
   end;
-  if p_sure and p_replaces is not null then
-    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(old.valid_from, p_valid_from, p_today) where id=p_replaces;
-  end if;
   return jsonb_build_object('id', saved.id, 'status', saved.status, 'alreadyKnown', false);
 end $$;
 
@@ -106,7 +105,7 @@ begin
   if p_ended_on > p_today then
     raise exception 'A memory can only be ended on or before today; to say when it will stop, save it again with an end date' using errcode='22023';
   end if;
-  update public.memories set status='ended', closed_at=now(), ended_on=greatest(p_ended_on, valid_from) where id=p_id;
+  update public.memories set status='ended', closed_at=now(), ended_on=p_ended_on where id=p_id;
 end $$;
 
 create function public.confirm_memory(p_id uuid, p_today date) returns void language plpgsql security definer set search_path='' as $$
@@ -171,10 +170,11 @@ declare ws uuid; removed integer;
 begin
   select workspace_id into ws from public.memories where id=p_id and public.owns_workspace(workspace_id);
   if ws is null then raise exception 'Memory unavailable' using errcode='P0002'; end if;
-  with recursive chain(id) as (
-    select p_id
+  with recursive chain(id, replaces, status) as (
+    select id, replaces, status from public.memories where id=p_id
     union
-    select m.id from public.memories m join chain c on m.replaces=c.id or m.id=(select replaces from public.memories where id=c.id)
+    select m.id, m.replaces, m.status from public.memories m join chain c
+      on m.replaces=c.id or (m.id=c.replaces and c.status not in ('suggested','declined'))
     where m.workspace_id=ws
   )
   delete from public.memories where id in (select id from chain);
@@ -182,7 +182,7 @@ begin
   return removed;
 end $$;
 
-revoke all on function public.save_memory(uuid,text,text,text,boolean,date,date,date,uuid), public.end_memory(uuid,date,date,uuid,text),
+revoke all on function public.save_memory(uuid,text,text,text,boolean,date,date,date,uuid,boolean), public.end_memory(uuid,date,date,uuid,text),
   public.confirm_memory(uuid,date), public.undo_memory(uuid), public.decline_memory(uuid), public.edit_memory(uuid,text,text,date,date), public.forget_memory(uuid) from public, anon;
-grant execute on function public.save_memory(uuid,text,text,text,boolean,date,date,date,uuid), public.end_memory(uuid,date,date,uuid,text),
+grant execute on function public.save_memory(uuid,text,text,text,boolean,date,date,date,uuid,boolean), public.end_memory(uuid,date,date,uuid,text),
   public.confirm_memory(uuid,date), public.undo_memory(uuid), public.decline_memory(uuid), public.edit_memory(uuid,text,text,date,date), public.forget_memory(uuid) to authenticated, service_role;

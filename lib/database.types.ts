@@ -3132,7 +3132,7 @@ isOneToOne: false
 { Args: { "p_source_id": string }; Returns: Json
                            },
 "save_memory":
-{ Args: { "p_kind": string,"p_quote": string,"p_replaces"?: string,"p_request_id": string,"p_statement": string,"p_sure": boolean,"p_today": string,"p_valid_from"?: string,"p_valid_until"?: string }; Returns: Json
+{ Args: { "p_kind": string,"p_quote": string,"p_replaces"?: string,"p_request_id": string,"p_restated"?: boolean,"p_statement": string,"p_sure": boolean,"p_today": string,"p_valid_from"?: string,"p_valid_until"?: string }; Returns: Json
                            },
 "save_organization_rule":
 { Args: { "p_category": string,"p_enabled": boolean,"p_expected_version": number,"p_key": string,"p_merchant": string,"p_workspace": string }; Returns: Json
