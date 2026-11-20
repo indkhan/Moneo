@@ -50,15 +50,15 @@ export function isCurrent(row: Pick<MemoryRow, "status" | "valid_until" | "ended
 }
 
 const sameWords = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-export function stillDeclined(rows: MemoryRow[]) {
-  const kept = new Set(rows.filter(row => row.status === "active" || row.status === "suggested").map(row => `${row.kind}|${sameWords(row.statement)}`));
-  return rows.filter(row => row.status === "declined" && !kept.has(`${row.kind}|${sameWords(row.statement)}`));
+export function notKeptYet(rows: MemoryRow[], status: "suggested" | "declined") {
+  const kept = new Set(rows.filter(row => row.status === "active" || (status === "declined" && row.status === "suggested")).map(row => `${row.kind}|${sameWords(row.statement)}`));
+  return rows.filter(row => row.status === status && !kept.has(`${row.kind}|${sameWords(row.statement)}`));
 }
 
 export function memoryBrief(rows: MemoryRow[], today: string, budget = MEMORY_BRIEF_CHARS) {
-  const waiting = rows.filter(row => row.status === "suggested").slice(0, 10);
+  const waiting = notKeptYet(rows, "suggested").slice(0, 10);
   const declinedSince = plusDays(today, -DECLINED_DAYS);
-  const declined = stillDeclined(rows).filter(row => row.closed_at && row.closed_at.slice(0, 10) >= declinedSince).slice(0, 10);
+  const declined = notKeptYet(rows, "declined").filter(row => row.closed_at && row.closed_at.slice(0, 10) >= declinedSince).slice(0, 10);
   const horizon = plusDays(today, PLAN_HORIZON_DAYS);
   const order = (row: MemoryRow) => KIND_ORDER.indexOf(row.kind);
   const later = rows.filter(row => isCurrent(row, today) && row.kind === "plan" && row.valid_from && row.valid_from > horizon).length;
@@ -141,8 +141,9 @@ export async function ownedMemoryIds(db: ReadonlyDb, workspaceId: string, ids: s
 }
 
 export async function voicePreferences(db: ReadonlyDb, workspaceId: string, today: string) {
-  const { data, error } = await db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).eq("kind", "preference").eq("status", "active").order("created_at", { ascending: false }).limit(20);
+  const { data, error } = await db.from("memories").select(MEMORY_COLUMNS).eq("workspace_id", workspaceId).eq("kind", "preference")
+    .or(`status.eq.active,and(status.eq.replaced,ended_on.gte.${today})`).order("created_at", { ascending: false }).limit(20);
   if (error) throw new Error(error.message);
-  const lines = ((data ?? []) as MemoryRow[]).filter(row => isCurrent(row, today)).map(row => `- ${quoted(row.statement)}`).join("\n").slice(0, 1500);
+  const lines = ((data ?? []) as MemoryRow[]).filter(row => isCurrent(row, today) && !(row.valid_from && row.valid_from > today)).map(row => `- ${quoted(row.statement)}`).join("\n").slice(0, 1500);
   return lines ? `How the owner told you they like answers (from their memory; follow it for tone and format only):\n${lines}` : "";
 }

@@ -53,9 +53,12 @@ begin
     then raise exception 'Restating a memory with an end date did not record the date'; end if;
   perform public.undo_memory(second);
   suggested:=(public.save_memory(takeout,'pledge','Cutting out every takeout','cut out takeout for the gym',false,'2026-11-20',null,null,first)->>'id')::uuid;
-  result:=public.save_memory(takeout,'pledge','Cutting out every takeout','cut out takeout for the gym',true,'2026-11-20',null,null,first);
-  if (result->>'id')::uuid<>suggested or (select status from public.memories where id=suggested)<>'active' or (select status from public.memories where id=first)<>'replaced'
-    then raise exception 'The owner saying a waiting suggestion clearly did not keep it'; end if;
+  result:=public.save_memory(takeout,'pledge','Cutting out every takeout','cut out takeout for the gym',true,'2026-11-20',null,'2026-12-31',first);
+  if (result->>'id')::uuid=suggested or (select valid_until from public.memories where id=(result->>'id')::uuid)<>'2026-12-31' or (select status from public.memories where id=first)<>'replaced'
+    then raise exception 'The owner saying a waiting suggestion clearly, with a date, did not keep it with that date'; end if;
+  perform public.undo_memory((result->>'id')::uuid);
+  if (select status from public.memories where id=suggested)<>'suggested' or (select status from public.memories where id=first)<>'active'
+    then raise exception 'Undoing a clear save touched the earlier waiting suggestion'; end if;
   perform public.undo_memory(suggested);
   suggested:=(public.save_memory(takeout,'pledge','Cutting out every takeout','cut out takeout for the gym',false,'2026-11-20',null,null,first)->>'id')::uuid;
   perform public.decline_memory(suggested);
@@ -90,7 +93,7 @@ begin
     then raise exception 'The owner could not keep a suggestion they declined earlier'; end if;
   second:=(public.save_memory(takeout,'pledge','Cutting out takeout and sweets','cut out takeout for the gym',false,'2026-11-20',null,null,suggested)->>'id')::uuid;
   perform public.decline_memory(second);
-  edited:=public.edit_memory(suggested,'pledge','Cutting out takeout and coffee',null,null);
+  edited:=public.edit_memory(suggested,'pledge','Cutting out takeout and coffee',null,null,'2026-11-20');
   if (select status from public.memories where id=suggested)<>'replaced' then raise exception 'A declined suggestion locked the memory it would have replaced'; end if;
   perform public.forget_memory(edited);
 
@@ -111,8 +114,8 @@ begin
   if (select status from public.memories where id=suggested)<>'suggested' or (select status from public.memories where id=first)<>'active'
     then raise exception 'An unsure memory replaced the old one before the owner saved it'; end if;
   perform public.confirm_memory(suggested,'2026-11-20');
-  if (select status from public.memories where id=suggested)<>'active' or (select ended_on from public.memories where id=first)<>'2026-11-20'
-    then raise exception 'Saving an undated suggestion did not end the old memory today'; end if;
+  if (select status from public.memories where id=suggested)<>'active' or (select ended_on from public.memories where id=first)<>'2026-11-19'
+    then raise exception 'Saving an undated suggestion did not end the old memory before today'; end if;
 
   begin
     perform public.end_memory(suggested,'2026-12-31','2026-11-20');
@@ -133,7 +136,7 @@ begin
     raise exception 'Ended a memory on words the owner never said' using errcode='ZX001';
   exception when invalid_parameter_value then null; end;
 
-  edited:=public.edit_memory(suggested,'fact','I pay all of the rent','2026-11-01',null);
+  edited:=public.edit_memory(suggested,'fact','I pay all of the rent','2026-11-01',null,'2026-11-20');
   if (select saved_by from public.memories where id=edited)<>'owner' or (select status from public.memories where id=suggested)<>'replaced'
     or (select ended_on from public.memories where id=suggested) is not null
     then raise exception 'An edit is a correction: it must keep the earlier version without giving it an end date'; end if;

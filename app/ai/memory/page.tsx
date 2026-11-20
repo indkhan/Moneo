@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { MEMORY_COLUMNS, isCurrent, stillDeclined, trueUntil, type MemoryRow } from "@/lib/ai/memory";
+import { MEMORY_COLUMNS, isCurrent, notKeptYet, trueUntil, type MemoryRow } from "@/lib/ai/memory";
 import { MEMORY_KINDS, MEMORY_KIND_LABELS, type MemoryKind } from "@/lib/ai/memory-note";
 import { calendarDate } from "@/lib/finance/calendar";
 import { loadMemory, loadNames, type MemoryEntry } from "@/lib/organize/surfaces";
@@ -57,8 +57,8 @@ async function loadPayees(db: Awaited<ReturnType<typeof requireWorkspace>>["supa
 }
 
 function Now({ rows, today, dates, payees }: { rows: MemoryRow[]; today: string; dates: (row: MemoryRow) => Dates; payees: { id: string; name: string; summary: string }[] }) {
-  const suggested = rows.filter(row => row.status === "suggested");
-  const declined = stillDeclined(rows);
+  const suggested = notKeptYet(rows, "suggested");
+  const declined = notKeptYet(rows, "declined");
   const current = rows.filter(row => isCurrent(row, today));
   const ofKind = (kind: MemoryKind) => current.filter(row => row.kind === kind)
     .sort((a, b) => kind === "plan" ? (a.valid_from ?? "9999").localeCompare(b.valid_from ?? "9999") : 0);

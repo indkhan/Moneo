@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { memoryBrief, stillDeclined, turnReadOtherText, type MemoryRow } from "./memory";
+import { memoryBrief, notKeptYet, turnReadOtherText, type MemoryRow } from "./memory";
 import { memoryNoteBlock, readMemoryNote } from "./memory-note";
 
 const today = "2026-11-20";
@@ -37,11 +37,15 @@ describe("memoryBrief", () => {
   });
 });
 
-describe("stillDeclined", () => {
-  it("stops treating a suggestion as declined once the owner kept the same memory", () => {
+describe("notKeptYet", () => {
+  it("stops showing a suggestion as waiting or declined once the owner kept the same memory", () => {
     const declined = memory({ kind: "pledge", statement: "Cutting out takeout", status: "declined", closed_at: "2026-11-02T10:00:00Z" });
+    const waiting = memory({ kind: "pledge", statement: "Cutting out takeout.", status: "suggested" });
     const other = memory({ kind: "pledge", statement: "No coffee out", status: "declined", closed_at: "2026-11-02T10:00:00Z" });
-    expect(stillDeclined([declined, other, memory({ kind: "pledge", statement: "cutting out  takeout!" })])).toEqual([other]);
+    const kept = memory({ kind: "pledge", statement: "cutting out  takeout!" });
+    expect(notKeptYet([declined, waiting, other, kept], "declined")).toEqual([other]);
+    expect(notKeptYet([declined, waiting, other, kept], "suggested")).toEqual([]);
+    expect(notKeptYet([declined, waiting, other], "suggested")).toEqual([waiting]);
   });
 });
 

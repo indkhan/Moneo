@@ -1436,7 +1436,7 @@ export const memories = pgTable("memories", {
   index("memories_workspace_status").on(table.workspaceId, table.status, table.createdAt.desc()),
   index("memories_search").using("gin", table.search),
   index("memories_conversation").on(table.conversationId).where(sql`${table.conversationId} is not null`),
-  uniqueIndex("memories_one_current_copy").on(table.workspaceId, table.kind, sql`public.memory_text(${table.statement})`).where(sql`${table.status} in ('active','suggested')`),
+  uniqueIndex("memories_one_current_copy").on(table.workspaceId, table.kind, sql`public.memory_text(${table.statement})`).where(sql`${table.status} = 'active'`),
   uniqueIndex("memories_replaced_once").on(table.replaces).where(sql`${table.replaces} is not null and ${table.status} not in ('suggested','declined')`),
   check("memories_kind_check", sql`${table.kind} in ('pledge','plan','fact','explanation','preference')`),
   check("memories_statement_check", sql`length(btrim(${table.statement})) between 1 and 500`),

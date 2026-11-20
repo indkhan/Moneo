@@ -34,17 +34,17 @@ export function MemoryNoteView({ source }: { source: string }) {
   });
   const known = (list: string[]) => list.flatMap(id => memories[id] ? [memories[id]] : []);
   const removed = note.saved.length + note.ended.length - known(note.saved).length - known(note.ended).length;
-  const asked = known(note.saved).filter(memory => memory.status === "suggested");
+  const asked = known(note.saved).filter(memory => memory.status === "suggested" || memory.status === "declined");
   const kept = known(note.saved).filter(memory => memory.status !== "suggested" && memory.status !== "declined");
   const ended = known(note.ended);
   const used = known(note.used);
   const changed = kept.length + ended.length + removed;
   return <div className="my-3 space-y-2 text-xs text-muted-foreground" aria-label="Memory">
     {asked.map(memory => <div key={memory.id} role="group" aria-label="Save this memory?" className="rounded-lg border border-border bg-card p-3">
-      <p className="mb-1 font-medium text-foreground">Save this?</p>
+      <p className="mb-1 font-medium text-foreground">{memory.status === "declined" ? "Not kept" : "Save this?"}</p>
       <ul><Row memory={memory}>
-        <button className={button} disabled={pending} onClick={() => act(memory, confirmMemory, "active")}>Save</button>
-        <button className={button} disabled={pending} onClick={() => act(memory, declineMemory, "declined")}>Not now</button>
+        <button className={button} disabled={pending} onClick={() => act(memory, confirmMemory, "active")}>{memory.status === "declined" ? "Keep it after all" : "Save"}</button>
+        {memory.status === "suggested" && <button className={button} disabled={pending} onClick={() => act(memory, declineMemory, "declined")}>Not now</button>}
       </Row></ul>
     </div>)}
     {changed > 0 && <details>

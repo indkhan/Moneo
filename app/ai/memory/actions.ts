@@ -32,7 +32,8 @@ async function edit(form: FormData) {
     from: optionalDay, until: optionalDay,
   }).refine(value => !value.from || !value.until || value.until >= value.from, "The end date is before the start date")
     .parse({ kind: form.get("kind"), statement: form.get("statement"), from: form.get("from") ?? "", until: form.get("until") ?? "" });
-  await call(({ supabase }) => supabase.rpc("edit_memory", { p_id: memoryId(form), p_kind: input.kind, p_statement: input.statement, p_valid_from: input.from, p_valid_until: input.until }));
+  await call(({ supabase, settings }) => supabase.rpc("edit_memory", { p_id: memoryId(form), p_kind: input.kind, p_statement: input.statement, p_valid_from: input.from, p_valid_until: input.until,
+    p_today: calendarDate(new Date(), settings.timezone) }));
 }
 
 export const endMemorySafely = async (_state: SafeState, form: FormData) => safely(form, end);

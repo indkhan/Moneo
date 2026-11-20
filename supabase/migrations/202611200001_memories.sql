@@ -54,8 +54,8 @@ begin
 end $$;
 revoke all on function public.request_workspace(uuid) from public, anon, authenticated;
 
-create function public.replaced_on(p_old_from date, p_new_from date, p_today date) returns date language sql immutable set search_path='' as $$
-  select greatest(coalesce(p_new_from - 1, p_today), p_old_from)
+create function public.replaced_on(p_new_from date, p_today date) returns date language sql immutable set search_path='' as $$
+  select coalesce(p_new_from, p_today) - 1
 $$;
 
 create function public.save_memory(p_request_id uuid, p_kind text, p_statement text, p_quote text, p_sure boolean, p_today date,
@@ -72,15 +72,11 @@ begin
   end if;
   select * into saved from public.memories where workspace_id=ws and kind=p_kind and public.memory_text(statement)=public.memory_text(p_statement)
     and id is distinct from p_replaces
-    and (status in ('active','suggested') or (status='declined' and not (p_sure or p_restated) and closed_at > now() - interval '180 days'))
-    order by status='active' desc, status='suggested' desc limit 1 for update;
-  if found and saved.status='suggested' and p_sure then
-    perform public.confirm_memory(saved.id, p_today);
-    return jsonb_build_object('id', saved.id, 'status', 'active', 'alreadyKnown', false);
-  end if;
+    and (status='active' or (status='suggested' and not p_sure) or (status='declined' and not (p_sure or p_restated) and closed_at > now() - interval '180 days'))
+    order by status='active' desc, status='suggested' desc limit 1;
   if found then return jsonb_build_object('id', saved.id, 'status', saved.status, 'alreadyKnown', true); end if;
   if p_sure and p_replaces is not null then
-    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(old.valid_from, p_valid_from, p_today) where id=p_replaces;
+    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(p_valid_from, p_today) where id=p_replaces;
   end if;
   begin
     insert into public.memories(workspace_id, kind, statement, quote, status, valid_from, valid_until, replaces, conversation_id, request_id, saved_by)
@@ -118,7 +114,7 @@ begin
     if not found or old.status <> 'active' then
       raise exception 'What this would replace has changed since. Tell Moneo again if it is still true' using errcode='22023';
     end if;
-    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(old.valid_from, target.valid_from, p_today) where id=old.id;
+    update public.memories set status='replaced', closed_at=now(), ended_on=public.replaced_on(target.valid_from, p_today) where id=old.id;
   end if;
   update public.memories set status='active', closed_at=null where id=p_id;
 exception when unique_violation then
@@ -150,13 +146,14 @@ begin
   if not found then raise exception 'Only a suggested memory can be declined' using errcode='22023'; end if;
 end $$;
 
-create function public.edit_memory(p_id uuid, p_kind text, p_statement text, p_valid_from date, p_valid_until date) returns uuid
+create function public.edit_memory(p_id uuid, p_kind text, p_statement text, p_valid_from date, p_valid_until date, p_today date) returns uuid
 language plpgsql security definer set search_path='' as $$
 declare target public.memories%rowtype; edited uuid;
 begin
   select * into target from public.memories where id=p_id and public.owns_workspace(workspace_id) for update;
   if not found or target.status <> 'active' then raise exception 'Only an active memory can be edited' using errcode='22023'; end if;
   update public.memories set status='replaced', closed_at=now(), ended_on=null where id=p_id;
+  update public.memories set ended_on=public.replaced_on(p_valid_from, p_today) where id=target.replaces and status='replaced' and ended_on is not null;
   insert into public.memories(workspace_id, kind, statement, status, valid_from, valid_until, replaces, saved_by)
     values (target.workspace_id, p_kind, btrim(p_statement), 'active', p_valid_from, p_valid_until, p_id, 'owner')
     returning id into edited;
@@ -183,6 +180,6 @@ begin
 end $$;
 
 revoke all on function public.save_memory(uuid,text,text,text,boolean,date,date,date,uuid,boolean), public.end_memory(uuid,date,date,uuid,text),
-  public.confirm_memory(uuid,date), public.undo_memory(uuid), public.decline_memory(uuid), public.edit_memory(uuid,text,text,date,date), public.forget_memory(uuid) from public, anon;
+  public.confirm_memory(uuid,date), public.undo_memory(uuid), public.decline_memory(uuid), public.edit_memory(uuid,text,text,date,date,date), public.forget_memory(uuid) from public, anon;
 grant execute on function public.save_memory(uuid,text,text,text,boolean,date,date,date,uuid,boolean), public.end_memory(uuid,date,date,uuid,text),
-  public.confirm_memory(uuid,date), public.undo_memory(uuid), public.decline_memory(uuid), public.edit_memory(uuid,text,text,date,date), public.forget_memory(uuid) to authenticated, service_role;
+  public.confirm_memory(uuid,date), public.undo_memory(uuid), public.decline_memory(uuid), public.edit_memory(uuid,text,text,date,date,date), public.forget_memory(uuid) to authenticated, service_role;

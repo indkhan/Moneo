@@ -2588,7 +2588,7 @@ isOneToOne: false
 { Args: { "p_expected_version": number,"p_goal_id": string,"p_patch": Json,"p_request_id": string }; Returns: string
                            },
 "edit_memory":
-{ Args: { "p_id": string,"p_kind": string,"p_statement": string,"p_valid_from": string,"p_valid_until": string }; Returns: string
+{ Args: { "p_id": string,"p_kind": string,"p_statement": string,"p_today": string,"p_valid_from": string,"p_valid_until": string }; Returns: string
                            },
 "edit_money_metadata":
 { Args: { "p_entity_type": string,"p_expected_version": number,"p_id": string,"p_patch": Json,"p_request_id": string }; Returns: string
@@ -2978,7 +2978,7 @@ isOneToOne: false
 { Args: { "p_checked_on": string,"p_connection_id": string,"p_rows": Json }; Returns: number
                            },
 "replaced_on":
-{ Args: { "p_new_from": string,"p_old_from": string,"p_today": string }; Returns: string
+{ Args: { "p_new_from": string,"p_today": string }; Returns: string
                            },
 "request_workspace":
 { Args: { "p_request_id": string }; Returns: string

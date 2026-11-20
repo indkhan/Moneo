@@ -454,7 +454,7 @@ ${artifactBrief}` : ""}`,
     if (!text.trim()) throw new Error("The model returned no answer");
     const cards = [...new Set(proposalCards)];
     const cardBlocks = cards.length > 1 ? ["```moneo-proposals\n" + JSON.stringify(cards) + "\n```"] : cards.map(id => "```moneo-proposal\n" + id + "\n```");
-    const answer = [resolveChartBlocks(text.trim(), charts.get), ...cardBlocks, ...[...new Set(tradeCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards),
+    const answer = [resolveChartBlocks(text.replace(new RegExp("```" + MEMORY_NOTE_FENCE + "[\\s\\S]*?(```|$)", "g"), "").trim(), charts.get), ...cardBlocks, ...[...new Set(tradeCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards),
       ...[memoryNoteBlock(memoryNote)].filter(block => block !== null)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
