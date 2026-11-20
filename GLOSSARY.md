@@ -42,5 +42,16 @@ The period during which a memory is true for the owner: when it starts and, if i
 A memory that a newer statement from the owner has replaced. It is kept as history of what the owner used to think.
 _Avoid_: deleted memory, old memory
 
+**Ended memory**:
+A memory the owner said is no longer true, with nothing replacing it. It is kept as history.
+
+**Forget**:
+Permanently deleting a memory with all its versions and its source text, at the owner's request. Unlike ending a memory, it leaves no history.
+_Avoid_: delete, remove
+
+**Nudge**:
+A one-off message on Home when a sync or import shows that a Tracked pledge was just broken or is close to its limit.
+_Avoid_: alert, notification, reminder
+
 **Source**:
 The exact chat message or voice-call moment a memory came from.

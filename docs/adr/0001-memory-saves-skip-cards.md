@@ -1,0 +1,3 @@
+# Confident memory saves skip the card
+
+Every AI write in Moneo is a card the owner accepts, apart from two named exceptions. Memories are a third. When the assistant is confident about something the owner said about themselves, it saves the memory straight away and shows a quiet "Memory updated" line under the reply, with edit and undo. It asks with a "Save this?" chip only when the memory looks important but the assistant is unsure. A memory never changes financial records, it comes only from the owner's own words, and it can always be edited, ended, undone or forgotten. A card for every remembered sentence would make memory too tiring to use, which is why ChatGPT and Claude save without asking too.

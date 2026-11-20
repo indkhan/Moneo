@@ -1,0 +1,3 @@
+# Memory search adds embeddings only when a test set shows they help
+
+Most memory systems start with vector search. Moneo starts with memories linked to payees, categories, goals and accounts, Postgres full-text search, and every active memory in the prompt, because one owner has hundreds of memories, not millions. A set of realistic memory questions, in more than one language, measures what search finds. Embeddings are added only if that set shows full-text search missing things. They can then come from the owner's OpenAI or OpenRouter key or from a local model. The ChatGPT and Claude plan sign-ins have no embedding API, and the desktop app has no pgvector.
