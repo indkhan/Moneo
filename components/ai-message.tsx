@@ -9,6 +9,8 @@ import type { Root } from "mdast";
 import { ChatChart } from "./chat-chart";
 import { IouCard } from "./iou-card";
 import { DecisionCard } from "./decision-card";
+import { MemoryNoteView } from "./memory-note";
+import { MEMORY_NOTE_FENCE } from "@/lib/ai/memory-note";
 import { ProposalGroup } from "./proposal-group";
 import { CitationChip } from "./citation-chip";
 import { CITATION_PATTERN, parseCitation, type Citation } from "@/lib/ai/citations";
@@ -76,6 +78,7 @@ const components: Components = {
     if (proposalId) return <IouCard id={proposalId} />;
     if (code?.className?.includes("language-moneo-proposals") && typeof code.children === "string") return <ProposalGroup source={code.children} />;
     if (code?.className?.includes("language-moneo-decision") && typeof code.children === "string") return <DecisionCard source={code.children} />;
+    if (code?.className?.includes(`language-${MEMORY_NOTE_FENCE}`) && typeof code.children === "string") return <MemoryNoteView source={code.children} />;
     return <CodeBlock>{children}</CodeBlock>;
   },
   table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
