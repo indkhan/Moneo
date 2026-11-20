@@ -36,9 +36,9 @@ function Source({ row }: { row: MemoryRow }) {
 export function MemoryItem({ row, dates, kinds }: { row: MemoryRow; dates: Dates; kinds: [string, string][] }) {
   return <li><section aria-label={`Memory: ${row.statement}`} className={card}>
     <p>{row.statement}</p>
-    <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={dates} /></span><Source row={row} /></p>
+    <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={dates} /></span><Source row={row} /></div>
     <div className="mt-3 flex flex-wrap items-start gap-2">
-      <details className="basis-full sm:basis-auto">
+      <details className="min-w-0 open:basis-full">
         <summary className={`${quiet} inline-flex cursor-pointer items-center`}>Edit</summary>
         <SafeForm action={editMemorySafely} className="mt-2 grid gap-2 sm:grid-cols-2">
           <input type="hidden" name="memory" value={row.id} />
@@ -72,7 +72,7 @@ function Forget({ row }: { row: MemoryRow }) {
 export function Suggested({ row, dates }: { row: MemoryRow; dates: Dates }) {
   return <li><section aria-label={`Suggested memory: ${row.statement}`} className={card}>
     <p><span className="mr-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{MEMORY_KIND_LABELS[row.kind]}</span>{row.statement}</p>
-    <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={dates} /></span><Source row={row} /></p>
+    <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={dates} /></span><Source row={row} /></div>
     <div className="mt-3 flex flex-wrap gap-2">
       <Button action={confirmMemorySafely} memory={row.id} label="Save" name={`Save ${row.statement}`} tone="primary" />
       <Button action={undoMemorySafely} memory={row.id} label="Not now" name={`Don't save ${row.statement}`} />
@@ -85,10 +85,10 @@ export function Change({ before, beforeDates, after, afterDates }: { before: Mem
   return <li><section aria-label={`${label}: ${before.statement}`} className={card}>
     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}{beforeDates.changed && ` · ${beforeDates.changed}`} · {MEMORY_KIND_LABELS[before.kind]}</p>
     <p className="mt-2"><span className="text-muted-foreground">Before: </span>{before.statement}</p>
-    <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={beforeDates} /></span><Source row={before} /></p>
+    <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={beforeDates} /></span><Source row={before} /></div>
     {after && afterDates && <>
       <p className="mt-3"><span className="text-muted-foreground">{after.status === "active" ? "Now: " : "Then: "}</span>{after.statement}</p>
-      <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={afterDates} /></span><Source row={after} /></p>
+      <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span><When dates={afterDates} /></span><Source row={after} /></div>
     </>}
     <div className="mt-3 flex flex-wrap gap-2">
       {before.status === "ended" && <Button action={undoMemorySafely} memory={before.id} label="It's still true" name={`${before.statement} is still true`} />}

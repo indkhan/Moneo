@@ -36,7 +36,7 @@ begin
   if result->>'status'<>'active' then raise exception 'A sure memory was not saved as active'; end if;
   result:=public.save_memory(chat,null,'fact','Partner pays all of the rent','my partner pays all of the rent',true,'2026-11-01',null,first);
   second:=(result->>'id')::uuid;
-  if (select status from public.memories where id=first)<>'replaced' or (select ended_on from public.memories where id=first)<>'2026-11-01'
+  if (select status from public.memories where id=first)<>'replaced' or (select ended_on from public.memories where id=first)<>'2026-10-31'
     then raise exception 'Replacing a memory did not keep the old one as history'; end if;
   begin
     perform public.save_memory(chat,null,'fact','Rent again','my partner pays all of the rent',true,null,null,first);

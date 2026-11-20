@@ -68,7 +68,7 @@ begin
       p_valid_from, p_valid_until, p_replaces, p_conversation_id, p_request_id, 'ai')
     returning * into saved;
   if p_sure and p_replaces is not null then
-    update public.memories set status='replaced', closed_at=now(), ended_on=p_valid_from where id=p_replaces;
+    update public.memories set status='replaced', closed_at=now(), ended_on=p_valid_from - 1 where id=p_replaces;
   end if;
   return jsonb_build_object('id', saved.id, 'status', saved.status);
 end $$;
@@ -91,7 +91,7 @@ begin
   select * into target from public.memories where id=p_id and public.owns_workspace(workspace_id) for update;
   if not found or target.status <> 'suggested' then raise exception 'Only a suggested memory can be saved' using errcode='22023'; end if;
   if target.replaces is not null and exists (select 1 from public.memories where id=target.replaces and status='active' for update) then
-    update public.memories set status='replaced', closed_at=now(), ended_on=target.valid_from where id=target.replaces;
+    update public.memories set status='replaced', closed_at=now(), ended_on=target.valid_from - 1 where id=target.replaces;
   else
     target.replaces := null;
   end if;
@@ -121,7 +121,7 @@ declare target public.memories%rowtype; edited uuid;
 begin
   select * into target from public.memories where id=p_id and public.owns_workspace(workspace_id) for update;
   if not found or target.status <> 'active' then raise exception 'Only an active memory can be edited' using errcode='22023'; end if;
-  update public.memories set status='replaced', closed_at=now(), ended_on=p_valid_from where id=p_id;
+  update public.memories set status='replaced', closed_at=now(), ended_on=p_valid_from - 1 where id=p_id;
   insert into public.memories(workspace_id, kind, statement, status, valid_from, valid_until, replaces, saved_by)
     values (target.workspace_id, p_kind, btrim(p_statement), 'active', p_valid_from, p_valid_until, p_id, 'owner')
     returning id into edited;
