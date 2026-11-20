@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
+import Link from "next/link";
 import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
 import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, deviceTimeZone, SPEECH_ENGINES, VOICES, type WorkspaceSettings } from "@/lib/settings";
@@ -154,6 +155,7 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
       </div>
       <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI, Anthropic or OpenRouter (depending on the model) receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key, or counts toward your ChatGPT or Claude plan.</p></details>
       <div className="divide-y divide-border">{AI_DATA_SCOPES.map(scope => <label key={scope} className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_data_scopes" value={scope} defaultChecked={settings.ai_data_scopes.includes(scope)} /><span><strong className="block capitalize">{scope}</strong><span className="text-muted-foreground">{scopeDescriptions[scope]}</span></span></label>)}
+        <label className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_memory" defaultChecked={settings.ai_memory} /><span><strong className="block">Memory</strong><span className="text-muted-foreground">Chat and voice calls remember what you tell them about yourself (pledges, plans, facts, explanations and how you like answers) and use it later. Off: nothing new is saved and nothing saved is used. See or forget it all in <Link href="/ai/memory" className="underline">What Moneo knows about you</Link>.</span></span></label>
         <label className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="artifact_scalable_data" value="live" defaultChecked={settings.artifact_scalable_data === "live"} /><span><strong className="block">Live Scalable data in artifacts</strong><span className="text-muted-foreground">Off: artifact Pages and Home cards show your Scalable portfolio as of the last sync, the same figures as Wealth. On: they read Scalable live each time they open, with current prices and quotes and charts for any security, but they load slower and show an error when Scalable can&apos;t be reached.</span></span></label></div>
     </fieldset>
     <fieldset id="voice" className={card}><legend className={legend}>Voice</legend>
