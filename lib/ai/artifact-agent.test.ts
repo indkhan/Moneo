@@ -18,7 +18,7 @@ function run() {
   query.insert = async (row: Record<string, unknown>) => { inserts.push(row); return { error: null }; };
   query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve);
   const context = { supabase: { from: () => query }, workspace: { id: "w", locale: "en-GB" }, settings: { timezone: "Europe/Berlin" } };
-  const tools = artifactTools({ context, artifactId: "a", signal: new AbortController().signal, ensureActive: async () => {}, scalable: null } as never);
+  const tools = artifactTools({ context, artifactId: "a", signal: new AbortController().signal, ensureActive: async () => {}, scalable: null, ownerWords: [] } as never);
   const write = (input: object) => (tools.write_page.execute as unknown as (input: object, options: object) => Promise<Record<string, unknown>>)(input, { toolCallId: "t", messages: [] });
   return { inserts, write };
 }

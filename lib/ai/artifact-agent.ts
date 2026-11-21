@@ -12,7 +12,7 @@ import { pageScriptErrors } from "@/lib/ai/page-check";
 import { CARD_BODY_HEIGHT, CARD_SIZES } from "@/lib/cards/sizes";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-type Run = { context: Context; artifactId: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess };
+type Run = { context: Context; artifactId: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[] };
 
 const SCALABLE_HELP: Record<"snapshot" | "live", string> = {
   snapshot: "Scalable sources show the portfolio as of the last sync (dataFrom last_sync, syncedAt), the same figures as Wealth: say \"as of\" with that date. Your investments_ tools read Scalable live and their fields differ, so take field paths for a brief from the sample the designer gets, not from them. Quotes, charts and news for other securities need live Scalable data, which the owner can turn on in Settings.",
@@ -89,8 +89,8 @@ async function design(run: Run, system: string, prompt: string) {
   const model = await modelForSettings(run.context.settings, "artifacts");
   const { text } = await generateText({
     model, instructions: system, prompt, maxOutputTokens: 32000,
-    providerOptions: { openai: { reasoningEffort: "low" } },
-    abortSignal: AbortSignal.any([run.signal, AbortSignal.timeout(200_000)]),
+    providerOptions: { openai: { reasoningEffort: "medium" } },
+    abortSignal: AbortSignal.any([run.signal, AbortSignal.timeout(240_000)]),
   });
   return { text: unfence(text), model: model.modelId };
 }
@@ -100,6 +100,9 @@ async function nextVersion(supabase: SupabaseClient, table: "artifact_versions" 
   if (error) throw error;
   return ((data?.version as number | undefined) ?? 0) + 1;
 }
+
+const ownerWords = (run: Run) => run.ownerWords.length
+  ? `The owner's own words, newest first (the brief is the builder's summary of them; where they differ, the owner wins):\n${run.ownerWords.map(text => `- ${text}`).join("\n")}\n\n` : "";
 
 const today = (context: Context) => calendarDate(new Date(), context.settings.timezone);
 
@@ -113,7 +116,7 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
     supabase.from("artifact_versions").select("version, html").eq("workspace_id", workspace.id).eq("artifact_id", artifactId).order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (current.error) throw current.error;
-  let prompt = `${current.data ? `Current page (change it as the brief says, keep the rest):\n${current.data.html}\n\n` : ""}Brief:\n${input.brief}\n\nQueries:\n${JSON.stringify(input.queries)}\n\nData now (window.MONEO_DATA):\n${sample(data)}`;
+  let prompt = `${current.data ? `Current page (change it as the brief says, keep the rest):\n${current.data.html}\n\n` : ""}${ownerWords(run)}Brief:\n${input.brief}\n\nQueries:\n${JSON.stringify(input.queries)}\n\nData now (window.MONEO_DATA):\n${sample(data)}`;
   let text = "", model = "";
   for (let attempt = 0; ; attempt++) {
     ({ text, model } = await design(run, PAGE_DESIGNER, prompt));
@@ -190,7 +193,7 @@ export function artifactTools(run: Run) {
         const other = otherOption(params, today(context), context.workspace.locale);
         const [data, otherData] = await Promise.all([runArtifactQueries(queries, context, today(context), { params: resolved }),
           other ? runArtifactQueries(queries, context, today(context), { params: other.resolved }) : null]);
-        let prompt = `${current?.data ? `Current card (change it as the brief says, keep the rest):\n${current.data.source}\n\n` : ""}Title (shown by the app): ${title}\nBrief:\n${brief}\n\nParams: ${JSON.stringify(params)}\n\nData now:\n${sample(data)}${otherData && other ? `\n\nData for ${JSON.stringify(other.values)} (same shape, for reference):\n${sample(otherData)}` : ""}`;
+        let prompt = `${current?.data ? `Current card (change it as the brief says, keep the rest):\n${current.data.source}\n\n` : ""}${ownerWords(run)}Title (shown by the app): ${title}\nBrief:\n${brief}\n\nParams: ${JSON.stringify(params)}\n\nData now:\n${sample(data)}${otherData && other ? `\n\nData for ${JSON.stringify(other.values)} (same shape, for reference):\n${sample(otherData)}` : ""}`;
         for (let attempt = 0; attempt < 3; attempt++) {
           const { text, model } = await design(run, CARD_DESIGNER, prompt);
           const checked = await checkCard(text, queries, params, context);
