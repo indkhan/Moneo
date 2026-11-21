@@ -5,6 +5,8 @@ import { VOICE_INSTRUCTIONS, VOICE_MODEL, seedInput } from "@/lib/ai/voice-call"
 import { voiceApiKey } from "@/lib/ai/configured";
 import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import { jsonBodyOrNull } from "@/lib/json-body";
+import { voicePreferences } from "@/lib/ai/memory";
+import { calendarDate } from "@/lib/finance/calendar";
 
 const inputSchema = z.object({ sdp: z.string().min(1).max(20_000), conversationId: z.uuid() }).strict();
 
@@ -26,9 +28,10 @@ export async function POST(request: Request) {
   if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
   if (messages.error) throw messages.error;
   const history: { role: string; content: string }[] = existing.data ? (messages.data ?? []).reverse() : [];
+  const preferences = settings.ai_memory ? await voicePreferences(supabase, workspace.id, calendarDate(new Date(), settings.timezone)).catch(error => { console.error("voice preferences failed", error); return ""; }) : "";
   try {
     const session = await createOpenAI({ apiKey }).experimental_realtime(VOICE_MODEL).doCreateWebRTCSession({ sdp, abortSignal: request.signal, sessionConfig: {
-      instructions: VOICE_INSTRUCTIONS, voice: settings.voice,
+      instructions: preferences ? `${VOICE_INSTRUCTIONS}\n\n${preferences}` : VOICE_INSTRUCTIONS, voice: settings.voice,
       providerOptions: { openai: { delegation: { type: "client" }, input: seedInput(history) } },
     } });
     return Response.json({ sdp: session.sdp, sessionId: session.sessionId, workspaceId: workspace.id });

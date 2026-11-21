@@ -99,6 +99,8 @@ Opening Moneo or coming back to it also syncs in the background (Scalable at mos
 
 New transactions are organized for you. Moneo first uses what your bank sent (merchant codes, counterparty, your own accounts for transfers and currency exchanges) and what you have already confirmed; the AI labels the rest. Labels the AI is sure about are applied right away and marked as AI; it never asks you to label anything, and rows it isn't sure about stay unlabelled. **Money → AI organizer** lists every decision: confirm or undo any of them, and edit what Moneo remembers. You can also ask about them in chat.
 
+Chat and voice calls remember what you tell them about yourself: pledges ("I'm cutting out food delivery"), plans, facts about your life, why a payment happened, and how you like answers. A quiet **Memory updated** note under the answer has Undo; when Moneo isn't sure, it asks **Save this?** instead. **AI → Memory** shows everything it knows, what changed and where each memory came from, and lets you edit, end or forget any of it. Turn memory off under **Settings → AI and your data**.
+
 ## Keys and connections
 
 Every key and outside service is set up in the app under **Settings → Keys and connections**. Keys are checked with the provider before they are saved, stored encrypted in your database, shown only by their last four characters, and can be replaced or removed at any time. The same section shows that the secrets made by `npm run setup` are in place.

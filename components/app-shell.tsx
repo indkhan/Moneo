@@ -3,10 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  ArrowLeftRight, Bell, ChartLine, ChartPie, Coins, CreditCard, LayoutGrid, Layers, ListChecks, Menu, MessageSquare,
-  Network, Repeat, Search, SearchCheck, SlidersHorizontal, Sparkles, Tags, Target, TrendingUp, Upload, WandSparkles, type LucideIcon,
-} from "lucide-react";
+import { ArrowLeftRight, Bell, Brain, ChartLine, ChartPie, Coins, CreditCard, Layers, LayoutGrid, ListChecks, Menu, MessageSquare, Network, Repeat, Search, SearchCheck, SlidersHorizontal, Sparkles, Tags, Target, TrendingUp, type LucideIcon, Upload, WandSparkles } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
 import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
 import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
@@ -39,6 +36,7 @@ const ai: RailItem = { label: "AI", href: "/ai", icon: Sparkles, items: [
   { label: "Ask", href: "/ai", icon: MessageSquare, go: "c", about: "Chat about your money" },
   { label: "Agents", href: "/ai/agents", icon: Network, go: "m", about: "Reviews that suggest changes for you to accept" },
   { label: "Artifacts", href: "/ai/artifacts", icon: Layers, about: "Saved reports and tools" },
+  { label: "Memory", href: "/ai/memory", icon: Brain, about: "What Moneo knows about you" },
   { label: "Activity log", href: "/ai/activity", icon: ListChecks, about: "What background work did, and when" },
 ] };
 const rail = [...money, ai];

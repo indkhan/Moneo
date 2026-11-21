@@ -20,7 +20,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
       speech_local_model: String(form.get("speech_local_model") ?? "").trim() || null,
       speech_openrouter_model: String(form.get("speech_openrouter_model") ?? "").trim() || null,
       ai_models: Object.fromEntries(["default", ...AI_AGENT_KEYS].map(agent => [agent, String(form.get(`model:${agent}`) ?? "").trim()]).filter(([, model]) => model)),
-      ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
+      ai_memory: form.get("ai_memory") === "on", ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
       artifact_scalable_data: form.get("artifact_scalable_data") === "live" ? "live" : "snapshot",
     });
