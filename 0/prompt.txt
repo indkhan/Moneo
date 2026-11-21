@@ -1,0 +1,17 @@
+on default 
+the problem is that the artifact it makes in pages and widget looks shit especially the widget 
+i think a better idea is that to have a view of how it looks and give it back to model so that it can see what it build for both pages and also widget or add a tool so it can see let’s think about it cuz the widget it makes is shit and it should see in small the widget and all 
+
+
+Think and push back if something better and all 
+
+Let’s talk like humans in simple words 
+Cuz right now if someone wants to build he needs to define almost each pixel what to have which is not something what I want it should be easy the artifact agent should be really powerful
+
+---
+
+U can check it the monio application is open 
+It is there 
+Build all of them one by one and then no or or anything just show the build so I can test it and if I like it then will tell u to make pr and then merge 
+
+If any more questions ask me
