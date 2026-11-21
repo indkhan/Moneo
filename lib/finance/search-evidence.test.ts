@@ -21,8 +21,8 @@ it("retains provisional parent classification, exact effective allocations and c
 });
 
 it("finds a nickname through similar descriptions after the exact matches", async () => {
-  const exact = { id: "exact", posted_on: "2026-11-01", description: "Venji pizza", amount_minor: "-900", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [], version: 1 };
-  const similar = { id: "similar", posted_on: "2026-09-28", description: "Venjalin Ravindran", amount_minor: "-25000", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [], version: 1 };
+  const exact = { id: "exact", posted_on: "2026-11-01", description: "Eliz pizza", amount_minor: "-900", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [], version: 1 };
+  const similar = { id: "similar", posted_on: "2026-09-28", description: "Elizabeth Miller", amount_minor: "-25000", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [], version: 1 };
   const rpcCalls: unknown[] = [];
   const context = { workspace: { id: "owned" }, supabase: {
     rpc: async (name: string, args: unknown) => { rpcCalls.push([name, args]); return { data: [{ id: "exact" }, { id: "similar" }], error: null }; },
@@ -34,10 +34,10 @@ it("finds a nickname through similar descriptions after the exact matches", asyn
         range: async () => ({ data: table === "effective_transactions" ? [] : [], error: null }) };
       return query;
     } } } as unknown as FinanceContext;
-  const result = await searchTransactions({ query: "Venji", limit: 5 }, context);
-  expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Venji", p_limit: 5 }]]);
+  const result = await searchTransactions({ query: "Eliz", limit: 5 }, context);
+  expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Eliz", p_limit: 5 }]]);
   rpcCalls.length = 0;
-  await searchTransactions({ query: "Venji", from: "2026-09-01", to: "2026-09-30", minAmountMinor: "20000", maxAmountMinor: "30000", limit: 5 }, context);
-  expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Venji", p_from: "2026-09-01", p_to: "2026-09-30", p_min_minor: "20000", p_max_minor: "30000", p_limit: 5 }]]);
+  await searchTransactions({ query: "Eliz", from: "2026-09-01", to: "2026-09-30", minAmountMinor: "20000", maxAmountMinor: "30000", limit: 5 }, context);
+  expect(rpcCalls).toEqual([["similar_transaction_ids", { p_workspace_id: "owned", p_query: "Eliz", p_from: "2026-09-01", p_to: "2026-09-30", p_min_minor: "20000", p_max_minor: "30000", p_limit: 5 }]]);
   expect(result.map(row => [row.id, row.match])).toEqual([["exact", "text"], ["similar", "similar_name"]]);
 });

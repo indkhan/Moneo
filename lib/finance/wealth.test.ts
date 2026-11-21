@@ -4,9 +4,9 @@ import { defined } from "@/lib/testing";
 
 it("lists money lent and owed by person with totals per group and currency, leaving removed items out", () => {
   const item = (id: string, name: string, kind: WealthItem["kind"], amount_minor: string, removed_at: string | null = null) => ({ id, name, kind, amount_minor, currency_code: "EUR", as_of: "2026-09-22", removed_at });
-  const overview = wealthOverview([item("a", "Lent to Bilal", "asset", "100000"), item("b", "Lent to Venjalin", "asset", "25000"), item("c", "Owed to Sam", "debt", "5000"),
+  const overview = wealthOverview([item("a", "Lent to Bilal", "asset", "100000"), item("b", "Lent to Elizabeth", "asset", "25000"), item("c", "Owed to Sam", "debt", "5000"),
     item("d", "Car", "asset", "800000"), item("e", "Lent to Old", "asset", "999", "2026-10-01")]);
-  expect(overview.items.map(row => [row.group, row.person, row.amountFormatted])).toEqual([["lent", "Bilal", "EUR 1000.00"], ["lent", "Venjalin", "EUR 250.00"], ["borrowed", "Sam", "EUR 50.00"], ["asset", undefined, "EUR 8000.00"]]);
+  expect(overview.items.map(row => [row.group, row.person, row.amountFormatted])).toEqual([["lent", "Bilal", "EUR 1000.00"], ["lent", "Elizabeth", "EUR 250.00"], ["borrowed", "Sam", "EUR 50.00"], ["asset", undefined, "EUR 8000.00"]]);
   expect(overview.totals).toEqual([{ group: "lent", currencyCode: "EUR", amountMinor: "125000", amountFormatted: "EUR 1250.00" },
     { group: "borrowed", currencyCode: "EUR", amountMinor: "5000", amountFormatted: "EUR 50.00" }, { group: "asset", currencyCode: "EUR", amountMinor: "800000", amountFormatted: "EUR 8000.00" }]);
 });
