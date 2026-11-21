@@ -3,7 +3,7 @@ import { ownerBrief } from "./owner-brief";
 
 const rows: Record<string, unknown[]> = {
   accounts: [{ name: "Commerzbank", type: "checking", currency_code: "EUR" }],
-  wealth_items: [{ id: "w", name: "Lent to Venjalin Ravindran", kind: "asset", amount_minor: "25000", currency_code: "EUR", as_of: "2026-09-28", removed_at: null }],
+  wealth_items: [{ id: "w", name: "Lent to Elizabeth Miller", kind: "asset", amount_minor: "25000", currency_code: "EUR", as_of: "2026-09-28", removed_at: null }],
   financial_assumptions: [{ name: "Rent", amount_minor: "-90000", currency_code: "EUR", cadence: "monthly" }],
 };
 function client(read: string[]) {
@@ -20,7 +20,7 @@ it("briefs the model on accounts, people with open loans and recurring payments"
   const read: string[] = [];
   const brief = await ownerBrief({ supabase: client(read) as never, workspace: { id: "w", locale: "en-US" }, settings: { ai_data_scopes: ["accounts", "planning", "transactions"] } });
   expect(brief.text).toContain('Accounts: "Commerzbank" (checking, EUR)');
-  expect(brief.text).toMatch(/People with open loans: "Venjalin Ravindran": owes you .*250\.00 \(since 2026-09-28\)/);
+  expect(brief.text).toMatch(/People with open loans: "Elizabeth Miller": owes you .*250\.00 \(since 2026-09-28\)/);
   expect(brief.text).toMatch(/Recurring payments: "Rent": .*900\.00 out, monthly/);
   expect(brief.scopes.sort()).toEqual(["accounts", "planning", "transactions"]);
 });

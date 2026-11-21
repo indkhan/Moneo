@@ -1,5 +1,5 @@
 -- Chat searches transactions by the names people use, which are often short forms or typos of the
--- bank text ("Venji" for "Venjalin Ravindran"). Trigram word similarity finds those. The caller's date
+-- bank text ("Eliz" for "Elizabeth Miller"). Trigram word similarity finds those. The caller's date
 -- and absolute-amount filters apply before the limit, so stronger matches elsewhere can't crowd out
 -- the right row; row-level security limits rows to the owner's workspace.
 create extension if not exists pg_trgm schema extensions;
