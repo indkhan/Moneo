@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, createElement, Fragment, useContext, useEffect, useRef, useState, useTransition, type ComponentProps, type ReactNode } from "react";
+import { createContext, createElement, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { formatCompactMoney, formatMoney } from "@/lib/finance/format";
 import type { CardNode } from "@/lib/cards/sandbox";
@@ -35,6 +35,85 @@ function Money({ minor, currency, signed, compact, className, style }: { minor: 
 function LocalizedChart(props: CardChartProps) {
   const { locale } = useContext(LiveCard);
   return <CardChart {...props} locale={locale} />;
+}
+
+type Look = { className?: string; style?: React.CSSProperties };
+type Amount = { minor?: string | number; currency?: string; value?: string };
+
+function amountText({ minor, currency, value }: Amount, locale?: string, signed?: boolean) {
+  if (minor === undefined || !currency) return value ?? "";
+  const amount = BigInt(minor);
+  try { return `${signed && amount > 0n ? "+" : ""}${formatMoney(amount, currency, locale)}`; } catch { return `${amount} ${currency}`; }
+}
+const toneClass = (sign: number) => sign > 0 ? "text-success" : sign < 0 ? "text-danger" : "text-muted-foreground";
+
+function Stat({ label, tone, change, note, className, style, ...amount }: Amount & Look & { label?: string; tone?: "positive" | "negative"; change?: { minor?: string | number; currency?: string; percent?: number }; note?: string }) {
+  const { locale } = useContext(LiveCard);
+  const figure = amountText(amount, locale);
+  const moved = change?.minor !== undefined && change.currency ? amountText({ minor: change.minor, currency: change.currency }, locale, true) : null;
+  const percent = change?.percent !== undefined ? `${change.percent > 0 ? "+" : ""}${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(change.percent)}%` : null;
+  const sign = change ? Math.sign(change.minor !== undefined ? Number(change.minor) : change.percent ?? 0) : 0;
+  return <div className={`@container min-w-0 ${className ?? ""}`} style={style}>
+    {label && <p className="eyebrow truncate text-muted-foreground">{label}</p>}
+    <p className={`display-figure mt-1 whitespace-nowrap tabular-nums ${tone === "positive" ? "text-success" : tone === "negative" ? "text-danger" : ""}`}
+      style={{ fontSize: `min(48px, calc(100cqi / ${Math.max(figure.length, 5) * 0.6}))` }}>{figure}</p>
+    {(moved || percent || note) && <p className="mt-1.5 truncate text-xs text-muted-foreground">
+      {(moved || percent) && <span className={`font-mono tabular-nums ${toneClass(sign)}`}>{[moved, percent && (moved ? `(${percent})` : percent)].filter(Boolean).join(" ")}</span>}
+      {note && <span>{moved || percent ? " · " : ""}{note}</span>}
+    </p>}
+  </div>;
+}
+
+type ListRow = Amount & { label: string; sub?: string; signed?: boolean; share?: number; color?: string };
+const ROW_HEIGHT = 32, SUB_ROW_HEIGHT = 42, BAR_HEIGHT = 6, MORE_HEIGHT = 20;
+
+function List({ rows, empty, className, style }: Look & { rows: ListRow[]; empty?: string }) {
+  const { locale } = useContext(LiveCard);
+  const box = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(rows.length);
+  const height = (rows.some(row => row.sub) ? SUB_ROW_HEIGHT : ROW_HEIGHT) + (rows.some(row => row.share !== undefined) ? BAR_HEIGHT : 0);
+  useLayoutEffect(() => {
+    const element = box.current, body = element?.closest<HTMLElement>("[data-card]");
+    if (!element || !body) return;
+    const measure = () => {
+      const bottom = body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom);
+      const room = bottom - element.getBoundingClientRect().top;
+      setFit(rows.length * height <= room ? rows.length : Math.max(1, Math.floor((room - MORE_HEIGHT) / height)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [rows.length, height]);
+  if (!rows.length) return <p className={`text-sm text-muted-foreground ${className ?? ""}`} style={style}>{empty ?? "Nothing to show yet."}</p>;
+  return <div ref={box} className={`min-w-0 ${className ?? ""}`} style={style}>
+    <ul>{rows.slice(0, fit).map((row, index) => <li key={index} className="flex flex-col justify-center border-b border-border last:border-b-0" style={{ height }}>
+      <div className="flex min-w-0 items-baseline justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2">
+          {row.color && <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: row.color }} />}
+          <span className="min-w-0"><span className="block truncate text-sm">{row.label}</span>{row.sub && <span className="block truncate text-xs text-muted-foreground">{row.sub}</span>}</span>
+        </span>
+        <span className={`shrink-0 font-mono text-xs tabular-nums ${row.signed && row.minor !== undefined ? toneClass(Math.sign(Number(row.minor))) : ""}`}>{amountText(row, locale, row.signed)}</span>
+      </div>
+      {row.share !== undefined && <div aria-hidden="true" className="mt-1 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full" style={{ width: `${row.share * 100}%`, background: row.color ?? "var(--color-brand)" }} /></div>}
+    </li>)}</ul>
+    {fit < rows.length && <p className="truncate text-xs text-muted-foreground" style={{ height: MORE_HEIGHT, lineHeight: `${MORE_HEIGHT}px` }}>+{rows.length - fit} more</p>}
+  </div>;
+}
+
+function Progress({ label, current, target, text, color, className, style }: Look & { label?: string; current: number; target: number; text?: string; color?: string }) {
+  const share = Math.min(1, Math.max(0, current / target));
+  return <div className={`min-w-0 ${className ?? ""}`} style={style}>
+    {(label || text) && <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sm"><span className="truncate">{label}</span>{text && <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{text}</span>}</div>}
+    <div role="progressbar" aria-label={label} aria-valuenow={Math.round(share * 100)} aria-valuemin={0} aria-valuemax={100} className="h-2 overflow-hidden rounded-full bg-muted">
+      <div className="h-full rounded-full" style={{ width: `${share * 100}%`, background: color ?? "var(--color-brand)" }} />
+    </div>
+  </div>;
+}
+
+function Columns({ ratio, className, style, children }: Look & { ratio?: number[]; children: ReactNode }) {
+  const count = Array.isArray(children) ? children.length : 1;
+  return <div className={`grid h-full gap-6 ${className ?? ""}`} style={{ gridTemplateColumns: (ratio ?? Array.from({ length: count }, () => 1)).map(part => `minmax(0, ${part}fr)`).join(" "), ...style }}>{children}</div>;
 }
 
 function Tabs({ tabs, className, style, scope }: { tabs: { label: string; content: CardNode }[]; className?: string; style?: React.CSSProperties; scope: string }) {
@@ -92,6 +171,10 @@ function render(node: CardNode, scope: string, key?: number): ReactNode {
   switch (node.type) {
     case "kit:Money": return <Money key={key} {...(props as ComponentProps<typeof Money>)} />;
     case "kit:Chart": return <LocalizedChart key={key} {...(props as CardChartProps)} />;
+    case "kit:Stat": return <Stat key={key} {...(props as ComponentProps<typeof Stat>)} />;
+    case "kit:List": return <List key={key} {...(props as ComponentProps<typeof List>)} />;
+    case "kit:Progress": return <Progress key={key} {...(props as ComponentProps<typeof Progress>)} />;
+    case "kit:Columns": return <Columns key={key} {...(props as Omit<ComponentProps<typeof Columns>, "children">)}>{children}</Columns>;
     case "kit:Tabs": return <Tabs key={key} {...(props as ComponentProps<typeof Tabs>)} scope={scope} />;
     case "kit:Param": return <Param key={key} {...(props as ComponentProps<typeof Param>)} />;
     case "kit:Link": { const { to, ...rest } = node.props as { to: z.infer<typeof linkTarget> }; return <Link key={key} href={linkHref(to)} {...rest} className={`hover:underline ${(rest as { className?: string }).className ?? ""}`}>{children}</Link>; }
