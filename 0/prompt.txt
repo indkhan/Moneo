@@ -1,0 +1,8 @@
+this thing is broken it shows one transaction needs me to fill but the thing is it does not let me see what the options are the dropdown is cutting 
+suggest solution what and how
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\beed63e7-ed8e-4915-9af9-da30041a08b6-9541ea66-d5f5-4ff9-9cd2-511b45351b00.png]
+
+---
+
+2nd and implement it and then file pr with the ui and all and then add the pic and all and if i like it i will then merge it
