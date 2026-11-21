@@ -1,0 +1,22 @@
+honestly it is fine file pr and then merge it to main and then create a new release
+
+---
+
+Update on pull request #316 (https://github.com/indkhan/Moneo/pull/316), which T3 Code is watching for you:
+- All 1 required check passed on abf9c89.
+
+Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.
+
+---
+
+Pull request #316 (https://github.com/indkhan/Moneo/pull/316) was merged into main by indkhan as 17929d6, so T3 Code stopped watching it.
+
+---
+
+<task-notification>
+<task-id>bw5ahrybo</task-id>
+<tool-use-id>toolu_01CUAdXHXHXuTjWqgVymsp2n</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f2617e6daed97267\eac15630-8aaa-497f-a9c1-82b462c4c951\tasks\bw5ahrybo.output</output-file>
+<status>completed</status>
+<summary>Background command "until s=$(gh run view 44941235282 -R indkhan/Moneo --json status,conclusion -q '.status+" "+.conclusion' 2&gt;/dev/null) &amp;&amp; [[ $s == completed* ]]; do sleep 30; done; echo "$s"; gh run view 44941235282 -R indkhan/Moneo --json jobs -q '.jobs[]|.name+" "+.conclusion'" completed (exit code 0)</summary>
+</task-notification>
