@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { CategoryCombobox, matchCategories, resolveCategory } from "./category-combobox";
+import { CategoryCombobox, listPlacement, matchCategories, resolveCategory } from "./category-combobox";
 
 const options = [{ id: "1", name: "Groceries" }, { id: "2", name: "Utilities" }, { id: "3", name: "Uber rides" }, { id: "4", name: "Eating out" }];
 
@@ -23,5 +23,14 @@ describe("category picker", () => {
     const html = renderToStaticMarkup(<CategoryCombobox label="Category" options={options} value="Groceries" onChange={() => {}} />);
     expect(html).toContain('role="combobox"');
     expect(html).toContain('value="Groceries"');
+  });
+
+  it("opens the list upward when the input is near the bottom of the screen", () => {
+    expect(listPlacement({ top: 460, bottom: 500, left: 90, width: 280 }, 600)).toMatchObject({ position: "fixed", bottom: 144, left: 90, width: 280, maxHeight: 224 });
+    expect(listPlacement({ top: 100, bottom: 140, left: 90, width: 280 }, 600)).toMatchObject({ top: 144, maxHeight: 224 });
+  });
+
+  it("shrinks the list to the room that is left when neither side fits it", () => {
+    expect(listPlacement({ top: 100, bottom: 140, left: 0, width: 200 }, 300)).toMatchObject({ top: 144, maxHeight: 152 });
   });
 });
