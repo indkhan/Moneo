@@ -59,6 +59,8 @@ function controls(node: CardNode, found = new Set<string>()): Set<string> {
   return found;
 }
 
+export const CHECK_SCOPE = "check";
+
 export async function checkCard(source: string, queries: ArtifactQuery[], params: CardParam[], context: Context) {
   let compiled: string;
   try { compiled = compileCard(source); } catch (cause) { return { errors: [`Syntax: ${cause instanceof Error ? cause.message : String(cause)}`] }; }
@@ -68,23 +70,25 @@ export async function checkCard(source: string, queries: ArtifactQuery[], params
   if (queryErrors.length) return { errors: queryErrors };
   const data = await runArtifactQueries(queries, context, today, { params: resolved });
   const errors: string[] = [];
+  const trees: Partial<Record<CardSize, CardNode>> = {};
   const values = { ...resolved.values, ...localValues(state) };
   for (const end of ["min", "max"] as const) {
     const moved = Object.fromEntries(params.flatMap((param): [string, number | boolean][] => param.kind === "number" ? [[param.name, param[end]]] : param.kind === "toggle" ? [[param.name, !param.default]] : []));
     if (!Object.keys(moved).length) break;
-    try { sanitizeTree(await runCard(compiled, { data, params: { ...values, ...moved }, size: "M" }), { scope: "check" }); }
+    try { sanitizeTree(await runCard(compiled, { data, params: { ...values, ...moved }, size: "M" }), { scope: CHECK_SCOPE }); }
     catch (cause) { errors.push(`With sliders at their ${end} and switches flipped (${JSON.stringify(moved)}): ${cause instanceof Error ? cause.message : String(cause)}`); }
   }
   for (const size of CARD_SIZE_KEYS) {
     try {
-      const tree = sanitizeTree(await runCard(compiled, { data, params: values, size }), { scope: "check" });
+      const tree = sanitizeTree(await runCard(compiled, { data, params: values, size }), { scope: CHECK_SCOPE });
+      trees[size] = tree;
       const shown = controls(tree);
       const missing = params.filter(param => !shown.has(param.name)).map(param => param.name);
       if (missing.length) errors.push(`${size}: declared params without a <Kit.Param name="…" /> control: ${missing.join(", ")}`);
     }
     catch (cause) { errors.push(`${size}: ${cause instanceof CardTreeError ? "" : "runtime "}${cause instanceof Error ? cause.message : String(cause)}`); }
   }
-  return errors.length ? { errors } : { compiled, errors, data };
+  return errors.length ? { errors } : { compiled, errors, data, trees: trees as Record<CardSize, CardNode>, state };
 }
 
 export async function loadCardVersion(supabase: SupabaseClient, workspaceId: string, cardId: string, version?: number | null) {

@@ -1,4 +1,4 @@
-import { generateText, tool } from "ai";
+import { generateText, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { requireWorkspace } from "@/lib/auth";
@@ -9,10 +9,13 @@ import { cardParamsSchema, resolveParams, type CardParam } from "@/lib/cards/par
 import { PRESETS, PRESET_GUIDE, PRESET_NAMES, checkPresetBindings, presetSource, type PresetName } from "@/lib/cards/presets";
 import { checkCard } from "@/lib/cards/render";
 import { pageScriptErrors } from "@/lib/ai/page-check";
-import { CARD_BODY_HEIGHT, CARD_SIZES } from "@/lib/cards/sizes";
+import { CARD_BODY_HEIGHT, CARD_HEIGHT, CARD_SIZES, CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
+import { lookAt, type Session, type Shot } from "@/lib/ai/artifact-preview";
+import { dropDraft, keepDraft } from "@/lib/ai/artifact-drafts";
+import { draftCardPath, draftPagePath, type PreviewTheme } from "@/lib/draft-preview";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-type Run = { context: Context; artifactId: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[] };
+type Run = { context: Context; artifactId: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[]; session: Session };
 
 const SCALABLE_HELP: Record<"snapshot" | "live", string> = {
   snapshot: "Scalable sources show the portfolio as of the last sync (dataFrom last_sync, syncedAt), the same figures as Wealth: say \"as of\" with that date. Your investments_ tools read Scalable live and their fields differ, so take field paths for a brief from the sample the designer gets, not from them. Quotes, charts and news for other securities need live Scalable data, which the owner can turn on in Settings.",
@@ -89,15 +92,57 @@ const shorten = (value: unknown): unknown => Array.isArray(value)
   : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, shorten(item)])) : value;
 const sample = (data: unknown) => { const json = JSON.stringify(shorten(data), null, 1); return json.length > 24000 ? `${json.slice(0, 24000)}\n… (truncated)` : json; };
 
-async function design(run: Run, system: string, prompt: string) {
+async function design(run: Run, system: string, input: string | ModelMessage[]) {
   const model = await modelForSettings(run.context.settings, "artifacts");
   const { text } = await generateText({
-    model, instructions: system, prompt, maxOutputTokens: 32000,
+    model, instructions: system, ...typeof input === "string" ? { prompt: input } : { messages: input }, maxOutputTokens: 32000,
     providerOptions: { openai: { reasoningEffort: "medium" } },
     abortSignal: AbortSignal.any([run.signal, AbortSignal.timeout(240_000)]),
   });
   return { text: unfence(text), model: model.modelId };
 }
+
+const LOOK_ROUNDS = 2;
+const PAGE_SHOTS = (path: (theme: PreviewTheme) => string): Shot[] => [
+  { label: "Desktop, dark", path: path("dark"), width: 1280, height: 900, full: true, root: "body", theme: "dark" },
+  { label: "Phone, light", path: path("light"), width: 390, height: 844, full: true, root: "body", theme: "light" },
+];
+const CARD_SHOTS = (path: (size: CardSize, theme: PreviewTheme) => string): Shot[] => [
+  ...CARD_SIZE_KEYS.map((size): Shot => ({ label: `${size}, dark`, path: path(size, "dark"), width: CARD_SIZES[size].width + 40, height: CARD_HEIGHT, full: false, root: "[data-card]", theme: "dark" })),
+  { label: "M, light", path: path("M", "light"), width: CARD_SIZES.M.width + 40, height: CARD_HEIGHT, full: false, root: "[data-card]", theme: "light" },
+];
+const previewUnavailable = (cause: unknown) => { console.error("artifact preview failed", cause); return null; };
+
+type Reviewed = { text: string; looked: string[]; remaining: string[] };
+async function review(run: Run, { system, prompt, text, what, shots, accept }: {
+  system: string; prompt: string; text: string; what: "document" | "module";
+  shots: (text: string) => { shots: Shot[]; done: () => void } | null;
+  accept: (text: string) => Promise<boolean>;
+}): Promise<Reviewed> {
+  let current = text, looked: string[] = [], remaining: string[] = [];
+  for (let round = 0; round < LOOK_ROUNDS; round++) {
+    const planned = shots(current);
+    if (!planned) break;
+    const seen = await lookAt(planned.shots, run.session).catch(previewUnavailable).finally(planned.done);
+    if (!seen) break;
+    looked = seen.map(shot => shot.label);
+    remaining = seen.flatMap(shot => shot.problems.map(problem => `${shot.label}: ${problem}`));
+    const report = `This is how your ${what} renders with the owner's real data (${looked.join("; ")}).\n${remaining.length ? `Measured problems:\n${remaining.map(problem => `- ${problem}`).join("\n")}` : "The measurements found nothing cut off, overlapping or unreadable."}\n\nLook at it as the owner would: calm, clear and readable at every size, nothing cut off, overlapping, crammed or empty. If it is good, reply with exactly OK. Otherwise reply with the whole fixed ${what} and nothing else.`;
+    const { text: reply } = await design(run, system, [
+      { role: "user", content: prompt },
+      { role: "assistant", content: current },
+      { role: "user", content: [{ type: "text", text: report }, ...seen.flatMap(shot => [{ type: "text" as const, text: shot.label }, { type: "file" as const, data: shot.png, mediaType: "image/png" }])] },
+    ]);
+    if (/^OK\.?$/i.test(reply.trim())) return { text: current, looked, remaining };
+    if (!await accept(reply)) break;
+    current = reply;
+  }
+  return { text: current, looked, remaining };
+}
+
+const lookNote = ({ looked, remaining }: Reviewed) => looked.length
+  ? { looked: `The designer looked at it (${looked.join("; ")}) and fixed what it saw.`, ...remaining.length ? { lastLookFound: remaining } : {} }
+  : { looked: "No preview browser was available, so nobody looked at it." };
 
 async function nextVersion(supabase: SupabaseClient, table: "artifact_versions" | "artifact_card_versions", column: "artifact_id" | "card_id", id: string, workspaceId: string) {
   const { data, error } = await supabase.from(table).select("version").eq("workspace_id", workspaceId).eq(column, id).order("version", { ascending: false }).limit(1).maybeSingle();
@@ -130,13 +175,18 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
     if (attempt === 2) return { saved: false, errors: [`The page's code did not parse, so the current version was kept: ${errors.join("; ")}`] };
     prompt = `${prompt}\n\nYour last version:\n${text}\n\nIts JavaScript does not parse, so the page would show nothing. Fix these and reply with the whole document again:\n${errors.join("\n")}`;
   }
+  const owner = { workspaceId: workspace.id, artifactId };
+  const reviewed = await review(run, { system: PAGE_DESIGNER, prompt, text, what: "document",
+    shots: html => { const token = keepDraft({ ...owner, kind: "page", html, data }); return { shots: PAGE_SHOTS(theme => draftPagePath(artifactId, token, theme)), done: () => dropDraft(token) }; },
+    accept: async html => /<[a-z]/i.test(html) && !pageScriptErrors(html).length });
+  text = reviewed.text;
   await run.ensureActive();
   const version = (current.data?.version ?? 0) + 1;
   const saved = await supabase.from("artifact_versions").insert({ workspace_id: workspace.id, artifact_id: artifactId, version, prompt: input.brief.slice(0, 4000), html: text, queries: input.queries, model });
   if (saved.error) return { saved: false, errors: [saved.error.code === "23505" ? "Another change finished first; try again" : "Could not save the page"] };
   const touched = await supabase.from("artifacts").update({ title: input.title, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", artifactId);
   if (touched.error) throw touched.error;
-  return { saved: true, pageVersion: version, note: "The Page tab shows it now." };
+  return { saved: true, pageVersion: version, note: "The Page tab shows it now.", ...lookNote(reviewed) };
 }
 
 async function saveCard(run: Run, card: { cardId?: string; title: string; kind: "preset" | "code"; preset?: PresetName; source: string; compiled: string; queries: ArtifactQuery[]; params: CardParam[]; prompt: string; model?: string }) {
@@ -201,7 +251,20 @@ export function artifactTools(run: Run) {
         for (let attempt = 0; attempt < 3; attempt++) {
           const { text, model } = await design(run, CARD_DESIGNER, prompt);
           const checked = await checkCard(text, queries, params, context);
-          if (checked.compiled) return saveCard(run, { cardId, title, kind: "code", source: text, compiled: checked.compiled, queries, params, prompt: brief, model });
+          if (checked.compiled) {
+            const passed = new Map([[text, checked]]);
+            const owner = { workspaceId: context.workspace.id, artifactId: run.artifactId };
+            const reviewed = await review(run, { system: CARD_DESIGNER, prompt, text, what: "module",
+              shots: source => {
+                const card = passed.get(source);
+                if (!card?.compiled) return null;
+                const token = keepDraft({ ...owner, kind: "card", title, trees: card.trees, params: card.state });
+                return { shots: CARD_SHOTS((size, theme) => draftCardPath(run.artifactId, token, size, theme)), done: () => dropDraft(token) };
+              },
+              accept: async source => { const card = await checkCard(source, queries, params, context); if (card.compiled) passed.set(source, card); return !!card.compiled; } });
+            const saved = await saveCard(run, { cardId, title, kind: "code", source: reviewed.text, compiled: passed.get(reviewed.text)?.compiled ?? checked.compiled, queries, params, prompt: brief, model });
+            return { ...saved, ...lookNote(reviewed) };
+          }
           prompt = `${prompt}\n\nYour last version:\n${text}\n\nIt failed these checks; fix them and reply with the whole module again:\n${checked.errors.join("\n")}`;
           if (attempt === 2) return { saved: false, errors: checked.errors };
         }

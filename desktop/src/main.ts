@@ -4,6 +4,7 @@ import path from "node:path";
 import { backup, restore, startBackend, type BackendPaths, type RunningBackend } from "./backend";
 import { createAppWindow, lockDownSession, openExternal, setAppPort, showReturn } from "./app-window";
 import { startBridge } from "./bridge";
+import { renderPage } from "./render";
 import { ensureBankCertificate } from "./certificate";
 import { NextServer } from "./next-server";
 import { backupsDir, home, log, readSettings, resources, setupHome, updateSettings } from "./paths";
@@ -94,6 +95,7 @@ function main() {
             const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
             return picked.canceled ? null : picked.filePaths[0] ?? null;
           },
+          render: request => renderPage(port, request),
         });
         server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: { ...running.env, MONEO_DESKTOP_BRIDGE: bridge.url, MONEO_DESKTOP_VERSION: app.getVersion() } }, error => fail("The Moneo server keeps stopping", error));
         await server.start();

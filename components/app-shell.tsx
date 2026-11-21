@@ -12,6 +12,7 @@ import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
 import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
 import { IntentLink } from "@/components/intent-link";
 import { cn } from "@/lib/utils";
+import { isDraftCardPreview } from "@/lib/draft-preview";
 
 export type ShellData = { accounts: { id: string; name: string }[]; counts: Partial<Record<string, number>> } | null;
 
@@ -136,7 +137,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
   const scrolledTitle = useSyncExternalStore(subscribeScroll, pastTitle, () => "");
   const scrolled = scrolledTitle !== "";
 
-  if (pathname === "/setup") return <>{children}</>;
+  if (pathname === "/setup" || isDraftCardPreview(pathname)) return <>{children}</>;
 
   const commands: Command[] = [
     { id: "new-chat", label: "New AI chat", group: "Actions", keywords: "ask conversation assistant", run: () => router.push("/ai?conversation=new") },

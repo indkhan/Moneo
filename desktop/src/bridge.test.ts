@@ -8,7 +8,8 @@ it("does only what Moneo's server asks, on fixed routes and Moneo's own connecti
   const onReturn = vi.fn(async () => {});
   const update = { status: vi.fn(() => status), check: vi.fn(async () => status), install: vi.fn(async () => status) };
   const chooseFolder = vi.fn(async () => "/Users/owner/Models/whisper-small");
-  const bridge = await startBridge({ onReturn, update, chooseFolder });
+  const render = vi.fn(async () => ({ png: "", result: [] }));
+  const bridge = await startBridge({ onReturn, update, chooseFolder, render });
   const post = (path: string, headers: Record<string, string> = {}) => fetch(`${bridge.url}/return`, { method: "POST", headers: { "x-moneo-return": path, ...headers } });
   try {
     const base = bridge.url.slice(0, bridge.url.lastIndexOf("/"));
@@ -36,5 +37,13 @@ it("does only what Moneo's server asks, on fixed routes and Moneo's own connecti
     expect((await fetch(`${bridge.url}/choose-folder`, { method: "POST", headers: { origin: "https://example.com" } })).status).toBe(403);
     expect(chooseFolder).not.toHaveBeenCalled();
     expect(await (await fetch(`${bridge.url}/choose-folder`, { method: "POST" })).json()).toEqual({ path: "/Users/owner/Models/whisper-small" });
+
+    const draft = { path: "/ai/artifacts/aaa2a1ea-8dcf-4adf-9c03-df0ecb5dca2a/draft-card?d=abc&size=M&theme=dark", width: 560, height: 300, full: false, script: "1" };
+    const shoot = (body: object) => fetch(`${bridge.url}/render`, { method: "POST", body: JSON.stringify(body) });
+    for (const path of ["https://example.com/", "/settings", "/ai/artifacts/aaa2a1ea-8dcf-4adf-9c03-df0ecb5dca2a/frame?v=1", "//example.com/ai/artifacts/aaa2a1ea-8dcf-4adf-9c03-df0ecb5dca2a/draft?d=a"])
+      expect((await shoot({ ...draft, path })).status, path).toBe(400);
+    expect(render).not.toHaveBeenCalled();
+    expect((await shoot(draft)).status).toBe(200);
+    expect(render).toHaveBeenCalledWith(draft);
   } finally { bridge.close(); }
 });

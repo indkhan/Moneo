@@ -87,7 +87,7 @@ function List({ rows, empty, className, style }: Look & { rows: ListRow[]; empty
   }, [rows.length, height]);
   if (!rows.length) return <p className={`text-sm text-muted-foreground ${className ?? ""}`} style={style}>{empty ?? "Nothing to show yet."}</p>;
   return <div ref={box} className={`min-w-0 ${className ?? ""}`} style={style}>
-    <ul>{rows.slice(0, fit).map((row, index) => <li key={index} className="flex flex-col justify-center border-b border-border last:border-b-0" style={{ height }}>
+    <ul>{rows.slice(0, fit).map((row, index) => <li key={index} className={`flex flex-col justify-center ${row.share === undefined ? "border-b border-border last:border-b-0" : ""}`} style={{ height }}>
       <div className="flex min-w-0 items-baseline justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
           {row.color && <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: row.color }} />}

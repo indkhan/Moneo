@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { UpdateStatus } from "./updates";
+import { renderRequest, type RenderRequest, type Rendered } from "./render-request";
 
 const RETURN_PATH = /^\/(import\?(bank|scalable)=(connected|error|invalid)(#scalable)?|settings\?chatgpt=[A-Za-z0-9%._~-]{1,600}#ai-access)$/;
 
@@ -9,7 +10,18 @@ export type BridgeHandlers = {
   onReturn(path: string): Promise<void>;
   update: { status(): UpdateStatus; check(): Promise<UpdateStatus>; install(): Promise<UpdateStatus> };
   chooseFolder(): Promise<string | null>;
+  render(request: RenderRequest): Promise<Rendered>;
 };
+
+const MAX_BODY = 32 * 1024;
+async function readJson(req: http.IncomingMessage) {
+  let text = "";
+  for await (const chunk of req) {
+    text += String(chunk);
+    if (text.length > MAX_BODY) return null;
+  }
+  try { return JSON.parse(text) as unknown; } catch { return null; }
+}
 
 export async function startBridge(handlers: BridgeHandlers) {
   const token = randomUUID();
@@ -28,6 +40,10 @@ export async function startBridge(handlers: BridgeHandlers) {
       if (route === "POST /update/check") return json(200, await handlers.update.check());
       if (route === "POST /update/install") return json(200, await handlers.update.install());
       if (route === "POST /choose-folder") return json(200, { path: await handlers.chooseFolder() });
+      if (route === "POST /render") {
+        const request = renderRequest(await readJson(req));
+        return request ? json(200, await handlers.render(request)) : json(400);
+      }
       return json(404);
     } catch { return json(503); }
   });
