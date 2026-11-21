@@ -177,7 +177,9 @@ const KIT = "*{box-sizing:border-box}body{margin:0;background:var(--moneo-bg);co
   + ".m-pill{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--moneo-border);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}.m-pill[aria-pressed=true]{background:var(--moneo-fg);color:var(--moneo-bg)}"
   + "input[type=range]{accent-color:var(--moneo-accent);width:100%}";
 
-export function artifactDocument(html: string, data: Record<string, unknown>, { theme, origin }: { theme?: ArtifactTheme; origin: string }) {
+export const artifactDraftCsp = (origin: string) => `${pageCsp(origin)}; sandbox allow-scripts; frame-ancestors 'none'`;
+
+export function artifactPage(html: string, data: Record<string, unknown>, { theme, origin }: { theme?: ArtifactTheme; origin: string }) {
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
   const scheme = theme ?? "light dark";
   const head = `<meta http-equiv="Content-Security-Policy" content="${pageCsp(origin)}"><script>window.MONEO_DATA=${json};`
@@ -187,7 +189,12 @@ export function artifactDocument(html: string, data: Record<string, unknown>, { 
     + `n.textContent="Part of this page failed to run, so some values are missing. Ask Moneo in the chat to fix it. ("+(e.message||"script error")+")";document.body.prepend(n)};`
     + `document.body?show():addEventListener("DOMContentLoaded",show)});</script>`
     + `<style>${tokens(theme)}${KIT}:root{color-scheme:${scheme}}</style>`;
-  const page = (/<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => match + head) : head + html).replace(CDN_ECHARTS, `${origin}/artifact-lib/echarts.min.js`);
+  return (/<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => match + head) : head + html).replace(CDN_ECHARTS, `${origin}/artifact-lib/echarts.min.js`);
+}
+
+export function artifactDocument(html: string, data: Record<string, unknown>, options: { theme?: ArtifactTheme; origin: string }) {
+  const scheme = options.theme ?? "light dark";
+  const page = artifactPage(html, data, options);
   const srcdoc = page.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   return `<!doctype html><html><head><meta charset="utf-8"><style>:root{color-scheme:${scheme}}html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;background:transparent}</style></head>`
     + `<body><iframe title="Artifact page" sandbox="allow-scripts" srcdoc="${srcdoc}"></iframe></body></html>`;

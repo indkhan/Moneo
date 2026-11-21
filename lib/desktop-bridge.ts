@@ -50,3 +50,14 @@ export async function desktopChooseFolder(): Promise<string | null> {
   if (!response.ok) throw new Error(`The desktop app answered ${response.status}`);
   return chosenFolder.parse(await response.json()).path;
 }
+
+const rendered = z.object({ png: z.string(), result: z.unknown() });
+
+export async function desktopRender(request: { path: string; width: number; height: number; full: boolean; script: string }) {
+  const url = bridge();
+  if (!url) return null;
+  const response = await fetch(`${url}/render`, { method: "POST", body: JSON.stringify(request), signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`The desktop app answered ${response.status}`);
+  const { png, result } = rendered.parse(await response.json());
+  return { png: Buffer.from(png, "base64"), result };
+}

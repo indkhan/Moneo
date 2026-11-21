@@ -36,6 +36,7 @@ import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 import { ADDS_TO_RUNNING, CALL_MODE_PROMPT, callContextSchema, replaceCallTask, withoutCallBrief } from "@/lib/ai/voice-call";
 import { artifactBriefing, artifactModePrompt, artifactTools } from "@/lib/ai/artifact-agent";
+import { sessionOf } from "@/lib/ai/artifact-preview";
 import { investmentTools } from "@/lib/ai/investment-tools";
 import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live";
 import { titleChatTurn } from "@/lib/ai/chat-title";
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
   }
   const conversationFiles = awaitedLater(conversationAttachments(supabase, workspace.id, conversationId));
   const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
+  const sessionCookies = artifactId ? sessionOf(request) : [];
   const briefingPromise = artifactId ? awaitedLater(artifactBriefing(supabase, workspace.id, artifactId)) : null;
   async function writeChatTitle() {
     if (artifactId) return null;
@@ -300,7 +302,7 @@ ${artifactBrief}` : ""}`,
             if (isImage(file.type)) return { error: `"${file.name}" is a photo; it can only be seen in the message it was attached to.` };
             return { text: readDocument(await documentText(supabase, file), { name: file.name, id: attachmentId(file.path), location, search }) };
           } }),
-        ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
+        ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, ownerWords: [message, ...priorUserText.filter(text => text !== message)], session: sessionCookies, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports"), sourceVersions: false }), false, true) }),
           finance_entities: tool({ description: "Optional: list owned account, category and merchant names with ids, tags and events. Other tools already accept names and label ids with names.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),

@@ -32,9 +32,27 @@ export const linkTarget = z.object({
   from: z.iso.date().optional(), to: z.iso.date().optional(), q: z.string().max(100).optional(), direction: z.enum(["income", "outflow"]).optional(),
 }).strict();
 const color = z.string().regex(/^(var\(--[a-z0-9-]{1,40}\)|#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color-mix)\([^;{}<>]{1,120}\)|[a-z]{3,20})$/);
+const minor = z.union([z.string().regex(/^-?\d{1,30}$/), z.number().int()]);
+const currency = z.string().regex(/^[A-Z]{3}$/);
+const amount = { minor: minor.optional(), currency: currency.optional(), value: z.string().max(60).optional() };
+const shown = (item: { minor?: unknown; currency?: unknown; value?: unknown }) => item.minor === undefined ? item.currency === undefined : item.currency !== undefined && item.value === undefined;
+const SHOWN = "give minor with currency, or value as text";
 
 const KIT = {
-  Money: z.object({ minor: z.union([z.string().regex(/^-?\d{1,30}$/), z.number().int()]), currency: z.string().regex(/^[A-Z]{3}$/), signed: z.boolean().optional(), compact: z.boolean().optional(), ...look }).strict(),
+  Money: z.object({ minor, currency, signed: z.boolean().optional(), compact: z.boolean().optional(), ...look }).strict(),
+  Stat: z.object({
+    label: z.string().max(80).optional(), ...amount, tone: z.enum(["positive", "negative"]).optional(),
+    change: z.object({ minor: minor.optional(), currency: currency.optional(), percent: z.number().finite().optional() }).strict()
+      .refine(change => (change.minor === undefined) === (change.currency === undefined) && (change.minor !== undefined || change.percent !== undefined), "change needs minor with currency, or percent").optional(),
+    note: z.string().max(120).optional(), ...look,
+  }).strict().refine(stat => shown(stat) && (stat.minor !== undefined || stat.value !== undefined), SHOWN),
+  List: z.object({
+    rows: z.array(z.object({ label: z.string().max(120), sub: z.string().max(120).optional(), ...amount, signed: z.boolean().optional(), share: z.number().min(0).max(1).optional(), color: color.optional() })
+      .strict().refine(shown, SHOWN)).max(200),
+    empty: z.string().max(120).optional(), ...look,
+  }).strict(),
+  Progress: z.object({ label: z.string().max(80).optional(), current: z.number().finite(), target: z.number().finite().positive(), text: z.string().max(80).optional(), color: color.optional(), ...look }).strict(),
+  Columns: z.object({ ratio: z.array(z.number().int().min(1).max(6)).min(2).max(4).optional(), ...look }).strict(),
   Chart: z.object({
     type: z.enum(["line", "area", "bar", "hbar", "donut", "sparkline"]),
     labels: z.array(z.string().max(80)).max(400).default([]),
@@ -117,7 +135,7 @@ export function sanitizeTree(node: unknown, context: TreeContext): CardNode {
     if ("style" in checked) checked.style = sanitizeStyle(checked.style);
     if (name === "Style") checked.css = scopeCss(checked.css as string, context.scope);
     if (name === "Tabs") checked.tabs = (checked.tabs as { label: string; content: unknown }[]).map(tab => ({ label: tab.label, content: sanitizeTree(tab.content ?? "", context) }));
-    return { type, props: checked, children: name === "Link" ? kids() : [] };
+    return { type, props: checked, children: name === "Link" || name === "Columns" ? kids() : [] };
   }
   if (!ELEMENTS.has(type)) throw new CardTreeError(`<${type}> is not allowed`);
   const safe: Record<string, unknown> = {};

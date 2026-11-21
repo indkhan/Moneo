@@ -58,6 +58,16 @@ describe("card tree checks", () => {
     expect(() => sanitizeTree(tree("kit:Tabs", { tabs: [{ label: "a", content: tree("script") }, { label: "b", content: "x" }] }), { scope: "c1" })).toThrow(CardTreeError);
   });
 
+  it("checks what Kit.Columns holds, and refuses a block amount the app could not format", () => {
+    expect(() => sanitizeTree(tree("kit:Columns", {}, [tree("div"), tree("script")]), { scope: "c1" })).toThrow(CardTreeError);
+    for (const bad of [tree("kit:Stat", { minor: "100" }), tree("kit:Stat", { label: "Empty" }), tree("kit:Stat", { value: "1", change: { minor: "5" } }),
+      tree("kit:List", { rows: [{ label: "Rent", minor: "-35500" }] }), tree("kit:List", { rows: [{ label: "Rent", value: "x", minor: "1", currency: "EUR" }] })])
+      expect(() => sanitizeTree(bad, { scope: "c1" }), JSON.stringify(bad)).toThrow(CardTreeError);
+    const columns = sanitizeTree(tree("kit:Columns", { ratio: [2, 1] }, [tree("kit:Stat", { minor: "164072", currency: "EUR", change: { percent: -38.4 } }),
+      tree("kit:List", { rows: [{ label: "Cash", minor: "75557", currency: "EUR", share: 0.46 }] })]), { scope: "c1" });
+    expect(typeof columns !== "string" && columns.children.map(child => typeof child === "string" ? child : child.type)).toEqual(["kit:Stat", "kit:List"]);
+  });
+
   it("scopes card CSS to the card, renames keyframes and drops anything that loads or escapes", () => {
     const css = scopeCss(String.raw`body{color:red} .hero{animation:pop 1s} @keyframes pop{from{opacity:0}} @import "x.css"; .bg{background:url(https://evil)} .e{background:u\72l("https://evil/e")} .f{background:\75rl("https://evil/f")} .g{background:image-set("https://evil/g" 1x)} @font-face{src:url(x)} p::after{content:"</style><script>"}`, "c1");
     expect(css).toContain('[data-card="c1"]{color:red}');
