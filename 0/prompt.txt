@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bsf58ywdx</task-id>
+<tool-use-id>toolu_01175Wdf7ihqLj3EviJz7bkS</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f2617e6daed97267\eac15630-8aaa-497f-a9c1-82b462c4c951\tasks\bsf58ywdx.output</output-file>
+<status>completed</status>
+<summary>Background command "L="C:/Users/mgsuk/AppData/Local/Temp/claude/f2617e6daed97267/eac15630-8aaa-497f-a9c1-82b462c4c951/scratchpad/qa-server.log"; until grep -qE "Ready in|Error|error TS|Failed" "$L"; do sleep 2; done; tail -5 "$L"" completed (exit code 0)</summary>
+</task-notification>
