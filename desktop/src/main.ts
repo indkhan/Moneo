@@ -74,16 +74,6 @@ function main() {
       try {
         port = await choosePort();
         setAppPort(port);
-        progress({ id: "certificate", label: "Preparing bank connections", state: "running" });
-        const certificate = await ensureBankCertificate();
-        progress({ id: "certificate", label: "Preparing bank connections", state: "done", detail: certificate ? undefined : "Unavailable; see the logs" });
-        const running = await startBackend(paths, progress, { appUrl: `http://localhost:${port}`, appVersion: app.getVersion() });
-        backend = running;
-        running.onExit((service, code) => {
-          if (quitting || busy || backend !== running) return;
-          fail(`A Moneo service stopped (${service})`, new Error(`It exited with code ${code}. Try again, or open the logs folder.`));
-        });
-        progress({ id: "app", label: "Starting Moneo", state: "running" });
         bridge ??= await startBridge({
           onReturn: async returnPath => {
             if (!window || booting || failed) throw new Error("The app window is not open");
@@ -97,13 +87,37 @@ function main() {
           },
           render: request => renderPage(port, request),
         });
-        server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: { ...running.env, MONEO_DESKTOP_BRIDGE: bridge.url, MONEO_DESKTOP_VERSION: app.getVersion() } }, error => fail("The Moneo server keeps stopping", error));
-        await server.start();
+        const bridgeUrl = bridge.url;
+        progress({ id: "certificate", label: "Preparing bank connections", state: "running" });
+        const certificate = ensureBankCertificate().then(made => progress({ id: "certificate", label: "Preparing bank connections", state: "done", detail: made ? undefined : "Unavailable; see the logs" }));
+        let serverReady: Promise<void> | undefined;
+        const running = await startBackend(paths, progress, {
+          appUrl: `http://localhost:${port}`,
+          appVersion: app.getVersion(),
+          onEnv: env => {
+            progress({ id: "app", label: "Starting Moneo", state: "running" });
+            server = new NextServer({ appDir: path.join(paths.resources, "app"), port, env: { ...env, MONEO_DESKTOP_BRIDGE: bridgeUrl, MONEO_DESKTOP_VERSION: app.getVersion() } }, error => fail("The Moneo server keeps stopping", error));
+            serverReady = server.start();
+            serverReady.catch(() => {});
+          },
+        });
+        backend = running;
+        running.onExit((service, code) => {
+          if (quitting || busy || backend !== running) return;
+          fail(`A Moneo service stopped (${service})`, new Error(`It exited with code ${code}. Try again, or open the logs folder.`));
+        });
+        await certificate;
+        await serverReady;
         progress({ id: "app", label: "Starting Moneo", state: "done" });
         if (quitting) return;
         await showApp(!hidden || Boolean(window?.isVisible()));
         closeSetup();
         scheduleBackups();
+        const appServer = server;
+        void running.storageReady.then(() => appServer?.markBackendReady(), (error: unknown) => {
+          if (quitting || busy || backend !== running) return;
+          fail("File storage could not start, so imports and chat attachments are unavailable", error);
+        });
       } catch (error) {
         progress({ id: "app", label: "Starting Moneo", state: "error" });
         await stopServices();
@@ -126,7 +140,9 @@ function main() {
       },
       onSessionEnd: () => void quit(),
     });
+    const started = Date.now();
     await window.loadURL(`http://localhost:${port}/`).catch(error => log(`First page load: ${message(error)}`));
+    log(`Home loaded in ${Date.now() - started} ms`);
     if (visible) window.show();
   }
 

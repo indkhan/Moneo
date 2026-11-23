@@ -11,6 +11,7 @@ await fs.mkdir(path.join(home, "run"), { recursive: true });
 const backend = await loadBackend(path.join(home, "run"));
 const running = await backend.startBackend({ resources, home }, step => console.log(`[${step.state}] ${step.label}${step.detail ? `: ${step.detail}` : ""}`));
 running.onExit((service, code) => console.error(`${service} exited unexpectedly (${code})`));
+await running.storageReady;
 const stopFile = path.join(home, "run", "stop");
 await fs.rm(stopFile, { force: true });
 await fs.writeFile(path.join(home, "run", "env.json"), JSON.stringify(running.env, null, 2), { mode: 0o600 });

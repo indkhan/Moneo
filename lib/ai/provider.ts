@@ -51,8 +51,8 @@ export async function modelForSettings(settings: WorkspaceSettings | undefined, 
   return getModel(await currentModelId(settings, agent));
 }
 
-export function withTools<T extends ToolSet>(model: LanguageModel, tools: T, steering?: ClaudeSteering): { model: LanguageModel; tools: T | undefined } {
-  return typeof model === "object" && model.provider === "claude-code" ? { model: claudeModel(model.modelId, tools, steering), tools: undefined } : { model, tools };
+export async function withTools<T extends ToolSet>(model: LanguageModel, tools: T, steering?: ClaudeSteering): Promise<{ model: LanguageModel; tools: T | undefined }> {
+  return typeof model === "object" && model.provider === "claude-code" ? { model: await claudeModel(model.modelId, tools, steering), tools: undefined } : { model, tools };
 }
 
 export const SYSTEM_PROMPT = `You are Moneo, the owner's personal finance assistant. Moneo runs on their own computer, and your tools read and query their real records: accounts, transactions, loans, Wealth, recurring payments, plans and Scalable investments. "About the owner" at the end lists what they have.

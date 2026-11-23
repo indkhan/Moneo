@@ -2,6 +2,7 @@ import { cache } from "react";
 import { isAuthRetryableFetchError, type User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase-server";
 import { readSettings } from "@/lib/settings";
+import { sessionClaims } from "@/lib/session-claims";
 import type { ReadonlyDb } from "@/lib/database";
 
 const CONFIRMED_MS = 60_000;
@@ -27,14 +28,14 @@ async function confirmUser(supabase: Awaited<ReturnType<typeof createClient>>, u
 
 export const requireWorkspace = cache(async () => {
   const supabase = await createClient();
-  const { data: claims, error: claimsError } = await supabase.auth.getClaims();
-  const userId = claims?.claims.sub;
+  const { claims, error: claimsError } = await sessionClaims(supabase.auth);
+  const userId = claims?.sub;
   if (!userId) {
     console.warn("[workspace-access] claims-unavailable", { status: claimsError?.status ?? null });
     throw new Error("Unauthorized");
   }
   const [user, { data, error }] = await Promise.all([
-    confirmUser(supabase, userId, claims.claims.session_id),
+    confirmUser(supabase, userId, claims.session_id),
     supabase.from("workspaces").select("id, owner_id, display_currency, workspace_settings(*)").eq("owner_id", userId).maybeSingle(),
   ]);
   if (error || !data) {

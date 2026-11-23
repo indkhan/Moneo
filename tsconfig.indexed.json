@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noUncheckedIndexedAccess": true,
-    "incremental": false
+    "incremental": true
   },
   "include": ["lib/bank/**/*.ts", "lib/finance/**/*.ts"],
   "exclude": ["node_modules"]

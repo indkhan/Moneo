@@ -12,7 +12,7 @@ export type DocumentUnit =
   | { kind: "row"; sheet: number; n: number; cells: string[] };
 export type ExtractedDocument = { kind: DocumentKind; units: DocumentUnit[]; sheets?: { name: string; columns: number }[]; pages?: number; scannedPages?: number[] };
 
-export const DOCUMENT_KINDS: Partial<Record<AttachmentType, DocumentKind>> = {
+const DOCUMENT_KINDS: Partial<Record<AttachmentType, DocumentKind>> = {
   "application/pdf": "pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CoverageNote } from "@/components/coverage-note";
 import { HomeLiquidity } from "./account-liquidity-summary";
 import { ManualBalanceForm } from "./manual-balance-form";
-import { WeeklyBriefing } from "./insights/panel";
+import { loadInsightEvidence, WeeklyBriefing } from "./insights/panel";
 import { CashFlowPanel, Figure, RecentTransactions } from "./home-sections";
 import { SectionFallback, card } from "./section-fallback";
 import { Suspense, type ReactNode } from "react";
@@ -32,16 +32,19 @@ import { HomeBudgets } from "./home-budgets";
 import { HomeHistory } from "./home-history";
 import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from "./waiting-for-you";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
+import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems } from "@/lib/finance/wealth";
 import { checksNotice, loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
 import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth } from "@/lib/finance/net-worth";
-import { convertedNetWorth, describeMonthSplit, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
+import { convertedNetWorth, describeMonthSplit, loadFxRates, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
 import { TRANSIT_MATCH_DAYS } from "@/lib/finance/transit";
 import { NetWorthChart } from "@/components/net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
 import { Phone } from "lucide-react";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
+
+import { awaitedLater } from "@/lib/awaited-later";
 
 const upcomingEventsShowNoPriceChangeWhenLookupFails = () => new Map<string, never>();
 
@@ -57,74 +60,51 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     redirect("/setup");
   }
   const { supabase, workspace } = context;
+  const display = displayFormat(workspace.locale, workspace.timezone);
+  const asOf = new Date().toISOString();
+  const today = calendarDate(asOf, workspace.timezone);
+  const waitingPromise = loadWaitingForYou(supabase, workspace);
+  const reviewPromise = loadReview(supabase, workspace);
+
+  return <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+      <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1"><p className="eyebrow">{display.weekday(today)} · {display.longDate(today)}</p><h1 className="page-title">Overview</h1></div>
+        <IntentLink href="/ai?conversation=new&call=1" aria-label="Call Moneo: starts a voice call using your microphone" title="Starts a voice call in a new chat using your microphone. You can stop it at any time, or type in Ask instead." className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
+      </header>
+      <Suspense fallback={null}><HomeOrganize db={supabase} workspace={workspace} /></Suspense>
+      <Suspense fallback={null}><HomeAttention waiting={waitingPromise} review={reviewPromise} locale={workspace.locale} /></Suspense>
+      <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
+      <Suspense fallback={null}><HomeDashboard context={context} asOf={asOf} today={today} accountId={accountId} /></Suspense>
+    </main>;
+}
+
+async function HomeDashboard({ context, asOf, today, accountId }: { context: Awaited<ReturnType<typeof requireWorkspace>>; asOf: string; today: string; accountId?: string }) {
+  const { supabase, workspace } = context;
   const displayCurrency: string = workspace.display_currency;
   const locale = workspace.locale;
   const display = displayFormat(locale, workspace.timezone);
   const { money } = display;
-  const today = calendarDate(new Date(), workspace.timezone);
-  const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id, new Date().toISOString());
+  const { date: fullDate, monthYear: monthLabel } = display;
+  const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id, asOf);
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
-  const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
+  const wealthPromise = awaitedLater(allWealthPromise.then(items => items.filter(item => !item.removed_at)));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
   const wealthEventsPromise = loadWealthEvents(supabase, workspace.id);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version, sizes").eq("workspace_id", workspace.id).maybeSingle());
   const pinnedPromise = supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id)
     .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null);
-  const waitingPromise = loadWaitingForYou(supabase, workspace);
-  const reviewPromise = loadReview(supabase, workspace);
+  const accountsPromise = awaitedLater(Promise.all([balanceEvidencePromise, sourceMetadataPromise]).then(([evidence, metadata]) =>
+    resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, metadata).filter(account => !account.archived_at)));
+  const accountNamesPromise = awaitedLater(accountsPromise.then(accounts => new Map(accounts.map(account => [account.id, account.name]))));
+  const worthPromise = awaitedLater(loadNetWorthEvidence(supabase, workspace, { balances: balanceEvidencePromise, items: allWealthPromise, events: wealthEventsPromise })
+    .then(evidence => ({ evidence, worth: netWorthModel(evidence) })));
+  const convertedPromise = awaitedLater(Promise.all([worthPromise, loadFxRates(supabase, workspace.id, displayCurrency)])
+    .then(([{ worth }, rates]) => convertedNetWorth(worth, rates, displayCurrency)));
+  const portfolioPromise = Promise.resolve(supabase.from("scalable_connections").select("portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle());
+  const notices = awaitedLater(homeNotices());
   const aiPromise = aiConfigured().catch(() => true);
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, netWorthEvidence, bankAccounts, priceChanges, syncProblems, imports, portfolios, repayments] = await Promise.all([
-    balanceEvidencePromise,
-    evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
-    wealthPromise,
-    supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
-      .eq("workspace_id", workspace.id).eq("to_currency", displayCurrency).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
-    layoutPromise,
-    pinnedPromise,
-    supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
-    supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
-    sourceMetadataPromise,
-    loadNetWorthEvidence(supabase, workspace, { balances: balanceEvidencePromise, items: allWealthPromise, events: wealthEventsPromise }),
-    supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
-    loadPriceChanges(supabase, workspace.id).catch(upcomingEventsShowNoPriceChangeWhenLookupFails),
-    loadSyncProblems(supabase, workspace.id),
-    loadImportStates(supabase, workspace.id),
-    supabase.from("scalable_connections").select("portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    loadRepaymentLinks(supabase, workspace.id),
-  ]);
-  for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
-  const ai = await aiPromise;
-  const synced = new Set((bankAccounts.data ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
-  const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata).filter(account => !account.archived_at);
-  const accountNames = new Map(accounts.map(account => [account.id, account.name]));
-  const conflicted = accounts.filter(account => account.balance.conflicts.length > 0);
-  const fxRates = rates.data ?? [];
-
-  const worth = netWorthModel(netWorthEvidence);
-  const calculatedHistory = netWorthEvidence.scalable, allValuations = worth.valuations;
-  const valuations = worth.dated;
-  const { totalMinor: netWorthMinor, parts, missingInputs, convertedCount } = convertedNetWorth(worth, fxRates as never, displayCurrency);
-  const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
-  const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
-
-  const series = worth.points(dayRange(monthEnds(today, 12)[0], today));
-  const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n, uncertain: point.uncertain.join(". ") || undefined }));
-  const landing = worth.unresolved.filter(item => item.side === "broker" && item.currencyCode === displayCurrency && Date.parse(`${today}T00:00:00Z`) - Date.parse(`${item.date}T00:00:00Z`) <= TRANSIT_MATCH_DAYS * 86400000);
-  const split = worth.monthSplit(displayCurrency);
-  const monthBase = split?.baseMinor ?? null, monthChange = split?.changeMinor ?? 0n;
-  const monthWords = describeMonthSplit(split, minor => money(minor, displayCurrency));
-  const signedMoney = (minor: bigint) => `${minor > 0n ? "+" : ""}${money(minor, displayCurrency)}`;
-  const portfolio = (portfolios.data?.portfolio ?? null) as ScalablePortfolio | null;
-  const findings = netWorthFindings({ accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger, timeZone: workspace.timezone, locale, portfolio, imports, repayments,
-    lastCalculated: calculatedHistory.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, worth.firstReal, portfolio?.currency ?? displayCurrency), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
-  const checkNotice = checksNotice(findings);
-  const historyNote = portfolios.data?.history_status !== "failed" ? null : calculatedHistory.rows.length ? "Scalable's calculated history failed its latest check, so older days show the last good run." : "Scalable's earlier days could not be worked out, so its part of the chart starts at your first sync.";
-  const { date: fullDate, monthYear: monthLabel } = display;
-  const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
-  const dateTile = (date: string) => ({ month: display.shortMonth(date), day: date.slice(8, 10) });
-
-  const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
-  const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
+  const [layout, pinned] = await Promise.all([layoutPromise, pinnedPromise]);
+  for (const error of [layout.error, pinned.error]) if (error) throw error;
   const saved = homeLayout(layout.data);
   if (!saved) throw new Error("Dashboard preferences are invalid; try again");
   const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row]));
@@ -135,17 +115,45 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const labels = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetLabel(key) : cards.get(cardIdFromKey(key)!)!.title]));
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
-  const widgets: Record<string, ReactNode> = {
-    ...Object.fromEntries([...cards.values()].map(row => [`card:${row.id}`, <Suspense key={row.id} fallback={<CardSkeleton title={row.title} />}>
-      <HomeCard card={row} context={context} shared={shared} open={`/ai/artifacts/${row.artifact_id}?tab=cards`} />
-    </Suspense>])),
-    overview: <section aria-label="Net worth" className={`${card} flex flex-col gap-5`}>
+  const needsProjection = ordered.some(key => key === "upcoming" || key === "planning" || key === "insights");
+  const projection = needsProjection ? awaitedLater(evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise })) : null;
+  const insightEvidence = ordered.some(key => key === "insights" || key === "budgets") ? awaitedLater(loadInsightEvidence(supabase, workspace.id, displayCurrency, today)) : null;
+  const spending = ordered.includes("spending") ? awaitedLater(loadHomeSpending(supabase, workspace.id, displayCurrency, today)) : null;
+
+  async function homeNotices() {
+    const [{ evidence, worth }, accounts, syncProblems, imports, portfolios, repayments] = await Promise.all([
+      worthPromise, accountsPromise, loadSyncProblems(supabase, workspace.id), loadImportStates(supabase, workspace.id), portfolioPromise, loadRepaymentLinks(supabase, workspace.id),
+    ]);
+    const { balances, scalable } = evidence;
+    const portfolio = (portfolios.data?.portfolio ?? null) as ScalablePortfolio | null;
+    const findings = netWorthFindings({ accounts, snapshots: balances.snapshots, ledger: balances.ledger, timeZone: workspace.timezone, locale, portfolio, imports, repayments,
+      lastCalculated: scalable.rows.at(-1) ?? null, firstReal: firstRealValue(worth.valuations, scalable.knownIds, worth.firstReal, portfolio?.currency ?? displayCurrency), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
+    const checkNotice = checksNotice(findings);
+    const { outdated } = worth.dated;
+    return <HomeNotices notices={[...(outdated.length ? [{ text: describeOutdated(outdated, fullDate), href: "/money/wealth", action: "See Wealth" }] : []), ...syncProblems.map(text => ({ text, href: "/settings", action: "Open Settings" })), ...(checkNotice ? [{ text: checkNotice, href: "/money/wealth", action: "See Wealth" }] : [])]} />;
+  }
+
+  async function homeOverview() {
+    const [{ worth, evidence }, accounts, wealthItems, { totalMinor: netWorthMinor, parts, missingInputs, convertedCount }, portfolios] = await Promise.all([worthPromise, accountsPromise, wealthPromise, convertedPromise, portfolioPromise]);
+    const valuations = worth.dated;
+    const conflicted = accounts.filter(account => account.balance.conflicts.length > 0);
+    const accountsCounted = accounts.filter(account => account.balance.amount_minor !== null).length;
+    const missing = describeMissingInputs(missingInputs, new Map(wealthItems.map(item => [item.id, item.name])));
+    const series = worth.points(dayRange(monthEnds(today, 12)[0], today));
+    const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n, uncertain: point.uncertain.join(". ") || undefined }));
+    const landing = worth.unresolved.filter(item => item.side === "broker" && item.currencyCode === displayCurrency && Date.parse(`${today}T00:00:00Z`) - Date.parse(`${item.date}T00:00:00Z`) <= TRANSIT_MATCH_DAYS * 86400000);
+    const split = worth.monthSplit(displayCurrency);
+    const monthBase = split?.baseMinor ?? null, monthChange = split?.changeMinor ?? 0n;
+    const monthWords = describeMonthSplit(split, minor => money(minor, displayCurrency));
+    const signedMoney = (minor: bigint) => `${minor > 0n ? "+" : ""}${money(minor, displayCurrency)}`;
+    const historyNote = portfolios.data?.history_status !== "failed" ? null : evidence.scalable.rows.length ? "Scalable's calculated history failed its latest check, so older days show the last good run." : "Scalable's earlier days could not be worked out, so its part of the chart starts at your first sync.";
+    return <section aria-label="Net worth" className={`${card} flex flex-col gap-5`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5"><h2 className="text-sm font-medium">Net worth</h2>
             {convertedCount > 0 && <span className="rounded-md border border-dashed border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">traced · {accounts.length} accounts · {valuations.included.length} valuations</span>}</div>
           <Link href="/plan/currency" className="rounded-lg border border-input px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">{displayCurrency}</Link>
         </div>
-        {!accounts.length && !wealthItems.length ? <FirstSteps ai={ai} />
+        {!accounts.length && !wealthItems.length ? <FirstSteps ai={await aiPromise} />
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
             {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{signedMoney(monthChange)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
@@ -163,11 +171,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           {([["Accounts", parts.cash, "/money/accounts"], ["Investments & assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
         </dl>}
-    </section>,
-    spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" chart={240} />}><CashFlowPanel {...sectionProps} /></Suspense>,
-    recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
-    planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} locale={locale} />} /></section>,
-    accounts: <section aria-labelledby="home-accounts" className={card}>
+    </section>;
+  }
+
+  async function homeAccounts() {
+    const [accounts, balanceEvidence, bankAccounts] = await Promise.all([
+      accountsPromise, balanceEvidencePromise, supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
+    ]);
+    if (bankAccounts.error) throw bankAccounts.error;
+    const synced = new Set((bankAccounts.data ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
+    const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
+    return <section aria-labelledby="home-accounts" className={card}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="home-accounts" className="text-sm font-medium"><Link href="/money/accounts" className="hover:underline">Accounts</Link></h2>
         <div className="flex gap-2"><Link href="/import" className="rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted">Import file</Link><Link href="/import#connected-banks" className="rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted">Connect bank</Link></div></div>
       {!accounts.length && <p className="mt-3 text-sm text-muted-foreground">No accounts yet. <Link className="text-brand underline" href="/import">Import a statement</Link> or <Link className="text-brand underline" href="/money/accounts">add one</Link>.</p>}
@@ -179,8 +193,16 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         {balance.warnings.length > 0 && <p className="w-full text-xs text-warning">{balance.warnings.join("; ")}</p>}
         {balance.status === "stale" && balance.snapshot_amount_minor !== null && <p className="w-full text-xs text-muted-foreground">Last set to {money(balance.snapshot_amount_minor, balance.currency_code)}, plus activity recorded since. Update the balance to confirm.</p>}
       </article></li>; })}</ul>
-    </section>,
-    upcoming: <section aria-labelledby="home-upcoming" className={card}>
+    </section>;
+  }
+
+  async function homeUpcoming(plan: NonNullable<typeof projection>) {
+    const [projection, accountNames, priceChanges] = await Promise.all([plan, accountNamesPromise, loadPriceChanges(supabase, workspace.id).catch(upcomingEventsShowNoPriceChangeWhenLookupFails)]);
+    const dateTile = (date: string) => ({ month: display.shortMonth(date), day: date.slice(8, 10) });
+
+    const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
+    const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
+    return <section aria-labelledby="home-upcoming" className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 id="home-upcoming" className="text-sm font-medium"><Link href="/money/recurring" className="hover:underline">Coming up</Link></h2>
         {upcoming.length > 0 && <span className="font-mono text-[11px] text-subtle">{money(-upcomingMinor, displayCurrency)} · {projection.input?.horizonDays ?? 30} days</span>}</div>
       {upcoming.length ? <ul className="mt-3 divide-y divide-border">{upcoming.slice(0, 6).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex items-center gap-3 py-3">
@@ -189,35 +211,58 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : <>{event.source === "debt" ? "Loan payment" : "Recurring"} · {accountNames.get(event.accountId) ?? "Account"}</>)(priceChanges.get(`${event.accountId}:${event.name}`))}</span></span>
         <span className="shrink-0 font-mono text-sm">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
         : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in the next {projection.input?.horizonDays ?? 30} days.</p>}
-    </section>,
-    history: <Suspense fallback={null}><HomeHistory db={supabase} workspaceId={workspace.id} locale={locale} timeZone={workspace.timezone} names={accountNames} /></Suspense>,
-    budgets: <Suspense fallback={<SectionFallback title="Budgets" />}><HomeBudgets {...sectionProps} /></Suspense>,
-    goals: <section className={card}>
+    </section>;
+  }
+
+  async function homePlanning(plan: NonNullable<typeof projection>) {
+    const [projection, accountNames] = await Promise.all([plan, accountNamesPromise]);
+    return projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} locale={locale} />} /></section>;
+  }
+
+  async function homeGoals() {
+    const [accounts, goals, allocations] = await Promise.all([
+      accountsPromise,
+      supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
+      supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
+    ]);
+    if (goals.error || allocations.error) throw goals.error ?? allocations.error;
+    return <section className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Goals</h2><Link href="/plan" className="text-sm font-medium text-brand hover:underline">Plan</Link></div>
       <p className="mt-1 text-xs text-muted-foreground">Reserving money for a goal does not move it.</p>
       <ul className="mt-2 divide-y divide-border">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="py-2 text-sm"><Link href="/plan" className="font-medium hover:underline">{goal.name}</Link><p className="text-xs text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${fullDate(goal.target_date)}` : ""}</p></li>; })}</ul>
       {!goals.data?.length && <p className="mt-3 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
-    </section>,
-    agents: <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} timeZone={workspace.timezone} ai={ai} /></Suspense>,
-    insights: <Suspense fallback={<SectionFallback title="Weekly briefing" />}>
-      <WeeklyBriefing db={supabase} workspaceId={workspace.id} currency={displayCurrency} today={today} settings={context.settings} projection={projection} missingInputs={missingInputs} names={accountNames} wealth={wealthItems} />
-    </Suspense>,
-  };
+    </section>;
+  }
 
-  return (
-    <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
-      <HomeNotices notices={[...(valuations.outdated.length ? [{ text: describeOutdated(valuations.outdated, fullDate), href: "/money/wealth", action: "See Wealth" }] : []), ...syncProblems.map(text => ({ text, href: "/settings", action: "Open Settings" })), ...(checkNotice ? [{ text: checkNotice, href: "/money/wealth", action: "See Wealth" }] : [])]} />
-      <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1"><p className="eyebrow">{display.weekday(today)} · {display.longDate(today)}</p><h1 className="page-title">Overview</h1></div>
-        <IntentLink href="/ai?conversation=new&call=1" aria-label="Call Moneo: starts a voice call using your microphone" title="Starts a voice call in a new chat using your microphone. You can stop it at any time, or type in Ask instead." className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
-      </header>
-      <Suspense fallback={null}><HomeOrganize db={supabase} workspace={workspace} /></Suspense>
-      <Suspense fallback={null}><HomeAttention waiting={waitingPromise} review={reviewPromise} locale={locale} /></Suspense>
-      <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
-      <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
-        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} />
-    </main>
-  );
+  async function homeInsights(plan: NonNullable<typeof projection>, evidence: NonNullable<typeof insightEvidence>) {
+    const [projection, { missingInputs }, names, wealth] = await Promise.all([plan, convertedPromise, accountNamesPromise, wealthPromise]);
+    return <WeeklyBriefing {...sectionProps} settings={context.settings} projection={projection} missingInputs={missingInputs} names={names} wealth={wealth} evidence={evidence} />;
+  }
+
+  const widgets: Record<string, () => ReactNode> = {
+    ...Object.fromEntries([...cards.values()].map(row => [`card:${row.id}`, () => <Suspense key={row.id} fallback={<CardSkeleton title={row.title} />}>
+      <HomeCard card={row} context={context} shared={shared} open={`/ai/artifacts/${row.artifact_id}?tab=cards`} />
+    </Suspense>])),
+    spending: () => <Suspense fallback={<SectionFallback title="Cash flow · 6 months" chart={240} />}>{spending && <CashFlowPanel data={spending} currency={displayCurrency} locale={locale} />}</Suspense>,
+    recent: () => <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNamesPromise} /></Suspense>,
+    planning: () => <Suspense fallback={<SectionFallback title="Available funds" />}>{projection && awaitedLater(homePlanning(projection))}</Suspense>,
+    accounts: () => <Suspense fallback={<SectionFallback title="Accounts" />}>{awaitedLater(homeAccounts())}</Suspense>,
+    upcoming: () => <Suspense fallback={<SectionFallback title="Coming up" />}>{projection && awaitedLater(homeUpcoming(projection))}</Suspense>,
+    history: () => <Suspense fallback={null}><HomeHistory db={supabase} workspaceId={workspace.id} locale={locale} timeZone={workspace.timezone} names={accountNamesPromise} /></Suspense>,
+    budgets: () => <Suspense fallback={<SectionFallback title="Budgets" />}>{insightEvidence && <HomeBudgets evidence={insightEvidence} currency={displayCurrency} today={today} locale={locale} />}</Suspense>,
+    goals: () => <Suspense fallback={<SectionFallback title="Goals" />}>{awaitedLater(homeGoals())}</Suspense>,
+    agents: () => <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} timeZone={workspace.timezone} ai={aiPromise} /></Suspense>,
+    insights: () => <Suspense fallback={<SectionFallback title="Weekly briefing" />}>{projection && insightEvidence && awaitedLater(homeInsights(projection, insightEvidence))}</Suspense>,
+  };
+  const overview = ordered.includes("overview") ? awaitedLater(homeOverview()) : null;
+  const visibleWidgets = Object.fromEntries(ordered.filter(key => key !== "overview").map(key => [key, widgets[key]()]));
+  if (overview) visibleWidgets.overview = await overview;
+
+  return <>
+    <Suspense fallback={null}>{notices}</Suspense>
+    <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
+      widgets={visibleWidgets} />
+  </>;
 }
 
 async function HomeAttention({ waiting, review, locale }: { waiting: ReturnType<typeof loadWaitingForYou>; review: ReturnType<typeof loadReview>; locale: string }) {

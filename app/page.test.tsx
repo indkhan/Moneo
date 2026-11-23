@@ -1,6 +1,6 @@
 import { buildSourceCoverage } from "@/lib/finance/source-coverage";
-import React, { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import React, { type ReactNode } from "react";
+import { renderToReadableStream } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import Home from "./page";
 import { accountLiquidity, availableToSpend, forecastDaily, type ForecastInput } from "@/lib/finance/calculations";
@@ -23,15 +23,11 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
 const input: ForecastInput = { startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR", accounts: [
   { id: "checking", balanceMinor: 10000n, currencyCode: "EUR" }, { id: "savings", balanceMinor: 100000n, currencyCode: "EUR" }], events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Recurring bill", source: "confirmed" }] };
 beforeEach(() => vi.mocked(evaluatePlanForWorkspace).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input) } as Awaited<ReturnType<typeof evaluatePlanForWorkspace>>));
-async function resolveTree(node: ReactNode): Promise<ReactNode> {
-  if (Array.isArray(node)) return Promise.all(React.Children.toArray(node).map(resolveTree));
-  if (!isValidElement(node)) return node;
-  const element = node as ReactElement<{ children?: ReactNode }>;
-  if (typeof element.type === "function") return resolveTree(await (element.type as (props: unknown) => ReactNode)(element.props));
-  const children = await resolveTree(element.props.children);
-  return cloneElement(element, {}, ...(Array.isArray(children) ? React.Children.toArray(children) : [children]));
+async function render(account?: string) {
+  const stream = await renderToReadableStream(await Home({ searchParams: Promise.resolve({ account }) }));
+  await stream.allReady;
+  return (await new Response(stream).text()).replaceAll("<!-- -->", "");
 }
-const render = async (account?: string) => renderToStaticMarkup(await resolveTree(await Home({ searchParams: Promise.resolve({ account }) })));
 it("Home labels pooled EUR600 separately and surfaces checking EUR400 deficit/date/bill", async () => {
   const html = await render("checking");
   expect(html).toContain("EUR 600.00");

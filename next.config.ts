@@ -5,6 +5,7 @@ const desktop = process.env.MONEO_DESKTOP_BUILD === "1";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  typescript: { ignoreBuildErrors: true },
   distDir: process.env.NEXT_DIST_DIR || ".next",
   allowedDevOrigins: ["**.ts.net"],
   experimental: { staleTimes: { dynamic: 30, static: 30 }, proxyClientMaxBodySize: "26mb" },

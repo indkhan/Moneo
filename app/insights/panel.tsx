@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 import { Sparkle } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages } from "@/lib/all-pages";
+import { awaitedLater } from "@/lib/awaited-later";
 import { accountShortfalls, buildInsights, insightPreferencesSchema, defaultInsightPreferences, type Insight, type InsightInput } from "@/lib/finance/insights";
 import { briefingFindings, keepsFacts, plainWording, rephraseFindings } from "@/lib/ai/briefing";
 import { currentModelId, getModel } from "@/lib/ai/provider";
@@ -26,6 +27,7 @@ type Wealth = { id: string; name: string; kind: string; amount_minor: string; cu
 
 type InsightPanelProps = {
   db: SupabaseClient; workspaceId: string; currency: string; today: string; settings: WorkspaceSettings; projection: Projection; missingInputs: string[]; names?: Map<string, string>; wealth: Wealth[];
+  evidence?: ReturnType<typeof loadInsightEvidence>;
 };
 export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId: string, currency: string, today: string) => {
     async function rows<T>(table: string, columns: string, start?: string): Promise<T[]> {
@@ -48,6 +50,7 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
     const recentStart = new Date(Date.parse(`${today}T00:00:00Z`) - 90 * 86400000).toISOString().slice(0, 10);
     const columns = "id,parent_transaction_id,account_id,description,amount_minor::text,currency_code,status,kind,review_reasons,posted_on,category_id,merchant_id,refund_of_id";
     const canonicalColumns = columns.replace("parent_transaction_id,", "");
+    const loanPayouts = awaitedLater(loadLoanPayoutIds(db, workspaceId));
     const [pref, budgets, categories, goals, recurring, limits, dismissals, canonical, sourceMetadata] = await Promise.all([
       db.from("insight_preferences").select("important_only,minimum_change_minor::text,currency_code,upcoming_days,max_items").eq("workspace_id", workspaceId).maybeSingle(),
       rows<Budget>("spending_plans", "id,category_id,currency_code,limit_minor::text,enabled,rollover,rollover_from"), rows<{ id: string; name: string }>("categories", "id,name"),
@@ -67,7 +70,7 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
     const [effective, older, loans] = await Promise.all([
       rows<ReviewTransaction & { account_id: string }>("effective_transactions", columns, first),
       byIds<ReviewTransaction & { account_id: string }>(canonicalColumns, missingBaselineIds),
-      loadLoanPayoutIds(db, workspaceId),
+      loanPayouts,
     ]);
     const transactions = effective.map(row => loans.has(row.parent_transaction_id ?? row.id) ? { ...row, kind: "transfer" as const } : row);
     for (const row of older) recurringEvidence.set(row.id, row);
@@ -78,7 +81,7 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
 });
 
 type InsightEvidence = Awaited<ReturnType<typeof loadInsightEvidence>>;
-export function budgetsThisMonth({ budgets, categories, limits, transactions, sourceMetadata }: InsightEvidence, today: string) {
+export const budgetsThisMonth = cache(({ budgets, categories, limits, transactions, sourceMetadata }: InsightEvidence, today: string) => {
   const spendingRows = transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id,
     ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
   return budgets.filter(budget => budget.enabled).map(budget => {
@@ -86,10 +89,10 @@ export function budgetsThisMonth({ budgets, categories, limits, transactions, so
     const progress = budgetProgress(spendingRows, budget.category_id, budget.currency_code, today.slice(0, 7), BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from.slice(0, 7), history: limits.filter(limit => limit.plan_id === budget.id) } : undefined, sourceCoverage);
     return { budget, name: categories.find(category => category.id === budget.category_id)?.name ?? "Category", progress, sourceCoverage };
   });
-}
+});
 
-async function loadInsights({ db, workspaceId, currency, today, settings, projection, missingInputs, names, wealth }: InsightPanelProps) {
-    const evidence = await loadInsightEvidence(db, workspaceId, currency, today);
+async function loadInsights({ db, workspaceId, currency, today, settings, projection, missingInputs, names, wealth, evidence: pendingEvidence }: InsightPanelProps) {
+    const evidence = await (pendingEvidence ?? loadInsightEvidence(db, workspaceId, currency, today));
     const { preferences, categories, goals, recurring, dismissals, canonical, sourceMetadata, first, transactions, recurringEvidence } = evidence;
     const sourceCoverage = buildSourceCoverage({ from: first, to: today }, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
     const warnings = describeMissingInputs([...missingInputs, ...(projection.input.missingInputs ?? [])], names);

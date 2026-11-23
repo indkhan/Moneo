@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasSupabase, ownerCredentials, supabaseClientConfig } from "@/lib/env";
+import { sessionClaims } from "@/lib/session-claims";
 import { supabaseFetch } from "@/lib/supabase-fetch";
 
 export async function proxy(request: NextRequest) {
@@ -25,8 +26,8 @@ export async function proxy(request: NextRequest) {
       },
     },
   );
-  const { data, error } = await supabase.auth.getClaims();
-  if (data?.claims || isAuthRetryableFetchError(error)) return response;
+  const { claims, error } = await sessionClaims(supabase.auth);
+  if (claims || isAuthRetryableFetchError(error)) return response;
   if (request.headers.has("x-moneo-test")) return new NextResponse("Browser tests need a QA session.", { status: 401 });
   const owner = ownerCredentials();
   if (owner) await supabase.auth.signInWithPassword(owner);

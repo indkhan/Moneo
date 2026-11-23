@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expect, it, vi } from "vitest";
 import { HomeBudgets } from "./home-budgets";
+import { loadInsightEvidence } from "./insights/panel";
 
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("./insights/panel", () => {
@@ -15,7 +16,7 @@ vi.mock("./insights/panel", () => {
 });
 
 it("shows spent of allowance with what is left, over or rolled over, in the display currency only", async () => {
-  const html = renderToStaticMarkup(await HomeBudgets({ db: {} as SupabaseClient, workspaceId: "w", currency: "EUR", today: "2026-10-25", locale: "en" }));
+  const html = renderToStaticMarkup(await HomeBudgets({ evidence: loadInsightEvidence({} as SupabaseClient, "w", "EUR", "2026-10-25"), currency: "EUR", today: "2026-10-25", locale: "en" }));
   for (const text of ["EUR 412.00 / EUR 450.00", "EUR 38.00 left for 7 days", "EUR 48.00 over", "includes EUR 38.00 rolled over from September", "On track", "/plan/spending"]) expect(html).toContain(text);
   expect(html).not.toContain("Abroad");
 });

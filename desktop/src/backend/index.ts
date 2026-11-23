@@ -7,13 +7,14 @@ import { newConfig, readConfig, writeConfig, type Config } from "./config";
 import { startGateway } from "./gateway";
 import { applyMigrations, bootstrap, bootstrapFiles, bundledMigrations, connect, createOwner, migrationState, revokeMigrationOwners } from "./migrations";
 import { bundledMajor, checkMajor, initCluster, isInitialized, recoverStalePid, runningPid, startCluster, stopCluster, type Cluster } from "./postgres";
-import { defaultFork, exe, freePort, httpOk, isAlive, openLog, PidFile, pipeTo, platformKey, preferredPort, spawnService, waitFor, type ForkFn, type ForkedProcess } from "./processes";
+import { defaultFork, exe, freePort, httpOk, isAlive, openLog, PidFile, pipeTo, platformKey, preferredPort, spawnService, startWithOneRetry, waitFor, type ForkFn, type ForkedProcess } from "./processes";
 
 export type { ForkFn, ForkedProcess } from "./processes";
 export type BackendPaths = { resources: string; home: string };
 export type Progress = (step: { id: string; label: string; state: "running" | "done" | "error"; detail?: string }) => void;
 export type RunningBackend = {
   env: Record<string, string>;
+  storageReady: Promise<void>;
   stop(): Promise<void>;
   onExit(cb: (service: string, code: number | null) => void): void;
 };
@@ -21,6 +22,7 @@ export type StartOptions = {
   fork?: ForkFn;
   appUrl?: string;
   appVersion?: string;
+  onEnv?: (env: Record<string, string>) => void;
 };
 
 function layout(paths: BackendPaths) {
@@ -101,9 +103,11 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
   const step = async <T>(id: string, label: string, work: () => Promise<T>) => {
     progress({ id, label, state: "running" });
     note(`${label}…`);
+    const started = Date.now();
     try {
       const result = await work();
       progress({ id, label, state: "done" });
+      note(`${label} done in ${Date.now() - started} ms`);
       return result;
     } catch (error) {
       progress({ id, label, state: "error", detail: (error as Error).message });
@@ -131,6 +135,22 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
   config.ports.db = cluster.port = await preferredPort(config.ports.db);
   config.ports.api = await preferredPort(config.ports.api);
   await writeConfig(l.configFile, config);
+  const apiUrl = `http://127.0.0.1:${config.ports.api}`;
+  const dbUrl = (user: string) => `postgresql://${user}:${encodeURIComponent(secrets.POSTGRES_PASSWORD)}@127.0.0.1:${cluster.port}/postgres`;
+  const env = {
+    NEXT_PUBLIC_SUPABASE_URL: apiUrl,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: secrets.SUPABASE_SERVICE_ROLE_KEY,
+    JWT_SECRET: secrets.JWT_SECRET,
+    SUPABASE_DB_URL: dbUrl("postgres"),
+    BANK_TOKEN_ENCRYPTION_KEY: secrets.BANK_TOKEN_ENCRYPTION_KEY,
+    CRON_SECRET: secrets.CRON_SECRET,
+    MONEO_OWNER_EMAIL: secrets.MONEO_OWNER_EMAIL,
+    MONEO_OWNER_PASSWORD: secrets.MONEO_OWNER_PASSWORD,
+    MONEO_DATA_DIR: l.appData,
+    WORKFLOW_LOCAL_DATA_DIR: l.workflow,
+  };
+  options.onEnv?.(env);
 
   const listeners: ((service: string, code: number | null) => void)[] = [];
   let stopping = false;
@@ -152,9 +172,10 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
   };
 
   try {
+    const versions = bundledServices(l);
     const postmaster = await step("database", fresh ? "Creating the database" : "Starting the database", async () => {
       if (fresh) await initCluster(cluster, paths.home);
-      else await checkMajor(cluster);
+      else await checkMajor(cluster, versions.postgres);
       return startCluster(cluster, note);
     });
     monitor = setInterval(() => {
@@ -172,11 +193,12 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     }
 
     const bundled = bundledMigrations(l.migrations);
-    const state = await migrationState(owner, bundled);
+    const [state] = await Promise.all([
+      migrationState(owner, bundled),
+      revokeMigrationOwners(admin).then(() => admin.unsafe("ALTER ROLE authenticator SET session_preload_libraries TO 'safeupdate'")),
+    ]);
     if (state.newer.length)
       throw new Error(`This data was last used by a newer Moneo (database version ${state.newer.at(-1)}; this app knows up to ${bundled.at(-1)?.version}). Install the newer Moneo, or restore a backup made with this version.`);
-    await revokeMigrationOwners(admin);
-    const versions = bundledServices(l);
     const servicesChanged = config.services !== undefined && JSON.stringify(config.services) !== JSON.stringify(versions);
     if (state.applied.length && (state.pending.length || servicesChanged)) {
       await step("backup", "Backing up before the update", () => writeBackup({
@@ -184,100 +206,102 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
       }));
     }
 
-    await admin.unsafe("ALTER ROLE authenticator SET session_preload_libraries TO 'safeupdate'");
-
-    const apiUrl = `http://127.0.0.1:${config.ports.api}`;
     const [authPort, restPort, restAdminPort, storagePort, storageAdminPort] = await Promise.all([freePort(), freePort(), freePort(), freePort(), freePort()]);
     const base = baseEnv();
-    const dbUrl = (user: string) => `postgresql://${user}:${encodeURIComponent(secrets.POSTGRES_PASSWORD)}@127.0.0.1:${cluster.port}/postgres`;
     const recordPids = () => pids.write(services.filter(s => s.pid).map(s => s.name === "storage"
       ? { service: s.name, pid: s.pid as number, exe: process.execPath, script: l.storageServer }
       : { service: s.name, pid: s.pid as number, exe: s.name === "auth" ? l.gotrue : l.postgrest }));
 
-    await step("auth", "Starting sign-in (GoTrue)", async () => {
-      const appUrl = options.appUrl ?? "http://localhost";
-      const child = spawnService(l.gotrue, [], {
-        ...base,
-        API_EXTERNAL_URL: `${apiUrl}/auth/v1`,
-        GOTRUE_API_HOST: "127.0.0.1",
-        GOTRUE_API_PORT: String(authPort),
-        GOTRUE_DB_DRIVER: "postgres",
-        GOTRUE_DB_DATABASE_URL: dbUrl("supabase_auth_admin"),
-        GOTRUE_DB_MIGRATIONS_PATH: l.gotrueMigrations,
-        GOTRUE_DB_MAX_POOL_SIZE: "10",
-        GOTRUE_DB_MAX_IDLE_POOL_SIZE: "5",
-        GOTRUE_SITE_URL: appUrl,
-        GOTRUE_URI_ALLOW_LIST: appUrl,
-        GOTRUE_JWT_SECRET: secrets.JWT_SECRET,
-        GOTRUE_JWT_EXP: "3600",
-        GOTRUE_JWT_AUD: "authenticated",
-        GOTRUE_JWT_DEFAULT_GROUP_NAME: "authenticated",
-        GOTRUE_JWT_ADMIN_ROLES: "service_role",
-        GOTRUE_DISABLE_SIGNUP: "true",
-        GOTRUE_EXTERNAL_EMAIL_ENABLED: "true",
-        GOTRUE_MAILER_AUTOCONFIRM: "true",
-        GOTRUE_EXTERNAL_PHONE_ENABLED: "false",
-        GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false",
-        GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: "true",
-        GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: "10",
-      }, path.dirname(l.gotrue));
-      const service = track("auth", child, await openLog(l.logs, "auth"), () => stopping, emitExit);
+    const appUrl = options.appUrl ?? "http://localhost";
+    const authEnv = {
+      ...base,
+      API_EXTERNAL_URL: `${apiUrl}/auth/v1`,
+      GOTRUE_API_HOST: "127.0.0.1",
+      GOTRUE_API_PORT: String(authPort),
+      GOTRUE_DB_DRIVER: "postgres",
+      GOTRUE_DB_DATABASE_URL: dbUrl("supabase_auth_admin"),
+      GOTRUE_DB_MIGRATIONS_PATH: l.gotrueMigrations,
+      GOTRUE_DB_MAX_POOL_SIZE: "10",
+      GOTRUE_DB_MAX_IDLE_POOL_SIZE: "5",
+      GOTRUE_SITE_URL: appUrl,
+      GOTRUE_URI_ALLOW_LIST: appUrl,
+      GOTRUE_JWT_SECRET: secrets.JWT_SECRET,
+      GOTRUE_JWT_EXP: "3600",
+      GOTRUE_JWT_AUD: "authenticated",
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: "authenticated",
+      GOTRUE_JWT_ADMIN_ROLES: "service_role",
+      GOTRUE_DISABLE_SIGNUP: "true",
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true",
+      GOTRUE_MAILER_AUTOCONFIRM: "true",
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false",
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false",
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: "true",
+      GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: "10",
+    };
+    const storageEnv: Record<string, string> = {
+      ...base,
+      NODE_ENV: "production",
+      SERVER_HOST: "127.0.0.1",
+      SERVER_PORT: String(storagePort),
+      SERVER_ADMIN_PORT: String(storageAdminPort),
+      DATABASE_URL: dbUrl("supabase_storage_admin"),
+      ANON_KEY: secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+      SERVICE_KEY: secrets.SUPABASE_SERVICE_ROLE_KEY,
+      AUTH_JWT_SECRET: secrets.JWT_SECRET,
+      STORAGE_BACKEND: "file",
+      FILE_STORAGE_BACKEND_PATH: l.storage,
+      FILE_SIZE_LIMIT: "52428800",
+      TENANT_ID: "stub",
+      GLOBAL_S3_BUCKET: "stub",
+      STORAGE_S3_REGION: "local",
+      ENABLE_IMAGE_TRANSFORMATION: "false",
+      EXPOSE_DOCS: "false",
+      MONEO_PARENT_PID: String(process.pid),
+    };
+    if (process.platform !== "win32") storageEnv.MONEO_FS_XATTR_ADDON = l.xattrAddon;
+    let restEnv: Record<string, string> = {
+      ...base,
+      PGRST_DB_URI: dbUrl("authenticator"),
+      PGRST_DB_SCHEMAS: "public,graphql_public",
+      PGRST_DB_EXTRA_SEARCH_PATH: "public,extensions",
+      PGRST_DB_MAX_ROWS: "1000",
+      PGRST_DB_ANON_ROLE: "anon",
+      PGRST_JWT_SECRET: secrets.JWT_SECRET,
+      PGRST_SERVER_HOST: "127.0.0.1",
+      PGRST_SERVER_PORT: String(restPort),
+      PGRST_ADMIN_SERVER_PORT: String(restAdminPort),
+    };
+    if (process.platform === "win32") restEnv = withPath(restEnv, l.pgBin);
+    if (process.platform === "darwin") restEnv.DYLD_FALLBACK_LIBRARY_PATH = l.pgLib;
+    const fork = options.fork ?? defaultFork;
+    const [authLog, storageLog, restLog] = await Promise.all(["auth", "storage", "rest"].map(name => openLog(l.logs, name)));
+    const launch = (name: string, child: ChildProcess | ForkedProcess, log: WriteStream, onExit = emitExit) => {
+      const service = track(name, child, log, () => stopping, onExit);
       services.push(service);
+      return service;
+    };
+    const auth = launch("auth", spawnService(l.gotrue, [], authEnv, path.dirname(l.gotrue)), authLog);
+    const rest = launch("rest", spawnService(l.postgrest, [], restEnv, path.dirname(l.postgrest)), restLog);
+    let storageUp = false;
+    let storage: Service | undefined;
+    const startStorage = async () => {
+      storage = launch("storage", fork(l.storageServer, [], { env: storageEnv, cwd: l.storageApi, serviceName: "Moneo Storage" }), storageLog, (service, code) => { if (storageUp) emitExit(service, code); });
+      const started = storage;
       await recordPids();
-      await waitFor("GoTrue", () => httpOk(`http://127.0.0.1:${authPort}/health`), 180_000, () => service.exited);
-    });
-
-    await step("storage", "Starting file storage", async () => {
-      const fork = options.fork ?? defaultFork;
-      const env: Record<string, string> = {
-        ...base,
-        NODE_ENV: "production",
-        SERVER_HOST: "127.0.0.1",
-        SERVER_PORT: String(storagePort),
-        SERVER_ADMIN_PORT: String(storageAdminPort),
-        DATABASE_URL: dbUrl("supabase_storage_admin"),
-        ANON_KEY: secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-        SERVICE_KEY: secrets.SUPABASE_SERVICE_ROLE_KEY,
-        AUTH_JWT_SECRET: secrets.JWT_SECRET,
-        STORAGE_BACKEND: "file",
-        FILE_STORAGE_BACKEND_PATH: l.storage,
-        FILE_SIZE_LIMIT: "52428800",
-        TENANT_ID: "stub",
-        GLOBAL_S3_BUCKET: "stub",
-        STORAGE_S3_REGION: "local",
-        ENABLE_IMAGE_TRANSFORMATION: "false",
-        EXPOSE_DOCS: "false",
-        MONEO_PARENT_PID: String(process.pid),
-      };
-      if (process.platform !== "win32") env.MONEO_FS_XATTR_ADDON = l.xattrAddon;
-      const child = fork(l.storageServer, [], { env, cwd: l.storageApi, serviceName: "Moneo Storage" });
-      const service = track("storage", child, await openLog(l.logs, "storage"), () => stopping, emitExit);
-      services.push(service);
-      await recordPids();
-      await waitFor("Storage API", () => httpOk(`http://127.0.0.1:${storagePort}/status`), 180_000, () => service.exited);
-    });
-
-    await step("rest", "Starting the data API (PostgREST)", async () => {
-      let env: Record<string, string> = {
-        ...base,
-        PGRST_DB_URI: dbUrl("authenticator"),
-        PGRST_DB_SCHEMAS: "public,graphql_public",
-        PGRST_DB_EXTRA_SEARCH_PATH: "public,extensions",
-        PGRST_DB_MAX_ROWS: "1000",
-        PGRST_DB_ANON_ROLE: "anon",
-        PGRST_JWT_SECRET: secrets.JWT_SECRET,
-        PGRST_SERVER_HOST: "127.0.0.1",
-        PGRST_SERVER_PORT: String(restPort),
-        PGRST_ADMIN_SERVER_PORT: String(restAdminPort),
-      };
-      if (process.platform === "win32") env = withPath(env, l.pgBin);
-      if (process.platform === "darwin") env.DYLD_FALLBACK_LIBRARY_PATH = l.pgLib;
-      const child = spawnService(l.postgrest, [], env, path.dirname(l.postgrest));
-      const service = track("rest", child, await openLog(l.logs, "rest"), () => stopping, emitExit);
-      services.push(service);
-      await recordPids();
-      await waitFor("PostgREST", () => httpOk(`http://127.0.0.1:${restAdminPort}/ready`), 60_000, () => service.exited);
-    });
+      await waitFor("Storage API", () => httpOk(`http://127.0.0.1:${storagePort}/status`), 180_000, () => started.exited);
+    };
+    const storageReady = step("storage", "Starting file storage", () => startWithOneRetry(startStorage, async error => {
+      if (stopping) throw error;
+      note(`File storage did not start (${error.message}); starting it once more`);
+      await storage?.stop();
+    })).then(() => { storageUp = true; });
+    storageReady.catch(() => note("File storage did not start after a second try"));
+    const storageBeforeApp = fresh || !state.applied.length || state.pending.length > 0 || servicesChanged || config.services === undefined;
+    await Promise.all([
+      step("auth", "Starting sign-in (GoTrue)", () => waitFor("GoTrue", () => httpOk(`http://127.0.0.1:${authPort}/health`), 180_000, () => auth.exited)),
+      step("rest", "Starting the data API (PostgREST)", () => waitFor("PostgREST", () => httpOk(`http://127.0.0.1:${restAdminPort}/ready`), 60_000, () => rest.exited)),
+      ...(storageBeforeApp ? [storageReady] : []),
+    ]);
 
     gateway = await step("gateway", "Connecting the services", () => startGateway(config.ports.api, { auth: authPort, rest: restPort, storage: storagePort }, note));
 
@@ -285,7 +309,7 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     if (applied) {
       await waitFor("PostgREST schema reload", () => httpOk(`http://127.0.0.1:${restAdminPort}/ready`), 60_000);
     }
-    await step("owner", "Preparing your account", () => createOwner(apiUrl, secrets.SUPABASE_SERVICE_ROLE_KEY, secrets.MONEO_OWNER_EMAIL, secrets.MONEO_OWNER_PASSWORD));
+    await step("owner", "Preparing your account", () => createOwner(admin, apiUrl, secrets.SUPABASE_SERVICE_ROLE_KEY, secrets.MONEO_OWNER_EMAIL, secrets.MONEO_OWNER_PASSWORD));
 
     config.schemaVersion = bundled.at(-1)?.version ?? config.schemaVersion;
     config.services = versions;
@@ -294,18 +318,8 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     note(`Backend ready at ${apiUrl} (database port ${cluster.port}); ${applied} migration(s) applied`);
 
     return {
-      env: {
-        NEXT_PUBLIC_SUPABASE_URL: apiUrl,
-        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-        SUPABASE_SERVICE_ROLE_KEY: secrets.SUPABASE_SERVICE_ROLE_KEY,
-        SUPABASE_DB_URL: dbUrl("postgres"),
-        BANK_TOKEN_ENCRYPTION_KEY: secrets.BANK_TOKEN_ENCRYPTION_KEY,
-        CRON_SECRET: secrets.CRON_SECRET,
-        MONEO_OWNER_EMAIL: secrets.MONEO_OWNER_EMAIL,
-        MONEO_OWNER_PASSWORD: secrets.MONEO_OWNER_PASSWORD,
-        MONEO_DATA_DIR: l.appData,
-        WORKFLOW_LOCAL_DATA_DIR: l.workflow,
-      },
+      env,
+      storageReady,
       stop,
       onExit: cb => { listeners.push(cb); },
     };

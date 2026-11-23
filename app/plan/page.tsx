@@ -7,6 +7,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { accountLiquidity, availableToSpend, forecastDaily, usableForecastInput } from "@/lib/finance/calculations";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { CoverageNote } from "@/components/coverage-note";
+import { SkeletonCard } from "@/components/skeleton";
 import { calendarDate } from "@/lib/finance/calendar";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import { PlanningHistory } from "./history";
@@ -27,18 +28,31 @@ export const metadata = { title: "Plan" };
 const pill = "inline-flex h-11 items-center max-lg:h-9 max-lg:rounded-full gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
 
 type Plan = Awaited<ReturnType<typeof evaluatePlanForWorkspace>>;
+type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 function fromUsableAccounts(plan: Plan): Plan {
   const { input, excluded } = usableForecastInput(plan.input);
   return excluded.length ? { ...plan, input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input) } : plan;
 }
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<LiquidityParams & { removed?: string }> }) {
-  let context: Awaited<ReturnType<typeof requireWorkspace>>;
+  let context: Workspace;
   try { context = await requireWorkspace(); } catch { redirect("/setup"); }
-  const { supabase, workspace } = context;
   const { removed, ...params } = await searchParams;
   const requestedHorizon = z.coerce.number().int().min(1).max(365).safeParse(params.horizon ?? 30);
   const horizon = requestedHorizon.success ? requestedHorizon.data : 30;
+  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+    {!requestedHorizon.success && <p role="alert">Choose a whole forecast horizon from 1 to 365 days. Showing 30 days.</p>}
+    <header className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-col gap-1"><p className="eyebrow">Forecast · {horizon} days · display currency {context.workspace.display_currency}</p><h1 className="page-title">Plan</h1><p className="mt-1 text-sm text-muted-foreground">Where your cash is heading, what is due, and what your goals need.</p></div>
+      <nav aria-label="Planning tools" className="flex flex-wrap gap-2 max-lg:flex-nowrap max-lg:overflow-x-auto [&>*]:shrink-0"><a href="#forecast-heading" className={pill}>Forecast</a><a href="#goals-heading" className={pill}>Goals</a><a href="#financial-model" className={pill}>Inputs</a><a href="#history-heading" className={pill}>History</a><a href="#what-if" className={`${pill} border-transparent bg-primary text-primary-foreground hover:bg-primary hover:opacity-90`}>New scenario</a></nav>
+    </header>
+    <Suspense fallback={<div className="min-h-[24rem]" aria-busy="true"><SkeletonCard lines={5} /></div>}>
+      <PlanSections context={context} params={params} horizon={horizon} removed={removed} />
+    </Suspense>
+  </main>;
+}
+
+async function PlanSections({ context: { supabase, workspace }, params, horizon, removed }: { context: Workspace; params: LiquidityParams; horizon: number; removed?: string }) {
   const [realPlan, { data: goals, error: goalsError }, { data: allocations, error: allocationsError }, { data: accounts, error: accountsError }, { data: assumptions, error: assumptionsError }, { data: scenarios, error: scenariosError }] = await Promise.all([
     evaluatePlanForWorkspace(supabase, workspace, horizon),
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date, priority, status, notes, version, planned_monthly_minor::text, contribution_starts_on, recorded_saved_minor::text, saved_as_of")
@@ -73,12 +87,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const input = realProjection.input;
   const blockers = forecastBlockers([...(fullProjection.input.missingInputs ?? []), ...leftOut.filter(account => account.availableMinor == null && account.balanceMinor === null).map(account => `balance:${account.id}`), ...(result.liquidity.status === "unavailable" ? result.liquidity.missingInputs : [])], fullProjection.input.accounts, accountNames);
 
-  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 text-foreground sm:px-8 lg:py-8">
-    {!requestedHorizon.success && <p role="alert">Choose a whole forecast horizon from 1 to 365 days. Showing 30 days.</p>}
-    <header className="flex flex-wrap items-end justify-between gap-4">
-      <div className="flex flex-col gap-1"><p className="eyebrow">Forecast · {horizon} days · display currency {currency}</p><h1 className="page-title">Plan</h1><p className="mt-1 text-sm text-muted-foreground">Where your cash is heading, what is due, and what your goals need.</p></div>
-      <nav aria-label="Planning tools" className="flex flex-wrap gap-2 max-lg:flex-nowrap max-lg:overflow-x-auto [&>*]:shrink-0"><a href="#forecast-heading" className={pill}>Forecast</a><a href="#goals-heading" className={pill}>Goals</a><a href="#financial-model" className={pill}>Inputs</a><a href="#history-heading" className={pill}>History</a><a href="#what-if" className={`${pill} border-transparent bg-primary text-primary-foreground hover:bg-primary hover:opacity-90`}>New scenario</a></nav>
-    </header>
+  return <>
     {selectedScenario && <p role="status" className="rounded-lg bg-muted/60 px-4 py-3 text-sm">Viewing hypothetical scenario: <span className="font-medium">{selectedScenario.name}</span>. <Link href={scenarioHref()} className="font-medium text-brand underline">Back to real plan</Link></p>}
     {params.scenario && !selectedScenario && <p role="status" className="rounded-lg bg-muted/60 px-4 py-3 text-sm">This scenario is unavailable. Showing your real plan. <a href="#what-if" className="font-medium text-brand underline">See your scenarios</a></p>}
     <section className={card} aria-labelledby="forecast-heading">
@@ -95,7 +104,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     <WhatIfSection scenarios={scenarios ?? []} selected={selectedScenario} href={scenarioHref} real={baseline} scenario={projection} accounts={activeAccounts} currency={currency} locale={workspace.locale} today={today} horizon={horizon} />
     <GoalsSection goals={goals ?? []} allocations={allocations ?? []} accounts={accounts ?? []} currency={currency} locale={workspace.locale} today={today} />
     <section className={card} aria-labelledby="financial-model"><div><p className={eyebrow}>Inputs</p><h2 id="financial-model" className="mt-1 scroll-mt-24 text-sm font-medium">Financial model</h2><p className="mt-1 text-sm text-muted-foreground">Income and expenses that shape your forecast. Choose Income or Expense and enter a plain amount.</p></div>
-      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading sources…</p>}><ModelSources db={supabase} workspace={workspace} /></Suspense>
+      <Suspense fallback={<div className="h-[54px] animate-pulse rounded-lg bg-muted" aria-busy="true" />}><ModelSources db={supabase} workspace={workspace} plan={realPlan} /></Suspense>
       <AssumptionList assumptions={assumptions ?? []} error={assumptionsError?.message} accounts={activeAccounts} names={accountNames} locale={workspace.locale} today={today} />
     </section>
     <section aria-labelledby="history-heading" className="space-y-3"><h2 id="history-heading" className="scroll-mt-24 font-display text-2xl font-semibold tracking-tight">History and undo</h2>
@@ -107,5 +116,5 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         <PlanningHistory entityType="assumption" destination="/plan" open={removed === "assumption"} />
       </Suspense>
     </section>
-  </main>;
+  </>;
 }

@@ -29,10 +29,17 @@ jobs:
         id: modules
         with:
           path: node_modules
-          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}
+          key: modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json', '.npmrc') }}
+      - &npm-cache
+        if: steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - &install
         if: steps.modules.outputs.cache-hit != 'true'
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
       - run: npm run lint
 
   typecheck:
@@ -42,7 +49,16 @@ jobs:
       - *checkout
       - *node
       - *modules
+      - *npm-cache
       - *install
+      - uses: actions/cache@v4
+        with:
+          path: |
+            tsconfig.native.tsbuildinfo
+            tsconfig.indexed.tsbuildinfo
+            desktop/tsconfig.tsbuildinfo
+          key: typecheck-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'desktop/tsconfig.json', 'scripts/typecheck*.mjs') }}-${{ github.sha }}
+          restore-keys: typecheck-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'desktop/tsconfig.json', 'scripts/typecheck*.mjs') }}-
       - run: npm run typecheck
 
   test:
@@ -52,6 +68,7 @@ jobs:
       - *checkout
       - *node
       - *modules
+      - *npm-cache
       - *install
       - run: npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest.json"
       - name: Slowest test files
@@ -79,6 +96,7 @@ jobs:
       - *checkout
       - *node
       - *modules
+      - *npm-cache
       - *install
       - uses: actions/cache@v4
         with:
@@ -95,6 +113,7 @@ jobs:
       - *checkout
       - *node
       - *modules
+      - *npm-cache
       - *install
       - name: Start the test backend
         run: |
@@ -119,6 +138,7 @@ jobs:
       - *checkout
       - *node
       - *modules
+      - *npm-cache
       - *install
       - uses: actions/cache@v4
         with:

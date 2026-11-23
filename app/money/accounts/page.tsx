@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { SafeForm } from "@/components/safe-form";
 import { CoverageNote } from "@/components/coverage-note";
@@ -38,16 +39,14 @@ function describeEvent(event: MetaEvent) {
 export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string }> } = {}) {
   const { transfers, saved } = (await searchParams) ?? {};
   const { supabase, workspace } = await requireWorkspace();
-  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }] = await Promise.all([
+  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()),
-    supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
-    supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
     supabase.from("bank_connection_accounts").select("account_name,currency_code,iban,bank_connections(status)").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
     supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
-  if (historyError || viewsError || bankError || identifierError) throw new Error("Could not load account and saved view history");
+  if (bankError || identifierError) throw new Error("Could not load account identifiers");
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const stillFed = new Set((bankAccounts ?? []).filter(connected => connected.bank_connections?.status !== "revoked").map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
@@ -68,14 +67,6 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
     counted += 1;
     totals.set(account.currency_code, (totals.get(account.currency_code) ?? 0n) + BigInt(amount));
   }
-
-  const versions = new Map<string, number>([...accounts.map(account => [account.id, account.version ?? 1] as const), ...(views ?? []).map(view => [view.id, view.version] as const)]);
-  const events = (history ?? []) as MetaEvent[];
-  const latestVersion = new Map<string, number>();
-  for (const event of events) if (!event.undone_at && !event.undo_of)
-    latestVersion.set(event.entity_id, Math.max(latestVersion.get(event.entity_id) ?? 0, Number(event.after?.version ?? 0)));
-  const canUndo = (event: MetaEvent) => !event.undone_at && !event.undo_of && versions.has(event.entity_id) && Number(event.after?.version ?? 0) >= (latestVersion.get(event.entity_id) ?? 0);
-  const when = new Intl.DateTimeFormat(locale, { timeZone, dateStyle: "medium", timeStyle: "short" });
 
   const row = (account: Resolved) => {
     const { amount, label } = shownBalance(account.balance);
@@ -170,11 +161,28 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
 
     {archived.length ? <section className="space-y-2 opacity-80" aria-label="Archived accounts"><h2 className="text-sm font-medium text-muted-foreground">Archived accounts ({archived.length})</h2><div className="divide-y divide-border rounded-xl border border-border bg-card">{archived.map(row)}</div></section> : null}
 
-    {events.length ? <section><h2 className="text-sm font-medium text-muted-foreground">Account and saved view history</h2>
+    <Suspense fallback={<div className="h-10" aria-busy="true" />}><AccountHistory accounts={accounts} /></Suspense>
+  </main>;
+}
+
+async function AccountHistory({ accounts }: { accounts: Resolved[] }) {
+  const { supabase, workspace: { id, locale, timezone: timeZone } } = await requireWorkspace();
+  const { data: history, error: historyError } = await supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", id).order("created_at", { ascending: false }).limit(30);
+  if (historyError) throw new Error("Could not load account and saved view history");
+  const viewIds = [...new Set((history ?? []).filter(event => event.entity_type === "transaction_view" && !event.undone_at && !event.undo_of).map(event => event.entity_id))];
+  const { data: views, error: viewsError } = viewIds.length ? await supabase.from("transaction_views").select("id,version").eq("workspace_id", id).in("id", viewIds) : { data: [], error: null };
+  if (viewsError) throw new Error("Could not load account and saved view history");
+  const versions = new Map<string, number>([...accounts.map(account => [account.id, account.version ?? 1] as const), ...(views ?? []).map(view => [view.id, view.version] as const)]);
+  const events = (history ?? []) as MetaEvent[];
+  const latestVersion = new Map<string, number>();
+  for (const event of events) if (!event.undone_at && !event.undo_of)
+    latestVersion.set(event.entity_id, Math.max(latestVersion.get(event.entity_id) ?? 0, Number(event.after?.version ?? 0)));
+  const canUndo = (event: MetaEvent) => !event.undone_at && !event.undo_of && versions.has(event.entity_id) && Number(event.after?.version ?? 0) >= (latestVersion.get(event.entity_id) ?? 0);
+  const when = new Intl.DateTimeFormat(locale, { timeZone, dateStyle: "medium", timeStyle: "short" });
+  return events.length ? <section><h2 className="text-sm font-medium text-muted-foreground">Account and saved view history</h2>
       <ul className="mt-2 divide-y divide-border text-sm">{events.map(event => <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
         <span>{describeEvent(event)} <span className="text-muted-foreground">· {when.format(new Date(event.created_at))}{event.undone_at ? " · Undone" : event.undo_of ? " · Restored by undo" : ""}</span></span>
         {canUndo(event) ? <SafeForm action={undoMoneyMetadataSafely}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={versions.get(event.entity_id)} /><input type="hidden" name="requestId" value={randomUUID()} /><button aria-label={`Undo: ${describeEvent(event)}`} className={field}>Undo</button></SafeForm> : null}
       </li>)}</ul>
-    </section> : null}
-  </main>;
+    </section> : null;
 }

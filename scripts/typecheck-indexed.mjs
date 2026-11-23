@@ -2,7 +2,7 @@ import path from "node:path";
 import ts from "typescript";
 
 const configPath = path.resolve("tsconfig.indexed.json");
-const config = ts.getParsedCommandLineOfConfigFile(configPath, {}, {
+const config = ts.getParsedCommandLineOfConfigFile(configPath, { noEmit: true }, {
   ...ts.sys,
   onUnRecoverableConfigFileDiagnostic(diagnostic) {
     throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
@@ -11,10 +11,11 @@ const config = ts.getParsedCommandLineOfConfigFile(configPath, {}, {
 if (!config) throw new Error(`Cannot read ${configPath}`);
 
 const covered = new Set(config.fileNames.map(file => path.resolve(file)));
-const program = ts.createProgram({ rootNames: config.fileNames, options: config.options });
+const program = ts.createIncrementalProgram({ rootNames: config.fileNames, options: config.options });
 const errors = ts
   .getPreEmitDiagnostics(program)
   .filter(diagnostic => diagnostic.file && covered.has(path.resolve(diagnostic.file.fileName)));
+program.emit();
 
 if (errors.length > 0) {
   const host = {

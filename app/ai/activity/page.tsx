@@ -25,17 +25,24 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const wants = (kind: Kind) => filter === "all" || filter === "attention" || filter === kind;
   const none = Promise.resolve({ data: null, error: null });
   const attention = filter === "attention";
-  const heldCards = attention ? await supabase.from("agent_proposals").select("chat_request_id").eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).not("chat_request_id", "is", null).order("created_at", { ascending: false }).limit(1000) : { data: [], error: null };
-  const heldRequests = [...new Set((heldCards.data ?? []).map(row => row.chat_request_id as string))].slice(0, 100);
+  const heldCards = attention ? Promise.resolve(supabase.from("agent_proposals").select("chat_request_id").eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).not("chat_request_id", "is", null).order("created_at", { ascending: false }).limit(1000)) : none;
+  const loadRequests = async () => {
+    const query = supabase.from("chat_requests").select("id, conversation_id, status, error, usage, answer, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false });
+    if (!attention) return query.limit(30);
+    const { data } = await heldCards;
+    const heldRequests = [...new Set((data ?? []).map(row => row.chat_request_id as string))].slice(0, 100);
+    return query.or(`status.eq.failed${heldRequests.length ? `,id.in.(${heldRequests.join(",")})` : ""}`).limit(100);
+  };
 
-  const [imports, jobs, saved, conversations, requests] = await Promise.all([
+  const [imports, jobs, saved, conversations, requests, held] = await Promise.all([
     wants("imports") ? (query => attention ? query.or("status.eq.failed,review_rows.gt.0,classification_review_rows.gt.0").limit(100) : query.limit(20))(supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error, created_at")
       .eq("workspace_id", workspace.id).neq("status", "undone").order("created_at", { ascending: false })) : none,
     wants("analyses") ? (query => attention ? query.eq("status", "failed").limit(100) : query.limit(20))(supabase.from("background_jobs").select("id, status, stage, error, created_at, updated_at")
       .eq("workspace_id", workspace.id).eq("kind", "financial_review").order("created_at", { ascending: false })) : none,
     wants("analyses") ? supabase.from("saved_analyses").select("job_id, title").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
-    wants("chats") ? supabase.from("conversations").select("id, title, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
-    wants("chats") ? (query => attention ? query.or(`status.eq.failed${heldRequests.length ? `,id.in.(${heldRequests.join(",")})` : ""}`).limit(100) : query.limit(30))(supabase.from("chat_requests").select("id, conversation_id, status, error, usage, answer, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false })) : none,
+    !attention && wants("chats") ? supabase.from("conversations").select("id, title, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
+    wants("chats") ? loadRequests() : none,
+    heldCards,
   ]);
   const cards = new Map((requests.data ?? []).map(row => [row.id, row.status === "completed" ? answerCardIds(row.answer) : []]));
   const cardIds = [...new Set([...cards.values()].flat())];
@@ -43,7 +50,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const openIds = new Map((open.data ?? []).map(row => [row.id as string, (row as { title?: string }).title ?? ""]));
   const waiting = (id: string) => (cards.get(id) ?? []).filter(card => openIds.has(card)).length;
   const subject = (id: string) => { const first = (cards.get(id) ?? []).map(card => openIds.get(card)).find(Boolean); return first ? truncate(first, 120) : null; };
-  const errors = [heldCards, imports, jobs, saved, conversations, requests, open].map(result => result.error).filter(Boolean);
+  const errors = [held, imports, jobs, saved, conversations, requests, open].map(result => result.error).filter(Boolean);
   const titles = new Map((saved.data ?? []).map(row => [row.job_id, row.title]));
 
   const items: Item[] = [

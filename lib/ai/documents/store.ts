@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { attachmentId, attachmentSchema, type ChatAttachment } from "@/lib/ai/chat-attachments";
-import { DOCUMENT_KINDS, extractDocument, type ExtractedDocument } from "./extract";
+import { attachmentId, isImage, type ChatAttachment } from "@/lib/ai/chat-attachments";
+import { attachmentSchema } from "@/lib/ai/chat-attachment-schema";
+import type { ExtractedDocument } from "./extract";
 
 const CACHE_SIZE = 24;
 const cache = new Map<string, Promise<ExtractedDocument>>();
@@ -12,12 +13,13 @@ export async function downloadAttachment(supabase: SupabaseClient, file: ChatAtt
   return new Uint8Array(await data.arrayBuffer());
 }
 
-export const isDocument = (file: ChatAttachment) => DOCUMENT_KINDS[file.type] !== undefined;
+export const isDocument = (file: ChatAttachment) => !isImage(file.type);
 
 export function documentText(supabase: SupabaseClient, file: ChatAttachment, bytes?: Uint8Array): Promise<ExtractedDocument> {
   const cached = cache.get(file.path);
   if (cached) { cache.delete(file.path); cache.set(file.path, cached); return cached; }
-  const pending = (async () => extractDocument(bytes ?? await downloadAttachment(supabase, file), file.type))();
+  const pending = Promise.all([import("./extract"), bytes ?? downloadAttachment(supabase, file)])
+    .then(([{ extractDocument }, data]) => extractDocument(data, file.type));
   cache.set(file.path, pending);
   pending.catch(() => cache.delete(file.path));
   while (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);

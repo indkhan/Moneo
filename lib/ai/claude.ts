@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { ToolSet } from "ai";
-import { claudeCode, createAiSdkMcpServer, type ClaudeCodeSettings, type MessageInjector } from "ai-sdk-provider-claude-code";
+import type { ClaudeCodeSettings, MessageInjector } from "ai-sdk-provider-claude-code";
 import { z } from "zod";
 import { childProcessEnv, dataDir } from "@/lib/env";
 
@@ -140,7 +140,8 @@ export function steerClaudeRun(injector: MessageInjector, steering: ClaudeSteeri
   return () => { ended = true; clearInterval(timer); injector.close(); };
 }
 
-export function claudeModel(modelId: string, tools: ToolSet = {}, steering?: ClaudeSteering, overrides: Partial<ClaudeCodeSettings> = {}) {
+export async function claudeModel(modelId: string, tools: ToolSet = {}, steering?: ClaudeSteering, overrides: Partial<ClaudeCodeSettings> = {}) {
+  const { claudeCode, createAiSdkMcpServer } = await import("ai-sdk-provider-claude-code");
   const names = Object.keys(tools);
   const checked = Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
     execute: (input: unknown, options: Parameters<NonNullable<typeof definition.execute>>[1]) =>

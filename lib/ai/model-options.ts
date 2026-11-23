@@ -1,4 +1,4 @@
-import { AI_AGENTS, type AiAgent } from "@/lib/settings";
+import { AI_AGENTS, type AiAgent } from "@/lib/workspace-settings-options";
 
 export type ModelConnections = { openai: boolean; claude: boolean; openrouter: boolean };
 
