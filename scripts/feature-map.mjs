@@ -115,23 +115,20 @@ const workflows = workflowFiles.flatMap(file => {
   return names.map(name => ({ name, file, startedBy: [] }));
 });
 const codeFiles = ["app", "lib", "workflows"].flatMap(dir => sourceFiles(dir, isSource));
-for (const file of codeFiles) {
-  walk(parse(file), node => {
-    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression) || node.expression.text !== "start" || !node.arguments[0] || !ts.isIdentifier(node.arguments[0])) return;
-    const workflow = workflows.find(item => item.name === node.arguments[0].text);
-    if (workflow && !workflow.startedBy.includes(file)) workflow.startedBy.push(file);
-  });
-}
-workflows.sort((a, b) => cmp(a.name, b.name)).forEach(item => item.startedBy.sort());
-
 const undo = [];
 for (const file of codeFiles) {
   const names = [];
   walk(parse(file), node => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "start" && node.arguments[0] && ts.isIdentifier(node.arguments[0])) {
+      const workflow = workflows.find(item => item.name === node.arguments[0].text);
+      if (workflow && !workflow.startedBy.includes(file)) workflow.startedBy.push(file);
+    }
     if (ts.isFunctionDeclaration(node) && node.name && /undo/i.test(node.name.text) && node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) names.push(node.name.text);
   });
   if (names.length) undo.push({ file, names: names.sort() });
 }
+workflows.sort((a, b) => cmp(a.name, b.name)).forEach(item => item.startedBy.sort());
+
 const undoRoutes = routes.filter(route => /undo/i.test(route.path));
 
 const featureRows = pages.map(page => {
