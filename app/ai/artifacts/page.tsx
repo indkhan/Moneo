@@ -6,6 +6,7 @@ import { ArtifactPreview } from "./artifact-preview";
 import { artifactExamples } from "@/lib/ai/artifact-examples";
 import { ArtifactExamples, ArtifactPrompt } from "./artifact-prompt";
 import { DeleteArtifactButton } from "./delete-artifact-button";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const metadata = { title: "Artifacts" };
 
@@ -17,14 +18,12 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
   const { supabase, workspace } = context;
   const { prompt, q: rawQuery } = await searchParams;
   const q = z.string().trim().max(100).catch("").parse(rawQuery ?? "");
-  const gallery = supabase.from("artifacts").select("id, title, updated_at, artifact_versions(prompt), conversations(id)")
-    .eq("workspace_id", workspace.id).is("deleted_at", null).eq("artifact_versions.version", 1);
+  const gallery = supabase.from("artifacts").select("id, title, updated_at, artifact_versions(prompt), conversations(chat_requests(id))")
+    .eq("workspace_id", workspace.id).is("deleted_at", null).eq("artifact_versions.version", 1)
+    .eq("conversations.chat_requests.workspace_id", workspace.id).eq("conversations.chat_requests.status", "running")
+    .gt("conversations.chat_requests.created_at", runningSince()).limit(1, { referencedTable: "conversations.chat_requests" });
   const { data, error } = await (q ? gallery.ilike("title", `%${q.replace(/[\\%_]/g, "\\$&")}%`) : gallery).order("updated_at", { ascending: false }).limit(200);
-  const conversationIds = (data ?? []).flatMap(artifact => artifact.conversations.map(chat => chat.id));
-  const requests = conversationIds.length ? await supabase.from("chat_requests").select("conversation_id")
-    .eq("workspace_id", workspace.id).in("conversation_id", conversationIds).eq("status", "running")
-    .gt("created_at", runningSince()) : null;
-  const running = new Set(requests?.data?.map(request => request.conversation_id));
+  const building = (artifact: NonNullable<typeof data>[number]) => artifact.conversations.some(chat => chat.chat_requests.length > 0);
   const date = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeZone: workspace.timezone });
   return <main className="mx-auto grid w-full max-w-[1400px] gap-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="grid gap-1">
@@ -36,6 +35,7 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
       <ArtifactPrompt key={prompt} defaultValue={prompt?.slice(0, 4000)} placeholder="Describe what to build, e.g. “What if my rent goes up €300 — how does my monthly budget look?”" />
     </section>
     <section aria-labelledby="saved-artifacts" className="grid gap-3">
+      {data?.some(building) && <AutoRefresh everyMs={3000} />}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="saved-artifacts" className="font-display text-2xl font-semibold tracking-tight">Your artifacts{data?.length ? <span className="ml-1 font-sans text-sm font-normal text-muted-foreground">({data.length})</span> : null}</h2>
         {(q || (data?.length ?? 0) > 6) && <form role="search" action="/ai/artifacts" className="flex gap-2"><label className="sr-only" htmlFor="artifact-search">Search artifacts by title</label><input id="artifact-search" type="search" name="q" defaultValue={q} maxLength={100} placeholder="Search titles" className="min-h-10 min-w-0 rounded-lg border border-border bg-background px-3 text-sm" /><button className="min-h-10 rounded-lg border border-border px-3 text-sm hover:bg-muted">Search</button></form>}
@@ -43,7 +43,7 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
       {data?.length === 200 && <p className="text-xs text-muted-foreground">Showing the 200 most recently updated. Search to find older ones.</p>}
     {error ? <p role="alert" className="text-sm">Could not load your artifacts. You can still build a new one. <Link href="/ai/artifacts" className="underline">Try again</Link></p> : !data.length ? <p className="text-sm text-muted-foreground">{q ? <>No artifact title matches “{q}”. <Link href="/ai/artifacts" className="underline">Show all</Link></> : "No artifacts yet."}</p> :
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.map(artifact => <li key={artifact.id} className="relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card hover:bg-muted">
-        <ArtifactPreview id={artifact.id} title={artifact.title} hasPage={!!artifact.artifact_versions.length} building={artifact.conversations.some(chat => running.has(chat.id))} />
+        <ArtifactPreview id={artifact.id} title={artifact.title} hasPage={!!artifact.artifact_versions.length} building={building(artifact)} />
         <div className="flex items-start gap-2 border-t border-border p-4">
           <div className="min-w-0 flex-1">
             <Link href={`/ai/artifacts/${artifact.id}`} className="block font-medium after:absolute after:inset-0 after:rounded-xl">{artifact.title}</Link>

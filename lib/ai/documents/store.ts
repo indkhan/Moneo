@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { attachmentId, attachmentSchema, isImage, type ChatAttachment } from "@/lib/ai/chat-attachments";
+import { attachmentId, isImage, type ChatAttachment } from "@/lib/ai/chat-attachments";
+import { attachmentSchema } from "@/lib/ai/chat-attachment-schema";
 import type { ExtractedDocument } from "./extract";
 
 const CACHE_SIZE = 24;

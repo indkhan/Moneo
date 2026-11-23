@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/lib/auth";
-import { ATTACHMENT_TYPES, attachmentSchema, type AttachmentType } from "@/lib/ai/chat-attachments";
+import { ATTACHMENT_TYPES, type AttachmentType } from "@/lib/ai/chat-attachments";
+import { attachmentSchema } from "@/lib/ai/chat-attachment-schema";
 import { citedSection } from "@/lib/ai/documents/read";
 import { documentText, isDocument } from "@/lib/ai/documents/store";
 
