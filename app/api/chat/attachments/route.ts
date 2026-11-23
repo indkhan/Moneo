@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/lib/auth";
-import { ATTACHMENT_HINT, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_LABEL, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { ATTACHMENT_HINT, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_LABEL } from "@/lib/ai/chat-attachments";
+import { attachmentSchema } from "@/lib/ai/chat-attachment-schema";
 import { sniffType } from "@/lib/ai/documents/sniff";
 
 export async function POST(request: Request) {

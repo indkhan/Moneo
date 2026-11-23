@@ -26,7 +26,7 @@ export default async function RecurringPage() {
 
   const [{ data: accounts, error: accountsError }, { data: scheduleData, error: schedulesError }, { data: categoryData }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
-    supabase.from("financial_assumptions").select("id, name, category:categories(name), account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, schedule_anchor_on, source")
+    supabase.from("financial_assumptions").select("id, name, category:categories(name), account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, schedule_anchor_on, source, version")
       .eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", recurringCadences).order("name").limit(500),
     supabase.from("categories").select("name").eq("workspace_id", workspace.id).order("name").limit(500),
   ]);
@@ -100,7 +100,7 @@ export default async function RecurringPage() {
         <DetectedPatterns supabase={supabase} workspace={workspace} names={names} today={today} categories={categories} />
       </Suspense>
       <Suspense fallback={null}>
-        <OccurrenceReview supabase={supabase} workspace={workspace} accountNames={names} />
+        <OccurrenceReview supabase={supabase} workspace={workspace} accountNames={names} schedules={schedulesError ? null : scheduleData ?? []} />
       </Suspense>
     </main>
   );

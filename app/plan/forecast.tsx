@@ -1,4 +1,4 @@
-import { ForecastChart } from "@/components/chart";
+import { ForecastChart } from "@/components/forecast-chart";
 import type { ForecastEvent, forecastDaily } from "@/lib/finance/calculations";
 import { formatMoney } from "@/lib/finance/format";
 

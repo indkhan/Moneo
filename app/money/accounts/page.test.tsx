@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import { text } from "node:stream/consumers";
+import { prerenderToNodeStream } from "react-dom/static";
 
 vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalanceSafely: async () => ({}), undoMoneyMetadataSafely: async () => ({}), removeOwnAccountSafely: async () => ({}), findTransfersSafely: async () => ({}), addAccount: async () => {}, addAccountSafely: async () => ({}), addOwnAccountSafely: async () => ({}), addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
@@ -30,8 +31,13 @@ vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof 
 }) }));
 const { default: AccountsPage } = await import("./page");
 
+async function render(options?: Parameters<typeof AccountsPage>[0]) {
+  const { prelude } = await prerenderToNodeStream(await AccountsPage(options));
+  return (await text(prelude)).replaceAll("<!-- -->", "");
+}
+
 it("lists balances with as-of date, trend, rename suggestion, balance update and undo", async () => {
-  const html = renderToStaticMarkup(await AccountsPage());
+  const html = await render();
   expect(html).toContain("EUR 115.00");
   expect(html).toContain("2026-10-10");
   expect(html).toContain("<polyline");
@@ -47,14 +53,14 @@ it("lists balances with as-of date, trend, rename suggestion, balance update and
 });
 
 it("lists own account IBANs masked and reports found transfers", async () => {
-  const html = renderToStaticMarkup(await AccountsPage({ searchParams: Promise.resolve({ transfers: "2-1-0" }) }));
+  const html = await render({ searchParams: Promise.resolve({ transfers: "2-1-0" }) });
   expect(html).toContain("Savings at DKB · ••2051");
   expect(html).not.toContain("DE02120300000000202051");
   expect(html).toContain("Found 2 transfer pairs and 1 payment to your untracked accounts.");
 });
 
 it("shows the synced Scalable portfolio with a link to manage the connection on Import", async () => {
-  const html = renderToStaticMarkup(await AccountsPage());
+  const html = await render();
   expect(html).toContain("12,345.00");
   expect(html).toContain('href="/import#scalable"');
 });

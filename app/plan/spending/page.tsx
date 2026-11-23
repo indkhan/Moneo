@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CurrencySelect } from "@/components/currency-select";
 import { SafeForm } from "@/components/safe-form";
+import { SkeletonCard } from "@/components/skeleton";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -56,29 +57,54 @@ async function loadSpending(supabase: Db, workspaceId: string, from: string, bef
   return { rows, coverageRows };
 }
 
+type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
+const monthName = (value: string, locale: string) => new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}-01T00:00:00Z`));
+
 export default async function SpendingPlansPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
-  let context: Awaited<ReturnType<typeof requireWorkspace>>;
+  let context: Workspace;
   try { context = await requireWorkspace(); } catch { redirect("/setup"); }
-  const { supabase, workspace } = context;
+  const { workspace } = context;
   const currentMonth = monthPrefix(new Date(), workspace.timezone);
   const params = await searchParams;
   const requestedMonth = z.string().regex(/^(20\d\d|2100)-(0[1-9]|1[0-2])$/).safeParse(params.month);
   const invalidMonth = !!params.month && !requestedMonth.success;
   const month = requestedMonth.success ? requestedMonth.data : currentMonth;
+  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+    <header className="flex flex-wrap items-end justify-between gap-4">
+      <div><p className="eyebrow"><Link href="/plan" className="hover:text-foreground">Plan</Link> · {monthName(month, workspace.locale)}</p>
+        <h1 className="mt-1 page-title">Spending limits</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {monthName(month, workspace.locale)}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
+      <MonthPicker month={month} className={field} />
+    </header>
+    {invalidMonth && <p role="alert" className="text-sm">That link has an invalid month, so this is the current month.</p>}
+    {month !== currentMonth && <p role="status" className="rounded-lg bg-muted/60 px-4 py-3 text-sm">Viewing {month > currentMonth ? "a future" : "a past"} month. Changes apply to {monthName(currentMonth, workspace.locale)}, and saving takes you back there.</p>}
+    <Suspense fallback={<div className="min-h-[18rem]" aria-busy="true"><SkeletonCard lines={4} /></div>}>
+      <SpendingDetails context={context} month={month} currentMonth={currentMonth} />
+    </Suspense>
+  </main>;
+}
+
+async function SpendingDetails({ context: { supabase, workspace }, month, currentMonth }: { context: Workspace; month: string; currentMonth: string }) {
   const from = `${month}-01`;
   const next = nextMonthStart(month);
 
-  const [categoriesResult, plansResult, limitHistory, sourceMetadata] = await Promise.all([
+  const plansAndSpending = async () => {
+    const { data, error } = await supabase.from("spending_plans").select("id, category_id, currency_code, limit_minor::text, enabled, version, rollover, rollover_from")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
+    if (error) throw error;
+    const plans = data ?? [];
+    const earliest = plans.filter(plan => plan.rollover).map(plan => plan.rollover_from.slice(0, 7)).sort()[0];
+    const spending = await loadSpending(supabase, workspace.id, earliest && earliest < month ? `${earliest}-01` : from, next);
+    return { plans, ...spending };
+  };
+  const [categoriesResult, { plans, rows, coverageRows }, limitHistory, sourceMetadata] = await Promise.all([
     supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).order("name"),
-    supabase.from("spending_plans").select("id, category_id, currency_code, limit_minor::text, enabled, version, rollover, rollover_from")
-      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
+    plansAndSpending(),
     loadLimitHistory(supabase, workspace.id, from),
     loadSourceCoverageMetadata(supabase, workspace.id, true),
   ]);
-  if (categoriesResult.error || plansResult.error) throw categoriesResult.error ?? plansResult.error;
-  const categories = categoriesResult.data ?? [], plans = plansResult.data ?? [];
-  const earliest = plans.filter(plan => plan.rollover).map(plan => plan.rollover_from.slice(0, 7)).sort()[0];
-  const { rows, coverageRows } = await loadSpending(supabase, workspace.id, earliest && earliest < month ? `${earliest}-01` : from, next);
+  if (categoriesResult.error) throw categoriesResult.error;
+  const categories = categoriesResult.data ?? [];
 
   const to = new Date(Date.parse(`${next}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
   const names = new Map(categories.map(item => [item.id, item.name]));
@@ -92,18 +118,8 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
       allowance: result.allowanceMinor, rolloverResult: result.rolloverResult, remaining: result.remainingMinor, partial: result.partial, limitation: result.limitation };
   });
   const needsReview = rows.filter(row => row.status === "posted" && row.reviewReasons?.length && row.postedOn >= from && row.postedOn < next).length;
-  const monthName = (value: string) => new Intl.DateTimeFormat(workspace.locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}-01T00:00:00Z`));
-
-  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
-    <header className="flex flex-wrap items-end justify-between gap-4">
-      <div><p className="eyebrow"><Link href="/plan" className="hover:text-foreground">Plan</Link> · {monthName(month)}</p>
-        <h1 className="mt-1 page-title">Spending limits</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {monthName(month)}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
-      <MonthPicker month={month} className={field} />
-    </header>
-    {invalidMonth && <p role="alert" className="text-sm">That link has an invalid month, so this is the current month.</p>}
-    {month !== currentMonth && <p role="status" className="rounded-lg bg-muted/60 px-4 py-3 text-sm">Viewing {month > currentMonth ? "a future" : "a past"} month. Changes apply to {monthName(currentMonth)}, and saving takes you back there.</p>}
-    {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending in {monthName(month)} is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
+  return <>
+    {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending in {monthName(month, workspace.locale)} is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
     {progress.length > 0 && <section className={card} aria-labelledby="limits-heading">
       <h2 id="limits-heading" className="text-sm font-medium">Category limits</h2>
       <ul className="divide-y divide-border">{progress.map(plan => {
@@ -128,7 +144,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
               <SafeForm action={saveSpendingPlanSafely} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} />
                 <input type="hidden" name="categoryId" value={plan.category_id} /><input type="hidden" name="currency" value={plan.currency_code} />
-                <label className="grid gap-1 text-sm">Monthly limit for {monthName(currentMonth)} ({plan.currency_code})<input name="amount" required inputMode="decimal" defaultValue={formatInputAmount(plan.limit_minor, plan.currency_code)} className={field + " w-28"} /></label>
+                <label className="grid gap-1 text-sm">Monthly limit for {monthName(currentMonth, workspace.locale)} ({plan.currency_code})<input name="amount" required inputMode="decimal" defaultValue={formatInputAmount(plan.limit_minor, plan.currency_code)} className={field + " w-28"} /></label>
                 <button aria-label={`Update ${plan.name} limit`} className={linkButton}>Update limit</button>
               </SafeForm>
               <SafeForm action={toggleSpendingPlanSafely}><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input type="hidden" name="enabled" value={plan.enabled ? "false" : "true"} /><button aria-label={`${plan.enabled ? "Disable" : "Enable"} ${plan.name}`} className={linkButton}>{plan.enabled ? "Disable" : "Enable"}</button></SafeForm>
@@ -151,5 +167,5 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
       </SafeForm>
     </section>}
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading history…</p>}><PlanningHistory entityType="spending_plan" destination="/plan/spending" categories={names} /></Suspense>
-  </main>;
+  </>;
 }

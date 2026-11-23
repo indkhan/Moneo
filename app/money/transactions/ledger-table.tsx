@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { coreFeatures, createCoreRowModel, flexRender, tableFeatures, useTable, type ColumnDef, type CoreFeatures } from "@tanstack/react-table";
 import { formatMoney } from "@/lib/finance/format";
 import type { TransactionGroup, TransactionSort } from "./filters";
 import { groupKey } from "./grouping";
 import { kindLabel, statusLabel } from "./labels";
-import { BulkBar } from "./bulk-bar";
+
+const BulkBar = dynamic(() => import("./bulk-bar").then(module => module.BulkBar), {
+  loading: () => <div aria-busy="true" className="h-16 animate-pulse rounded-xl bg-muted" />,
+});
 
 export type LedgerRow = {
   id: string; version: number; posted_on: string; description: string; amount_minor: string; currency_code: string; status: string; kind: string;
@@ -23,7 +26,8 @@ function signed(minor: string, currency: string, locale: string) {
 }
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
-const phoneHidden = (column: string) => ["date", "category", "merchant", "account"].includes(column) ? "max-md:hidden" : "";
+const headingCell = "whitespace-nowrap border-b border-border px-3 py-3.5 font-normal";
+const bodyCell = "whitespace-nowrap border-b border-border px-3 py-3.5 md:max-w-xs";
 
 export function LedgerTable({ rows, accountNames, categories, merchants, query, sort, sortHrefs, groups, openId, closeHref, locale, requestId }: {
   rows: LedgerRow[]; accountNames: Record<string, string>; categories: Named[]; merchants: Named[]; query: string; sort: TransactionSort;
@@ -40,28 +44,6 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
   const allSelected = rows.length > 0 && selected.length === rows.length;
   const arrow = (column: "date" | "amount") => sort.startsWith(column) ? (sort.endsWith("desc") ? "↓" : "↑") : "↕";
   const sortName = { "date-desc": "newest first", "date-asc": "oldest first", "amount-desc": "largest first", "amount-asc": "smallest first" }[sort];
-
-  const columns = useMemo<ColumnDef<CoreFeatures, LedgerRow>[]>(() => [
-    { id: "select", header: () => <input type="checkbox" aria-label="Select all on this page" checked={allSelected} onChange={() => setSelected(allSelected ? [] : rows.map(row => row.id))} />,
-      cell: ({ row }) => <input type="checkbox" aria-label={`Select ${row.original.description}`} checked={selected.includes(row.original.id)} onChange={() => toggle(row.original.id)} /> },
-    { id: "date", header: () => <Link className="hover:text-brand" aria-label={`Sort by date (currently ${sortName})`} href={sortHrefs.date} scroll={false}>Date {arrow("date")}</Link>,
-      cell: ({ row }) => <span className="font-mono text-muted-foreground">{row.original.posted_on}</span> },
-    { id: "description", header: "Description", cell: ({ row }) => <span className="flex min-w-0 flex-wrap items-center gap-x-2 md:flex-nowrap">
-      <Link className="min-w-0 max-w-full truncate font-medium text-foreground hover:text-brand hover:underline" href={href(row.original.id)} scroll={false}>{row.original.description}</Link>
-      <span className="w-full font-mono text-xs text-muted-foreground md:hidden">{row.original.posted_on}</span>
-      {row.original.kind !== "ordinary" || row.original.status !== "posted" ? <span className="shrink-0 text-[11px] text-muted-foreground">{[row.original.kind !== "ordinary" && kindLabel(row.original.kind), row.original.status !== "posted" && statusLabel(row.original.status)].filter(Boolean).join(" · ")}</span> : null}
-      {row.original.review_reasons?.length ? <span title="Needs review" className="shrink-0 rounded-[5px] border border-warning px-1.5 font-mono text-[11px] text-warning">review</span> : null}
-      {row.original.tags?.map(tag => <span key={tag} className="hidden shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground lg:inline">{tag}</span>)}
-    </span> },
-    { id: "category", header: "Category", cell: ({ row }) => <span className="text-muted-foreground">{row.original.category_id ? categoryNames[row.original.category_id] ?? "Unknown" : "Uncategorized"}</span> },
-    { id: "merchant", header: "Merchant", cell: ({ row }) => <span className="text-muted-foreground">{row.original.merchant_id ? merchantNames[row.original.merchant_id] ?? "Unknown" : "—"}</span> },
-    { id: "account", header: "Account", cell: ({ row }) => <span className="text-muted-foreground">{accountNames[row.original.account_id] ?? "Unknown"}</span> },
-    { id: "amount", header: () => <Link className="hover:text-brand" aria-label={`Sort by amount (currently ${sortName})`} href={sortHrefs.amount} scroll={false}>Amount {arrow("amount")}</Link>,
-      cell: ({ row }) => <span className={`font-mono font-medium tabular-nums ${BigInt(row.original.amount_minor) > 0n ? "text-success" : ""}`}>{signed(row.original.amount_minor, row.original.currency_code, locale)}</span> },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [rows, selected, allSelected, sort, sortHrefs, categoryNames, merchantNames, accountNames, locale, query]);
-
-  const table = useTable({ features: tableFeatures({ ...coreFeatures, coreRowModel: createCoreRowModel() }), data: rows, columns, getRowId: row => row.id });
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -88,28 +70,46 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
   }, [openId]);
 
   if (!rows.length) return <p className="rounded-xl border border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground">No transactions match. Remove a filter or import a statement.</p>;
-  const tableRows = table.getRowModel().rows;
   const targets = rows.filter(row => selected.includes(row.id));
   return <>
     <div className="overflow-auto rounded-[18px] border border-border bg-card md:[max-height:calc(100dvh-12rem)]">
       <table className="w-full border-separate md:min-w-[720px] border-spacing-0 text-left text-sm">
         <thead className="sticky top-0 z-10 bg-card font-mono text-[11px] uppercase tracking-[0.06em] text-subtle">
-          {table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header =>
-            <th key={header.id} scope="col" className={`whitespace-nowrap border-b border-border px-3 py-3.5 font-normal ${phoneHidden(header.column.id)} ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
+          <tr>
+            <th scope="col" className={`${headingCell} w-8`}><input type="checkbox" aria-label="Select all on this page" checked={allSelected} onChange={() => setSelected(allSelected ? [] : rows.map(row => row.id))} /></th>
+            <th scope="col" className={`${headingCell} max-md:hidden`}><Link className="hover:text-brand" aria-label={`Sort by date (currently ${sortName})`} href={sortHrefs.date} scroll={false}>Date {arrow("date")}</Link></th>
+            <th scope="col" className={headingCell}>Description</th>
+            <th scope="col" className={`${headingCell} max-md:hidden`}>Category</th>
+            <th scope="col" className={`${headingCell} max-md:hidden`}>Merchant</th>
+            <th scope="col" className={`${headingCell} max-md:hidden`}>Account</th>
+            <th scope="col" className={`${headingCell} text-right`}><Link className="hover:text-brand" aria-label={`Sort by amount (currently ${sortName})`} href={sortHrefs.amount} scroll={false}>Amount {arrow("amount")}</Link></th>
+          </tr>
         </thead>
         <tbody ref={body}>
-          {tableRows.map((row, index) => {
-            const key = groups ? groupKey(row.original, groups.by) : null;
-            const header = groups && key !== null && (index === 0 || groupKey(tableRows[index - 1].original, groups.by) !== key);
+          {rows.map((row, index) => {
+            const key = groups ? groupKey(row, groups.by) : null;
+            const header = groups && key !== null && (index === 0 || groupKey(rows[index - 1], groups.by) !== key);
             const summary = key ? groups?.summaries[key] : undefined;
             return <Fragment key={row.id}>
-              {header && <tr><th colSpan={columns.length} scope="rowgroup" className="border-b border-border bg-card px-3 pb-1.5 pt-4 text-left">
+              {header && <tr><th colSpan={7} scope="rowgroup" className="border-b border-border bg-card px-3 pb-1.5 pt-4 text-left">
                 <span className="text-sm font-medium">{groups.labels[key] ?? key}</span>
                 {summary && <span className="ml-3 text-xs font-normal text-muted-foreground">{summary.count} {summary.count === 1 ? "transaction" : "transactions"} · <span className="font-mono">{Object.entries(summary.totals).map(([currency, minor]) => signed(minor, currency, locale)).join(" · ")}</span></span>}
               </th></tr>}
               <tr data-index={index} data-active={index === active || undefined} onClick={() => setActive(index)}
-                className={`${index === active ? "bg-muted" : "hover:bg-muted/60"} ${row.original.id === openId ? "outline outline-1 -outline-offset-1 outline-brand" : ""}`}>
-                {row.getAllCells().map(cell => <td key={cell.id} className={`whitespace-nowrap border-b border-border px-3 py-3.5 ${phoneHidden(cell.column.id)} ${cell.column.id === "description" ? "max-md:w-full max-md:max-w-0 md:max-w-xs" : "md:max-w-xs"} ${cell.column.id === "amount" ? "text-right" : ""}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
+                className={`${index === active ? "bg-muted" : "hover:bg-muted/60"} ${row.id === openId ? "outline outline-1 -outline-offset-1 outline-brand" : ""}`}>
+                <td className={bodyCell}><input type="checkbox" aria-label={`Select ${row.description}`} checked={selected.includes(row.id)} onChange={() => toggle(row.id)} /></td>
+                <td className={`${bodyCell} max-md:hidden font-mono text-muted-foreground`}>{row.posted_on}</td>
+                <td className={`${bodyCell} max-md:w-full max-md:max-w-0`}><span className="flex min-w-0 flex-wrap items-center gap-x-2 md:flex-nowrap">
+                  <Link className="min-w-0 max-w-full truncate font-medium text-foreground hover:text-brand hover:underline" href={href(row.id)} scroll={false}>{row.description}</Link>
+                  <span className="w-full font-mono text-xs text-muted-foreground md:hidden">{row.posted_on}</span>
+                  {row.kind !== "ordinary" || row.status !== "posted" ? <span className="shrink-0 text-[11px] text-muted-foreground">{[row.kind !== "ordinary" && kindLabel(row.kind), row.status !== "posted" && statusLabel(row.status)].filter(Boolean).join(" · ")}</span> : null}
+                  {row.review_reasons?.length ? <span title="Needs review" className="shrink-0 rounded-[5px] border border-warning px-1.5 font-mono text-[11px] text-warning">review</span> : null}
+                  {row.tags?.map(tag => <span key={tag} className="hidden shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground lg:inline">{tag}</span>)}
+                </span></td>
+                <td className={`${bodyCell} max-md:hidden text-muted-foreground`}>{row.category_id ? categoryNames[row.category_id] ?? "Unknown" : "Uncategorized"}</td>
+                <td className={`${bodyCell} max-md:hidden text-muted-foreground`}>{row.merchant_id ? merchantNames[row.merchant_id] ?? "Unknown" : "—"}</td>
+                <td className={`${bodyCell} max-md:hidden text-muted-foreground`}>{accountNames[row.account_id] ?? "Unknown"}</td>
+                <td className={`${bodyCell} text-right font-mono font-medium tabular-nums ${BigInt(row.amount_minor) > 0n ? "text-success" : ""}`}>{signed(row.amount_minor, row.currency_code, locale)}</td>
               </tr>
             </Fragment>;
           })}

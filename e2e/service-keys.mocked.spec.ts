@@ -36,11 +36,16 @@ test("Ask explains missing AI and voice access instead of failing", async ({ pag
   await page.route("**/api/ai/status", route => route.fulfill({ json: { ai: false, voice: false } }));
   await page.goto("/ai?conversation=new");
   await expect(page.getByText("No AI is set up yet.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Settings → AI access" }).first()).toHaveAttribute("href", "/settings#ai-access");
+  const settings = page.getByRole("link", { name: "Settings → AI access" }).first();
   await page.getByRole("button", { name: "Call", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Voice calls and dictation need an OpenAI API key." })).toBeVisible();
   await page.getByRole("button", { name: "Talk: record a voice message" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Add one in Settings" }).last()).toBeVisible();
+  await settings.click();
+  await expect(page).toHaveURL(/\/settings#ai-access$/);
+  const access = page.locator("#ai-access");
+  await expect(access).toBeVisible();
+  await expect.poll(() => access.evaluate(section => Math.abs(section.getBoundingClientRect().top - parseFloat(getComputedStyle(section).scrollMarginTop)))).toBeLessThan(2);
 });
 
 test("Settings keeps every key and connection in one section", async ({ page }) => {

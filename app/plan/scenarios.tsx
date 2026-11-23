@@ -21,10 +21,11 @@ export async function ScenarioHistory() {
   const { supabase, workspace } = await requireWorkspace();
   const history = await supabase.from("scenario_events").select("id, entity_type, entity_id, before, after, undone, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50);
   if (history.error) throw history.error;
-  const ids = (type: string) => [...new Set((history.data ?? []).filter(event => event.entity_type === type).map(event => event.entity_id))];
+  const ids = (type: string) => [...new Set((history.data ?? []).filter(event => !event.undone && event.entity_type === type).map(event => event.entity_id))];
+  const scenarioIds = ids("scenario"), overrideIds = ids("override");
   const [scenarios, overrides] = await Promise.all([
-    supabase.from("scenarios").select("id, version").eq("workspace_id", workspace.id).in("id", ids("scenario")),
-    supabase.from("scenario_overrides").select("id, version").eq("workspace_id", workspace.id).in("id", ids("override")),
+    scenarioIds.length ? supabase.from("scenarios").select("id, version").eq("workspace_id", workspace.id).in("id", scenarioIds) : { data: [], error: null },
+    overrideIds.length ? supabase.from("scenario_overrides").select("id, version").eq("workspace_id", workspace.id).in("id", overrideIds) : { data: [], error: null },
   ]);
   for (const error of [scenarios.error, overrides.error]) if (error) throw error;
   const versions = new Map([...(scenarios.data ?? []), ...(overrides.data ?? [])].map(record => [record.id, record.version]));
