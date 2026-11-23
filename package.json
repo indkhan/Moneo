@@ -28,7 +28,7 @@
     "desktop:dist": "electron-builder --projectDir desktop --config electron-builder.config.cjs",
     "desktop:smoke": "node scripts/desktop/package-smoke.mjs",
     "pretest": "npm run check:privacy",
-    "prelint": "npm run check:privacy && npm run check:features"
+    "prelint": "node --run check:privacy && node --run check:features"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.96",
