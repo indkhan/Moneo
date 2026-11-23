@@ -35,7 +35,7 @@ it("counts only a claude.ai sign-in as the owner's plan", () => {
 
 it("gives Claude only Moneo's tools, its instructions as the system prompt and the call's reasoning effort", async () => {
   const balance = tool({ description: "Balance", inputSchema: z.object({ account: z.string(), other: z.string().optional() }).refine(input => input.account !== input.other, "Pick two accounts"), execute: async () => ({}) });
-  const model = claudeModel("claude-opus-5-5", { accounts_balance: balance });
+  const model = await claudeModel("claude-opus-5-5", { accounts_balance: balance });
   const prompt = [{ role: "system" as const, content: "You are Moneo." }, { role: "user" as const, content: [{ type: "text" as const, text: "Hi" }] }];
   const result = await model.doStream({ prompt, providerOptions: { openai: { reasoningEffort: "low" } } } as Parameters<typeof model.doStream>[0]) as unknown as { options: { prompt: unknown[] } };
   const settings = provider.calls.at(-1)!.settings;

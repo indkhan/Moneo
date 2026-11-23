@@ -288,7 +288,7 @@ ${artifactBrief}` : ""}`,
         emit({ type: "steered", steers: taken });
         return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
       },
-      ...withTools(model, { ...planTool, ...retainTools({
+      ...await withTools(model, { ...planTool, ...retainTools({
         document_read: tool({ description: "Reopen a file attached in this conversation by its id: a location range, or every place a word or phrase appears (with its location). Without location or search it returns the start. Read-only.",
           inputSchema: z.object({
             id: z.string().trim().min(1).max(200).describe("The file's 8-character id, or its exact name"),

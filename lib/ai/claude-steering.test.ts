@@ -19,7 +19,7 @@ function fakeInjector() {
 }
 
 async function startRun(steering: Parameters<typeof claudeModel>[2], abortSignal?: AbortSignal) {
-  const model = claudeModel("claude-opus-5-5", {}, steering);
+  const model = await claudeModel("claude-opus-5-5", {}, steering);
   const { stream } = await model.doStream({ prompt: [{ role: "user", content: [{ type: "text", text: "Hi" }] }], abortSignal } as Parameters<typeof model.doStream>[0]);
   const injector = fakeInjector();
   (run.settings!.onStreamStart as (injector: unknown) => void)(injector);
@@ -68,7 +68,7 @@ it("stops polling when the answer ends, fails or is canceled, and drops a steer 
 });
 
 it("leaves other callers alone: no steering means no streaming input", async () => {
-  const model = claudeModel("claude-opus-5-5", {});
+  const model = await claudeModel("claude-opus-5-5", {});
   await model.doStream({ prompt: [{ role: "user", content: [{ type: "text", text: "Hi" }] }] } as Parameters<typeof model.doStream>[0]);
   expect(run.settings).not.toHaveProperty("streamingInput");
   expect(run.settings).not.toHaveProperty("onStreamStart");
