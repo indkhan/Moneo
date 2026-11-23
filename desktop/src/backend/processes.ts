@@ -102,6 +102,15 @@ export async function waitFor(what: string, check: () => Promise<boolean>, timeo
   }
 }
 
+export async function startWithOneRetry(start: () => Promise<void>, onRetry: (error: Error) => Promise<void>) {
+  try {
+    await start();
+  } catch (error) {
+    await onRetry(error as Error);
+    await start();
+  }
+}
+
 export async function httpOk(url: string) {
   const response = await fetch(url, { signal: AbortSignal.timeout(2000) });
   await response.body?.cancel();

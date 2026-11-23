@@ -115,6 +115,7 @@ try {
   console.log("\n== First start (older bundle)");
   let started = Date.now();
   running = await backend.startBackend({ resources: older, home }, progress);
+  await running.storageReady;
   console.log(`  ready in ${((Date.now() - started) / 1000).toFixed(1)} s at ${running.env.NEXT_PUBLIC_SUPABASE_URL}`);
   const config = JSON.parse(await fs.readFile(path.join(home, "config.json"), "utf8"));
   assert.ok(config.bootstrapped && config.secrets.JWT_SECRET && config.secrets.SUPABASE_SERVICE_ROLE_KEY);
@@ -151,6 +152,7 @@ try {
   console.log("\n== Upgrade start after the force-quit (current bundle)");
   started = Date.now();
   running = await backend.startBackend({ resources: current, home }, progress);
+  await running.storageReady;
   console.log(`  ready in ${((Date.now() - started) / 1000).toFixed(1)} s`);
   const { env } = running;
   const gone = [oldPostmaster, ...Object.values(left), decoyRest.pid].filter(alive);
@@ -236,6 +238,7 @@ try {
   const restored = path.join(work, "home-restored");
   await backend.restore({ resources: current, home: restored }, folder);
   running = await backend.startBackend({ resources: current, home: restored }, progress);
+  await running.storageReady;
   const again = await signIn(running.env);
   assert.equal(again.user.id, session.user.id);
   const workspaces = await rest(running.env, "workspaces?select=id", again.access_token);

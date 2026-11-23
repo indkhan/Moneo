@@ -15,3 +15,16 @@ it("keeps version output delivered after process exit (PR #206 Intel Mac relaunc
   child.emit("close", 0);
   expect(await result).toEqual({ code: 0, output: "postgres (PostgreSQL) 17.11\n" });
 });
+
+it("starts file storage a second time when the first start fails, and reports a second failure", async () => {
+  const { startWithOneRetry } = await import("./processes");
+  const flaky = vi.fn().mockRejectedValueOnce(new Error("Storage API stopped while starting")).mockResolvedValueOnce(undefined);
+  const retried = vi.fn(async () => {});
+  await startWithOneRetry(flaky, retried);
+  expect(flaky).toHaveBeenCalledTimes(2);
+  expect(retried).toHaveBeenCalledWith(new Error("Storage API stopped while starting"));
+
+  const broken = vi.fn().mockRejectedValue(new Error("still down"));
+  await expect(startWithOneRetry(broken, async () => {})).rejects.toThrow("still down");
+  expect(broken).toHaveBeenCalledTimes(2);
+});

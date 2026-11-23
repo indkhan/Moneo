@@ -7,13 +7,14 @@ import { newConfig, readConfig, writeConfig, type Config } from "./config";
 import { startGateway } from "./gateway";
 import { applyMigrations, bootstrap, bootstrapFiles, bundledMigrations, connect, createOwner, migrationState, revokeMigrationOwners } from "./migrations";
 import { bundledMajor, checkMajor, initCluster, isInitialized, recoverStalePid, runningPid, startCluster, stopCluster, type Cluster } from "./postgres";
-import { defaultFork, exe, freePort, httpOk, isAlive, openLog, PidFile, pipeTo, platformKey, preferredPort, spawnService, waitFor, type ForkFn, type ForkedProcess } from "./processes";
+import { defaultFork, exe, freePort, httpOk, isAlive, openLog, PidFile, pipeTo, platformKey, preferredPort, spawnService, startWithOneRetry, waitFor, type ForkFn, type ForkedProcess } from "./processes";
 
 export type { ForkFn, ForkedProcess } from "./processes";
 export type BackendPaths = { resources: string; home: string };
 export type Progress = (step: { id: string; label: string; state: "running" | "done" | "error"; detail?: string }) => void;
 export type RunningBackend = {
   env: Record<string, string>;
+  storageReady: Promise<void>;
   stop(): Promise<void>;
   onExit(cb: (service: string, code: number | null) => void): void;
 };
@@ -274,19 +275,32 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     if (process.platform === "darwin") restEnv.DYLD_FALLBACK_LIBRARY_PATH = l.pgLib;
     const fork = options.fork ?? defaultFork;
     const [authLog, storageLog, restLog] = await Promise.all(["auth", "storage", "rest"].map(name => openLog(l.logs, name)));
-    const launch = (name: string, child: ChildProcess | ForkedProcess, log: WriteStream) => {
-      const service = track(name, child, log, () => stopping, emitExit);
+    const launch = (name: string, child: ChildProcess | ForkedProcess, log: WriteStream, onExit = emitExit) => {
+      const service = track(name, child, log, () => stopping, onExit);
       services.push(service);
       return service;
     };
     const auth = launch("auth", spawnService(l.gotrue, [], authEnv, path.dirname(l.gotrue)), authLog);
-    const storage = launch("storage", fork(l.storageServer, [], { env: storageEnv, cwd: l.storageApi, serviceName: "Moneo Storage" }), storageLog);
     const rest = launch("rest", spawnService(l.postgrest, [], restEnv, path.dirname(l.postgrest)), restLog);
-    await recordPids();
+    let storageUp = false;
+    let storage: Service | undefined;
+    const startStorage = async () => {
+      storage = launch("storage", fork(l.storageServer, [], { env: storageEnv, cwd: l.storageApi, serviceName: "Moneo Storage" }), storageLog, (service, code) => { if (storageUp) emitExit(service, code); });
+      const started = storage;
+      await recordPids();
+      await waitFor("Storage API", () => httpOk(`http://127.0.0.1:${storagePort}/status`), 180_000, () => started.exited);
+    };
+    const storageReady = step("storage", "Starting file storage", () => startWithOneRetry(startStorage, async error => {
+      if (stopping) throw error;
+      note(`File storage did not start (${error.message}); starting it once more`);
+      await storage?.stop();
+    })).then(() => { storageUp = true; });
+    storageReady.catch(() => note("File storage did not start after a second try"));
+    const storageBeforeApp = fresh || !state.applied.length || state.pending.length > 0 || servicesChanged || config.services === undefined;
     await Promise.all([
       step("auth", "Starting sign-in (GoTrue)", () => waitFor("GoTrue", () => httpOk(`http://127.0.0.1:${authPort}/health`), 180_000, () => auth.exited)),
-      step("storage", "Starting file storage", () => waitFor("Storage API", () => httpOk(`http://127.0.0.1:${storagePort}/status`), 180_000, () => storage.exited)),
       step("rest", "Starting the data API (PostgREST)", () => waitFor("PostgREST", () => httpOk(`http://127.0.0.1:${restAdminPort}/ready`), 60_000, () => rest.exited)),
+      ...(storageBeforeApp ? [storageReady] : []),
     ]);
 
     gateway = await step("gateway", "Connecting the services", () => startGateway(config.ports.api, { auth: authPort, rest: restPort, storage: storagePort }, note));
@@ -305,6 +319,7 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
 
     return {
       env,
+      storageReady,
       stop,
       onExit: cb => { listeners.push(cb); },
     };

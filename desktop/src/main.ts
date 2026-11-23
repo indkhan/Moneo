@@ -114,6 +114,10 @@ function main() {
         await showApp(!hidden || Boolean(window?.isVisible()));
         closeSetup();
         scheduleBackups();
+        running.storageReady.catch(error => {
+          if (quitting || busy || backend !== running) return;
+          fail("File storage could not start, so imports and chat attachments are unavailable", error);
+        });
       } catch (error) {
         progress({ id: "app", label: "Starting Moneo", state: "error" });
         await stopServices();
