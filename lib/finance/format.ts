@@ -5,6 +5,17 @@ function exactMinor(value: bigint | string | number): bigint {
   return BigInt(value);
 }
 
+function moneyFormats(locale: string) {
+  return {
+    locale,
+    integer: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }),
+    decimal: new Intl.NumberFormat(locale).formatToParts(1.1).find(part => part.type === "decimal")?.value ?? ".",
+    fractions: new Map<number, Intl.NumberFormat>(),
+  };
+}
+
+let lastMoneyFormats: ReturnType<typeof moneyFormats> | undefined;
+
 export function formatMoney(amountMinor: bigint | string | number, currencyCode: string, locale?: string): string {
   const value = exactMinor(amountMinor);
   const abs = value < 0n ? -value : value;
@@ -12,10 +23,15 @@ export function formatMoney(amountMinor: bigint | string | number, currencyCode:
   const divisor = 10n ** BigInt(digits);
   const whole = abs / divisor;
   if (locale) {
-    const integer = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(whole);
-    const decimal = new Intl.NumberFormat(locale).formatToParts(1.1).find(part => part.type === "decimal")?.value ?? ".";
-    const fraction = new Intl.NumberFormat(locale, { useGrouping: false, minimumIntegerDigits: Math.max(1, digits), maximumFractionDigits: 0 }).format(abs % divisor);
-    return `${value < 0n ? "-" : ""}${currencyCode} ${integer}${digits ? decimal + fraction : ""}`;
+    const formats = lastMoneyFormats?.locale === locale ? lastMoneyFormats : (lastMoneyFormats = moneyFormats(locale));
+    const integer = formats.integer.format(whole);
+    if (!digits) return `${value < 0n ? "-" : ""}${currencyCode} ${integer}`;
+    let fraction = formats.fractions.get(digits);
+    if (!fraction) {
+      fraction = new Intl.NumberFormat(locale, { useGrouping: false, minimumIntegerDigits: digits, maximumFractionDigits: 0 });
+      formats.fractions.set(digits, fraction);
+    }
+    return `${value < 0n ? "-" : ""}${currencyCode} ${integer}${formats.decimal}${fraction.format(abs % divisor)}`;
   }
   if (digits === 0) {
     return `${value < 0n ? "-" : ""}${currencyCode} ${whole}`;
