@@ -1,0 +1,8 @@
+your task is to keep running and make the build faster till u can not make it faster  like really fast commit by commit and also make the starting of the applicaiton first load , when u open the applicaiton since it was closed and when u just restarted laptop to make it fast and lighter and all think what all can be done check also what was done by openclaw and other teams to make it really fast 
+
+you can use subagents and all as much as needed and then work in their own worktree and make pr towards this branch itself it can have infinite prs and then we finally check eveyrhting and merge with main 
+it can have 100s of prs and comits and all and they can be themself to main then 
+
+check web first of how lauren and others have beent alking about makeing ci , build , opening of applciaiton and first chat and all can be made fast 
+
+use gpt 6.2 sol and sonnet and all to do the tasks and u the orchestrator u dont need to call them only do if you want
