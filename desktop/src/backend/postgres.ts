@@ -16,9 +16,9 @@ export async function bundledMajor(bin: string) {
   return major;
 }
 
-export async function checkMajor(cluster: Cluster) {
+export async function checkMajor(cluster: Cluster, bundledVersion: string) {
   const data = (await fs.readFile(path.join(cluster.data, "PG_VERSION"), "utf8")).trim();
-  const bundled = await bundledMajor(cluster.bin);
+  const bundled = bundledVersion.split(".")[0];
   if (data !== bundled) throw new Error(`The database was created by PostgreSQL ${data}, but this Moneo bundles PostgreSQL ${bundled}. Install the matching Moneo version or restore a backup.`);
 }
 

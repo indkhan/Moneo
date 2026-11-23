@@ -75,7 +75,7 @@ export class NextServer {
         const response = await fetch(`http://127.0.0.1:${this.options.port}/api/health`, { headers: { authorization: "Bearer readiness" }, signal: AbortSignal.timeout(5_000) });
         if (response.status < 500) { log(`Next server is ready after ${Date.now() - started} ms`); return; }
       } catch {}
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
     child.kill();
     throw new Error(`The Moneo server did not answer within ${READY_TIMEOUT / 1000} seconds.\n${this.recent.slice(-8).join("\n")}`);

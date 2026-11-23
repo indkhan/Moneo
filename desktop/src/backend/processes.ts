@@ -98,7 +98,7 @@ export async function waitFor(what: string, check: () => Promise<boolean>, timeo
     if (gone) throw new Error(`${what} stopped while starting: ${gone}`);
     try { if (await check()) return; } catch (error) { last = error; }
     if (Date.now() > deadline) throw new Error(`${what} did not become ready within ${timeoutMs / 1000} s${last ? ` (${(last as Error).message})` : ""}`);
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
 }
 
