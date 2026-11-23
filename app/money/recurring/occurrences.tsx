@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { recurringCadences } from "@/lib/finance/cadences";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expandSchedule } from "@/lib/finance/model";
 import { undoOccurrence } from "./actions";
@@ -7,17 +6,20 @@ import { OccurrenceForm } from "./occurrence-form";
 import { formatMoney } from "@/lib/recurring/series";
 import { ActionForm } from "./forms";
 
-export async function OccurrenceReview({ supabase, workspace, accountNames }: { supabase: SupabaseClient; workspace: { id: string; locale: string }; accountNames: Record<string, string> }) {
-  const [assumptions, transactions, settlements] = await Promise.all([
-    supabase.from("financial_assumptions").select("id, name, version, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, schedule_anchor_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", recurringCadences).order("name").limit(500),
-    supabase.from("transactions").select("id, account_id, description, version, posted_on, status, amount_minor::text, currency_code").eq("workspace_id", workspace.id).eq("kind", "ordinary").eq("review_reasons", "{}").in("status", ["pending", "posted"]).order("posted_on", { ascending: false }).limit(500),
+type Schedule = { id: string; name: string; version: number; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; schedule_anchor_on: string | null };
+
+export async function OccurrenceReview({ supabase, workspace, accountNames, schedules }: {
+  supabase: SupabaseClient; workspace: { id: string; locale: string }; accountNames: Record<string, string>; schedules: Schedule[] | null;
+}) {
+  const [transactions, settlements] = await Promise.all([
+    schedules?.length ? supabase.from("transactions").select("id, account_id, description, version, posted_on, status, amount_minor::text, currency_code").eq("workspace_id", workspace.id).eq("kind", "ordinary").eq("review_reasons", "{}").in("status", ["pending", "posted"]).order("posted_on", { ascending: false }).limit(500) : { data: [], error: null },
     supabase.from("recurring_occurrence_settlements").select("id, assumption_id, transaction_id, scheduled_on, completes_occurrence, undone_at, version, receipt").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(500),
   ]);
-  if (assumptions.error || transactions.error || settlements.error) return <section aria-label="Occurrence reconciliation" role="alert">Could not load occurrence associations. Reload to review settlements.</section>;
-  if (!assumptions.data?.length && !settlements.data?.length) return null;
-  const names = new Map((assumptions.data ?? []).map(row => [row.id, row.name]));
+  if (!schedules || transactions.error || settlements.error) return <section aria-label="Occurrence reconciliation" role="alert">Could not load occurrence associations. Reload to review settlements.</section>;
+  if (!schedules.length && !settlements.data?.length) return null;
+  const names = new Map(schedules.map(row => [row.id, row.name]));
   const start = new Date(new Date().getTime() - 62 * 86_400_000).toISOString().slice(0, 10);
-  const scheduleOptions = (assumptions.data ?? []).map(row => ({ value: `${row.id}:${row.version}`, accountId: row.account_id as string | null, currency: row.currency_code as string, amountMinor: row.amount_minor as string,
+  const scheduleOptions = schedules.map(row => ({ value: `${row.id}:${row.version}`, accountId: row.account_id, currency: row.currency_code, amountMinor: row.amount_minor,
     label: `${row.name} · ${formatMoney(row.amount_minor, row.currency_code, workspace.locale)} · starts ${row.starts_on}`,
     dates: expandSchedule({ ...row, account_id: row.account_id ?? "unassigned" }, start, 92).map(item => item.date).filter((date, index, all) => all.indexOf(date) === index).slice(0, 12) }));
   const transactionOptions = (transactions.data ?? []).map(row => ({ value: `${row.id}:${row.version}`, accountId: row.account_id as string, currency: row.currency_code as string, amountMinor: row.amount_minor as string,

@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import { text } from "node:stream/consumers";
+import { prerenderToNodeStream } from "react-dom/static";
 
 vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("./actions", () => ({ saveWealthItem: async () => {}, saveWealthItemSafely: async () => ({}), removeWealthItemSafely: async () => ({}), undoWealthEventSafely: async () => ({}) }));
@@ -23,7 +24,7 @@ const { default: WealthPage } = await import("./page");
 
 it("summarizes accounts, assets and debts and charts recorded net worth", async () => {
   vi.useFakeTimers({ now: new Date("2026-10-16T12:00:00Z"), toFake: ["Date"] });
-  const html = renderToStaticMarkup(await WealthPage());
+  const html = await text((await prerenderToNodeStream(await WealthPage())).prelude);
   vi.useRealTimers();
   expect(html).toContain("EUR 45.00");
   expect(html).toMatch(/Accounts<\/dt><dd[^>]*>EUR 40.00/);
@@ -43,7 +44,7 @@ it("shows the Scalable portfolio in its own panel, with today's move and each po
   tables.scalable_connections = [{ status: "active", last_synced_at: "2026-10-16T06:00:00Z", portfolio: { currency: "EUR", asOf: "2026-10-16", totalMinor: "5862", securitiesMinor: "3549", cryptoMinor: "0", cashMinor: "2313",
     performance: [{ timeframe: "INTRADAY", returnMinor: "136" }, { timeframe: "ONE_YEAR", returnMinor: "-3511" }], itemIds: ["etf", "cash"],
     activity: [{ id: "t", date: "2026-10-14", status: "SETTLED", type: "buy", description: "Tech ETF", shares: "3", amountMinor: "-2463", currencyCode: "EUR" }] } }];
-  const html = renderToStaticMarkup(await WealthPage());
+  const html = await text((await prerenderToNodeStream(await WealthPage())).prelude);
   vi.useRealTimers();
   expect(html).toContain("+EUR 1.36");
   expect(html).toContain("-EUR 35.11");

@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { SkeletonCard } from "@/components/skeleton";
 import { CoverageNote } from "@/components/coverage-note";
 import { ScalableInvestments } from "@/components/scalable-investments";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
@@ -37,8 +39,16 @@ function sum(items: WealthItem[]) {
 export default async function WealthPage({ searchParams }: { searchParams?: Promise<{ removed?: string; history?: string; position?: string }> } = {}) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/setup"); }
-  const { supabase, workspace } = context;
   const params = (await searchParams) ?? {};
+  return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
+    <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
+    <Suspense fallback={<div className="min-h-[18rem]" aria-busy="true"><SkeletonCard lines={4} /></div>}>
+      <WealthDetails context={context} params={params} />
+    </Suspense>
+  </main>;
+}
+
+async function WealthDetails({ context: { supabase, workspace }, params }: { context: Awaited<ReturnType<typeof requireWorkspace>>; params: { removed?: string; history?: string; position?: string } }) {
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
@@ -89,9 +99,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     lastCalculated: calculated.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, calculated.before, portfolio?.currency ?? "EUR"), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
   const scalableCalculated = portfolio && calculated.before ? calculated.rows.filter(row => row.on_date < calculated.before! && row.currency_code === portfolio.currency) : [];
 
-  return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
-    <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
-
+  return <>
     <section aria-label="Net worth" className="space-y-4">
       {currencies.map(currency => { const recorded = chartPoints(currency); const values = recorded.map(point => point.value); const low = values.reduce((a, b) => b < a ? b : a, values[0]), high = values.reduce((a, b) => b > a ? b : a, values[0]); return <div key={currency} className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm text-muted-foreground">Net worth ({currency})</h2>
@@ -155,5 +163,5 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
         {!event.undone_at && current && <SafeForm action={undoWealthEventSafely}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={current.version} /><button aria-label={`Undo ${after.name} change`} className="min-h-11 text-sm text-muted-foreground hover:text-foreground">Undo</button></SafeForm>}</li>;
     })}</ul>{history.length < events.length && <a href="/money/wealth?history=all#wealth-history" className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-brand underline">Show all {events.length} changes</a>}{!events.length && <p className="mt-2 text-sm text-muted-foreground">Every add, edit and removal appears here with undo.</p>}</details>
     {params.position ? <PositionDrawer key={params.position} isin={params.position} item={openIsin ? items.find(item => item.id === scalableItemId(workspace.id, `isin:${openIsin}`) && !item.removed_at) ?? null : null} /> : null}
-  </main>;
+  </>;
 }

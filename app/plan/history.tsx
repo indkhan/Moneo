@@ -10,8 +10,9 @@ export async function PlanningHistory({ entityType, destination, open, categorie
     .eq("workspace_id", workspace.id).eq("entity_type", entityType)
     .order("created_at", { ascending: false }).order("id").limit(50);
   if (error) throw error;
-  const { data: records, error: recordError } = await supabase.from(entityType === "assumption" ? "financial_assumptions" : "spending_plans")
-    .select("id, version").eq("workspace_id", workspace.id).in("id", [...new Set((events ?? []).map(event => event.entity_id))]);
+  const ids = [...new Set((events ?? []).filter(event => !event.undone).map(event => event.entity_id))];
+  const { data: records, error: recordError } = ids.length ? await supabase.from(entityType === "assumption" ? "financial_assumptions" : "spending_plans")
+    .select("id, version").eq("workspace_id", workspace.id).in("id", ids) : { data: [], error: null };
   if (recordError) throw recordError;
   const versions = new Map((records ?? []).map(row => [row.id, row.version]));
   return <details open={open} className="rounded-xl border border-border bg-card p-5 shadow-sm">

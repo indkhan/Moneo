@@ -1,16 +1,18 @@
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
-import { loadWealthItems } from "@/lib/finance/wealth";
+import { resolveBalances } from "@/lib/finance/balances";
+import type { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { formatMoney } from "@/lib/finance/format";
 
-export async function ModelSources({ db, workspace }: { db: SupabaseClient; workspace: { id: string; timezone: string; locale: string } }) {
-  const [evidence, items, rates] = await Promise.all([
-    loadBalanceEvidence(db, workspace.id, new Date().toISOString()), loadWealthItems(db, workspace.id),
-    db.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source").eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("id").limit(20),
-  ]);
+export async function ModelSources({ db, workspace, plan }: {
+  db: SupabaseClient;
+  workspace: { id: string; timezone: string; locale: string };
+  plan: Pick<Awaited<ReturnType<typeof evaluatePlanForWorkspace>>, "asOf" | "calculationEvidence">;
+}) {
+  const { balances: evidence, wealth: items } = plan.calculationEvidence;
+  const rates = await db.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source").eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("id").limit(20);
   if (rates.error) throw rates.error;
-  const balances = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone);
+  const balances = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, plan.asOf, workspace.timezone);
   return <details className="rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">Where the numbers come from</summary>
     <p className="mt-2 text-sm text-muted-foreground">Forecasts use your current balances minus held cash, reservations and the safety buffer. Investments and assets count toward net worth, not spending.</p>
     <nav aria-label="Financial model evidence" className="mt-3 flex flex-wrap gap-4 text-sm underline"><Link href="/money/accounts">Edit accounts and archives</Link><Link href="/">Record dated balances</Link><Link href="/money/wealth">Edit valuations and debt schedules</Link><Link href="/plan/currency">Edit display currency and dated FX</Link><Link href="/money/recurring">Review recurring evidence</Link><a href="#forecast-preferences">Edit forecast defaults</a></nav>

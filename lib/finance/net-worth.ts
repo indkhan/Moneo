@@ -151,14 +151,18 @@ export function firstSyncedOn(valuations: Valuation[], knownIds: Set<string>): s
 }
 
 export async function loadScalableHistory(db: ReadonlyDb, workspaceId: string) {
-  const rows: CalculatedValue[] = [];
-  for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await db.from("scalable_value_history").select("on_date, currency_code, total_minor::text").eq("workspace_id", workspaceId).order("on_date").range(offset, offset + 999);
-    if (error) throw error;
-    rows.push(...data ?? []);
-    if (!data || data.length < 1000) break;
-  }
-  const connections = await db.from("scalable_connections").select("portfolio").eq("workspace_id", workspaceId).not("portfolio", "is", null);
+  const readValues = async () => {
+    const rows: CalculatedValue[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await db.from("scalable_value_history").select("on_date, currency_code, total_minor::text").eq("workspace_id", workspaceId).order("on_date").range(offset, offset + 999);
+      if (error) throw error;
+      rows.push(...data ?? []);
+      if (!data || data.length < 1000) return rows;
+    }
+  };
+  const [rows, connections] = await Promise.all([
+    readValues(), db.from("scalable_connections").select("portfolio").eq("workspace_id", workspaceId).not("portfolio", "is", null),
+  ]);
   if (connections.error) throw connections.error;
   return { rows, knownIds: scalableKnownIds((connections.data ?? []).map(row => portfolioItems.parse(row.portfolio))) };
 }
