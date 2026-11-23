@@ -18,9 +18,9 @@ export async function ensureBankCertificate() {
   const { key, cert } = files();
   if (existsSync(key) && existsSync(cert)) return true;
   if (!existsSync(mkcert())) { log("mkcert is not bundled; bank connections cannot return to Moneo"); return false; }
-  mkdirSync(dataDir(), { recursive: true });
-  mkdirSync(caRoot(), { recursive: true });
   try {
+    mkdirSync(dataDir(), { recursive: true });
+    mkdirSync(caRoot(), { recursive: true });
     await run(mkcert(), ["-cert-file", cert, "-key-file", key, "localhost", "127.0.0.1", "::1"], { env: env("system"), timeout: 30_000, windowsHide: true });
     log("Bank return certificate created");
     return true;

@@ -39,9 +39,15 @@ SHA-256 in that script), and land in `desktop/.build/` (in a package, `resources
 3. Refuses to go on if the database has a migration newer than the bundled ones. With pending
    migrations (or other bundled service versions) on an existing database: an automatic
    `pre-upgrade` backup (the newest 5 automatic backups are kept).
-4. GoTrue (runs its migrations), Storage API (runs its migrations), PostgREST, gateway.
+4. GoTrue (runs its migrations), Storage API (runs its migrations) and PostgREST at the same time, then the gateway.
 5. `supabase/migrations` exactly like `scripts/setup.mjs` (same `supabase_migrations.schema_migrations`,
-   one transaction per file, `notify pgrst`), then the owner through the GoTrue admin API.
+   one transaction per file, `notify pgrst`), then the owner through the GoTrue admin API when `auth.users`
+   does not have it yet.
+
+The app's Next server does not wait for this: `startBackend` hands over its environment (`onEnv`) once the
+ports are chosen, before step 1, so the server boots alongside. It holds its background work (Workflow
+recovery, the scheduler, the bank return listener) until the main process posts `moneo:backend-ready`
+after step 5 (`instrumentation-node.ts`). Each step's duration is in `logs/backend.log`.
 
 ## Differences from the Docker backend
 

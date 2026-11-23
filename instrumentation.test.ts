@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
 import { register } from "./instrumentation";
+import { DESKTOP_BACKEND_READY } from "./instrumentation-node";
 import { createServer, type AddressInfo } from "node:net";
 import { getAllPorts } from "@workflow/utils/get-port";
 const startWorld = vi.hoisted(() => vi.fn(async () => {}));
@@ -42,6 +44,25 @@ it.each([["1", "1", false], ["1", "0", true], ["0", "1", true]])("suppresses bac
   expect(startWorld).toHaveBeenCalledTimes(starts ? 1 : 0);
   expect(startScheduler).toHaveBeenCalledTimes(starts ? 1 : 0);
   expect(startBankReturnListener).toHaveBeenCalledTimes(starts ? 1 : 0);
+});
+
+it("holds background work in the desktop app until its backend is ready, so recovered workflows never meet a half-started database", async () => {
+  vi.stubEnv("NEXT_RUNTIME", "nodejs");
+  vi.stubEnv("MONEO_DESKTOP", "1");
+  const desktop = new EventEmitter();
+  Object.defineProperty(process, "parentPort", { value: desktop, configurable: true });
+  try {
+    await register();
+    desktop.emit("message", { data: "something else" });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(startWorld).not.toHaveBeenCalled();
+    expect(startBankReturnListener).not.toHaveBeenCalled();
+    desktop.emit("message", { data: DESKTOP_BACKEND_READY });
+    desktop.emit("message", { data: DESKTOP_BACKEND_READY });
+    await vi.waitFor(() => expect(startBankReturnListener).toHaveBeenCalledTimes(1));
+    expect(startWorld).toHaveBeenCalledTimes(1);
+    expect(startScheduler).toHaveBeenCalledTimes(1);
+  } finally { Reflect.deleteProperty(process, "parentPort"); }
 });
 
 it("retains listening socket ports for the actual Workflow lookup", async () => {

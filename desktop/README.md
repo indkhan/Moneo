@@ -37,7 +37,8 @@ address and ChatGPT's callback name it). If it is taken on the first run, a free
 ## Behaviour
 
 - Start: a small status window shows each step (the first run says it is creating a private database),
-  then the app window opens Home. On failure it offers Try again, Open logs folder, Restore from backup, Quit.
+  then the app window opens Home as soon as its first paint is ready. The Moneo server starts at the same
+  time as the database and services, and the bank certificate is made alongside them. On failure it offers Try again, Open logs folder, Restore from backup, Quit.
 - Closing the window keeps Moneo in the tray, so background syncs and phone access keep working.
 - Moneo starts hidden in the tray when you sign in to the computer. It turns this on once, at the first
   start of a new or updated install; untick "Start Moneo when I sign in" in the tray to turn it off.
