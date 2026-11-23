@@ -3,9 +3,12 @@ import { formatMoney } from "./finance/format";
 const calendarDay = /^\d{4}-\d{2}-\d{2}$/;
 
 export function displayFormat(locale: string, timeZone = "UTC") {
-  const formatter = (options: Intl.DateTimeFormatOptions) => (value: string) => {
-    const day = calendarDay.test(value);
-    return new Intl.DateTimeFormat(locale, { ...options, timeZone: day ? "UTC" : timeZone }).format(new Date(day ? `${value}T00:00:00Z` : value));
+  const formatter = (options: Intl.DateTimeFormatOptions) => {
+    let dayFormat: Intl.DateTimeFormat | undefined;
+    let instantFormat: Intl.DateTimeFormat | undefined;
+    return (value: string) => calendarDay.test(value)
+      ? (dayFormat ??= new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" })).format(new Date(`${value}T00:00:00Z`))
+      : (instantFormat ??= new Intl.DateTimeFormat(locale, { ...options, timeZone })).format(new Date(value));
   };
   const relative = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   return {

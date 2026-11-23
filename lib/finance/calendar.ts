@@ -4,9 +4,13 @@ export function datePart(parts: Intl.DateTimeFormatPart[], type: string): string
   return part.value;
 }
 
+let lastCalendarFormat: { timeZone: string; format: Intl.DateTimeFormat } | undefined;
+
 export function calendarDate(value: string | Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
-    .formatToParts(new Date(value));
+  if (!lastCalendarFormat || lastCalendarFormat.timeZone !== timeZone) {
+    lastCalendarFormat = { timeZone, format: new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }) };
+  }
+  const parts = lastCalendarFormat.format.formatToParts(new Date(value));
   return `${datePart(parts, "year")}-${datePart(parts, "month")}-${datePart(parts, "day")}`;
 }
 

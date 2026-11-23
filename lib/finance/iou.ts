@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cache } from "react";
 import { jsonObject, type Db } from "@/lib/database";
 
 export type IouDirection = "lent" | "borrowed";
@@ -79,8 +80,11 @@ export async function loadCountedRepayments(supabase: Db, workspaceId: string) {
   return counted;
 }
 
-export async function loadLoanPayoutIds(supabase: Db, workspaceId: string): Promise<Set<string>> {
-  const events = await supabase.from("wealth_events").select("item_id, after").eq("workspace_id", workspaceId).is("undone_at", null).order("created_at").limit(2000);
+export const loadLoanPayoutIds = cache(async (supabase: Db, workspaceId: string): Promise<Set<string>> => {
+  const [events, settled] = await Promise.all([
+    supabase.from("wealth_events").select("item_id, after").eq("workspace_id", workspaceId).is("undone_at", null).order("created_at").limit(2000),
+    supabase.from("agent_proposals").select("payload").eq("workspace_id", workspaceId).eq("kind", "iou_settle").eq("status", "accepted").limit(1000),
+  ]);
   if (events.error) throw new Error(events.error.message);
   const loans = new Map<string, LoanStart>();
   for (const { item_id, after } of (events.data ?? []) as { item_id: string; after: { name?: string; amount_minor?: string | number; currency_code?: string; as_of?: string } }[]) {
@@ -89,7 +93,6 @@ export async function loadLoanPayoutIds(supabase: Db, workspaceId: string): Prom
     const amount = BigInt(after.amount_minor);
     loans.set(item_id, { ...parsed, amountMinor: amount < 0n ? -amount : amount, currencyCode: after.currency_code, date: String(after.as_of).slice(0, 10) });
   }
-  const settled = await supabase.from("agent_proposals").select("payload").eq("workspace_id", workspaceId).eq("kind", "iou_settle").eq("status", "accepted").limit(1000);
   if (settled.error) throw new Error(settled.error.message);
   const repaid = (settled.data ?? []).map(row => jsonObject.safeParse(row.payload).data?.transactionId).filter((id): id is string => typeof id === "string");
   if (!loans.size) return new Set(repaid);
@@ -98,4 +101,4 @@ export async function loadLoanPayoutIds(supabase: Db, workspaceId: string): Prom
     .filter("amount_minor", "in", `(${amounts.slice(0, 200).join(",")})`).limit(2000);
   if (rows.error) throw new Error(rows.error.message);
   return new Set([...loanPayouts([...loans.values()], rows.data ?? []), ...repaid]);
-}
+});

@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArrowRight, Sparkle } from "lucide-react";
 import { AGENT_IDS, AGENTS } from "@/lib/ai/agent-team";
 import { StartAgentRun } from "./ai/agents/start-run";
+import { loadLatestAgentRun } from "./home-organize";
 
 type Task = { agent: string; status: string; summary: string | null };
 const DOT: Record<string, string> = { done: "bg-brand", failed: "bg-warning", running: "animate-pulse bg-ai", pending: "bg-subtle", skipped: "bg-subtle", canceled: "bg-subtle" };
@@ -11,7 +12,7 @@ const time = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-GB",
 const duration = (from: string, to: string) => { const seconds = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000)); return `${Math.floor(seconds / 60)}m ${seconds % 60}s`; };
 
 export const loadAgentBriefing = cache(async (db: SupabaseClient, workspaceId: string) => {
-  const latest = await db.from("agent_runs").select("id, status, created_at, finished_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const latest = await loadLatestAgentRun(db, workspaceId);
   if (latest.error) return null;
   const run = latest.data;
   const [tasks, open] = run ? await Promise.all([
@@ -21,8 +22,8 @@ export const loadAgentBriefing = cache(async (db: SupabaseClient, workspaceId: s
   return { run, tasks, open };
 });
 
-export async function AgentBriefing({ db, workspaceId, timeZone = "UTC", ai = true }: { db: SupabaseClient; workspaceId: string; timeZone?: string; ai?: boolean }) {
-  const briefing = await loadAgentBriefing(db, workspaceId);
+export async function AgentBriefing({ db, workspaceId, timeZone = "UTC", ai: pendingAi }: { db: SupabaseClient; workspaceId: string; timeZone?: string; ai: Promise<boolean> }) {
+  const [briefing, ai] = await Promise.all([loadAgentBriefing(db, workspaceId), pendingAi]);
   if (!briefing) return null;
   const { run, tasks, open } = briefing;
   const byAgent = new Map(((tasks?.data ?? []) as Task[]).map(task => [task.agent, task]));

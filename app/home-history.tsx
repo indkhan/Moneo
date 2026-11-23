@@ -15,8 +15,8 @@ export const loadHomeHistory = cache(async (db: SupabaseClient, workspaceId: str
   db.from("agent_proposals").select("id, run_id, title, result, decided_at").eq("workspace_id", workspaceId).eq("status", "accepted").order("decided_at", { ascending: false }).limit(4),
 ]));
 
-export async function HomeHistory({ db, workspaceId, locale, timeZone, names }: { db: SupabaseClient; workspaceId: string; locale: string; timeZone: string; names: Map<string, string> }) {
-  const [imports, balances, wealth, agents] = await loadHomeHistory(db, workspaceId);
+export async function HomeHistory({ db, workspaceId, locale, timeZone, names: pendingNames }: { db: SupabaseClient; workspaceId: string; locale: string; timeZone: string; names: Promise<Map<string, string>> }) {
+  const [[imports, balances, wealth, agents], names] = await Promise.all([loadHomeHistory(db, workspaceId), pendingNames]);
   const changes: Change[] = [
     ...(imports.data ?? []).map(row => ({ key: `import:${row.id}`, at: row.created_at, title: `Imported ${row.filename} · ${row.new_rows} rows`, source: "import", href: "/import" })),
     ...(balances.data ?? []).map(row => ({ key: `balance:${row.id}`, at: row.created_at, title: `Set ${names.get(row.account_id) ?? "account"} balance to ${formatMoney(row.amount_minor, row.currency_code, locale)}`, source: "manual", href: "/money/accounts" })),

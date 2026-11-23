@@ -1,12 +1,11 @@
 import Link from "next/link";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatMoney } from "@/lib/finance/format";
-import { budgetsThisMonth, loadInsightEvidence } from "./insights/panel";
+import { budgetsThisMonth, type loadInsightEvidence } from "./insights/panel";
 import { card } from "./section-fallback";
 
-export async function HomeBudgets({ db, workspaceId, currency, today, locale }: { db: SupabaseClient; workspaceId: string; currency: string; today: string; locale: string }) {
+export async function HomeBudgets({ evidence, currency, today, locale }: { evidence: ReturnType<typeof loadInsightEvidence>; currency: string; today: string; locale: string }) {
   let rows;
-  try { rows = budgetsThisMonth(await loadInsightEvidence(db, workspaceId, currency, today), today).filter(row => row.budget.currency_code === currency); } catch { rows = null; }
+  try { rows = budgetsThisMonth(await evidence, today).filter(row => row.budget.currency_code === currency); } catch { rows = null; }
   const money = (amount: bigint) => formatMoney(amount, currency, locale);
   const daysLeft = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate() - Number(today.slice(8, 10)) + 1;
   const previousMonth = new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 2, 1)));

@@ -11,8 +11,6 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { reportedUsage } from "@/lib/ai/usage";
 import { parseCategoryCommand } from "@/lib/ai/write-intent";
 import {reviewRequestSchema, resolveReviewRequest} from "@/lib/finance/review-request";
-import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
-import { startFinancialReview } from "@/lib/finance/start-review";
 import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, listWealth, searchTransactions } from "@/lib/finance/tools";
 import { netWorthInput, readNetWorth } from "@/lib/finance/net-worth-source";
@@ -28,16 +26,12 @@ import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/
 import { organizeInputSchema, organizeReview, organizeReviewSchema, proposeOrganizeAnswer } from "@/lib/ai/organize-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentId, attachmentNote, attachmentSchema, isImage } from "@/lib/ai/chat-attachments";
-import { attachmentParts } from "@/lib/ai/documents/message";
 import { readDocument } from "@/lib/ai/documents/read";
 import { conversationAttachments, documentText, findAttachment } from "@/lib/ai/documents/store";
 import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 import { ADDS_TO_RUNNING, CALL_MODE_PROMPT, callContextSchema, replaceCallTask, withoutCallBrief } from "@/lib/ai/voice-call";
-import { artifactBriefing, artifactModePrompt, artifactTools } from "@/lib/ai/artifact-agent";
-import { sessionOf } from "@/lib/ai/artifact-preview";
-import { investmentTools } from "@/lib/ai/investment-tools";
 import { activeScalableConnection, READ_ONLY_TRADING } from "@/lib/scalable/live";
 import { titleChatTurn } from "@/lib/ai/chat-title";
 import { VOICE_CALL_TITLE } from "@/lib/ai/voice-access";
@@ -76,17 +70,23 @@ export async function POST(request: Request) {
   const parsed = inputSchema.safeParse(body);
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
-  if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or Claude, or add an API key under Settings → AI access." }, { status: 503 });
   const { conversationId, requestId, message, regenerates, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
+  const existingPromise = awaitedLater(Promise.resolve(supabase.from("conversations").select("id, deleted_at, artifact_id, title_settled").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle()));
+  if (!(await aiConfigured())) return Response.json({ error: "No AI is set up yet. Sign in with ChatGPT or Claude, or add an API key under Settings → AI access." }, { status: 503 });
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   const modelPromise = awaitedLater(modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat"));
   const historyPromise = awaitedLater(Promise.resolve(supabase.from("messages").select("role, content, context, attachments, request_id, answer_of")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19)));
-  const existing = await supabase.from("conversations").select("id, deleted_at, artifact_id, title_settled").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
+  const existing = await existingPromise;
   if (existing.error) throw existing.error;
   if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
+  const scalablePromise = settings.ai_data_scopes.includes("accounts") ? awaitedLater(activeScalableConnection(workspace.id)) : Promise.resolve(null);
+  const briefPromise = ownerBrief(context).catch(error => { console.error("owner brief failed", error); return null; });
+  const artifactId = existing.data?.artifact_id ?? null;
+  const artifactPromise = artifactId ? awaitedLater(Promise.all([import("@/lib/ai/artifact-agent"), import("@/lib/ai/artifact-preview")])
+    .then(async ([agent, preview]) => ({ agent, briefing: await agent.artifactBriefing(supabase, workspace.id, artifactId), session: preview.sessionOf(request) }))) : null;
   if (!existing.data) {
     const { error } = await supabase.from("conversations").insert({ id: conversationId, workspace_id: workspace.id, title: capturedContext?.via === "call" ? VOICE_CALL_TITLE : message.slice(0, 80) });
     if (error && error.code !== "23505") return Response.json({ error: "Conversation unavailable" }, { status: 403 });
@@ -104,10 +104,7 @@ export async function POST(request: Request) {
       .eq("request_id", requestId).eq("role", "user");
     if (saved.error) console.error("saving chat attachments failed", saved.error);
   }
-  const conversationFiles = awaitedLater(conversationAttachments(supabase, workspace.id, conversationId));
-  const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
-  const sessionCookies = artifactId ? sessionOf(request) : [];
-  const briefingPromise = artifactId ? awaitedLater(artifactBriefing(supabase, workspace.id, artifactId)) : null;
+  let conversationFiles: ReturnType<typeof conversationAttachments> | undefined;
   async function writeChatTitle() {
     if (artifactId) return null;
     const viaCall = capturedContext?.via === "call";
@@ -115,9 +112,8 @@ export async function POST(request: Request) {
       : ((await historyPromise).data ?? []).filter(item => item.role === "user").map(item => item.content as string).reverse();
     return titleChatTurn({ supabase, workspaceId: workspace.id, conversationId, message, viaCall, settled: !!existing.data?.title_settled, earlier, model: () => modelForSettings(settings, "titles") });
   }
-  const chatTitle = writeChatTitle().catch(chatKeepsItsTitleWhenNamingFails);
-  const scalablePromise = settings.ai_data_scopes.includes("accounts") ? awaitedLater(activeScalableConnection(workspace.id)) : Promise.resolve(null);
-  const briefPromise = ownerBrief(context).catch(error => { console.error("owner brief failed", error); return null; });
+  const { promise: answerStarted, resolve: startTitle } = Promise.withResolvers<void>();
+  const chatTitle = answerStarted.then(writeChatTitle).catch(chatKeepsItsTitleWhenNamingFails);
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
   const stop = new AbortController();
   async function stopIfCanceled() {
@@ -144,7 +140,7 @@ export async function POST(request: Request) {
     content: item.role === "assistant" ? withoutCharts(item.content)
       : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),
   }));
-  const files = await attachmentParts(supabase, attachments);
+  const files = attachments.length ? await (await import("@/lib/ai/documents/message")).attachmentParts(supabase, attachments) : [];
   const last = textMessages.pop()!;
   const modelMessages = [...textMessages, files.length ? { role: "user" as const, content: [{ type: "text" as const, text: last.content }, ...files] } : last];
   const categoryCommand = parseCategoryCommand(message);
@@ -186,6 +182,7 @@ export async function POST(request: Request) {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
         if (stop.signal.aborted) throw new Error("Request canceled");
         emit({ type: "tool", id: options?.toolCallId, name, state: "running", input });
+        startTitle();
         const names = namesFor(context).catch((): EntityNames => ({}));
         let output: unknown;
         try { output = await execute(input, options); }
@@ -254,9 +251,9 @@ export async function POST(request: Request) {
     const tradeCards: string[] = [];
     const scalableConnection = await scalablePromise;
     const priorUserText = (history ?? []).filter(item => item.role === "user").slice(0, 2).map(item => String(item.content));
-    const scalableTools = scalableConnection ? investmentTools({ connectionId: scalableConnection.id, tradingAccess: scalableConnection.tradingAccess, message, priorUserText, onCard: id => tradeCards.push(id),
+    const scalableTools = scalableConnection ? (await import("@/lib/ai/investment-tools")).investmentTools({ connectionId: scalableConnection.id, tradingAccess: scalableConnection.tradingAccess, message, priorUserText, onCard: id => tradeCards.push(id),
       evidence: read => aiEvidence(["accounts"], read), context: async () => ({ ...await requireWorkspace(), chatRequestId: requestId }) }) : {};
-    const artifactBrief = briefingPromise ? await briefingPromise : null;
+    const artifact = await artifactPromise;
     const owner = await briefPromise;
     for (const scope of owner?.scopes ?? []) readScopes.add(scope);
     const takeSteers = async () => {
@@ -272,12 +269,12 @@ export async function POST(request: Request) {
 
 ${CALL_MODE_PROMPT}` : ""}${scalableConnection?.tradingAccess === "read" ? `
 
-Scalable is connected with read-only access, so there are no order tools. For a buy, sell or cancel request, tell the user: "${READ_ONLY_TRADING}" Moneo notices the change at its next Scalable sync (Sync now in Import, /import).` : ""}${artifactBrief ? `
+Scalable is connected with read-only access, so there are no order tools. For a buy, sell or cancel request, tell the user: "${READ_ONLY_TRADING}" Moneo notices the change at its next Scalable sync (Sync now in Import, /import).` : ""}${artifact?.briefing ? `
 
-${artifactModePrompt(scalableConnection ? settings.artifact_scalable_data : null)}
+${artifact.agent.artifactModePrompt(scalableConnection ? settings.artifact_scalable_data : null)}
 
 Current state:
-${artifactBrief}` : ""}`,
+${artifact.briefing}` : ""}`,
       messages: modelMessages,
       stopWhen: stepCountIs(CHAT_MAX_STEPS),
       prepareStep: async ({ messages }) => {
@@ -296,13 +293,13 @@ ${artifactBrief}` : ""}`,
             search: z.string().trim().min(1).max(200).optional().describe("Text to find, case-insensitive"),
           }).strict(),
           execute: async ({ id, location, search }) => {
-            const files = await conversationFiles;
+            const files = await (conversationFiles ??= conversationAttachments(supabase, workspace.id, conversationId));
             const file = findAttachment(files, id);
             if (!file) return { error: `No file "${id}" is attached in this conversation.`, files: files.map(item => ({ id: attachmentId(item.path), name: item.name })) };
             if (isImage(file.type)) return { error: `"${file.name}" is a photo; it can only be seen in the message it was attached to.` };
             return { text: readDocument(await documentText(supabase, file), { name: file.name, id: attachmentId(file.path), location, search }) };
           } }),
-        ...(artifactId ? artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, ownerWords: [message, ...priorUserText.filter(text => text !== message)], session: sessionCookies, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
+        ...(artifact && artifactId ? artifact.agent.artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, ownerWords: [message, ...priorUserText.filter(text => text !== message)], session: artifact.session, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports"), sourceVersions: false }), false, true) }),
           finance_entities: tool({ description: "Optional: list owned account, category and merchant names with ids, tags and events. Other tools already accept names and label ids with names.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),
@@ -330,13 +327,16 @@ ${artifactBrief}` : ""}`,
         }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: ({ transactionIds, categoryId }) => aiEvidence(["transactions"], latest =>
           loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId)) }) } : {}),
-        ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate the selected query or an explicitly dated default review, with exact spending changes, account evidence, classification limitations and permitted planning evidence. Read-only.", inputSchema: z.object({ query: investigationSchema.optional() }).strict(), execute: ({ query } = {}) => aiEvidence(["accounts", "transactions"], latest =>
-          loadFinancialReviewEvidence(latest.supabase, latest.workspace, { timezone: latest.settings.timezone, scopes: latest.settings.ai_data_scopes, now: new Date() }, query), true, true) }) } : {}),
+        ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate the selected query or an explicitly dated default review, with exact spending changes, account evidence, classification limitations and permitted planning evidence. Read-only.", inputSchema: z.object({ query: investigationSchema.optional() }).strict(), execute: ({ query } = {}) => aiEvidence(["accounts", "transactions"], async latest => {
+          const { loadFinancialReviewEvidence } = await import("@/lib/finance/review-loader");
+          return loadFinancialReviewEvidence(latest.supabase, latest.workspace, { timezone: latest.settings.timezone, scopes: latest.settings.ai_data_scopes, now: new Date() }, query);
+        }, true, true) }) } : {}),
         ...(canInvestigate ? { reviews_start: tool({ description: "Investigate the current user's finance question through a bounded, durable, cancelable review. Preserve their chosen dates, entities and focus in query/focus; the application binds the exact question and visible navigation context. Use ordinary finance queries for quick answers, and this tool when follow-up evidence gathering or a saved report is useful. Do not start when the user declines investigation or only asks what a review does. Repeated calls reuse one job; no canonical financial changes.", inputSchema: reviewRequestSchema.omit({question: true, version: true, context: true, allowedScopes: true}), execute: (input = {includePlanning: false, output: "answer", budget: {maxQueries: 6, maxSupportRecords: 60, maxOutputTokens: 4000, maxDurationMs: 90000}}) => scopedTool(["accounts", "transactions"], async latest => {
           if (stop.signal.aborted) throw new Error("Request canceled");
           if (!serviceRoleConfig()) throw new Error("Financial review service is not configured");
           const specification = resolveReviewRequest({...input, version: 1, question: message, context: capturedContext, allowedScopes: settings.ai_data_scopes}, calendarDate(new Date(), settings.timezone));
           if (specification.includePlanning) requireAiScope(latest.settings, "planning");
+          const { startFinancialReview } = await import("@/lib/finance/start-review");
           return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId, specification), href: "/ai" };
         }) }) } : {}),
         ...scalableTools,
@@ -393,6 +393,7 @@ ${artifactBrief}` : ""}`,
           const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
           stepBreak = false; text += delta;
           emit({ type: "delta", text: delta });
+          startTitle();
         } else if (part.type === "finish-step") stepBreak = true;
         else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
       }
@@ -418,6 +419,8 @@ ${artifactBrief}` : ""}`,
     const failure = error instanceof Error ? error.message : "AI request failed";
     await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
     return stop.signal.aborted ? [{ status: "canceled", error: "Request is canceled" }, 409] : [{ error: failure }, 502];
+  } finally {
+    startTitle();
   }
   }
   if (!streaming) { const run = complete(() => {}); after(() => Promise.all([run, chatTitle])); const [body, status] = await run; return Response.json(body, { status }); }

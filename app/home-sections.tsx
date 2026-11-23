@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AskAbout } from "@/components/ask-about";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
+import type { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { displayFormat } from "@/lib/display-format";
 import { formatMoney } from "@/lib/finance/format";
 import { CashFlowView } from "./cash-flow-view";
@@ -17,9 +17,9 @@ export function Figure({ value, digits, className }: { value: string; digits: nu
 
 const monthName = (from: string, locale: string, month: "short" | "long" = "long") => month === "short" ? displayFormat(locale).shortMonth(from) : displayFormat(locale).month(from);
 
-export async function CashFlowPanel({ db, workspaceId, currency, today, locale }: SectionProps) {
+export async function CashFlowPanel({ data: spending, currency, locale }: Pick<SectionProps, "currency" | "locale"> & { data: ReturnType<typeof loadHomeSpending> }) {
   let data;
-  try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
+  try { data = await spending; } catch { data = null; }
   const ask = <AskAbout question="How did my money in and out change over the last six months? What drove it?" about={{ kind: "chart", label: "Six-month cash flow" }} />;
   if (!data) return <section id="cash-flow" aria-label="Cash flow" className={card}><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-medium">Cash flow · 6 months</h2>{ask}</div>
     <p role="alert" className="mt-3 text-sm">Cash flow is unavailable right now. Your balances are not affected.</p></section>;
@@ -30,9 +30,12 @@ export async function CashFlowPanel({ db, workspaceId, currency, today, locale }
   </section>;
 }
 
-export async function RecentTransactions({ db, workspaceId, locale, names }: Omit<SectionProps, "currency" | "today"> & { names: Map<string, string> }) {
-  const { data, count, error } = await db.from("transactions").select("id, posted_on, description, amount_minor::text, currency_code, status, account_id, review_reasons", { count: "exact" })
-    .eq("workspace_id", workspaceId).order("posted_on", { ascending: false }).order("id").limit(8);
+export async function RecentTransactions({ db, workspaceId, locale, names: pendingNames }: Omit<SectionProps, "currency" | "today"> & { names: Promise<Map<string, string>> }) {
+  const [{ data, count, error }, names] = await Promise.all([
+    db.from("transactions").select("id, posted_on, description, amount_minor::text, currency_code, status, account_id, review_reasons", { count: "exact" })
+      .eq("workspace_id", workspaceId).order("posted_on", { ascending: false }).order("id").limit(8),
+    pendingNames,
+  ]);
   const rows = (data ?? []) as { id: string; posted_on: string; description: string | null; amount_minor: string; currency_code: string; status: string; account_id: string; review_reasons: string[] | null }[];
   return <section aria-label="Recent transactions" className={card}>
     <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Recent transactions</h2><Link href="/money/transactions" className="text-sm font-medium text-brand hover:underline">All {count ?? 0}</Link></div>

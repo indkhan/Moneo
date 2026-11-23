@@ -1,6 +1,6 @@
 import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import { beforeEach, expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream } from "react-dom/server";
 import Home from "./page";
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null, loadAgentBriefing: async () => null }));
 vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvidence: async () => ({}) }));
@@ -21,7 +21,9 @@ vi.mock("@/lib/finance/tools", async original => ({ ...await original<typeof imp
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 
 it("shows a missing balance without inventing an epoch date or provenance", async () => {
-  const html = renderToStaticMarkup(await Home());
+  const stream = await renderToReadableStream(await Home());
+  await stream.allReady;
+  const html = await new Response(stream).text();
   expect(html).toContain("Balance unknown");
   expect(html).toContain("Add a dated balance");
   expect(html).toContain("<summary class=\"cursor-pointer text-xs font-medium text-brand hover:underline\">Update balance</summary>");
@@ -30,16 +32,25 @@ it("shows a missing balance without inventing an epoch date or provenance", asyn
   expect(html).not.toContain("null · as of");
 });
 
-it("starts independent dashboard queries while balance evidence is still loading", async () => {
+it("streams the Home heading and starts independent queries while balance evidence is still loading", async () => {
   let release!: () => void;
   fixture.balanceGate = new Promise(resolve => { release = resolve; });
-  const page = Home();
-  await vi.waitFor(() => expect(fixture.started).toEqual(expect.arrayContaining(["fx_rates", "dashboard_layouts", "goals", "goal_allocations"])));
-  release();
-  await page;
+  const stream = await renderToReadableStream(await Home());
+  const reader = stream.getReader();
+  try {
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain("Overview");
+    await vi.waitFor(() => expect(fixture.started).toEqual(expect.arrayContaining(["fx_rates", "dashboard_layouts", "bank_connection_accounts"])));
+  } finally {
+    release();
+    await stream.allReady;
+    reader.releaseLock();
+  }
 });
 
 it.each(["fx_rates", "dashboard_layouts"])("reports %s failures instead of silently showing incomplete dashboard data", async table => {
   fixture.errorTable = table;
-  await expect(Home()).rejects.toThrow(`${table} unavailable`);
+  const onError = vi.fn();
+  const stream = await renderToReadableStream(await Home(), { onError });
+  await stream.allReady;
+  expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: `${table} unavailable` }), expect.anything());
 });
