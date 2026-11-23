@@ -298,6 +298,7 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
         NEXT_PUBLIC_SUPABASE_URL: apiUrl,
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
         SUPABASE_SERVICE_ROLE_KEY: secrets.SUPABASE_SERVICE_ROLE_KEY,
+        JWT_SECRET: secrets.JWT_SECRET,
         SUPABASE_DB_URL: dbUrl("postgres"),
         BANK_TOKEN_ENCRYPTION_KEY: secrets.BANK_TOKEN_ENCRYPTION_KEY,
         CRON_SECRET: secrets.CRON_SECRET,

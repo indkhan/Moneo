@@ -110,6 +110,8 @@ const bankTokenKeySchema = z.string({ error: "must be set" }).transform(value =>
 export const hasBankTokenKey = () => Boolean(read("BANK_TOKEN_ENCRYPTION_KEY"));
 export const bankTokenKey = () => parse("BANK_TOKEN_ENCRYPTION_KEY", bankTokenKeySchema, read("BANK_TOKEN_ENCRYPTION_KEY"));
 
+export const jwtSecret = () => read("JWT_SECRET");
+
 export const cronSecret = (env: Source = process.env) => read("CRON_SECRET", env);
 
 export function ownerCredentials() {
