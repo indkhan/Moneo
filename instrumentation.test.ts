@@ -62,7 +62,7 @@ it("holds background work in the desktop app until its backend is ready, so reco
     await vi.waitFor(() => expect(startBankReturnListener).toHaveBeenCalledTimes(1));
     expect(startWorld).toHaveBeenCalledTimes(1);
     expect(startScheduler).toHaveBeenCalledTimes(1);
-  } finally { delete (process as NodeJS.Process & { parentPort?: unknown }).parentPort; }
+  } finally { Reflect.deleteProperty(process, "parentPort"); }
 });
 
 it("retains listening socket ports for the actual Workflow lookup", async () => {
