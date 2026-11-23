@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bwmrug5rn</task-id>
+<tool-use-id>toolu_011qDFjU64eQkzpsYGCNiW9U</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\0aa7847a182f3455\431ea7b9-54ab-45fa-9390-6b3c33cc9fd4\tasks\bwmrug5rn.output</output-file>
+<status>failed</status>
+<summary>Background command "Build base desktop app" failed with exit code 2</summary>
+</task-notification>
