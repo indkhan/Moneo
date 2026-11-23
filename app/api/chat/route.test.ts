@@ -24,6 +24,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })), withTools: (model: unknown, tools: unknown) => ({ model, tools }) }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: vi.fn(async () => ({ source: "exact evidence" })) }));
+vi.mock("@/lib/ai/artifact-agent", () => ({ artifactBriefing: async () => null, artifactTools: () => ({}) }));
 vi.mock("@/lib/finance/edit-preview", async original => ({ ...await original<typeof import("@/lib/finance/edit-preview")>(), loadCategoryPreview: vi.fn(async () => ({ href: "/ai/actions/preview?ids=selected&category=owned", warning: "Preview only" })) }));
 vi.mock("@/lib/ai/chart-data", async original => ({ ...await original<typeof import("@/lib/ai/chart-data")>(),
   loadChartData: vi.fn(async () => ({ dataset: { columns: { month: { kind: "date" }, spending: { kind: "money", currency: "EUR" } }, rows: [{ month: "2026-09", spending: "123456" }, { month: "2026-10", spending: "7" }] } })) }));
@@ -369,11 +370,13 @@ const conversationWrites = async (row: unknown) => {
   vi.mocked(requireWorkspace).mockResolvedValue({ ...context, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
   return writes;
 };
-it("titles a typed chat and streams the title before the result", async () => {
+it("streams the answer's first text before titling a typed chat", async () => {
   const writes = await conversationWrites(null);
   const events = await streamed({});
   expect(writes.insert[0]).toMatchObject({ title: "hey so can you explain my spending" });
   expect(writes.update).toContainEqual({ title: "Spending explained", title_settled: true });
+  expect(events.findIndex(event => event.type === "delta")).toBeGreaterThanOrEqual(0);
+  expect(events.findIndex(event => event.type === "title")).toBeGreaterThan(events.findIndex(event => event.type === "delta"));
   expect(events.findIndex(event => event.type === "title")).toBeLessThan(events.findIndex(event => event.type === "result"));
   expect(events.find(event => event.type === "title")?.title).toBe("Spending explained");
 });
