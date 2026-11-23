@@ -108,13 +108,13 @@ function main() {
         });
         await certificate;
         await serverReady;
-        server?.markBackendReady();
         progress({ id: "app", label: "Starting Moneo", state: "done" });
         if (quitting) return;
         await showApp(!hidden || Boolean(window?.isVisible()));
         closeSetup();
         scheduleBackups();
-        running.storageReady.catch(error => {
+        const appServer = server;
+        void running.storageReady.then(() => appServer?.markBackendReady(), (error: unknown) => {
           if (quitting || busy || backend !== running) return;
           fail("File storage could not start, so imports and chat attachments are unavailable", error);
         });
