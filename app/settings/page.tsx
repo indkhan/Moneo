@@ -18,6 +18,7 @@ import { parseUsageWindow } from "@/lib/ai/usage";
 import { desktopUpdate, isDesktop } from "@/lib/desktop-bridge";
 import { AppUpdate } from "./app-update";
 import { cronSecret } from "@/lib/env";
+import { awaitedLater } from "@/lib/awaited-later";
 
 export const metadata = { title: "Settings" };
 
@@ -43,25 +44,19 @@ const updatesSectionIsHiddenWhenStatusIsUnavailable = () => null;
 
 type SearchParams = { usage?: string; chatgpt?: string; claude?: string };
 
-export default function SettingsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
-    <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
-    <Suspense fallback={<div className="mt-8 min-h-[60vh] max-lg:mt-4" aria-busy="true"><SkeletonCard lines={4} /></div>}>
-      <SettingsSections searchParams={searchParams} />
-    </Suspense>
-  </main>;
-}
-
-async function SettingsSections({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [context, query] = await Promise.all([requireWorkspace(), searchParams]);
   const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
-  const [runs, update, status, keys, claude] = await Promise.all([
-    loadRuns(context), isDesktop() ? desktopUpdate("status").catch(updatesSectionIsHiddenWhenStatusIsUnavailable) : null,
+  const runs = awaitedLater(loadRuns(context));
+  const [update, status, keys, claude] = await Promise.all([
+    isDesktop() ? desktopUpdate("status").catch(updatesSectionIsHiddenWhenStatusIsUnavailable) : null,
     chatgptStatus(), serviceKeyStatus(), claudeAccount(),
   ]);
   const connections = { openai: status.signedIn || Boolean(keys.openai_api_key.source), claude: claude.signedIn, openrouter: Boolean(keys.openrouter_api_key.source) };
-  return <div className="mt-8 grid gap-8 max-lg:mt-4 max-lg:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
+  return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
+    <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
+    <div className="mt-8 grid gap-8 max-lg:mt-4 max-lg:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-24 lg:self-start">
         <ul className="flex flex-wrap gap-1 max-lg:flex-nowrap max-lg:gap-2 max-lg:overflow-x-auto lg:flex-col [&>li]:shrink-0">{sectionNav.filter(([id]) => id !== "updates" || update).map(([id, label]) => <li key={id}>
           <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm max-lg:rounded-full max-lg:border max-lg:border-border max-lg:bg-card max-lg:px-3.5 max-lg:py-2 hover:bg-muted hover:text-foreground ${id === "danger" ? "text-danger" : "text-muted-foreground"}`}>{label}</a>
@@ -84,11 +79,17 @@ async function SettingsSections({ searchParams }: { searchParams: Promise<Search
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
           <details className="mt-2 text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">Weekly summaries are due on Monday and monthly ones on the first, in your timezone and at your preferred time. A daily check starts due summaries, so they can arrive a day late. Turn summaries off to stop future runs, or stop an active run below.</p></details>
           {!cronSecret() && <p className="mt-3 text-sm text-warning">Automatic scheduling needs to be configured on the deployment. Your preference is saved.</p>}
-          {runs ? <SummaryRuns initial={runs} locale={settings.locale} /> : <p role="alert" className="mt-3 text-sm text-danger">Scheduled status is unavailable. Try again later.</p>}
+          <Suspense fallback={<div className="h-10" aria-busy="true" />}><ScheduledRuns runs={runs} locale={settings.locale} /></Suspense>
           <p className="mt-4 text-sm text-muted-foreground">Finished summaries appear in the Activity log. If one fails, run a new review from AI.</p>
         </section>
         <section id="usage" className={card}><h2 className="text-sm font-medium">AI chat token usage</h2><p className="mt-1 text-sm text-muted-foreground">Tokens used by AI chat, per model; other AI tasks are not included. Requests the provider did not report are left out, not counted as zero. Moneo does not record costs: see actual charges with your provider, at <a href="https://platform.openai.com/usage" target="_blank" rel="noreferrer" className="underline hover:text-foreground">OpenAI</a>, <a href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer" className="underline hover:text-foreground">Claude</a> or <a href="https://openrouter.ai/activity" target="_blank" rel="noreferrer" className="underline hover:text-foreground">OpenRouter</a>.</p><Suspense fallback={<SkeletonCard lines={4} />}><AiUsage window={usageWindow} /></Suspense></section>
         <div id="danger" className="scroll-mt-20 space-y-8"><ResetData /></div>
       </div>
-    </div>;
+    </div>
+  </main>;
+}
+
+async function ScheduledRuns({ runs, locale }: { runs: Promise<SummaryRun[] | null>; locale: string }) {
+  const initial = await runs;
+  return initial ? <SummaryRuns initial={initial} locale={locale} /> : <p role="alert" className="mt-3 text-sm text-danger">Scheduled status is unavailable. Try again later.</p>;
 }
