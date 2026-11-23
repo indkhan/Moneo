@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Suspense } from "react";
-import { Providers } from "@/components/providers";
 import { AppShell, type ShellData } from "@/components/app-shell";
 import { SyncOnOpen } from "@/components/sync-on-open";
 import { ServiceWorker } from "@/components/service-worker";
@@ -74,7 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {hasSupabase() && <SyncOnOpen />}
         {hasSupabase() && <Suspense fallback={null}><CallRecordSync /></Suspense>}
         <ServiceWorker />
-        <Providers><AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell></Providers>
+        <AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell>
       </body>
     </html>
   );
