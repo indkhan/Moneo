@@ -21,6 +21,7 @@ export type StartOptions = {
   fork?: ForkFn;
   appUrl?: string;
   appVersion?: string;
+  onEnv?: (env: Record<string, string>) => void;
 };
 
 function layout(paths: BackendPaths) {
@@ -133,6 +134,22 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
   config.ports.db = cluster.port = await preferredPort(config.ports.db);
   config.ports.api = await preferredPort(config.ports.api);
   await writeConfig(l.configFile, config);
+  const apiUrl = `http://127.0.0.1:${config.ports.api}`;
+  const dbUrl = (user: string) => `postgresql://${user}:${encodeURIComponent(secrets.POSTGRES_PASSWORD)}@127.0.0.1:${cluster.port}/postgres`;
+  const env = {
+    NEXT_PUBLIC_SUPABASE_URL: apiUrl,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: secrets.SUPABASE_SERVICE_ROLE_KEY,
+    JWT_SECRET: secrets.JWT_SECRET,
+    SUPABASE_DB_URL: dbUrl("postgres"),
+    BANK_TOKEN_ENCRYPTION_KEY: secrets.BANK_TOKEN_ENCRYPTION_KEY,
+    CRON_SECRET: secrets.CRON_SECRET,
+    MONEO_OWNER_EMAIL: secrets.MONEO_OWNER_EMAIL,
+    MONEO_OWNER_PASSWORD: secrets.MONEO_OWNER_PASSWORD,
+    MONEO_DATA_DIR: l.appData,
+    WORKFLOW_LOCAL_DATA_DIR: l.workflow,
+  };
+  options.onEnv?.(env);
 
   const listeners: ((service: string, code: number | null) => void)[] = [];
   let stopping = false;
@@ -188,10 +205,8 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
       }));
     }
 
-    const apiUrl = `http://127.0.0.1:${config.ports.api}`;
     const [authPort, restPort, restAdminPort, storagePort, storageAdminPort] = await Promise.all([freePort(), freePort(), freePort(), freePort(), freePort()]);
     const base = baseEnv();
-    const dbUrl = (user: string) => `postgresql://${user}:${encodeURIComponent(secrets.POSTGRES_PASSWORD)}@127.0.0.1:${cluster.port}/postgres`;
     const recordPids = () => pids.write(services.filter(s => s.pid).map(s => s.name === "storage"
       ? { service: s.name, pid: s.pid as number, exe: process.execPath, script: l.storageServer }
       : { service: s.name, pid: s.pid as number, exe: s.name === "auth" ? l.gotrue : l.postgrest }));
@@ -289,19 +304,7 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     note(`Backend ready at ${apiUrl} (database port ${cluster.port}); ${applied} migration(s) applied`);
 
     return {
-      env: {
-        NEXT_PUBLIC_SUPABASE_URL: apiUrl,
-        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-        SUPABASE_SERVICE_ROLE_KEY: secrets.SUPABASE_SERVICE_ROLE_KEY,
-        JWT_SECRET: secrets.JWT_SECRET,
-        SUPABASE_DB_URL: dbUrl("postgres"),
-        BANK_TOKEN_ENCRYPTION_KEY: secrets.BANK_TOKEN_ENCRYPTION_KEY,
-        CRON_SECRET: secrets.CRON_SECRET,
-        MONEO_OWNER_EMAIL: secrets.MONEO_OWNER_EMAIL,
-        MONEO_OWNER_PASSWORD: secrets.MONEO_OWNER_PASSWORD,
-        MONEO_DATA_DIR: l.appData,
-        WORKFLOW_LOCAL_DATA_DIR: l.workflow,
-      },
+      env,
       stop,
       onExit: cb => { listeners.push(cb); },
     };

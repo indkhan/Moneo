@@ -8,6 +8,7 @@ const HOST_VARS = ["PATH", "Path", "PATHEXT", "SystemRoot", "SYSTEMROOT", "windi
 export type NextServerOptions = { appDir: string; port: number; env: Record<string, string> };
 
 const READY_TIMEOUT = 90_000;
+const BACKEND_READY = "moneo:backend-ready";
 
 export class NextServer {
   private child?: UtilityProcess;
@@ -16,6 +17,7 @@ export class NextServer {
   private restartTimer?: NodeJS.Timeout;
   private output = createWriteStream(path.join(logsDir(), "next.log"), { flags: "a" });
   private recent: string[] = [];
+  private backendReady = false;
 
   constructor(private options: NextServerOptions, private onDown: (error: Error) => void) {}
 
@@ -27,12 +29,18 @@ export class NextServer {
     const startedAt = Date.now();
     const child = this.spawn();
     await this.waitReady(child);
+    if (this.backendReady) child.postMessage(BACKEND_READY);
     child.once("exit", code => {
       if (this.stopping || this.child !== child) return;
       log(`Next server exited with ${code}`);
       if (Date.now() - startedAt > 60_000) this.restarts = 0;
       this.scheduleRestart();
     });
+  }
+
+  markBackendReady() {
+    this.backendReady = true;
+    this.child?.postMessage(BACKEND_READY);
   }
 
   private spawn() {
@@ -72,7 +80,7 @@ export class NextServer {
     while (Date.now() < deadline) {
       if (exited !== undefined) throw new Error(`The Moneo server stopped while starting (exit ${exited}).\n${this.recent.slice(-8).join("\n")}`);
       try {
-        const response = await fetch(`http://127.0.0.1:${this.options.port}/api/health`, { headers: { authorization: "Bearer readiness" }, signal: AbortSignal.timeout(5_000) });
+        const response = await fetch(`http://127.0.0.1:${this.options.port}/offline.html`, { signal: AbortSignal.timeout(5_000) });
         if (response.status < 500) { log(`Next server is ready after ${Date.now() - started} ms`); return; }
       } catch {}
       await new Promise(resolve => setTimeout(resolve, 50));
