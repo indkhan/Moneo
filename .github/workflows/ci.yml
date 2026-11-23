@@ -51,6 +51,14 @@ jobs:
       - *modules
       - *npm-cache
       - *install
+      - uses: actions/cache@v4
+        with:
+          path: |
+            tsconfig.native.tsbuildinfo
+            tsconfig.indexed.tsbuildinfo
+            desktop/tsconfig.tsbuildinfo
+          key: typecheck-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'desktop/tsconfig.json', 'scripts/typecheck*.mjs') }}-${{ github.sha }}
+          restore-keys: typecheck-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'desktop/tsconfig.json', 'scripts/typecheck*.mjs') }}-
       - run: npm run typecheck
 
   test:

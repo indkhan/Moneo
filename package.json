@@ -9,7 +9,7 @@
     "check:bundle": "node scripts/check-bundle-size.mjs",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
-    "typecheck": "next typegen && tsc --noEmit && node scripts/typecheck-indexed.mjs && tsc --noEmit -p desktop",
+    "typecheck": "next typegen && node scripts/typecheck.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -100,6 +100,7 @@
     "postgres": "3.4.9",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
+    "typescript-native": "npm:typescript@7.0.2",
     "vitest": "^5.0.2"
   }
 }
