@@ -67,12 +67,13 @@ export class NextServer {
   private async waitReady(child: UtilityProcess) {
     let exited: number | null | undefined;
     child.once("exit", code => { exited = code; });
-    const deadline = Date.now() + READY_TIMEOUT;
+    const started = Date.now();
+    const deadline = started + READY_TIMEOUT;
     while (Date.now() < deadline) {
       if (exited !== undefined) throw new Error(`The Moneo server stopped while starting (exit ${exited}).\n${this.recent.slice(-8).join("\n")}`);
       try {
         const response = await fetch(`http://127.0.0.1:${this.options.port}/api/health`, { headers: { authorization: "Bearer readiness" }, signal: AbortSignal.timeout(5_000) });
-        if (response.status < 500) { log("Next server is ready"); return; }
+        if (response.status < 500) { log(`Next server is ready after ${Date.now() - started} ms`); return; }
       } catch {}
       await new Promise(resolve => setTimeout(resolve, 250));
     }

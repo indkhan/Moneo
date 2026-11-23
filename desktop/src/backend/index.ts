@@ -101,9 +101,11 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
   const step = async <T>(id: string, label: string, work: () => Promise<T>) => {
     progress({ id, label, state: "running" });
     note(`${label}…`);
+    const started = Date.now();
     try {
       const result = await work();
       progress({ id, label, state: "done" });
+      note(`${label} done in ${Date.now() - started} ms`);
       return result;
     } catch (error) {
       progress({ id, label, state: "error", detail: (error as Error).message });

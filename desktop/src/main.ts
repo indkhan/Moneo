@@ -126,7 +126,9 @@ function main() {
       },
       onSessionEnd: () => void quit(),
     });
+    const started = Date.now();
     await window.loadURL(`http://localhost:${port}/`).catch(error => log(`First page load: ${message(error)}`));
+    log(`Home loaded in ${Date.now() - started} ms`);
     if (visible) window.show();
   }
 
