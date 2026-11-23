@@ -10,12 +10,13 @@ import { ScalableConnection } from "@/components/scalable-connection";
 import { AiUsage } from "./ai-usage";
 import { AiAccess } from "./ai-access";
 import { chatgptStatus } from "@/lib/ai/chatgpt";
+import { claudeAccount } from "@/lib/ai/claude";
+import { serviceKeyStatus } from "@/lib/service-keys";
 import { SetupSecrets } from "./setup-secrets";
 import { PhoneAccessSection } from "./phone-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
 import { desktopUpdate, isDesktop } from "@/lib/desktop-bridge";
 import { AppUpdate } from "./app-update";
-import { modelConnections } from "@/lib/ai/provider";
 import { cronSecret } from "@/lib/env";
 
 export const metadata = { title: "Settings" };
@@ -41,15 +42,24 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
 const updatesSectionIsHiddenWhenStatusIsUnavailable = () => null;
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ usage?: string; chatgpt?: string; claude?: string }> }) {
-  const context = await requireWorkspace();
-  const query = await searchParams;
-  const usageWindow = parseUsageWindow(query.usage);
-  const { workspace, settings } = context;
-  const connections = await modelConnections();
-  const [runs, update, ai] = await Promise.all([loadRuns(context), isDesktop() ? desktopUpdate("status").catch(updatesSectionIsHiddenWhenStatusIsUnavailable) : null, chatgptStatus()]);
+  const [context, query] = await Promise.all([requireWorkspace(), searchParams]);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
-    <div className="mt-8 grid gap-8 max-lg:mt-4 max-lg:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
+    <Suspense fallback={<div className="mt-8 min-h-[60vh] max-lg:mt-4" aria-busy="true"><SkeletonCard lines={4} /></div>}>
+      <SettingsSections context={context} query={query} />
+    </Suspense>
+  </main>;
+}
+
+async function SettingsSections({ context, query }: { context: Workspace; query: { usage?: string; chatgpt?: string; claude?: string } }) {
+  const usageWindow = parseUsageWindow(query.usage);
+  const { workspace, settings } = context;
+  const [runs, update, status, keys, claude] = await Promise.all([
+    loadRuns(context), isDesktop() ? desktopUpdate("status").catch(updatesSectionIsHiddenWhenStatusIsUnavailable) : null,
+    chatgptStatus(), serviceKeyStatus(), claudeAccount(),
+  ]);
+  const connections = { openai: status.signedIn || Boolean(keys.openai_api_key.source), claude: claude.signedIn, openrouter: Boolean(keys.openrouter_api_key.source) };
+  return <div className="mt-8 grid gap-8 max-lg:mt-4 max-lg:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-24 lg:self-start">
         <ul className="flex flex-wrap gap-1 max-lg:flex-nowrap max-lg:gap-2 max-lg:overflow-x-auto lg:flex-col [&>li]:shrink-0">{sectionNav.filter(([id]) => id !== "updates" || update).map(([id, label]) => <li key={id}>
           <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm max-lg:rounded-full max-lg:border max-lg:border-border max-lg:bg-card max-lg:px-3.5 max-lg:py-2 hover:bg-muted hover:text-foreground ${id === "danger" ? "text-danger" : "text-muted-foreground"}`}>{label}</a>
@@ -60,13 +70,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <section id="connections" aria-labelledby="connections-title" className="scroll-mt-20 space-y-4">
           <div><h2 id="connections-title" className="text-base font-semibold">Keys and connections</h2>
             <p className="mt-1 text-sm text-muted-foreground">Every key and outside service Moneo uses is set up here. Keys are checked before they are saved and stored encrypted in your database; there is no file to edit.</p></div>
-          <AiAccess message={query.chatgpt} claudeMessage={query.claude} />
+          <AiAccess status={status} keys={keys} claude={claude} message={query.chatgpt} claudeMessage={query.claude} />
           <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
           <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
           <div id="phone" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={2} />}><PhoneAccessSection /></Suspense></div>
           <SetupSecrets />
         </section>
-        <SettingsForm settings={settings} aiSource={ai.source} connections={connections} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
+        <SettingsForm settings={settings} aiSource={status.source} connections={connections} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
@@ -78,6 +88,5 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <section id="usage" className={card}><h2 className="text-sm font-medium">AI chat token usage</h2><p className="mt-1 text-sm text-muted-foreground">Tokens used by AI chat, per model; other AI tasks are not included. Requests the provider did not report are left out, not counted as zero. Moneo does not record costs: see actual charges with your provider, at <a href="https://platform.openai.com/usage" target="_blank" rel="noreferrer" className="underline hover:text-foreground">OpenAI</a>, <a href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer" className="underline hover:text-foreground">Claude</a> or <a href="https://openrouter.ai/activity" target="_blank" rel="noreferrer" className="underline hover:text-foreground">OpenRouter</a>.</p><Suspense fallback={<SkeletonCard lines={4} />}><AiUsage window={usageWindow} /></Suspense></section>
         <div id="danger" className="scroll-mt-20 space-y-8"><ResetData /></div>
       </div>
-    </div>
-  </main>;
+    </div>;
 }

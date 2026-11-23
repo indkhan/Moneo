@@ -6,7 +6,7 @@ import { chatgptStatus, setAiSource, signOut, startSignIn, type AiSource } from 
 import { availableClaudeAccount, cancelClaudeSignIn, claudeAccount, claudeSignInState, ClaudeError, forgetClaudeAccount, setClaudeConnected, startClaudeSignIn, submitClaudeCode } from "@/lib/ai/claude";
 import { appPort } from "@/lib/env";
 import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
-import { serviceKeyStatus } from "@/lib/service-keys";
+import type { serviceKeyStatus } from "@/lib/service-keys";
 import { AiKeyForm } from "./ai-key-form";
 
 async function signInWithChatGPT() {
@@ -87,8 +87,13 @@ async function stopUsingClaude() {
 
 const button = "min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted";
 
-export async function AiAccess({ message, claudeMessage }: { message?: string; claudeMessage?: string }) {
-  const [status, keys, claude] = await Promise.all([chatgptStatus(), serviceKeyStatus(), claudeAccount()]);
+export function AiAccess({ status, keys, claude, message, claudeMessage }: {
+  status: Awaited<ReturnType<typeof chatgptStatus>>;
+  keys: Awaited<ReturnType<typeof serviceKeyStatus>>;
+  claude: Awaited<ReturnType<typeof claudeAccount>>;
+  message?: string;
+  claudeMessage?: string;
+}) {
   const signingIn = claudeSignInState();
   const hasKey = Boolean(keys.openai_api_key.source), hasOpenRouter = Boolean(keys.openrouter_api_key.source);
   const active: AiSource | null = status.source === "claude" ? (claude.signedIn ? "claude" : null)
