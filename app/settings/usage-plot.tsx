@@ -29,18 +29,18 @@ export function UsagePlot({ models, locale }: { models: ModelUsage[]; locale: st
   }, []);
   return <div ref={anchor} role="img" aria-label={`Tokens per model. ${summary}`} style={{ height }}>
     {visible && <ReactECharts
-          style={{ height }}
-          option={{
-            grid: { left: 8, right: 16, top: 40, bottom: 8, containLabel: true },
-            legend: { top: 0, textStyle: { color: colors.muted } },
-            tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: format },
-            xAxis: { type: "value", ...axis, axisLabel: { color: colors.muted, formatter: format } },
-            yAxis: { type: "category", inverse: true, data: models.map(model => model.model_id), ...axis },
-            series: [
-              { ...segment, name: "Input", type: "bar", stack: "tokens", data: models.map(model => model.input_tokens), color: colors.input },
-              { ...segment, name: "Output", type: "bar", stack: "tokens", data: models.map(model => model.output_tokens), color: colors.output, itemStyle: { ...segment.itemStyle, borderRadius: [0, 4, 4, 0] } },
-            ],
-          }}
-        />}
+      style={{ height }}
+      option={{
+        grid: { left: 8, right: 16, top: 40, bottom: 8, containLabel: true },
+        legend: { top: 0, textStyle: { color: colors.muted } },
+        tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: format },
+        xAxis: { type: "value", ...axis, axisLabel: { color: colors.muted, formatter: format } },
+        yAxis: { type: "category", inverse: true, data: models.map(model => model.model_id), ...axis },
+        series: [
+          { ...segment, name: "Input", type: "bar", stack: "tokens", data: models.map(model => model.input_tokens), color: colors.input },
+          { ...segment, name: "Output", type: "bar", stack: "tokens", data: models.map(model => model.output_tokens), color: colors.output, itemStyle: { ...segment.itemStyle, borderRadius: [0, 4, 4, 0] } },
+        ],
+      }}
+    />}
   </div>;
 }

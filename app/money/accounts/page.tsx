@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { SkeletonCard } from "@/components/skeleton";
 import Link from "next/link";
 import { SafeForm } from "@/components/safe-form";
 import { CoverageNote } from "@/components/coverage-note";
@@ -39,42 +38,15 @@ function describeEvent(event: MetaEvent) {
 
 export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string }> } = {}) {
   const { transfers, saved } = (await searchParams) ?? {};
-  const context = await requireWorkspace();
-  return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
-    <header>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1"><p className="eyebrow">Money · balances and sources</p><h1 className="page-title">Accounts</h1></div>
-        <AddAccountPanel>
-          <SafeForm action={addAccountSafely} className="absolute right-0 z-10 mt-2 grid w-72 max-w-[calc(100vw-2rem)] gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
-            <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
-            <div className="flex gap-3">
-              <label className="grid flex-1 gap-1 text-sm">Type<select name="type" className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
-              <label className="grid gap-1 text-sm">Currency<input name="currency" className={`${field} w-20 uppercase`} defaultValue={context.workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required /></label>
-            </div>
-            <p className="text-xs text-muted-foreground">Currency can’t be changed later.</p>
-            <button className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</button>
-            <button type="button" data-close className="min-h-9 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-          </SafeForm>
-        </AddAccountPanel>
-      </div>
-    </header>
-    <Suspense fallback={<div className="mt-4 min-h-[18rem]" aria-busy="true"><SkeletonCard lines={3} /></div>}>
-      <AccountDetails context={context} transfers={transfers} saved={saved} />
-    </Suspense>
-  </main>;
-}
-
-async function AccountDetails({ context: { supabase, workspace }, transfers, saved }: { context: Awaited<ReturnType<typeof requireWorkspace>>; transfers?: string; saved?: string }) {
-  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }] = await Promise.all([
+  const { supabase, workspace } = await requireWorkspace();
+  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()),
-    supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
-    supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
     supabase.from("bank_connection_accounts").select("account_name,currency_code,iban,bank_connections(status)").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
     supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
-  if (historyError || viewsError || bankError || identifierError) throw new Error("Could not load account and saved view history");
+  if (bankError || identifierError) throw new Error("Could not load account identifiers");
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const stillFed = new Set((bankAccounts ?? []).filter(connected => connected.bank_connections?.status !== "revoked").map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
@@ -95,14 +67,6 @@ async function AccountDetails({ context: { supabase, workspace }, transfers, sav
     counted += 1;
     totals.set(account.currency_code, (totals.get(account.currency_code) ?? 0n) + BigInt(amount));
   }
-
-  const versions = new Map<string, number>([...accounts.map(account => [account.id, account.version ?? 1] as const), ...(views ?? []).map(view => [view.id, view.version] as const)]);
-  const events = (history ?? []) as MetaEvent[];
-  const latestVersion = new Map<string, number>();
-  for (const event of events) if (!event.undone_at && !event.undo_of)
-    latestVersion.set(event.entity_id, Math.max(latestVersion.get(event.entity_id) ?? 0, Number(event.after?.version ?? 0)));
-  const canUndo = (event: MetaEvent) => !event.undone_at && !event.undo_of && versions.has(event.entity_id) && Number(event.after?.version ?? 0) >= (latestVersion.get(event.entity_id) ?? 0);
-  const when = new Intl.DateTimeFormat(locale, { timeZone, dateStyle: "medium", timeStyle: "short" });
 
   const row = (account: Resolved) => {
     const { amount, label } = shownBalance(account.balance);
@@ -161,10 +125,27 @@ async function AccountDetails({ context: { supabase, workspace }, transfers, sav
     </article>;
   };
 
-  return <div className={`space-y-8 ${active.length ? "mt-4" : "mt-8"}`}>
-    {totals.size ? <dl className="rounded-xl border border-border bg-card px-5 py-4"><dt className="text-xs text-muted-foreground">Total{counted === active.length ? ` across ${active.length} active ${active.length === 1 ? "account" : "accounts"}` : ""}</dt>
+  return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
+    <header className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1"><p className="eyebrow">Money · balances and sources</p><h1 className="page-title">Accounts</h1></div>
+        <AddAccountPanel>
+          <SafeForm action={addAccountSafely} className="absolute right-0 z-10 mt-2 grid w-72 max-w-[calc(100vw-2rem)] gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
+            <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
+            <div className="flex gap-3">
+              <label className="grid flex-1 gap-1 text-sm">Type<select name="type" className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
+              <label className="grid gap-1 text-sm">Currency<input name="currency" className={`${field} w-20 uppercase`} defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required /></label>
+            </div>
+            <p className="text-xs text-muted-foreground">Currency can’t be changed later.</p>
+            <button className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</button>
+            <button type="button" data-close className="min-h-9 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted">Cancel</button>
+          </SafeForm>
+        </AddAccountPanel>
+      </div>
+      {totals.size ? <dl className="rounded-xl border border-border bg-card px-5 py-4"><dt className="text-xs text-muted-foreground">Total{counted === active.length ? ` across ${active.length} active ${active.length === 1 ? "account" : "accounts"}` : ""}</dt>
         {[...totals].map(([currency, amount]) => <dd key={currency} className="mt-1 font-mono text-2xl font-semibold tabular-nums">{formatMoney(amount, currency, locale)}</dd>)}<dd className="mt-1"><CoverageNote counted={counted} total={active.length} /></dd></dl>
-      : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: {active.length} {active.length === 1 ? "account needs" : "accounts need"} a usable balance. <a className="underline" href="#needs-balance">Review {active.length === 1 ? "it" : "them"}</a>.</p> : null}
+        : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: {active.length} {active.length === 1 ? "account needs" : "accounts need"} a usable balance. <a className="underline" href="#needs-balance">Review {active.length === 1 ? "it" : "them"}</a>.</p> : null}
+    </header>
 
     {active.length ? <section id="needs-balance" className="scroll-mt-20 divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
       : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Use Add account or <Link className="underline" href="/import">import a statement</Link>.</p>}
@@ -180,11 +161,28 @@ async function AccountDetails({ context: { supabase, workspace }, transfers, sav
 
     {archived.length ? <section className="space-y-2 opacity-80" aria-label="Archived accounts"><h2 className="text-sm font-medium text-muted-foreground">Archived accounts ({archived.length})</h2><div className="divide-y divide-border rounded-xl border border-border bg-card">{archived.map(row)}</div></section> : null}
 
-    {events.length ? <section><h2 className="text-sm font-medium text-muted-foreground">Account and saved view history</h2>
+    <Suspense fallback={<div className="h-10" aria-busy="true" />}><AccountHistory accounts={accounts} /></Suspense>
+  </main>;
+}
+
+async function AccountHistory({ accounts }: { accounts: Resolved[] }) {
+  const { supabase, workspace: { id, locale, timezone: timeZone } } = await requireWorkspace();
+  const { data: history, error: historyError } = await supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", id).order("created_at", { ascending: false }).limit(30);
+  if (historyError) throw new Error("Could not load account and saved view history");
+  const viewIds = [...new Set((history ?? []).filter(event => event.entity_type === "transaction_view" && !event.undone_at && !event.undo_of).map(event => event.entity_id))];
+  const { data: views, error: viewsError } = viewIds.length ? await supabase.from("transaction_views").select("id,version").eq("workspace_id", id).in("id", viewIds) : { data: [], error: null };
+  if (viewsError) throw new Error("Could not load account and saved view history");
+  const versions = new Map<string, number>([...accounts.map(account => [account.id, account.version ?? 1] as const), ...(views ?? []).map(view => [view.id, view.version] as const)]);
+  const events = (history ?? []) as MetaEvent[];
+  const latestVersion = new Map<string, number>();
+  for (const event of events) if (!event.undone_at && !event.undo_of)
+    latestVersion.set(event.entity_id, Math.max(latestVersion.get(event.entity_id) ?? 0, Number(event.after?.version ?? 0)));
+  const canUndo = (event: MetaEvent) => !event.undone_at && !event.undo_of && versions.has(event.entity_id) && Number(event.after?.version ?? 0) >= (latestVersion.get(event.entity_id) ?? 0);
+  const when = new Intl.DateTimeFormat(locale, { timeZone, dateStyle: "medium", timeStyle: "short" });
+  return events.length ? <section><h2 className="text-sm font-medium text-muted-foreground">Account and saved view history</h2>
       <ul className="mt-2 divide-y divide-border text-sm">{events.map(event => <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
         <span>{describeEvent(event)} <span className="text-muted-foreground">· {when.format(new Date(event.created_at))}{event.undone_at ? " · Undone" : event.undo_of ? " · Restored by undo" : ""}</span></span>
         {canUndo(event) ? <SafeForm action={undoMoneyMetadataSafely}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={versions.get(event.entity_id)} /><input type="hidden" name="requestId" value={randomUUID()} /><button aria-label={`Undo: ${describeEvent(event)}`} className={field}>Undo</button></SafeForm> : null}
       </li>)}</ul>
-    </section> : null}
-  </div>;
+    </section> : null;
 }

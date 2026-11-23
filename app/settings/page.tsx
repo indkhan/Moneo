@@ -41,17 +41,19 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
 
 const updatesSectionIsHiddenWhenStatusIsUnavailable = () => null;
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ usage?: string; chatgpt?: string; claude?: string }> }) {
-  const [context, query] = await Promise.all([requireWorkspace(), searchParams]);
+type SearchParams = { usage?: string; chatgpt?: string; claude?: string };
+
+export default function SettingsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
     <Suspense fallback={<div className="mt-8 min-h-[60vh] max-lg:mt-4" aria-busy="true"><SkeletonCard lines={4} /></div>}>
-      <SettingsSections context={context} query={query} />
+      <SettingsSections searchParams={searchParams} />
     </Suspense>
   </main>;
 }
 
-async function SettingsSections({ context, query }: { context: Workspace; query: { usage?: string; chatgpt?: string; claude?: string } }) {
+async function SettingsSections({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const [context, query] = await Promise.all([requireWorkspace(), searchParams]);
   const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
   const [runs, update, status, keys, claude] = await Promise.all([

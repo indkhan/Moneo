@@ -36,19 +36,22 @@ function sum(items: WealthItem[]) {
   return totals;
 }
 
-export default async function WealthPage({ searchParams }: { searchParams?: Promise<{ removed?: string; history?: string; position?: string }> } = {}) {
-  let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
-  const params = (await searchParams) ?? {};
+type SearchParams = { removed?: string; history?: string; position?: string };
+
+export default function WealthPage({ searchParams }: { searchParams?: Promise<SearchParams> } = {}) {
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
     <Suspense fallback={<div className="min-h-[18rem]" aria-busy="true"><SkeletonCard lines={4} /></div>}>
-      <WealthDetails context={context} params={params} />
+      <WealthDetails searchParams={searchParams} />
     </Suspense>
   </main>;
 }
 
-async function WealthDetails({ context: { supabase, workspace }, params }: { context: Awaited<ReturnType<typeof requireWorkspace>>; params: { removed?: string; history?: string; position?: string } }) {
+async function WealthDetails({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+  let context: Awaited<ReturnType<typeof requireWorkspace>>;
+  try { context = await requireWorkspace(); } catch { redirect("/setup"); }
+  const { supabase, workspace } = context;
+  const params = (await searchParams) ?? {};
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
