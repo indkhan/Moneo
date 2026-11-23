@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expect, it, vi } from "vitest";
 import { CashFlowPanel, RecentTransactions } from "./home-sections";
+import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 
 vi.mock("next/link", () => ({ default: "a" }));
 let search = new URLSearchParams();
@@ -18,7 +19,7 @@ vi.mock("@/lib/finance/dashboard-spending", async original => {
   ], [], "EUR", "2026-10-16");
   return { ...actual, loadHomeSpending: async () => ({ ...summary, categoryNames: new Map([["food", "Food"], ["salary", "Salary"]]), merchantNames: new Map([["employer", "Acme GmbH"]]) }) };
 });
-const props = { db: {} as SupabaseClient, workspaceId: "w", currency: "EUR", today: "2026-10-16", locale: "en" };
+const props = { data: loadHomeSpending({} as SupabaseClient, "w", "EUR", "2026-10-16"), currency: "EUR", locale: "en" };
 
 it("shows both sides by default and only the picked side's breakdown, linked to filtered transactions", async () => {
   const both = await panel();
@@ -47,6 +48,6 @@ it("shows both sides by default and only the picked side's breakdown, linked to 
 it("lists recent ledger entries with account names, status and the total count", async () => {
   const rows = [{ id: "t1", posted_on: "2026-10-15", description: "Coffee", amount_minor: "-350", currency_code: "EUR", status: "pending", account_id: "a", review_reasons: [] }];
   const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: rows, count: 42, error: null }) };
-  const html = renderToStaticMarkup(await RecentTransactions({ db: { from: () => query } as unknown as SupabaseClient, workspaceId: "w", locale: "en", names: new Map([["a", "Checking"]]) }));
+  const html = renderToStaticMarkup(await RecentTransactions({ db: { from: () => query } as unknown as SupabaseClient, workspaceId: "w", locale: "en", names: Promise.resolve(new Map([["a", "Checking"]])) }));
   for (const text of ["All 42", "Coffee", "Checking · pending", "-EUR 3.50", "/money/transactions?transaction=t1"]) expect(html).toContain(text);
 });
