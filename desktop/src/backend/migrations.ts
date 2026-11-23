@@ -67,7 +67,9 @@ export async function applyMigrations(admin: Db, owner: Db, folder: string, pend
   return pending.length;
 }
 
-export async function createOwner(apiUrl: string, serviceKey: string, email: string, password: string) {
+export async function createOwner(admin: Db, apiUrl: string, serviceKey: string, email: string, password: string) {
+  const [existing] = await admin<{ id: string }[]>`select id from auth.users where email = ${email}`;
+  if (existing) return false;
   const response = await fetch(`${apiUrl}/auth/v1/admin/users`, {
     method: "POST",
     headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, "content-type": "application/json" },

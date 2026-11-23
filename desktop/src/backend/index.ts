@@ -295,7 +295,7 @@ export async function startBackend(paths: BackendPaths, progress: Progress, opti
     if (applied) {
       await waitFor("PostgREST schema reload", () => httpOk(`http://127.0.0.1:${restAdminPort}/ready`), 60_000);
     }
-    await step("owner", "Preparing your account", () => createOwner(apiUrl, secrets.SUPABASE_SERVICE_ROLE_KEY, secrets.MONEO_OWNER_EMAIL, secrets.MONEO_OWNER_PASSWORD));
+    await step("owner", "Preparing your account", () => createOwner(admin, apiUrl, secrets.SUPABASE_SERVICE_ROLE_KEY, secrets.MONEO_OWNER_EMAIL, secrets.MONEO_OWNER_PASSWORD));
 
     config.schemaVersion = bundled.at(-1)?.version ?? config.schemaVersion;
     config.services = versions;
