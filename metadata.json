@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M8430PYZJMXWFX6WEVB713T1",
+  "strategy": "manual-commit",
+  "branch": "t3/speed-desktop-startup",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "desktop/src/backend/index.ts",
+    "desktop/src/backend/postgres.ts",
+    "desktop/src/backend/processes.ts",
+    "desktop/src/next-server.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 40,
+    "cache_creation_tokens": 36631,
+    "cache_read_tokens": 3946914,
+    "output_tokens": 20132,
+    "api_call_count": 20
+  },
+  "redaction": {
+    "replacements": 3,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
