@@ -1,12 +1,13 @@
 do $$
-declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid:=gen_random_uuid(); pocket_row uuid:=gen_random_uuid();
+declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid:=gen_random_uuid(); pocket_row uuid:=gen_random_uuid(); broker_row uuid:=gen_random_uuid();
   marked public.transactions%rowtype; event_id uuid; restored public.transactions%rowtype;
 begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
   insert into public.accounts(id,workspace_id,name,currency_code) values(account,workspace,'Pocket EUR','EUR');
   insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,review_reasons)
-    values(pocket_row,workspace,account,'2026-10-01','To EUR MB:00000000-0000-4000-8000-000000000000',-2000,'EUR','{source_transfer}');
+    values(pocket_row,workspace,account,'2026-10-01','To EUR MB:00000000-0000-4000-8000-000000000000',-2000,'EUR','{source_transfer}'),
+      (broker_row,workspace,account,'2026-10-02','Scalable Capital GmbH',-5000,'EUR','{source_transfer}');
   perform set_config('request.jwt.claim.sub',actor::text,true);
   begin
     perform public.mark_own_named_transfer(pocket_row,0,'savings');
@@ -20,4 +21,12 @@ begin
   restored:=public.undo_own_account_transfer(event_id,1);
   if restored.kind<>'ordinary' or restored.review_reasons<>'{source_transfer}' or restored.amount_minor<>-2000 then
     raise exception 'Undo did not restore the pocket move'; end if;
+  begin
+    perform public.mark_own_named_transfer(broker_row,0,'scalable');
+    raise exception 'Scalable transfer accepted before Scalable ever synced' using errcode='ZX001';
+  exception when sqlstate '22023' then null; end;
+  insert into public.scalable_connections(workspace_id,client_id,redirect_uri,status,portfolio)
+    values(workspace,'qa-client','http://127.0.0.1/api/scalable/callback','expired','{}');
+  marked:=public.mark_own_named_transfer(broker_row,0,'scalable');
+  if marked.kind<>'transfer' then raise exception 'Scalable transfer was rejected while its login had ended'; end if;
 end $$;
