@@ -4,6 +4,8 @@ import { CardTreeError, sanitizeTree, scopeCss } from "./tree";
 import { resolveParams } from "./params";
 import { PRESETS, checkPresetBindings, presetSource } from "./presets";
 import { checkCard } from "./render";
+import { rowCoverage } from "./coverage";
+import { CARD_SIZE_KEYS } from "./sizes";
 import { format as chartValue } from "@/components/cards/card-chart";
 
 const render = async (source: string, data: unknown = {}, params: Record<string, string> = {}, size = "M") =>
@@ -141,5 +143,23 @@ describe("presets", () => {
     expect((await checkCard(presetSource("stat", { label: "x", value: "a" }), [], month, context)).errors).toEqual([]);
     const hidden = await checkCard(`export default function Card({ size }) { return size === "S" ? <p>small</p> : <div><Kit.Param name="month" /></div>; }`, [], month, context);
     expect(hidden.errors).toEqual(['S: declared params without a <Kit.Param name="…" /> control: month']);
+  });
+
+  it("counts, per size, the data rows a card leaves out, whether or not it says so", async () => {
+    const holdings = { positions: { items: ["Apple Inc.", "Microsoft", "Nvidia", "Alphabet", "Amazon", "Tesla", "Meta", "ASML", "SAP"].map((name, index) => ({ name, value_minor: String(1000 * (index + 1)) })) } };
+    const trees = async (source: string) => Object.fromEntries(await Promise.all(CARD_SIZE_KEYS.map(async size => [size, await render(source, holdings, {}, size)])));
+    const sliced = await trees(`export default function Card({ data, size }) {
+      return <ul>{data.positions.items.slice(0, { S: 2, M: 3, L: 9, XL: 9 }[size]).map(item => <li>{item.name}</li>)}</ul>;
+    }`);
+    expect(rowCoverage(holdings, sliced)).toEqual(["S shows 2 of 9 positions.items, with nothing saying the rest are left out", "M shows 3 of 9 positions.items, with nothing saying the rest are left out"]);
+    const said = await trees(`export default function Card({ data, size }) {
+      const shown = data.positions.items.slice(0, size === "S" ? 2 : 9);
+      return <ul>{shown.map(item => <li>{item.name}</li>)}{shown.length < 9 && <li>+{9 - shown.length} more</li>}</ul>;
+    }`);
+    expect(rowCoverage(holdings, said)).toEqual(['S shows 2 of 9 positions.items and says "+N more"']);
+    const listed = await trees(`export default function Card({ data }) {
+      return <Kit.List rows={data.positions.items.map(item => ({ label: item.name, minor: item.value_minor, currency: "EUR" }))} />;
+    }`);
+    expect(rowCoverage(holdings, listed)).toEqual([]);
   });
 });

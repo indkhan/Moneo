@@ -1,9 +1,10 @@
 import type { Browser, BrowserContext } from "playwright-core";
+import { z } from "zod";
 import { desktopRender, isDesktop } from "@/lib/desktop-bridge";
 import { loopbackUrl } from "@/lib/env";
 
 export type Shot = { label: string; path: string; width: number; height: number; full: boolean; root: string; theme: "light" | "dark" };
-export type Seen = { label: string; png: Uint8Array; problems: string[] };
+export type Seen = { label: string; png: Uint8Array; problems: string[]; hidden?: string[] };
 export type Session = { name: string; value: string }[];
 
 export const sessionOf = (request: Request): Session => (request.headers.get("cookie") ?? "").split(";").flatMap(part => {
@@ -14,7 +15,7 @@ export const sessionOf = (request: Request): Session => (request.headers.get("co
 
 export const LAYOUT_PROBLEMS = String.raw`function (selector, theme) {
   var root = document.querySelector(selector);
-  if (!root) return ["Nothing was drawn."];
+  if (!root) return { problems: ["Nothing was drawn."], hidden: [] };
   var problems = [];
   var page = selector === "body";
   var name = function (element) {
@@ -38,7 +39,7 @@ export const LAYOUT_PROBLEMS = String.raw`function (selector, theme) {
     var ownText = Array.from(element.childNodes).some(function (node) { return node.nodeType === 3 && (node.textContent || "").trim(); });
     return (media(element) || ownText) && shown(element);
   }).slice(0, 400);
-  if (!leaves.length) return ["Nothing visible was drawn."];
+  if (!leaves.length) return { problems: ["Nothing visible was drawn."], hidden: [] };
   var error = document.getElementById("moneo-page-error");
   if (error) problems.push("A script failed: " + error.textContent);
   var box = root.getBoundingClientRect();
@@ -72,7 +73,20 @@ export const LAYOUT_PROBLEMS = String.raw`function (selector, theme) {
     var alpha = channels.length > 3 ? channels[3] : 1;
     if (alpha > 0.5 && light === (theme === "dark")) problems.push("The page ignores " + theme + " mode: its background stays " + (light ? "light" : "dark") + ". Take colours from the --moneo-* variables.");
   }
-  return problems.filter(function (problem, index) { return problems.indexOf(problem) === index; }).slice(0, 20);
+  var hidden = [];
+  if (!page) {
+    leaves.forEach(function (leaf) { var text = (leaf.textContent || "").trim(); if (/^\+\d+ more$/.test(text)) hidden.push("a list ends with \"" + text + "\""); });
+    Array.from(root.querySelectorAll("*")).forEach(function (parent) {
+      if (parent.closest("svg")) return;
+      var kids = Array.from(parent.children);
+      var kind = function (element) { return element.tagName + "." + element.className; };
+      var rows = kids.filter(function (kid) { return kind(kid) === kind(kids[0] || kid); });
+      if (rows.length < 3 || rows.length < kids.length - 1) return;
+      var gone = rows.filter(function (row) { var rect = row.getBoundingClientRect(); return rect.width === 0 || rect.height === 0 || getComputedStyle(row).visibility === "hidden" || rect.top >= box.bottom; }).length;
+      if (gone) hidden.push("shows " + (rows.length - gone) + " of " + rows.length + " rows of the list starting " + name(rows[0]) + ", with nothing saying the rest are left out");
+    });
+  }
+  return { problems: problems.filter(function (problem, index) { return problems.indexOf(problem) === index; }).slice(0, 20), hidden: hidden };
 }`;
 
 export const layoutScript = (selector: string, theme: string) => `(${LAYOUT_PROBLEMS})(${JSON.stringify(selector)}, ${JSON.stringify(theme)})`;
@@ -138,7 +152,7 @@ async function renderer(session: Session): Promise<Render | null> {
   return open ? playwrightRender(open, session) : null;
 }
 
-const problemList = (result: unknown) => Array.isArray(result) ? result.filter((item): item is string => typeof item === "string") : [];
+const measured = z.object({ problems: z.array(z.string()), hidden: z.array(z.string()) }).catch({ problems: [], hidden: [] });
 
 export async function lookAt(shots: Shot[], session: Session): Promise<Seen[] | null> {
   const render = await renderer(session);
@@ -146,7 +160,7 @@ export async function lookAt(shots: Shot[], session: Session): Promise<Seen[] | 
   const seen: Seen[] = [];
   for (const shot of shots) {
     const { png, result } = await render(shot, layoutScript(shot.root, shot.theme));
-    seen.push({ label: shot.label, png, problems: problemList(result) });
+    seen.push({ label: shot.label, png, ...measured.parse(result) });
   }
   return seen;
 }
