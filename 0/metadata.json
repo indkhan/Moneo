@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M87V899E934BMSVV7PYXTJM4",
+  "session_id": "3d653760-539b-46a5-bc80-414c8014f519",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-24T22:36:35.318699Z",
+  "branch": "t3/scalable-ipo-history-and-transfers",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "lib/finance/own-transfers.test.ts",
+    "lib/finance/own-transfers.ts",
+    "supabase/migrations/202611240001_scalable_transfers_without_login.sql",
+    "supabase/tests/own-named-transfers.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "4b806166c2b5",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "redaction": {
+    "replacements": 14,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 10,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}
