@@ -1,0 +1,16 @@
+[T3 Code: the agent in T3 thread "0d0cc3b2-a901-4587-9dac-0e9d89c920a0" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+Repo: Moneo (read AGENTS.md first and follow it: no comments, QA backend only — never the owner's app on port 47300/3000 or its data). Branch from main, open a PR to main when done, with before/after screenshots (light, dark, mobile) embedded in the PR description (skill `verify-ui`, `npm run qa:shots`; seed a QA artifact with a page version and a Home card, by inserting rows into the QA database if needed — no real AI calls). Include the Speed section (skill `measure-speed`).
+
+Redesign the artifact view's controls in `app/ai/artifacts/[id]/page.tsx` (+ `artifact-controls.tsx`). Today the section has a top bar with tabs "Page | Home cards · N" and, on the Page tab, data-as-of, ‹ Design vX of Y ›, Full screen. On the Home cards tab each card gets a second row BELOW the bar with: title, ‹ vX of Y ›, a status text ("On Home" / "Home shows vN" / "Not on Home"), an S/M/L/XL size group, Add to Home / Update on Home button or a "✓ On Home" label, and "Remove from Home". Owner complaints: "On Home" shows twice (status text + ✓ label), and the controls should all live IN the bar with Page / Home card, not below it.
+
+Target:
+- One bar. Left: tabs `Page | Home card`. Right, contextual:
+  - Page tab: ‹ vX of Y ›, quiet "data as of" (tooltip or small), Full screen.
+  - Home card tab: card name (a picker/select if the artifact has several cards; selection via the existing `card` search param), ‹ vX of Y ›, size S M L XL segmented control, and ONE status/action control: "Add to Home" (primary) when not on Home; "Update on Home" when Home shows another version; "✓ On Home" when current, with "Remove from Home" in a small menu/dropdown next to it (or similar single affordance). The status appears exactly once.
+- Below the bar on the Home card tab: just the card preview on a calm surface. Reconsider the dashed box with faded fake neighbour widget tiles (NEIGHBOURS_FIT) — keep a hint of Home context only if it looks good; otherwise show the card at its real width centred.
+- Must work at mobile width (bar wraps gracefully or controls collapse) in light and dark. Reuse existing actions (publishCardSafely, setCardSizeSafely, unpublishCardSafely in app/dashboard-actions), SafeForm, PendingSubmit, and existing UI components in components/ (check for an existing dropdown/menu/select component before adding one). Keep behaviour identical otherwise; keep the e2e specs passing (update selectors in e2e/ if they target removed elements, without weakening the journeys).
+
+Another agent is concurrently changing the artifact chat (artifact-chat.tsx, lib/ai/artifact-agent.ts) and the `buildCard` prompt text in page.tsx; don't touch those. Run npm test, npm run lint, npm run typecheck, npm run build, and the artifact e2e specs. Commit in steps. Finish with: PR <url>, head <sha>, checks <state>.
