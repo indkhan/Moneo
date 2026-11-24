@@ -71,7 +71,8 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
 
   const homeItems = homeLayout(layout.data)?.items ?? [];
   const neighbours = homeItems.filter(isBuiltinWidget).filter(key => key !== "overview").map(widgetLabel);
-  const buildCard = "Create a Home card from this artifact, keeping its purpose, design and live data. Use the existing page and conversation as context. Save it as a draft for me to preview before adding it to Home.";
+  const buildCard = "Make a Home card from this page.";
+  const home = Object.fromEntries((cards.data ?? []).map(card => [card.id, homeItems.includes(cardWidgetKey(card.id)) ? card.published_version : null]));
   const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
 
@@ -85,7 +86,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
         </div>
         <DeleteArtifactButton id={id} title={artifact.data.title} label="" className="mt-6" />
       </div>
-      <ArtifactChat conversationId={conversationId} initial={history.messages} messagesCursor={history.messagesCursor} running={history.running ?? null} artifactId={start ? id : undefined} />
+      <ArtifactChat conversationId={conversationId} initial={history.messages} messagesCursor={history.messagesCursor} running={history.running ?? null} artifactId={start ? id : undefined} artifact={id} home={home} />
     </aside>
     <section aria-label="Artifact" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border max-lg:h-[85dvh] lg:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">

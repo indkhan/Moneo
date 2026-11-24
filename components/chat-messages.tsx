@@ -50,12 +50,13 @@ function Spoken({ show }: { show?: boolean }) {
   return show ? <><Mic className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" aria-hidden="true" /><span className="sr-only">Spoken: </span></> : null;
 }
 
-export function ChatMessages({ messages, pending, compact = false }: { messages: ChatItem[]; pending?: PendingExchange | null; compact?: boolean }) {
+export function ChatMessages({ messages, pending, compact = false, toolResult }: { messages: ChatItem[]; pending?: PendingExchange | null; compact?: boolean; toolResult?: (step: ToolStep, key: number) => React.ReactNode }) {
   const bubble = `ml-auto w-fit max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[18px_18px_4px_18px] bg-input ${compact ? "px-3.5 py-2 text-sm" : "px-[18px] py-3.5 text-[15px]"}`;
   const files = useMemo(() => [...messages.flatMap(item => item.attachments ?? []), ...(pending?.attachments ?? [])], [messages, pending?.attachments]);
   const [picked, setPicked] = useState<Record<string, number>>({});
   const groups = answerGroups(messages);
   const shownGroups = pending?.regenerating && groups.at(-1)?.[0].answer_of ? groups.slice(0, -1) : groups;
+  const results = (tools: (string | ToolStep)[]) => toolResult && tools.map((step, index) => typeof step === "string" ? null : toolResult(step, index));
   const assistant = (body: React.ReactNode) => <div className="min-w-0"><p className="mb-2 flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Moneo</p>{body}</div>;
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
     {shownGroups.map((group, position) => {
@@ -65,13 +66,13 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
       const lastGroup = position === shownGroups.length - 1;
       return <article key={group[0].id}>
       <time className="sr-only" dateTime={item.created_at} suppressHydrationWarning>{new Date(item.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
-      {item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} files={files} /><MessageActions content={item.content} model={item.model} resend={lastGroup && !pending ? resendQuestion(messages, index) : null} version={{ index: group.indexOf(item), count: group.length, onChange: next => setPicked(current => ({ ...current, [pickKey]: next })) }} />{lastGroup && item === group.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
+      {item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} />{results(item.tools ?? [])}<AiMessage content={item.content} files={files} /><MessageActions content={item.content} model={item.model} resend={lastGroup && !pending ? resendQuestion(messages, index) : null} version={{ index: group.indexOf(item), count: group.length, onChange: next => setPicked(current => ({ ...current, [pickKey]: next })) }} />{lastGroup && item === group.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
     </article>;
     })}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
       {pending.question && <div><MessageFiles files={pending.attachments} /><p className={bubble}><Spoken show={pending.spoken} />{pending.question}</p></div>}
       {pending.steers?.map((steer, index) => <p key={index} className={bubble}>{steer}</p>)}
-      {assistant(<>{pending.plan && <Plan steps={pending.plan} done={Boolean(pending.answer)} />}<AiToolActivity tools={pending.tools} />{pending.answer ? <><AiMessage content={pending.answer} streaming={pending.streaming} files={files} />{!pending.streaming && <p role="status" className="mt-2 text-xs text-muted-foreground">Saving to history…</p>}</>
+      {assistant(<>{pending.plan && <Plan steps={pending.plan} done={Boolean(pending.answer)} />}<AiToolActivity tools={pending.tools} />{results(pending.tools)}{pending.answer ? <><AiMessage content={pending.answer} streaming={pending.streaming} files={files} />{!pending.streaming && <p role="status" className="mt-2 text-xs text-muted-foreground">Saving to history…</p>}</>
         : <p role="status" className="flex items-center gap-2 py-1 text-sm text-muted-foreground"><span className="flex gap-1" aria-hidden="true">{[0, 150, 300].map(delay => <span key={delay} className="size-1.5 rounded-full bg-muted-foreground motion-safe:animate-bounce" style={{ animationDelay: `${delay}ms` }} />)}</span>{!pending.tools.length ? "Thinking…" : pending.tools.some(tool => tool.state === "running") ? "Working with your data…" : "Writing the answer…"}</p>}</>)}
     </article>}
   </div>;
