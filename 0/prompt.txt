@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b1dv3ufg0</task-id>
+<tool-use-id>toolu_01SidbSwVZsARkjiWF2JPJU6</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\2257e789bd67ce7c\7a6b8f95-03a2-4a11-b715-9c1704487866\tasks\b1dv3ufg0.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-651d2d7e-8b2a93af8d6b532d; npm run build &gt; ../build.log 2&gt;&amp;1; echo exit $?; tail -5 ../build.log" completed (exit code 0)</summary>
+</task-notification>
