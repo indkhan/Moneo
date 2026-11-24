@@ -1,0 +1,21 @@
+[T3 Code: the agent in T3 thread "14ccef14-fc42-455a-b0b9-4b6187d38072" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+Repo: Moneo, an Electron desktop app (desktop/) that on launch starts bundled Postgres, GoTrue, Storage API, PostgREST, a gateway, then a Next.js standalone server, then opens the window. Read AGENTS.md (especially "Desktop app") and desktop/README.md, desktop/src/backend/README.md first, and follow AGENTS.md (no comments, surgical changes, commit each step).
+
+Goal: make the time from double-clicking Moneo (app closed, and after a reboot = cold disk cache) until the Home page is usable as short as possible, and the app lighter (memory, processes). Measure first, then fix, commit by commit.
+
+Measure: `node scripts/desktop/fetch-backend.mjs --platform win-x64` once, `npm run desktop:build`, then run with `MONEO_DESKTOP_HOME` set to a scratch folder (NEVER the owner's real user-data folder or installed app). Add timestamps from the logs (desktop/src/paths.ts log, backend.log) for each phase: electron ready, port, certificate, postgres start, each service ready, migrations check, owner creation, Next server ready (/api/health), window first paint, Home rendered. Do both a first run and a second (normal) start. `npm run desktop:smoke` exists too.
+
+Known candidates in desktop/src/main.ts and desktop/src/backend/index.ts:
+- auth (GoTrue), storage and rest (PostgREST) start strictly one after another; they only need Postgres. Start them concurrently; start the Next server as soon as its env is known (ports can be chosen up front) instead of after the whole backend + owner step.
+- ensureBankCertificate runs serially before the backend; move it off the critical path if it can.
+- createOwner / migrationState / revokeMigrationOwners / ALTER ROLE run every start; skip work already done (config.json knows schemaVersion etc.) while still detecting real changes.
+- waitFor polling intervals; Next readiness polls every 250 ms.
+- Next server cold start: try Node's compile cache (module.enableCompileCache / NODE_COMPILE_CACHE in a folder under the Moneo home) for the utilityProcess and the storage fork; measure.
+- Show the window (or the setup screen) immediately and load Home as soon as Next is ready; check the first page request isn't slowed by on-demand compilation or cold DB caches.
+- Postgres settings for a single-user desktop (shared_buffers, fsync is NOT allowed to be turned off — data safety first), GoTrue/Storage memory.
+Keep data safety: pre-upgrade backup, migrations and error reporting must still work exactly. Keep security fuses.
+
+Report a before/after table per phase. Open a PR with `gh pr create --base t3/speed-build-and-startup` (NOT main), with the numbers and a Speed section. Run npm test, npm run lint, npm run typecheck before. Last line: PR <url>, head <sha>, checks <state>.
