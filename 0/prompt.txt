@@ -1,0 +1,44 @@
+[T3 Code: the agent in T3 thread "0d0cc3b2-a901-4587-9dac-0e9d89c920a0" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+Repo: Moneo (read AGENTS.md first and follow it: no comments, tests rules, QA backend only — never the owner's app on port 47300/3000 or its data). Branch from main, open a PR to main when done, with before/after screenshots embedded in the PR description (skill `verify-ui`, `npm run qa:shots`; seed a QA artifact that has a card with a long list, e.g. many holdings/categories — mock or stub the AI designer so no real AI calls are needed; if you cannot produce an AI-built artifact in QA, insert artifact/card rows directly into the QA database for the screenshots). Include the Speed section (skill `measure-speed`).
+
+Problem the owner reported: the artifact builder chat (/ai/artifacts/[id], `app/ai/artifacts/[id]/artifact-chat.tsx`, agent in `lib/ai/artifact-agent.ts`) feels like a receipt, not a conversation, and Home cards silently hide data. Real example from the owner's data: a Scalable portfolio card whose designer-written TSX contained `.size-s .holding:nth-child(n+3){display:none}` (and n+4 at M, n+5 at L/XL), so it showed 2/3/4 of 9 holdings with no "+N more" and the chat never mentioned it. Root causes found:
+1. CARD_DESIGNER prompt says the body is a fixed height, nothing scrolls, "show fewer rows" at smaller sizes — the designer hides rows on purpose.
+2. The card checks (`lib/cards/render.ts` checkCard, `lib/ai/artifact-preview.ts` LAYOUT_PROBLEMS) only catch cut-off/overlapping text, so deliberately hidden rows pass and nothing reports what was dropped.
+3. `artifactModePrompt` tells the builder "After a tool saves, answer in one or two sentences", and tool results don't tell it what was left out (lastLookFound exists but is thin).
+
+Do two things:
+A) Never hide data without saying so. Measure, per rendered size, how many list items/data rows the card actually shows versus how many the data holds (e.g. in the preview measurement: rows hidden via display:none / clipped vs. array lengths in the card's data — pick the most robust way; Kit.List already shows "+N more" in components/cards/card-view.tsx). Return it in write_card/card_preset results (e.g. `hidden: ["S shows 2 of 9 positions", ...]`). Have the designer never hide rows silently: either use Kit.List or show a "+N more" itself — enforce it in the check (a card that hides data rows without a visible "+N more" fails the check with an error telling the designer what to do), not just in prompt text. Note: the owner wants cards to become height-adjustable on Home later (separate work) — do NOT add scrolling inside cards.
+B) Make the artifact chat a real conversation. Replace the "one or two sentences" rule in artifactModePrompt with general guidance: after building, say what it made, what it had to leave out or could not do and why (from the tool result, e.g. the hidden counts and remaining look problems), and offer concrete options; when a request has more than one reasonable reading, ask before spending a build. Keep the prompt general — AGENTS.md forbids special-case sentences naming one request. Show each saved page/card version inline in the chat thread as a small preview item (card preview or page thumbnail with version number and a link/button to open it in the Page or Home card tab; for cards, an "Add to Home"/"Update on Home" action is welcome if simple, reusing publishCardSafely from app/dashboard-actions). Look at components/chat-messages.tsx for how tool results render. Also replace the canned "Create a Home card from this artifact, keeping its purpose…" prompt in app/ai/artifacts/[id]/page.tsx (buildCard) with a short human message such as "Make a Home card from this page." (the agent already has the page and conversation as context via artifactBriefing).
+
+Another agent is concurrently redesigning the toolbar/Home-card controls in app/ai/artifacts/[id]/page.tsx (merging the size picker, version, Add/Remove from Home into the top bar). Keep your edits to page.tsx minimal (the buildCard text and anything needed to wire inline previews) to avoid conflicts.
+
+Tests: add a test for the hidden-rows check (a card that hides rows without "+N more" fails; one using Kit.List passes) in the existing card test files. Run npm test, npm run lint, npm run typecheck, npm run build. Commit in steps. Finish with: PR <url>, head <sha>, checks <state>.
+
+---
+
+[T3 Code: the agent in T3 thread "0d0cc3b2-a901-4587-9dac-0e9d89c920a0" sent this message, not the user.]
+
+Owner clarified part A: card height stays fixed for now. A card MAY show fewer rows than the data holds; that is not a failure and should not be rejected by the check. What matters is that it is never silent: measure the hidden rows per size and return them in the write_card/card_preset result, and the builder must tell the owner in the chat (e.g. "At S the card shows 2 of 9 holdings") and offer options such as adding a "+N more" line or a bigger width. The owner then decides in the conversation. So: keep the measurement and reporting, drop "fail the check unless +N more is shown". Adjust the test accordingly (it should prove hidden rows are counted and reported, per size).
+
+---
+
+<task-notification>
+<task-id>bx1us0eec</task-id>
+<tool-use-id>toolu_01BZwBdTdcNX9Jo7VYDQ3LXY</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\2257e789bd67ce7c\7a6b8f95-03a2-4a11-b715-9c1704487866\tasks\bx1us0eec.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-651d2d7e-8b2a93af8d6b532d; npm ci --no-audit --no-fund &gt; ../npmci.log 2&gt;&amp;1; tail -3 ../npmci.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b9aadqpm8</task-id>
+<tool-use-id>toolu_01TzeDD789H1wnNpxL6ggtA6</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\2257e789bd67ce7c\7a6b8f95-03a2-4a11-b715-9c1704487866\tasks\b9aadqpm8.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-651d2d7e-8b2a93af8d6b532d; for f in "app/ai/artifacts/[id]/artifact-chat.tsx" "app/ai/artifacts/[id]/page.tsx" components/chat-messages.tsx lib/ai/artifact-preview.ts lib/cards/cards.test.ts lib/cards/render.ts lib/ai/artifact-agent.ts lib/cards/coverage.ts "app/ai/artifacts/[id]/saved-version.tsx"; do sed -i 's/\r$//' "$f"; done; git diff --stat | tail -1; npm run lint 2&gt;&amp;1 | tail -20" completed (exit code 0)</summary>
+</task-notification>
