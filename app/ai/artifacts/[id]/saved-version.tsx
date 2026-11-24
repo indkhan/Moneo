@@ -11,7 +11,7 @@ import { PendingSubmit } from "./artifact-controls";
 export type HomeVersions = Record<string, number | null>;
 type Saved = { kind: "page"; version: number } | { kind: "card"; cardId: string; version: number; title: string };
 
-const field = (output: string, name: string, pattern: string) => output.match(new RegExp(`"${name}":\s*${pattern}`))?.[1];
+const field = (output: string, name: string, pattern: string) => output.match(new RegExp(String.raw`"${name}":\s*${pattern}`))?.[1];
 
 export function savedVersion(step: ToolStep): Saved | null {
   if (step.state !== "done" || !step.output || !field(step.output, "saved", "(true)")) return null;
