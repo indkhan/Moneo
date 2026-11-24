@@ -14,7 +14,8 @@ type Chart = { currency: string; points: { at: string; price: string }[] };
 export type HistoryRow = { id: string; at: string; currency?: string } & (
   | { kind: "security"; isin: string; side: string; quantity: string | null; amountText: string; price?: string | null }
   | { kind: "cash"; quantity?: undefined; amountText: string }
-  | { kind: "crypto"; isin: string; side: string; quantity: string | null; amountText: string; price?: string | null });
+  | { kind: "crypto"; isin: string; side: string; quantity: string | null; amountText: string; price?: string | null }
+  | { kind: "shares"; isin: string; side: string; quantity: string | null; amountText?: undefined });
 export type HistoryInput = {
   rows: HistoryRow[]; charts: Record<string, Chart>;
   holdings: { isin: string; filled: number | string; currency?: string }[];
@@ -31,7 +32,8 @@ const transactionsSchema = z.object({
   page: nextCursor.optional(),
   transactions: z.array(z.object({ id: z.string(), status: z.string(), currency: z.string().nullish(), isCancellation: z.boolean().nullish(), lastEventAt: z.string(),
     security: z.object({ isin: z.string(), side: z.string().nullish(), quantity: decimal.nullish(), amount: decimal.nullish() }).nullish(),
-    cash: z.object({ amount: decimal.nullish() }).nullish() })).default([]),
+    cash: z.object({ amount: decimal.nullish() }).nullish(),
+    nonTradeSecurity: z.object({ isin: z.string(), transactionType: z.string().nullish(), quantity: decimal.nullish() }).nullish() })).default([]),
   crypto: z.object({ page: nextCursor.optional(), transactions: z.array(z.object({ id: z.string(), status: z.string(), isCancellation: z.boolean().nullish(), lastEventAt: z.string(),
     side: z.string().nullish(), quantity: decimal.nullish(), amount: decimal.nullish() })).default([]) }).nullish(),
 });
@@ -55,6 +57,8 @@ async function readRows(mcp: Pick<ScalableMcp, "callTool">, details: TradeDetail
       const base = { id: row.id, at: row.lastEventAt, ...(row.currency ? { currency: row.currency } : {}) };
       if (row.security) securities.set(row.id, { ...base, kind: "security", isin: row.security.isin, side: row.security.side ?? "unknown", quantity: row.security.quantity == null ? null : text(row.security.quantity), amountText: String(row.security.amount ?? 0) });
       else if (row.cash) securities.set(row.id, { ...base, kind: "cash", amountText: String(row.cash.amount ?? 0) });
+      else if (row.nonTradeSecurity) securities.set(row.id, { ...base, kind: "shares", isin: row.nonTradeSecurity.isin, side: row.nonTradeSecurity.transactionType ?? "unknown",
+        quantity: row.nonTradeSecurity.quantity == null ? null : text(row.nonTradeSecurity.quantity) });
     }
     if (!cryptoDone) for (const row of (reply.crypto?.transactions ?? []).filter(settled))
       crypto.set(row.id, { id: row.id, at: row.lastEventAt, kind: "crypto", side: row.side ?? "unknown", quantity: row.quantity == null ? null : text(row.quantity), amountText: String(row.amount ?? 0) });
@@ -90,20 +94,24 @@ export async function readHistoryInput(mcp: Pick<ScalableMcp, "callTool">, timeZ
   const cash = z.object({ cash: z.object({ cashBalance: decimal }) }).parse(await mcp.callTool("get_portfolio_cash_breakdown"));
   const unbacked = holdings.cryptoHoldings.find(coin => Number(coin.position?.filled ?? 0) > 0 && !coin.etpPositions?.some(etp => Number(etp.position?.filled ?? 0) > 0));
   if (unbacked) throw new Error(`${unbacked.ticker} is held without an ETP position`);
+  const held = [...holdings.holdings.map(holding => ({ isin: holding.isin, filled: holding.position.filled, currency: holding.currentQuote.currency })),
+    ...holdings.cryptoHoldings.flatMap(coin => (coin.etpPositions ?? []).flatMap(etp => etp.position ? [{ isin: etp.isin, filled: etp.position.filled }] : []))];
+  const stillHeld = new Set(held.filter(holding => Number(holding.filled) > 0).map(holding => holding.isin));
+  const priced = new Set(rows.flatMap(row => row.kind === "security" || row.kind === "crypto" || (row.kind === "shares" && stillHeld.has(row.isin)) ? [row.isin] : []));
   const charts: Record<string, Chart> = {};
-  for (const isin of new Set(rows.flatMap(row => row.kind === "cash" ? [] : [row.isin]))) charts[isin] = await readChart(mcp, isin);
-  return { rows, charts, timeZone, before, cashBalance: cash.cash.cashBalance,
-    holdings: [...holdings.holdings.map(holding => ({ isin: holding.isin, filled: holding.position.filled, currency: holding.currentQuote.currency })),
-      ...holdings.cryptoHoldings.flatMap(coin => (coin.etpPositions ?? []).flatMap(etp => etp.position ? [{ isin: etp.isin, filled: etp.position.filled }] : []))] };
+  for (const isin of priced) charts[isin] = await readChart(mcp, isin);
+  return { rows, charts, timeZone, before, cashBalance: cash.cash.cashBalance, holdings: held };
 }
 
+const SHARE_MOVES = /_(IN|OUT)$/;
 const ONE = 10n ** 18n, TOLERANCE = 10n ** 12n, CASH_TOLERANCE = 100n;
 const CENTS = 100n, CENT_SCALE = ONE / CENTS;
 const scaled = (value: number | string) => { const ratio = decimalRatio(text(value)); return ratio.numerator * ONE / ratio.denominator; };
 const decimalOf = (value: bigint) => `${value / ONE}.${(value % ONE).toString().padStart(18, "0")}`;
 const value = (quantity: bigint, price: bigint) => holdingValue(decimalOf(quantity), decimalOf(price), CURRENCY);
 const absolute = (minor: bigint) => minor < 0n ? -minor : minor;
-const tradePrices = (rows: Exclude<HistoryRow, { kind: "cash" }>[]) => rows.flatMap(row => {
+type Trade = Extract<HistoryRow, { kind: "security" | "crypto" }>;
+const tradePrices = (rows: Trade[]) => rows.flatMap(row => {
   if (row.price) return [{ at: row.at, price: scaled(row.price) }];
   const minor = BigInt(toMinor(row.amountText, CURRENCY)), quantity = scaled(row.quantity!);
   return minor !== 0n && quantity > 0n ? [{ at: row.at, price: absolute(minor) * CENT_SCALE * ONE / quantity }] : [];
@@ -128,16 +136,16 @@ function replay(input: HistoryInput): HistoryResult {
   for (const row of rows) {
     if (row.currency && row.currency !== CURRENCY) return fail(`A transaction is in ${row.currency}, and only ${CURRENCY} is supported`);
     if (row.kind === "cash") continue;
-    if (row.side !== "BUY" && row.side !== "SELL") return fail(`Transaction ${row.id} has an unknown side: ${row.side}`);
+    if (row.kind === "shares" ? !SHARE_MOVES.test(row.side) : row.side !== "BUY" && row.side !== "SELL") return fail(`Transaction ${row.id} has an unknown side: ${row.side}`);
     if (row.quantity === null) return fail(`Transaction ${row.id} has no quantity`);
   }
   for (const [isin, chart] of Object.entries(input.charts)) if (chart.currency !== CURRENCY) return fail(`${isin} is priced in ${chart.currency}, and only ${CURRENCY} is supported`);
   for (const holding of input.holdings) if (holding.currency && holding.currency !== CURRENCY && Number(holding.filled) > 0) return fail(`${holding.isin} is priced in ${holding.currency}, and only ${CURRENCY} is supported`);
 
-  const trades = rows.filter(row => row.kind !== "cash");
+  const trades = rows.filter((row): row is Trade => row.kind === "security" || row.kind === "crypto");
   const cryptoIsins = new Set(trades.filter(row => row.kind === "crypto").map(row => row.isin));
   const shares = new Map<string, bigint>(), prices = new Map<string, Prices>();
-  for (const isin of new Set(trades.map(row => row.isin))) {
+  for (const isin of new Set(rows.flatMap(row => row.kind === "cash" ? [] : [row.isin]))) {
     shares.set(isin, 0n);
     prices.set(isin, pricesFrom(input.charts[isin], input.timeZone, tradePrices(trades.filter(row => row.isin === isin))));
   }
@@ -154,11 +162,10 @@ function replay(input: HistoryInput): HistoryResult {
   let cashMinor = 0n;
   for (const date of dayRange(first, lastEvent > dayBefore ? lastEvent : dayBefore)) {
     for (const row of byDay.get(date) ?? []) {
-      const amount = BigInt(toMinor(row.amountText, CURRENCY));
-      cashMinor += amount;
+      if (row.kind !== "shares") cashMinor += BigInt(toMinor(row.amountText, CURRENCY));
       if (row.kind === "cash") continue;
       const quantity = scaled(row.quantity!);
-      shares.set(row.isin, shares.get(row.isin)! + (row.side === "BUY" ? quantity : -quantity));
+      shares.set(row.isin, shares.get(row.isin)! + (row.side === "BUY" || row.side.endsWith("_IN") ? quantity : -quantity));
     }
     for (const [isin, held] of shares) if (held < -TOLERANCE) return fail(`Shares of ${isin} go negative on ${date}`);
     if (date > dayBefore) continue;
