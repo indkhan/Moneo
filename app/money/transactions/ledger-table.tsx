@@ -100,7 +100,7 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
                 <td className={bodyCell}><input type="checkbox" aria-label={`Select ${row.description}`} checked={selected.includes(row.id)} onChange={() => toggle(row.id)} /></td>
                 <td className={`${bodyCell} max-md:hidden font-mono text-muted-foreground`}>{row.posted_on}</td>
                 <td className={`${bodyCell} max-md:w-full max-md:max-w-0`}><span className="flex min-w-0 flex-wrap items-center gap-x-2 md:flex-nowrap">
-                  <Link className="min-w-0 max-w-full truncate font-medium text-foreground hover:text-brand hover:underline" href={href(row.id)} scroll={false}>{row.description}</Link>
+                  <Link title={row.description ?? undefined} className="min-w-0 max-w-full truncate font-medium text-foreground hover:text-brand hover:underline max-md:line-clamp-2 max-md:whitespace-normal max-md:break-words" href={href(row.id)} scroll={false}>{row.description}</Link>
                   <span className="w-full font-mono text-xs text-muted-foreground md:hidden">{row.posted_on}</span>
                   {row.kind !== "ordinary" || row.status !== "posted" ? <span className="shrink-0 text-[11px] text-muted-foreground">{[row.kind !== "ordinary" && kindLabel(row.kind), row.status !== "posted" && statusLabel(row.status)].filter(Boolean).join(" · ")}</span> : null}
                   {row.review_reasons?.length ? <span title="Needs review" className="shrink-0 rounded-[5px] border border-warning px-1.5 font-mono text-[11px] text-warning">review</span> : null}

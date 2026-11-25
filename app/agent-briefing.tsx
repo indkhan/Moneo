@@ -35,7 +35,7 @@ export async function AgentBriefing({ db, workspaceId, timeZone = "UTC", ai: pen
       {run && <span className="font-mono text-[11px] text-subtle">{running ? "running now" : `last run ${time(run.created_at, timeZone)}${run.finished_at ? ` · ${duration(run.created_at, run.finished_at)}` : ""}`}</span>}
     </div>
     <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">{AGENT_IDS.map(id => { const task = byAgent.get(id); return <li key={id} className="min-w-0 rounded-lg border border-border p-3">
-      <p className="flex items-center gap-1.5 text-[13px] font-medium"><span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${DOT[task?.status ?? "pending"] ?? "bg-subtle"}`} /><span className="truncate">{AGENTS[id].name}</span></p>
+      <p className="flex items-center gap-1.5 text-[13px] font-medium"><span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${DOT[task?.status ?? "pending"] ?? "bg-subtle"}`} /><span title={AGENTS[id].name} className="line-clamp-2 break-words">{AGENTS[id].name}</span></p>
       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground" title={task?.summary ?? AGENTS[id].role}>{task?.summary ?? (task ? task.status : AGENTS[id].role)}</p>
     </li>; })}</ul>
     <div className="mt-auto">
