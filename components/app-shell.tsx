@@ -204,7 +204,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           </IntentLink>)}
         </nav>}
       </header>
-      <div id="main-content" tabIndex={-1} className={fullHeight ? "min-h-0 flex-1 overflow-hidden" : undefined}>{children}</div>
+      <div id="main-content" tabIndex={-1} className={fullHeight ? "relative min-h-0 flex-1 overflow-hidden" : undefined}>{children}</div>
     </div>
     {!chat && <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/85 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur-xl select-none lg:hidden">
       {mobileTabs.map(item => {

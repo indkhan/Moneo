@@ -240,13 +240,13 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   return <main className="flex h-full">
     <ConversationSelection selectionKey={selectionKey} id={selectedId ?? "new"} />
-    <aside className="scroll-fade hidden h-full w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
+    <aside className="scroll-fade relative hidden h-full w-72 shrink-0 overflow-y-auto overscroll-contain border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {calling && !callBlocked ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [], VOICE_CALL_TITLE)} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex items-center gap-0.5 border-b border-border px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1 lg:flex-wrap lg:gap-2 lg:px-8 lg:py-4">
         <button type="button" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} aria-label="Back" className={`${summary} lg:hidden`}><ChevronLeft className="size-7" strokeWidth={1.8} aria-hidden="true" /></button>
         <h1 title={title} className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight lg:font-display lg:text-2xl">{title}</h1>
-        <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className={icon} aria-hidden="true" /></summary><div className="absolute inset-x-2 top-full z-20 mt-1 max-h-[75dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
+        <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className={icon} aria-hidden="true" /></summary><div className="absolute inset-x-2 top-full z-20 mt-1 max-h-[75dvh] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         <Link href={href("new")} onClick={event => open(event, null)} aria-label="New chat" className={`${summary} lg:hidden`}><SquarePen className={icon} aria-hidden="true" /></Link>
         <button type="button" aria-haspopup="dialog" aria-label="Run a deep review" onClick={() => { if (menu.current) menu.current.open = false; setReviewOpen(true); reviewDialog.current?.showModal(); }} className={summary}><Sparkles className={icon} aria-hidden="true" /><span className="max-lg:hidden">Run a deep review</span></button>
         <dialog ref={reviewDialog} aria-label="Deep review" className="m-auto max-h-[85dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card text-foreground shadow-lg backdrop:bg-black/50">
@@ -255,7 +255,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
         </dialog>
         <button type="button" onClick={() => setCalling(true)} title={access?.voice === false ? VOICE_NEEDS_OPENAI_KEY : undefined} aria-label="Call" className={summary}><Phone className={icon} aria-hidden="true" /><span className="max-lg:hidden">Call</span></button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
         {access?.ai === false && <p role="status" className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">No AI is set up yet. Sign in with ChatGPT or Claude, or add an OpenAI or OpenRouter API key in <Link href="/settings#ai-access" className="underline">Settings → AI access</Link> to start chatting.</p>}
         {callBlocked && <VoiceKeyToast onDismiss={() => setCalling(false)} />}
