@@ -28,6 +28,7 @@ import { AgentBriefing } from "./agent-briefing";
 import { HomeOrganize } from "./home-organize";
 import { FirstSteps } from "./first-steps";
 import { aiConfigured } from "@/lib/ai/configured";
+import { loadFirstRun } from "@/lib/first-run";
 import { HomeBudgets } from "./home-budgets";
 import { HomeHistory } from "./home-history";
 import { RecurringDetection, WaitingForYou, loadReview, loadWaitingForYou } from "./waiting-for-you";
@@ -103,7 +104,7 @@ async function HomeDashboard({ context, asOf, today, accountId }: { context: Awa
   const portfolioPromise = Promise.resolve(supabase.from("scalable_connections").select("portfolio, history_status").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"]).not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle());
   const notices = awaitedLater(homeNotices());
   const aiPromise = aiConfigured().catch(() => true);
-  const [layout, pinned] = await Promise.all([layoutPromise, pinnedPromise]);
+  const [layout, pinned, steps] = await Promise.all([layoutPromise, pinnedPromise, loadFirstRun(supabase, workspace.id, aiPromise)]);
   for (const error of [layout.error, pinned.error]) if (error) throw error;
   const saved = homeLayout(layout.data);
   if (!saved) throw new Error("Dashboard preferences are invalid; try again");
@@ -153,7 +154,7 @@ async function HomeDashboard({ context, asOf, today, accountId }: { context: Awa
             {convertedCount > 0 && <span className="rounded-md border border-dashed border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">traced · {accounts.length} accounts · {valuations.included.length} valuations</span>}</div>
           <Link href="/plan/currency" className="rounded-lg border border-input px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">{displayCurrency}</Link>
         </div>
-        {!accounts.length && !wealthItems.length ? <FirstSteps ai={await aiPromise} />
+        {!accounts.length && !wealthItems.length ? <p className="text-sm text-muted-foreground">Add your money to see your net worth.</p>
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} compact={formatCompactMoney(netWorthMinor, displayCurrency, locale)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
             {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{signedMoney(monthChange)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
@@ -259,8 +260,9 @@ async function HomeDashboard({ context, asOf, today, accountId }: { context: Awa
   if (overview) visibleWidgets.overview = await overview;
 
   return <>
+    {steps.show && <FirstSteps steps={steps} />}
     <Suspense fallback={null}>{notices}</Suspense>
-    <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
+    <HomeGrid editable={steps.canCustomize} version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
       widgets={visibleWidgets} />
   </>;
 }
