@@ -32,6 +32,10 @@ export function consentState(connection: Pick<Connection, "status" | "valid_unti
   return null;
 }
 
+export function canSync(connection: Pick<Connection, "status" | "valid_until">, running: boolean, now = Date.now()) {
+  return connection.status === "active" && !running && consentState(connection, now) !== "expired";
+}
+
 type StepState = "done" | "active" | "pending";
 const processedRows = (item: SyncImport) => item.new_rows + item.matched_rows + item.review_rows + item.rejected_rows;
 
@@ -172,7 +176,7 @@ export function ConnectedBanks() {
               <p className="text-xs text-muted-foreground">Last sync {date(connection.last_synced_at)} · consent until {date(connection.valid_until)}</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" disabled={!!busy || connection.status !== "active" || !data.configured}
+              <Button size="sm" variant="outline" disabled={!!busy || !data.configured || !canSync(connection, running(connection))}
                 onClick={() => { const at = Date.now(); setNow(at); setRequested(current => ({ ...current, [connection.id]: at }));
                   void act(`sync:${connection.id}`, () => fetch(`/api/bank/connections/${connection.id}/sync`, { method: "POST" }))
                     .then(ok => { if (!ok) setRequested(current => { const next = { ...current }; delete next[connection.id]; return next; }); }); }}>

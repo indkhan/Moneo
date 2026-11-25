@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
 import { SYNC_STALE_MS, syncRunning } from "@/lib/bank/sync-state";
-import { consentState, SyncProgress, syncSteps, syncSummary } from "./connected-banks";
+import { canSync, consentState, SyncProgress, syncSteps, syncSummary } from "./connected-banks";
 
 it("shows the reconnect banner from 7 days before consent ends", () => {
   const now = Date.parse("2026-10-16T12:00:00Z");
@@ -13,7 +13,16 @@ it("shows the reconnect banner from 7 days before consent ends", () => {
   expect(consentState({ status: "error", valid_until: null }, now)).toBeNull();
 });
 
-const sync = (imports: { status: string; total_rows: number; new_rows?: number; matched_rows?: number }[]) =>
+it("blocks Sync now while a sync runs or after consent has ended", () => {
+  const now = Date.parse("2026-10-16T12:00:00Z");
+  const valid = { status: "active" as const, valid_until: new Date(now + 30 * 86_400_000).toISOString() };
+  expect(canSync(valid, false, now)).toBe(true);
+  expect(canSync(valid, true, now)).toBe(false);
+  expect(canSync({ status: "active", valid_until: new Date(now - 1000).toISOString() }, false, now)).toBe(false);
+  expect(canSync({ ...valid, status: "error" }, false, now)).toBe(false);
+});
+
+const sync = (imports: { status: string; total_rows: number; new_rows?: number; matched_rows?: number}[]) =>
   ({ running: true, imports: imports.map((item, index) => ({ id: `i${index}`, review_rows: 0, rejected_rows: 0, new_rows: 0, matched_rows: 0, ...item })) });
 
 it("walks a sync through asking the bank, importing rows and finishing", () => {
