@@ -65,23 +65,51 @@ describe("saved conversation history", () => {
   });
 });
 
-it("searches live titles and message text with escaped wildcards", async () => {
-  const calls: [string, string, unknown[]][] = [];
-  const result = (data: unknown[]) => ({ data, error: null });
-  const searchClient = { from(table: string) {
-    const query: Record<string, unknown> = {};
-    for (const name of ["select", "eq", "is", "order", "limit", "in", "ilike"]) query[name] = (...args: unknown[]) => { calls.push([table, name, args]); return query; };
-    query.then = (resolve: (v: unknown) => unknown) => Promise.resolve(table === "messages"
-      ? result([{ conversation_id: "b" }, { conversation_id: "a" }])
-      : calls.at(-1)?.[1] === "in" ? result([{ id: "b", title: "Rent", created_at: "2026-02-01T00:00:00Z" }]) : result([{ id: "a", title: "100% rent", created_at: "2026-01-01T00:00:00Z" }])).then(resolve);
+it("pages every title and message match with an exact count and honours escaped wildcards", async () => {
+  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  const conversations = [
+    ...Array.from({ length: 65 }, (_, n) => ({ id: id(n), title: `100%_rent* ${n}`, created_at: `2026-01-${String(1 + (n % 20)).padStart(2, "0")}T00:00:00+00:00`, deleted_at: null, artifact_id: null, workspace_id: workspace })),
+    { id: id(100), title: "Landlord", created_at: "2026-01-05T00:00:00+00:00", deleted_at: null, artifact_id: null, workspace_id: workspace },
+    { id: id(101), title: "1000 rent", created_at: "2026-01-05T00:00:00+00:00", deleted_at: null, artifact_id: null, workspace_id: workspace },
+    { id: id(102), title: "100%_rent* gone", created_at: "2026-01-05T00:00:00+00:00", deleted_at: "2026-01-06T00:00:00+00:00", artifact_id: null, workspace_id: workspace },
+  ];
+  const messages = [
+    { conversation_id: id(100), content: "about 100%_rent* again", created_at: "2026-01-05T00:00:00+00:00", workspace_id: workspace },
+    { conversation_id: id(3), content: "100%_rent* also in text", created_at: "2026-01-05T00:00:00+00:00", workspace_id: workspace },
+  ];
+  const like = (pattern: string) => (text: string) => {
+    const tokens = [...pattern.matchAll(/\\(.)|(%)|(_)|(.)/gs)].map(([, escaped, any, one, plain]) => any ? ".*" : one ? "." : (escaped ?? plain ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    return new RegExp(`^${tokens.join("")}$`, "is").test(text);
+  };
+  const fake = { from(table: string) {
+    let data: Record<string, string | null>[] = table === "messages" ? [...messages] : [...conversations];
+    let counted = false;
+    const keys: string[] = [];
+    const query = {
+      select: (_: string, options?: { count?: string }) => { counted = !!options?.count; return query; },
+      eq: (key: string, value: string) => { data = data.filter(row => row[key] === value); return query; },
+      is: (key: string) => { data = data.filter(row => row[key] === null); return query; },
+      in: (key: string, values: string[]) => { data = data.filter(row => values.includes(row[key] ?? "")); return query; },
+      ilike: (key: string, pattern: string) => { data = data.filter(row => like(pattern)(row[key] ?? "")); return query; },
+      not: (key: string, _: string, pattern: string) => { data = data.filter(row => !like(pattern)(row[key] ?? "")); return query; },
+      order: (key: string) => { keys.push(key); return query; },
+      or: (filter: string) => { const [, at, after] = filter.match(/created_at.lt.([^,]+),.*id.lt.([0-9a-f-]+)/) ?? []; data = data.filter(row => (row.created_at ?? "") < (at ?? "") || (row.created_at === at && (row.id ?? "") < (after ?? ""))); return query; },
+      limit: (n: number) => { const total = data.length; data.sort((a, b) => keys.reduce((order, key) => order || (b[key] ?? "").localeCompare(a[key] ?? ""), 0)); data = data.slice(0, n); return Object.assign(Promise.resolve({ data, error: null, count: counted ? total : null }), query); },
+    };
     return query;
   } };
-  const found = await loadThreads(searchClient as never, workspace, undefined, " 100%_rent* ");
-  expect(found.threads.map(thread => thread.id)).toEqual(["b", "a"]);
-  expect(found.threadsCursor).toBeNull();
-  expect(calls.filter(call => call[1] === "ilike").map(call => call[2][1])).toEqual(["%100\\%\\_rent_%", "%100\\%\\_rent_%"]);
-  expect(calls.filter(call => call[0] === "conversations" && call[1] === "is").map(call => call[2][0])).toEqual(["deleted_at", "artifact_id", "deleted_at", "artifact_id"]);
-  expect(calls.find(call => call[1] === "in")?.[2]).toEqual(["id", ["b"]]);
+  const ids: string[] = [];
+  const totals: number[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await loadThreads(fake as never, workspace, cursor, " 100%_rent* ");
+    expect(page.threads.length).toBeLessThanOrEqual(30);
+    ids.push(...page.threads.map(thread => thread.id)); totals.push(page.total ?? -1);
+    cursor = page.threadsCursor ?? undefined;
+  } while (cursor);
+  expect(totals[0]).toBe(66);
+  expect(ids).toHaveLength(66);
+  expect(new Set(ids)).toEqual(new Set([...Array.from({ length: 65 }, (_, n) => id(n)), id(100)]));
 });
 
 describe("saved answer activity", () => {
