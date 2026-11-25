@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>bn5e3ybpe</task-id>
+<tool-use-id>toolu_013UUHzRQqTruZ6VB7g7uyGr</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\71aed899bb6e835e\27ecbdf0-f1fd-4439-b7e4-b99b7602ea84\tasks\bn5e3ybpe.output</output-file>
+<status>failed</status>
+<summary>Background command "until [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-moneo-test: 1' http://localhost:3111/api/health)" != "000" ] &amp;&amp; [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-moneo-test: 1' http://localhost:3112/api/health)" != "000" ]; do sleep 5; if grep -qiE "error|failed" /c/Users/mgsuk/.t3/worktrees/Moneo/after-server.log /c/Users/mgsuk/.t3/worktrees/Moneo/base-server.log /c/Users/mgsuk/.t3/worktrees/Moneo/base-setup.log 2&gt;/dev/null; then echo FAIL; break; fi; done; tail -2 /c/Users/mgsuk/.t3/worktrees/Moneo/after-server.log /c/Users/mgsuk/.t3/worktrees/Moneo/base-server.log" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bv5kv0slj</task-id>
+<tool-use-id>toolu_01Rm3b56xKS6XcQ1biF2W9TJ</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\71aed899bb6e835e\27ecbdf0-f1fd-4439-b7e4-b99b7602ea84\tasks\bv5kv0slj.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-3befa7b5-9473690bb1b2a767; npm run qa:auth &gt;/dev/null 2&gt;&amp;1; node .qa/time-chat.mjs before=http://localhost:3112 after=http://localhost:3111 2&gt;&amp;1 | tail -3; node scripts/perf-pages.mjs 5 before=http://localhost:3112 after=http://localhost:3111 2&gt;&amp;1 | tail -30" completed (exit code 0)</summary>
+</task-notification>
