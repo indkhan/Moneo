@@ -46,7 +46,8 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await page.getByRole("group", { name: "Size" }).getByRole("button", { name: "S" }).click();
     await expect(preview.getByText("Picked a at S")).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Add to Home" }).click();
-    await expect(page.getByRole("button", { name: "Remove from Home" })).toBeVisible({ timeout: 30_000 });
+    await page.getByText("On Home", { exact: true }).click({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Remove from Home" })).toBeVisible();
 
     await page.goto("/");
     const card = page.getByRole("region", { name: `${title} card`, exact: true });
