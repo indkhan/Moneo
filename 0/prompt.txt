@@ -1,0 +1,21 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, tests only where they catch a real bug, QA backend only, never the owner's backend). Your checkout is based on the latest `main`. Create a branch `t3/audit-bank-sync-card`, do the work, commit in plain-language steps, push, and open ONE pull request to `main`. Do not merge it. Do not touch PR #313.
+
+## Task: fix four bugs in the connected-bank sync card (`components/connected-banks.tsx`, Settings → Connected banks)
+
+A QA audit found these; all four are confirmed in the current code:
+
+1. **Sync now stays enabled while a sync is running.** While the button reads "Syncing…", pressing it again sends a second POST; the server's running guard answers 409 and the card shows an error on an otherwise successful sync. The button's `disabled` (around line 175) checks `busy`, `connection.status !== "active"` and `data.configured`, but not `running(connection)`. Disable it while running.
+2. **Expired consent leaves Sync now enabled.** When `connection.status` is still `active` but `valid_until` has passed, `consentState()` returns `"expired"` and the panel shows the ended-consent warning with Reconnect, yet Sync now still accepts a click. Disable Sync now whenever `consentState(connection) === "expired"` (use the same function, so the warning and the button can never disagree).
+3. **"Review rows" links to the wrong import after a multi-account sync.** The summary (around line 76–81) sums review rows over all imports but links to `imports[imports.length - 1]`. With imports [review 3, review 0] it links to the one with nothing to review. Link to the import that has review rows; when more than one import has review rows, link to the import list (`/import`) or whatever existing page lists them — check `app/import/page.tsx` for the right target.
+4. **The sync summary omits rejected rows.** `SyncImport` already has `rejected_rows`, but the completed text shows only new / already imported / need review, so 4+2+1 is shown for 8 rows. Add the rejected count (e.g. "· 1 rejected") when it is non-zero, matching the existing style.
+
+## Checks
+- Find the existing tests for this component (e.g. `components/connected-banks*.test.*`, or tests that call `consentState`) and extend them where a test would catch these regressions: the button disabled while running and when consent has ended, the review link pointing at the import with review rows, and the rejected count appearing. Follow the AGENTS.md test rules (take expected values from the requirement; no copy-only assertions beyond what proves the behaviour).
+- Run `npm test`, `npm run lint`, `npm run typecheck`. Use skill `verify-ui` for before/after screenshots if practical (QA app via `npm run qa:server`, mocked bank only — never real bank calls); embed them in the PR.
+- PR description: what broke, the fix, a **Speed** section per AGENTS.md (skill `measure-speed`; this is a client-only change, so say so with numbers or explain), and end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+
+When done, your last line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
