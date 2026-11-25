@@ -22,7 +22,7 @@ it("blocks Sync now while a sync runs or after consent has ended", () => {
   expect(canSync({ ...valid, status: "error" }, false, now)).toBe(false);
 });
 
-const sync = (imports: { status: string; total_rows: number; new_rows?: number; matched_rows?: number}[]) =>
+const sync = (imports: { status: string; total_rows: number; new_rows?: number; matched_rows?: number; review_rows?: number; rejected_rows?: number }[]) =>
   ({ running: true, imports: imports.map((item, index) => ({ id: `i${index}`, review_rows: 0, rejected_rows: 0, new_rows: 0, matched_rows: 0, ...item })) });
 
 it("walks a sync through asking the bank, importing rows and finishing", () => {
@@ -40,6 +40,11 @@ it("walks a sync through asking the bank, importing rows and finishing", () => {
 it("summarises the finished sync and treats a stuck one as stale", () => {
   const finished = { sync_started_at: "2026-10-17T10:00:00Z", last_synced_at: "2026-10-17T10:02:00Z" };
   expect(syncSummary({ ...finished, sync: sync([{ status: "completed", total_rows: 131, new_rows: 117, matched_rows: 14 }]) })?.text).toBe("Last sync: 117 new · 14 already imported.");
+  const reviewed = (reviews: number[]) => syncSummary({ ...finished, sync: sync(reviews.map(review_rows => ({ status: "completed", total_rows: 5, review_rows }))) })?.href;
+  expect(reviewed([3, 0])).toBe("/import/i0/review");
+  expect(reviewed([0, 2])).toBe("/import/i1/review");
+  expect(reviewed([3, 2])).toBe("/import#import-history");
+  expect(syncSummary({ ...finished, sync: sync([{ status: "completed", total_rows: 8, new_rows: 4, matched_rows: 2, review_rows: 1, rejected_rows: 1 }]) })?.text).toContain("1 rejected");
   expect(syncSummary({ ...finished, sync: sync([]) })?.text).toBe("Last sync found no new transactions.");
   expect(syncSummary({ ...finished, last_synced_at: "2026-10-17T09:00:00Z", sync: sync([]) })).toBeNull();
   const started = Date.parse(finished.sync_started_at);

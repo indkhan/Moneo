@@ -80,9 +80,15 @@ export function syncSummary(connection: Pick<Connection, "sync" | "sync_started_
   const imports = connection.sync.imports;
   if (!connection.sync_started_at || !connection.last_synced_at || Date.parse(connection.last_synced_at) < Date.parse(connection.sync_started_at)) return null;
   if (!imports.length) return { text: "Last sync found no new transactions.", href: null };
-  const sum = (key: "new_rows" | "matched_rows" | "review_rows") => imports.reduce((total, item) => total + item[key], 0);
+  const sum = (key: "new_rows" | "matched_rows" | "review_rows" | "rejected_rows") => imports.reduce((total, item) => total + item[key], 0);
   const review = sum("review_rows");
-  return { text: `Last sync: ${sum("new_rows")} new · ${sum("matched_rows")} already imported${review ? ` · ${review} need review` : ""}.`, href: `/import/${imports[imports.length - 1].id}/review` };
+  const rejected = sum("rejected_rows");
+  const toReview = imports.filter(item => item.review_rows > 0);
+  const target = toReview.length > 1 ? null : toReview[0] ?? imports[imports.length - 1];
+  return {
+    text: `Last sync: ${sum("new_rows")} new · ${sum("matched_rows")} already imported${review ? ` · ${review} need review` : ""}${rejected ? ` · ${rejected} rejected` : ""}.`,
+    href: target ? `/import/${target.id}/review` : "/import#import-history",
+  };
 }
 
 type ConnectionsData = { configured: boolean; credentials: BankCredentials; redirectUrl: string; connections: Connection[] };
