@@ -31,13 +31,13 @@ test("a bank transfer with one side so far, and money moved between accounts, st
   await db`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind) values(${out},${workspace},${bank.id},${day(-5)},'Synthetic move out',-5000,'EUR','posted','transfer'),(${into},${workspace},${other.id},${day(-3)},'Synthetic move in',5000,'EUR','posted','transfer')`;
   await db`update public.transactions set transfer_id=${into} where id=${out}`;
   await db`update public.transactions set transfer_id=${out} where id=${into}`;
-  const provider = `E2E-${suffix}`;
-  await db`insert into public.scalable_transfers(workspace_id,provider_id,type,amount_minor,currency_code,occurred_at,on_date,status,description) values(${workspace},${provider},'DEPOSIT',7700,'EUR',${`${day(-1)}T10:00:00Z`},${day(-1)},'SETTLED','Synthetic deposit')`;
+  const provider = `E2E-${suffix}`, deposit = 7001 + Math.floor(Math.random() * 998);
+  await db`insert into public.scalable_transfers(workspace_id,provider_id,type,amount_minor,currency_code,occurred_at,on_date,status,description) values(${workspace},${provider},'DEPOSIT',${deposit},'EUR',${`${day(-1)}T10:00:00Z`},${day(-1)},'SETTLED','Synthetic deposit')`;
   try {
     await page.goto("/money/wealth");
     await expect(page.getByRole("heading", { name: "Needs a look" })).toBeVisible({ timeout: 30_000 });
     await page.getByText(/one side so far/).click();
-    await expect(page.getByRole("listitem").filter({ hasText: "Scalable deposit" })).toContainText("EUR 77.00");
+    await expect(page.getByRole("listitem").filter({ hasText: "Scalable deposit" }).filter({ hasText: `EUR ${(deposit / 100).toFixed(2)}` })).toHaveCount(1);
     await shot(page, "wealth-problems");
     await page.goto("/");
     await expect(page.getByText(/one side showing so far/)).toBeVisible({ timeout: 30_000 });

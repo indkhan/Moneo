@@ -9,6 +9,7 @@ import type { LocalRun } from "@/lib/cards/local";
 import type { z } from "zod";
 import type { linkTarget } from "@/lib/cards/tree";
 import { CARD_HEIGHT, type CardSize } from "@/lib/cards/sizes";
+import { useHydrated } from "@/lib/use-hydrated";
 import { CardChart, type CardChartProps } from "./card-chart";
 
 type Live = { params: ParamState[]; setParam: (name: string, value: string) => void; busy: boolean; locale?: string };
@@ -189,6 +190,7 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
   const size = useContext(HomeCardSize) ?? renderedSize;
   const [view, setView] = useState({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize, local: initialLocal });
   const [busy, start] = useTransition();
+  const hydrated = useHydrated();
   const [seen, setSeen] = useState(initialTree);
   if (seen !== initialTree) { setSeen(initialTree); setView({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize, local: initialLocal }); }
   const request = useRef(0);
@@ -230,7 +232,7 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
   return <section aria-label={title} className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card" style={{ height: CARD_HEIGHT }}>
     <div className="flex items-baseline justify-between gap-2 px-5 pt-4 pb-2"><h2 className="truncate text-sm font-medium">{title}</h2>{open && <Link href={open} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link>}</div>
     <div data-card={scope} className={`relative isolate min-h-0 flex-1 overflow-clip px-5 pb-4 transition-opacity [contain:layout_paint_style] ${busy ? "opacity-60" : ""}`}>
-      <LiveCard.Provider value={{ params: view.params, setParam, busy, locale }}>
+      <LiveCard.Provider value={{ params: view.params, setParam, busy: busy || !hydrated, locale }}>
         {view.tree ? render(view.tree, scope) : null}
       </LiveCard.Provider>
       {view.error && <p role="alert" className="text-sm text-muted-foreground">{view.error}</p>}

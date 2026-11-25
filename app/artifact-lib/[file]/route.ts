@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { ARTIFACT_LIBRARIES } from "@/lib/ai/artifact-data";
+import { ARTIFACT_LIBRARIES } from "@/lib/ai/artifact-page";
 
 const FILES: Record<keyof typeof ARTIFACT_LIBRARIES, () => Promise<Buffer>> = {
   "echarts.min.js": () => readFile(path.join(process.cwd(), "node_modules", "echarts", "dist", "echarts.min.js")),

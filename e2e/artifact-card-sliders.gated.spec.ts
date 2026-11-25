@@ -33,14 +33,21 @@ test("a card's slider and switch recalculate it in the browser, without asking t
     const server: string[] = [];
     page.on("request", request => { if (request.url().includes(`/api/cards/${cardId}`)) server.push(request.url()); });
 
-    await page.goto(`/ai/artifacts/${id}?tab=cards`);
+    let releaseScripts!: () => void;
+    const scriptsReady = new Promise<void>(resolve => { releaseScripts = resolve; });
+    await page.route("**/_next/static/**/*.js*", async route => { await scriptsReady; await route.continue(); });
     const card = page.getByRole("region", { name: `${title} card`, exact: true });
     const total = card.getByRole("paragraph").first();
-    await expect(total).toHaveText(/200\.00/, { timeout: 30_000 });
     const slider = card.getByRole("slider", { name: /^Each month/ });
+    try {
+      await page.goto(`/ai/artifacts/${id}?tab=cards`, { waitUntil: "commit" });
+      await expect(slider).toBeDisabled({ timeout: 30_000 });
+    } finally { releaseScripts(); }
+    await expect(total).toHaveText(/200\.00/);
     await expect(slider).toHaveAttribute("aria-valuetext", /200\.00/);
 
-    await expect(async () => { await slider.fill("50000"); await expect(total).toHaveText(/500\.00/, { timeout: 2000 }); }).toPass({ timeout: 20_000 });
+    await slider.fill("50000");
+    await expect(total).toHaveText(/500\.00/);
     await expect(slider).toHaveAttribute("aria-valuetext", /500\.00/);
     await card.getByRole("switch", { name: "Show per year" }).click();
     await expect(total).toHaveText(/6,?000\.00/);

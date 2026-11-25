@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { artifactDocument, artifactFrameCsp, artifactQueriesSchema, checkQueries, offeredQueriesSchema, offeredSources, resolveQueryInput, resolveToken } from "./artifact-data";
+import { artifactQueriesSchema, checkQueries, offeredQueriesSchema, offeredSources, resolveQueryInput, resolveToken } from "./artifact-data";
+import { artifactDocument, artifactFrameCsp } from "./artifact-page";
 
 describe("artifact data", () => {
   it("offers Scalable sources only with a connection, and live-only ones only with live data on", () => {

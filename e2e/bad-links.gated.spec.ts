@@ -27,7 +27,7 @@ test("a refused money form explains why beside the form and keeps what was typed
   await page.goto("/money/accounts");
   const form = page.locator("#own-accounts form").filter({ hasText: "Save owned IBAN" });
   await form.getByLabel("IBAN").fill("NOT-AN-IBAN");
-  await form.getByLabel("Name").fill("Test bank");
+  await form.getByLabel("Name", { exact: true }).fill("Test bank");
   await form.getByRole("button", { name: "Save owned IBAN", exact: true }).click();
   await expect(form.getByRole("alert")).toBeVisible();
   await expect(form.getByLabel("IBAN")).toHaveValue("NOT-AN-IBAN");
