@@ -1,0 +1,26 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the test sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md and `e2e/README.md` first and follow them exactly: no comments, surgical changes, QA backend only — never the owner's backend on port 3000 or `.env`; mock AI/bank/Scalable). Your checkout is based on the latest `main`. Create a branch `t3/audit-browser-suite`, commit each fix separately in plain language, push, and open ONE pull request to `main`. Do not merge it. Do not touch PR #313.
+
+## Goal: make the Playwright suite green (the failures a QA audit found)
+
+Set up QA if needed (`npm run setup -- --qa`, `npm run qa:auth`); `npm run test:e2e` starts the QA server itself. Reproduce each failure first, then fix the first place it goes wrong. Never delete or skip a failing test to get green — fix the cause, or report it.
+
+1. **Full discovery breaks on `e2e/artifact-page-protection.mocked.spec.ts`.** It imports `artifactDocument`/`artifactFrameCsp` from `lib/ai/artifact-data.ts`, which pulls in Scalable live data and `lib/service-db.ts`, whose `import "server-only"` throws in the Playwright process. Fix at the source: move the pure HTML/CSP helpers into their own module with no server imports (in `lib/`, respecting `moneo/import-boundaries`), and have both the app and the spec import that. Confirm `npx playwright test --list` discovers every spec.
+2. **`e2e/core-journey.smoke.spec.ts` "the setup page explains how to finish setup"** expects the "Moneo could not sign you in" screen, but its context is signed in, so `/setup` redirects to Overview. Run that test with a signed-out context (no storage state), and check `app/setup/page.tsx` to see what state shows that screen — set it up the way the real failed-sign-in path happens.
+3. **`e2e/import-control.mocked.spec.ts`**: "a delayed poll cannot replace canceled status or its fresh counts", "…completed status…" (both waited 30 s for the intentionally delayed poll and never received it), and "a newer request with an older queued snapshot cannot regress running progress" (stayed queued after a mocked running response). Decide whether the app or the test is wrong: read the import page's polling code (`app/import/…`, `usePolling` in `lib/use-polling.ts`) — e.g. the app may no longer issue the poll the test waits for, or the route pattern no longer matches. If the app regresses stale-response handling, fix the app (that is a real bug: an old poll overwriting a newer status); if the test's mock is outdated, fix the test so it still proves the stale-response guard (break the guard locally and confirm the test fails).
+4. **`e2e/home-dashboard.gated.spec.ts` "a long press drags a widget on a phone, and a swipe still scrolls"** is flaky on a reused QA user (scroll stayed at 415 for 5 s) and passes with a fresh user. Make the spec set up the state it needs (AGENTS.md: each spec sets up its own state) and find why existing state breaks the swipe — if it is an app bug (e.g. a drag state left armed), fix the app.
+5. **`e2e/net-worth.gated.spec.ts`**: a selector expecting one Scalable deposit row matched two possibly-valid rows on a shared QA user. Make the spec's selector target the row it created (unique synthetic description/amount), not "the only Scalable deposit".
+
+Out of scope: `import-control.gated.spec.ts` "durable import Stop, Resume…" (5,000-row import hitting a Postgres statement timeout) — that is a separate task; leave it as is and mention it in the PR.
+
+## Checks
+- Run each fixed spec at least 3 times (`--repeat-each=3`) and then the full suite once (`npm run test:e2e`, excluding paid provider specs as `e2e/README.md` describes); report pass counts.
+- `npm test`, `npm run lint`, `npm run typecheck`; `npm run build` if you touched app code.
+- Check the GitHub issue "Nightly browser suite is failing" (`gh issue list --search "Nightly browser suite"`) and mention in the PR which of its listed failures this fixes.
+- PR description: per failure, the cause and the fix; a **Speed** section (skill `measure-speed`; if app code changed, measure the affected action; otherwise "No runtime change"). End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- When finished, stop any servers you started and leave no temporary checkouts.
+
+When done, your last line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
