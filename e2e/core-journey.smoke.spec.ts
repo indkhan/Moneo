@@ -1,5 +1,30 @@
-import { test, expect } from "@playwright/test";
-import { hasSupabaseEnv } from "./fixtures";
+import { test, expect, type BrowserContext } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { randomBytes, randomUUID } from "node:crypto";
+import postgres from "postgres";
+import { deleteDisposableUser, hasSupabaseEnv } from "./fixtures";
+
+async function withRevokedSession(context: BrowserContext, run: () => Promise<void>) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const email = `qa-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
+  const created = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { qa_test: "setup-page" } });
+  expect(created.error).toBeNull();
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1 });
+  try {
+    const jar = new Map<string, string>();
+    const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => jar.set(name, value)) } });
+    expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
+    const signedIn = [...jar].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const }));
+    expect((await auth.auth.signOut()).error).toBeNull();
+    await context.addCookies(signedIn);
+    await run();
+  } finally {
+    await deleteDisposableUser(db, created.data.user!.id);
+    await db.end();
+  }
+}
 
 test.describe("core journey smoke (no session, no live AI)", () => {
   test("home opens signed in, or explains how to finish setup", async ({ page, request }) => {
@@ -26,10 +51,19 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     expect(typeof body.openai).toBe("boolean");
   });
 
-  test("the setup page explains how to finish setup", async ({ page }) => {
-    await page.goto("/setup");
-    await expect(page.getByRole("heading", { name: "Moneo could not sign you in" })).toBeVisible();
-    await expect(page.getByText("npm run setup")).toBeVisible();
+  test.describe("signed out", () => {
+    test.use({ storageState: { cookies: [], origins: [] } });
+    test.skip(hasSupabaseEnv() && (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_DB_URL), "Needs the service key to create a disposable user");
+    test("a sign-in the backend no longer accepts explains how to finish setup", async ({ page, context }) => {
+      const expectSetupHelp = async () => {
+        await page.goto("/");
+        await expect(page).toHaveURL(/\/setup$/);
+        await expect(page.getByRole("heading", { name: "Moneo could not sign you in" })).toBeVisible();
+        await expect(page.getByText("npm run setup")).toBeVisible();
+      };
+      if (hasSupabaseEnv()) await withRevokedSession(context, expectSetupHelp);
+      else await expectSetupHelp();
+    });
   });
 
   test("installs as an app and, with the computer unreachable, shows only the offline page", async ({ page, context }) => {
