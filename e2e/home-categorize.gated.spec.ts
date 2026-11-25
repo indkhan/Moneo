@@ -10,7 +10,7 @@ test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_DB_URL
 
 const GROUPS = 36;
 
-test("the Home review shows every uncategorized group at once, files them under one category, and lets a group be changed afterwards (#230)", async ({ browser }) => {
+test("the Home review shows every uncategorized group at once, files them under one category, and lets a group be changed afterwards without the review closing itself (#230)", async ({ browser }) => {
   test.setTimeout(240_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -43,12 +43,18 @@ test("the Home review shows every uncategorized group at once, files them under 
     await sheet.getByRole("button", { name: `Apply to all ${GROUPS * 2}` }).click();
     await expect(sheet.getByRole("status").filter({ hasText: "2 categorized as Everything else" })).toHaveCount(GROUPS, { timeout: 120_000 });
     expect(await categories()).toEqual([{ name: "Everything else", count: GROUPS * 2 }]);
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Change" })).toHaveCount(GROUPS);
 
     await sheet.getByRole("button", { name: "Change" }).first().click();
     await sheet.getByRole("combobox", { name: /^Category for Shop/ }).fill("Treats");
     await sheet.getByRole("button", { name: "Apply", exact: true }).click();
     await expect.poll(async () => (await categories()).find(row => row.name === "Treats")?.count, { timeout: 30_000 }).toBe(2);
     expect((await categories()).find(row => row.name === "Everything else")?.count).toBe(GROUPS * 2 - 2);
+    await expect(sheet.getByRole("status").filter({ hasText: "2 categorized as Treats" })).toHaveCount(1);
+
+    await sheet.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("button", { name: /^Review: .* need a category$/ })).toHaveCount(0);
   } finally {
     await context.close();
     await deleteDisposableUser(db, user);
