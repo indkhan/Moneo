@@ -35,7 +35,7 @@ test("coming back to a chat still answering shows it working, then the saved ans
   }
 });
 
-test("a long chat keeps the app on screen and a fresh chat's text box stays reachable on a short window", async ({ page }) => {
+test("a long chat and a long chat list stay usable: the app stays on screen, every search match is reachable, menus close, and a fresh chat's text box stays reachable", async ({ page }) => {
   test.setTimeout(120_000);
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
@@ -71,6 +71,37 @@ test("a long chat keeps the app on screen and a fresh chat's text box stays reac
       for (let step = 0; step < 30; step++) await page.mouse.wheel(0, 800);
       expect(await documentScroll(), `${viewport.width}×${viewport.height} messages`).toBe(0);
       await expect(heading).toBeInViewport();
+      if (!(await sidebar.isVisible())) {
+        const conversationsMenu = page.locator("details").filter({ has: page.getByLabel("Show conversations") });
+        await page.getByLabel("Show conversations").click();
+        await expect(conversationsMenu).toHaveAttribute("open");
+        await page.keyboard.press("Escape");
+        await expect(conversationsMenu).not.toHaveAttribute("open");
+        await page.getByLabel("Show conversations").click();
+        await expect(conversationsMenu).toHaveAttribute("open");
+        await heading.click();
+        await expect(conversationsMenu).not.toHaveAttribute("open");
+        continue;
+      }
+      const search = sidebar.getByRole("searchbox", { name: "Search chats" });
+      const results = sidebar.getByRole("navigation", { name: "Conversations" }).getByRole("link");
+      await search.fill(`Layout QA ${tag}`);
+      await expect(sidebar.getByText("Showing 30 of 65")).toBeVisible();
+      await expect(results).toHaveCount(30);
+      const olderMatches = sidebar.getByRole("button", { name: "Older matches" });
+      while (await olderMatches.isVisible()) {
+        const shown = await results.count();
+        await olderMatches.click();
+        await expect.poll(() => results.count()).toBeGreaterThan(shown);
+      }
+      await expect(results).toHaveCount(65);
+      await expect(sidebar.getByText(/^Showing \d+ of/)).toHaveCount(0);
+      await search.fill("");
+      const rowMenu = sidebar.locator("details").filter({ has: page.getByLabel(`Actions for Layout QA ${tag} 0`, { exact: true }) });
+      await sidebar.getByLabel(`Actions for Layout QA ${tag} 0`, { exact: true }).click();
+      for (const action of ["Rename", "New title", "Delete"]) await expect(rowMenu.getByRole("button", { name: action })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(rowMenu).not.toHaveAttribute("open");
     }
     await page.setViewportSize({ width: 1024, height: 500 });
     await page.goto("/ai?conversation=new");
