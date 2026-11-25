@@ -359,14 +359,14 @@ isOneToOne: false
                   ]
                 },"chat_requests": {
                   Row: {
-                    "action_result": Json | null,"allowed_category": string | null,"allowed_transaction_id": string | null,"answer": string | null,"context": NonNullable<Json>,"conversation_id": string,"created_at": string,"error": string | null,"id": string,"message": string,"regenerates": string | null,"status": string,"tool_calls": Json | null,"updated_at": string,"usage": Json | null,"workspace_id": string
+                    "action_result": Json | null,"allowed_category": string | null,"allowed_transaction_id": string | null,"answer": string | null,"context": NonNullable<Json>,"conversation_id": string,"created_at": string,"error": string | null,"id": string,"message": string,"parent_id": string | null,"regenerates": string | null,"status": string,"tool_calls": Json | null,"updated_at": string,"usage": Json | null,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "action_result"?: Json | null,"allowed_category"?: string | null,"allowed_transaction_id"?: string | null,"answer"?: string | null,"context"?: NonNullable<Json>,"conversation_id": string,"created_at"?: string,"error"?: string | null,"id": string,"message": string,"regenerates"?: string | null,"status"?: string,"tool_calls"?: Json | null,"updated_at"?: string,"usage"?: Json | null,"workspace_id": string
+                    "action_result"?: Json | null,"allowed_category"?: string | null,"allowed_transaction_id"?: string | null,"answer"?: string | null,"context"?: NonNullable<Json>,"conversation_id": string,"created_at"?: string,"error"?: string | null,"id": string,"message": string,"parent_id"?: string | null,"regenerates"?: string | null,"status"?: string,"tool_calls"?: Json | null,"updated_at"?: string,"usage"?: Json | null,"workspace_id": string
                   }
                   Update: {
-                    "action_result"?: Json | null,"allowed_category"?: string | null,"allowed_transaction_id"?: string | null,"answer"?: string | null,"context"?: NonNullable<Json>,"conversation_id"?: string,"created_at"?: string,"error"?: string | null,"id"?: string,"message"?: string,"regenerates"?: string | null,"status"?: string,"tool_calls"?: Json | null,"updated_at"?: string,"usage"?: Json | null,"workspace_id"?: string
+                    "action_result"?: Json | null,"allowed_category"?: string | null,"allowed_transaction_id"?: string | null,"answer"?: string | null,"context"?: NonNullable<Json>,"conversation_id"?: string,"created_at"?: string,"error"?: string | null,"id"?: string,"message"?: string,"parent_id"?: string | null,"regenerates"?: string | null,"status"?: string,"tool_calls"?: Json | null,"updated_at"?: string,"usage"?: Json | null,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -374,6 +374,12 @@ isOneToOne: false
       columns: ["conversation_id"]
 isOneToOne: false
       referencedRelation: "conversations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "chat_requests_parent_id_fkey"
+      columns: ["parent_id"]
+isOneToOne: false
+      referencedRelation: "chat_requests"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "chat_requests_regenerates_fkey"
@@ -417,14 +423,14 @@ isOneToOne: false
                   ]
                 },"conversations": {
                   Row: {
-                    "artifact_id": string | null,"created_at": string,"deleted_at": string | null,"id": string,"title": string,"title_settled": boolean,"workspace_id": string
+                    "artifact_id": string | null,"created_at": string,"deleted_at": string | null,"id": string,"model": string | null,"title": string,"title_settled": boolean,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "artifact_id"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"title": string,"title_settled"?: boolean,"workspace_id": string
+                    "artifact_id"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"model"?: string | null,"title": string,"title_settled"?: boolean,"workspace_id": string
                   }
                   Update: {
-                    "artifact_id"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"title"?: string,"title_settled"?: boolean,"workspace_id"?: string
+                    "artifact_id"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"model"?: string | null,"title"?: string,"title_settled"?: boolean,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -1021,14 +1027,14 @@ isOneToOne: false
                   ]
                 },"messages": {
                   Row: {
-                    "answer_of": string | null,"attachments": NonNullable<Json>,"content": string,"context": Json | null,"conversation_id": string,"created_at": string,"id": string,"reply_to": string | null,"request_id": string | null,"role": string,"workspace_id": string
+                    "answer_of": string | null,"attachments": NonNullable<Json>,"chat_request_id": string | null,"content": string,"context": Json | null,"conversation_id": string,"created_at": string,"id": string,"reply_to": string | null,"request_id": string | null,"role": string,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "answer_of"?: string | null,"attachments"?: NonNullable<Json>,"content": string,"context"?: Json | null,"conversation_id": string,"created_at"?: string,"id"?: string,"reply_to"?: string | null,"request_id"?: string | null,"role": string,"workspace_id": string
+                    "answer_of"?: string | null,"attachments"?: NonNullable<Json>,"chat_request_id"?: string | null,"content": string,"context"?: Json | null,"conversation_id": string,"created_at"?: string,"id"?: string,"reply_to"?: string | null,"request_id"?: string | null,"role": string,"workspace_id": string
                   }
                   Update: {
-                    "answer_of"?: string | null,"attachments"?: NonNullable<Json>,"content"?: string,"context"?: Json | null,"conversation_id"?: string,"created_at"?: string,"id"?: string,"reply_to"?: string | null,"request_id"?: string | null,"role"?: string,"workspace_id"?: string
+                    "answer_of"?: string | null,"attachments"?: NonNullable<Json>,"chat_request_id"?: string | null,"content"?: string,"context"?: Json | null,"conversation_id"?: string,"created_at"?: string,"id"?: string,"reply_to"?: string | null,"request_id"?: string | null,"role"?: string,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -3133,7 +3139,7 @@ isOneToOne: false
 { Args: { "p_file_hash": string,"p_import_id": string,"p_mapping": Json,"p_routes": Json,"p_rows": Json,"p_run_version": number,"p_source_id": string,"p_workspace_id": string }; Returns: number
                            },
 "start_chat_request":
-{ Args: { "p_context": Json,"p_conversation_id": string,"p_message": string,"p_regenerates"?: string,"p_request_id": string }; Returns: Json
+{ Args: { "p_context": Json,"p_conversation_id": string,"p_edits"?: string,"p_message": string,"p_parent"?: string,"p_regenerates"?: string,"p_request_id": string }; Returns: Json
                            },
 "start_financial_investigation":
 { Args: { "p_chat_request_id"?: string,"p_request_id": string,"p_specification": Json }; Returns: Json

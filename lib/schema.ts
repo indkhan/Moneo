@@ -908,12 +908,14 @@ export const conversations = pgTable("conversations", {
   title: text("title").notNull(),
   titleSettled: boolean("title_settled").default(false).notNull(),
   artifactId: uuid("artifact_id"),
+  model: text("model"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [
   foreignKey({ name: "conversations_artifact_fkey", columns: [table.artifactId, table.workspaceId], foreignColumns: [artifacts.id, artifacts.workspaceId] }).onDelete("cascade"),
   uniqueIndex("conversations_artifact").on(table.artifactId).where(sql`${table.artifactId} is not null`),
   index("conversations_workspace_live").on(table.workspaceId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} is null`),
+  check("conversations_model_check", sql`${table.model} is null or length(btrim(${table.model})) between 1 and 200`),
   index("conversations_title_unsettled").on(table.createdAt.desc()).where(sql`not ${table.titleSettled} and ${table.deletedAt} is null and ${table.artifactId} is null`),
 ]);
 
@@ -925,6 +927,7 @@ export const messages = pgTable("messages", {
   requestId: uuid("request_id"),
   replyTo: uuid("reply_to"),
   answerOf: uuid("answer_of"),
+  chatRequestId: uuid("chat_request_id"),
   content: text("content").notNull(),
   context: jsonb("context"),
   attachments: jsonb("attachments").notNull().default(sql`'[]'::jsonb`),
@@ -934,6 +937,7 @@ export const messages = pgTable("messages", {
   uniqueIndex("messages_request_unique").on(table.conversationId, table.requestId).where(sql`${table.requestId} is not null`),
   uniqueIndex("messages_reply_unique").on(table.conversationId, table.replyTo).where(sql`${table.replyTo} is not null`),
   index("messages_conversation_created").on(table.conversationId, table.createdAt),
+  index("messages_chat_request").on(table.chatRequestId),
   check("messages_role_check", sql`${table.role} in ('user', 'assistant')`),
   check("messages_attachments_check", sql`jsonb_typeof(${table.attachments}) = 'array' and jsonb_array_length(${table.attachments}) <= 4`),
 ]);
@@ -1197,6 +1201,7 @@ export const chatRequests = pgTable("chat_requests", {
   message: text("message").notNull(),
   context: jsonb("context").notNull().default({}),
   regenerates: uuid("regenerates").references((): AnyPgColumn => chatRequests.id, { onDelete: "cascade" }),
+  parentId: uuid("parent_id").references((): AnyPgColumn => chatRequests.id, { onDelete: "cascade" }),
   status: text("status").notNull().default("running"),
   allowedTransactionId: uuid("allowed_transaction_id"),
   allowedCategory: text("allowed_category"),
@@ -1209,6 +1214,8 @@ export const chatRequests = pgTable("chat_requests", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("chat_requests_workspace_created").on(table.workspaceId, table.createdAt),
+  index("chat_requests_parent").on(table.parentId),
+  index("chat_requests_conversation_created").on(table.conversationId, table.createdAt),
   check("chat_requests_status_check", sql`${table.status} in ('running','completed','failed','canceled')`),
 ]);
 
