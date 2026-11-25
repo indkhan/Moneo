@@ -36,14 +36,14 @@ export async function loadThreads(supabase: SupabaseClient, workspace: string, t
   };
   if (q) {
     const pattern = likePattern(q);
-    const hits = await supabase.from("messages").select("conversation_id").eq("workspace_id", workspace).ilike("content", pattern).order("created_at", { ascending: false }).limit(200);
-    if (hits.error) throw new Error("Could not search conversations. Try again.");
-    const ids = [...new Set((hits.data ?? []).map(row => row.conversation_id as string))].slice(0, MATCHED_CONVERSATIONS);
-    const [titles, extra] = await Promise.all([
+    const [titles, hits] = await Promise.all([
       page(base => base.ilike("title", pattern)),
-      ids.length ? page(base => base.in("id", ids).not("title", "ilike", pattern)) : { data: [], error: null, count: 0 },
+      supabase.from("messages").select("conversation_id").eq("workspace_id", workspace).ilike("content", pattern).order("created_at", { ascending: false }).limit(200),
     ]);
-    if (titles.error || extra.error) throw new Error("Could not search conversations. Try again.");
+    if (titles.error || hits.error) throw new Error("Could not search conversations. Try again.");
+    const ids = [...new Set((hits.data ?? []).map(row => row.conversation_id as string))].slice(0, MATCHED_CONVERSATIONS);
+    const extra = ids.length ? await page(base => base.in("id", ids).not("title", "ilike", pattern)) : { data: [], error: null, count: 0 };
+    if (extra.error) throw new Error("Could not search conversations. Try again.");
     const merged = [...(titles.data ?? []), ...(extra.data ?? [])]
       .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)) as HistoryThread[];
     const threads = merged.slice(0, THREAD_PAGE);
