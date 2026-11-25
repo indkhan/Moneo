@@ -60,8 +60,12 @@ export async function skipUncategorized(): Promise<string | undefined> {
     console.error("skipUncategorized failed", { code: error.code });
     return "Could not save. Try again.";
   }
-  revalidatePath("/", "layout");
   return undefined;
+}
+
+export async function refreshAfterReview() {
+  await requireWorkspace();
+  revalidatePath("/", "layout");
 }
 
 const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.number().int().min(0) }).strict()).min(1).max(1000), categoryId: z.uuid().optional(),
@@ -86,7 +90,6 @@ export async function categorizeGroups(inputs: z.input<typeof groupInput>[], rem
     console.error("categorizeGroups failed", cause);
     error = cause instanceof z.ZodError || !(cause instanceof Error) ? "Could not categorize these transactions. Reload and try again." : cause.message;
   }
-  if (Object.keys(applied).length) revalidatePath("/", "layout");
   return { applied, rows, error };
 }
 

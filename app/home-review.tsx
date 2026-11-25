@@ -1,15 +1,14 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, startTransition, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useBusy } from "@/components/use-busy";
 import { CategoryCombobox, resolveCategory } from "@/components/category-combobox";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
 import { RecurringCards } from "@/app/money/recurring/cards";
 import { decideAgentProposals } from "@/lib/ai/agent-actions";
 import { displayFormat } from "@/lib/display-format";
-import { categorizeGroups, loadUncategorizedGroups, skipUncategorized } from "./home-review-actions";
+import { categorizeGroups, loadUncategorizedGroups, refreshAfterReview, skipUncategorized } from "./home-review-actions";
 import type { UncategorizedGroup } from "@/lib/import/uncategorized-groups";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
 import type { HomeFinding } from "@/lib/ai/home-review";
@@ -23,13 +22,12 @@ export function SummaryCard({ title, detail, children }: { title: string; detail
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const [cleared, setCleared] = useState(false);
-  const router = useRouter();
   useEffect(() => { if (open) dialog.current?.showModal(); }, [open]);
   if (cleared && !open) return null;
   return <Cleared.Provider value={setCleared}><section aria-label={title} className="my-3 flex flex-wrap items-center gap-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <div className="min-w-0 flex-1"><p className="font-medium">{title}</p><p className="mt-0.5 text-sm text-muted-foreground">{detail}</p></div>
     <button type="button" aria-label={`Review: ${title}`} onClick={() => setOpen(true)} className={`${primary} inline-flex items-center gap-1`}>Review<ChevronRight className="size-4" aria-hidden="true" /></button>
-    {open && <dialog ref={dialog} aria-label={title} onClose={() => { setOpen(false); router.refresh(); }}
+    {open && <dialog ref={dialog} aria-label={title} onClose={() => { setOpen(false); startTransition(refreshAfterReview); }}
       className="m-auto mb-0 max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-border bg-background p-5 text-foreground backdrop:bg-black/40 sm:mb-auto sm:rounded-2xl">
       <div className="flex items-center gap-2"><h2 className="mr-auto font-display text-lg font-semibold">{title}</h2>
         <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="rounded-lg p-2 hover:bg-muted"><X className="size-4" aria-hidden="true" /></button></div>
