@@ -315,7 +315,7 @@ function ownAccountIds(rows: TransferCandidate[]) {
 
 export async function linkOwnTransfers(db: Db, workspaceId: string, context: TransferContext) {
   const [own, rows, legs, transfers, scalable] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId),
-    loadRows(db, workspaceId, "transfer"), db.from("scalable_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "active")]);
+    loadRows(db, workspaceId, "transfer"), db.from("scalable_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).not("portfolio", "is", null)]);
   if (scalable.error) throw new Error(scalable.error.message);
   const { data: accounts, error: accountsError } = await db.from("accounts").select("id, name, currency_code").eq("workspace_id", workspaceId);
   if (accountsError) throw new Error(accountsError.message);

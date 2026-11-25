@@ -64,7 +64,7 @@ describe("own money without an IBAN", () => {
     expect(findOwnTransfers([withdrawal, deposit], own).named).toEqual([{ transactionId: "atm", account: "cash" }, { transactionId: "deposit", account: "cash" }]);
   });
 
-  it("treats Scalable Capital as an own account only when Scalable is connected", () => {
+  it("treats Scalable Capital as an own account only once Scalable has synced", () => {
     expect(findOwnTransfers([broker], own).named).toEqual([]);
     expect(findOwnTransfers([broker], own, [broker], { scalable: true }).named).toEqual([{ transactionId: "broker", account: "scalable" }]);
   });

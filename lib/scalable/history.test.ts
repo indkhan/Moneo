@@ -52,6 +52,15 @@ it("counts transactions after the first sync in the check but shows no day from 
   expect(result.at(-1)!.securitiesMinor).toBe(2400n);
 });
 
+it("moves shares an IPO allocation swaps in and out without moving cash a second time (Anthropic IPO, Nov 2026)", () => {
+  const ALLOCATION = "XI0010565118";
+  const moved = (id: string, isin: string, side: string) => ({ id, at: "2026-01-03T00:00:00Z", kind: "shares" as const, isin, side, quantity: "1" });
+  const rows = [...input().rows, cash("ipo", "2026-01-03T13:00:00Z", "-10"), moved("allocated", ALLOCATION, "SWAP_IN"), moved("released", ALLOCATION, "SWAP_OUT"), moved("listed", ISIN, "SWAP_IN")];
+  const result = days({ rows, holdings: [{ isin: ISIN, filled: 3, currency: "EUR" }], cashBalance: 70 });
+  expect(result.find(day => day.date === "2026-01-03")).toMatchObject({ securitiesMinor: 3300n, cashMinor: 7000n });
+  expect(failed({ rows: [...rows.slice(0, -1), { ...moved("listed", ISIN, "SPLIT"), quantity: "1" }], holdings: [{ isin: ISIN, filled: 3, currency: "EUR" }], cashBalance: 70 })).toContain("SPLIT");
+});
+
 it("fails the check on a share or cash mismatch", () => {
   expect(failed({ holdings: [{ isin: ISIN, filled: 2.1, currency: "EUR" }] })).toContain(ISIN);
   expect(failed({ holdings: [{ isin: ISIN, filled: 2, currency: "EUR" }, { isin: "US0000000002", filled: 1, currency: "EUR" }] })).toContain("US0000000002");
@@ -145,9 +154,9 @@ it("follows both cursors to their ends, keeps exhausted streams exhausted and re
 it("reads a crypto row's ETP shares, never its coin figure, and only settled rows that were not cancelled", async () => {
   const mcp = fakeMcp({ securities: [[security("a"), security("p", "PENDING"), security("c", "SETTLED", { isCancellation: true }),
     { id: "cash", kind: "CASH", status: "SETTLED", currency: "EUR", isCancellation: false, lastEventAt: "2026-01-01T10:00:00Z", cash: { relatedIsin: null, transactionType: "DEPOSIT", amount: 100 } },
-    { id: "split", kind: "NON_TRADE", status: "SETTLED", isCancellation: false, lastEventAt: "2026-01-01T10:00:00Z", nonTradeSecurity: { isin: ISIN, quantity: "5" } }]], crypto: [[crypto("x")]] });
+    { id: "swap", kind: "non_trade_security", status: "SETTLED", isCancellation: false, lastEventAt: "2026-01-01T10:00:00Z", nonTradeSecurity: { isin: ISIN, transactionType: "SWAP_IN", quantity: "5", amount: "75" } }]], crypto: [[crypto("x")]] });
   const input = await readHistoryInput(mcp, "UTC", "2026-02-01", noDetails());
-  expect(input.rows.map(row => [row.id, row.kind, row.quantity ?? null, row.amountText])).toEqual([["a", "security", "1", "-10"], ["cash", "cash", null, "100"], ["x", "crypto", "10", "-5"]]);
+  expect(input.rows.map(row => [row.id, row.kind, row.quantity ?? null, row.amountText ?? null])).toEqual([["a", "security", "1", "-10"], ["cash", "cash", null, "100"], ["swap", "shares", "5", null], ["x", "crypto", "10", "-5"]]);
   expect(input.rows.find(row => row.id === "x")).toMatchObject({ isin: ETP });
 });
 
