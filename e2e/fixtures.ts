@@ -1,6 +1,11 @@
 import * as fs from "node:fs";
 import type { Sql } from "postgres";
 
+export async function ensureAccount(db: Sql, workspace: string) {
+  await db`insert into public.accounts(workspace_id,name,type,currency_code) select ${workspace},'Layout checking','checking','EUR'
+    where not exists (select 1 from public.accounts where workspace_id=${workspace} and archived_at is null)`;
+}
+
 export async function deleteDisposableUser(db: Sql, user: string) {
   await db.begin(async tx => {
     await tx`select set_config('request.jwt.claim.sub', ${user}, true)`;

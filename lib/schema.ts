@@ -1273,6 +1273,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   speechLocalModel: text("speech_local_model"),
   speechOpenrouterModel: text("speech_openrouter_model"),
   uncategorizedSkippedAt: timestamp("uncategorized_skipped_at", { withTimezone: true }),
+  aiSetupSkippedAt: timestamp("ai_setup_skipped_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),

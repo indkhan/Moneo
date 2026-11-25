@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import postgres from "postgres";
-import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+import { e2eStorageStatePath, ensureAccount, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
 
 const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
@@ -15,7 +15,9 @@ const open = async (page: Page) => {
 test.beforeEach(async () => {
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   try {
-    await db`delete from public.dashboard_layouts where workspace_id in (select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!})`;
+    const [{ id: workspace }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
+    await db`delete from public.dashboard_layouts where workspace_id = ${workspace}`;
+    await ensureAccount(db, workspace);
   } finally { await db.end(); }
 });
 const saved = (page: Page) => page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/");

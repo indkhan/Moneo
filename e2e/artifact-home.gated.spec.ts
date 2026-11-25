@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { compileCard } from "../lib/cards/sandbox";
-import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+import { e2eStorageStatePath, ensureAccount, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
 
 const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
@@ -26,6 +26,7 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
   const [layout] = await db`select items from public.dashboard_layouts where workspace_id = ${workspaceId}`;
+  await ensureAccount(db, workspaceId);
   const [{ id }] = await db`insert into public.artifacts (workspace_id, title) values (${workspaceId}, ${title}) returning id`;
   try {
     const queries = db.json([{ name: "accounts", source: "accounts", input: {} }]);

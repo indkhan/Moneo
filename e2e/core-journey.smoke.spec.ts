@@ -2,10 +2,10 @@ import { test, expect, type BrowserContext } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
-import postgres from "postgres";
+import postgres, { type Sql } from "postgres";
 import { deleteDisposableUser, hasSupabaseEnv } from "./fixtures";
 
-async function withRevokedSession(context: BrowserContext, run: () => Promise<void>) {
+async function withDisposableUser(context: BrowserContext, { revoked }: { revoked: boolean }, run: (db: Sql, workspace: string) => Promise<void>) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   const email = `qa-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
@@ -17,9 +17,10 @@ async function withRevokedSession(context: BrowserContext, run: () => Promise<vo
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => jar.set(name, value)) } });
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
     const signedIn = [...jar].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const }));
-    expect((await auth.auth.signOut()).error).toBeNull();
+    if (revoked) expect((await auth.auth.signOut()).error).toBeNull();
     await context.addCookies(signedIn);
-    await run();
+    const [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${created.data.user!.id}`;
+    await run(db, workspace);
   } finally {
     await deleteDisposableUser(db, created.data.user!.id);
     await db.end();
@@ -61,7 +62,7 @@ test.describe("core journey smoke (no session, no live AI)", () => {
         await expect(page.getByRole("heading", { name: "Moneo could not sign you in" })).toBeVisible();
         await expect(page.getByText("npm run setup")).toBeVisible();
       };
-      if (hasSupabaseEnv()) await withRevokedSession(context, expectSetupHelp);
+      if (hasSupabaseEnv()) await withDisposableUser(context, { revoked: true }, expectSetupHelp);
       else await expectSetupHelp();
     });
   });
@@ -97,6 +98,43 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     test("a link to the import page opens it without a sign-in step", async ({ page }) => {
       await page.goto("/import");
       await expect(page).toHaveURL(/\/import$/);
+    });
+
+    test.describe("a fresh workspace", () => {
+      test.use({ storageState: { cookies: [], origins: [] } });
+      test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_DB_URL, "Needs the service key to create a disposable user");
+      test("Home starts with the first steps: AI can be skipped, money has two routes, and the agent team waits for transactions", async ({ page, context }) => {
+        await withDisposableUser(context, { revoked: false }, async (db, workspace) => {
+          const aiOn = (await (await page.request.get("/api/ai/status")).json()).ai as boolean;
+          await page.goto("/");
+          const steps = page.getByRole("region", { name: "Get started" });
+          await expect(steps).toBeVisible();
+          const [first] = await page.locator("main section").evaluateAll(nodes => nodes.map(node => node.getAttribute("aria-labelledby")));
+          expect(first).toBe("first-steps");
+          await expect(page.getByRole("button", { name: "Customize", exact: true })).toHaveCount(0);
+          await expect(page.getByRole("button", { name: "Add widget" })).toHaveCount(0);
+          await expect(page.getByRole("link", { name: /^Call Moneo/ })).toBeVisible();
+          if (!aiOn) {
+            await steps.getByRole("button", { name: "Skip for now" }).click();
+            await expect(steps.getByRole("heading", { name: "AI skipped" })).toBeVisible();
+            await page.reload();
+            await expect(steps.getByRole("heading", { name: "AI skipped" })).toBeVisible();
+          } else await expect(steps.getByRole("heading", { name: "AI is on" })).toBeVisible();
+          await expect(steps.getByRole("link", { name: "Import a statement" })).toHaveAttribute("href", "/import");
+          await expect(steps.getByRole("link", { name: "Connect a bank" })).toBeVisible();
+          await expect(steps.getByText("Needs a free Enable Banking account")).toBeVisible();
+          await expect(steps.getByRole("heading", { name: "Run the agent team" })).toHaveCount(0);
+
+          const [account] = await db`insert into public.accounts(workspace_id,name,type,currency_code) values(${workspace},'First checking','checking','EUR') returning id`;
+          await db`insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code) values(${workspace},${account.id},'2026-10-01','First coffee',-350,'EUR')`;
+          await page.reload();
+          await expect(page.getByRole("button", { name: "Customize", exact: true })).toBeVisible();
+          if (aiOn) {
+            await expect(steps.getByRole("heading", { name: "Money added" })).toBeVisible();
+            await expect(steps.getByRole("button", { name: "Run agent team" })).toBeVisible();
+          } else await expect(steps).toHaveCount(0);
+        });
+      });
     });
   });
 });

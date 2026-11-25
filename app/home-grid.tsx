@@ -15,7 +15,7 @@ import { SectionFallback } from "./section-fallback";
 type Layout = { items: string[]; sizes: Record<string, CardSize> };
 type Drag = { id: string; from: string[]; clone: HTMLElement; width: number; height: number; touch: boolean };
 type Notice = { text: string; action?: { label: string; run: () => void } };
-export type HomeGridProps = Layout & { version: number; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]> };
+export type HomeGridProps = Layout & { version: number; editable: boolean; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]> };
 
 const CARD_KEY = "card:";
 const stay = () => null;
@@ -23,7 +23,7 @@ const autoScroll = { threshold: { x: 0, y: 0.12 }, acceleration: 10 };
 const dragsWidget = (target: EventTarget) => target instanceof Element && !!target.closest("h2, h3") && !target.closest("a, button, input, select, textarea, summary");
 const nearest = (options: CardSize[], columns: number) => options.reduce((best, size) => Math.abs(CARD_SIZES[size].columns - columns) < Math.abs(CARD_SIZES[best].columns - columns) ? size : best);
 
-export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
+export function HomeGrid({ version, editable, items, sizes, widgets, labels, options }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
   const currentLayout = useRef(layout);
   useLayoutEffect(() => { currentLayout.current = layout; }, [layout]);
@@ -219,7 +219,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
 
   return <DndContext id="home-grid" sensors={sensors} autoScroll={autoScroll} collisionDetection={nearestWidget} onDragStart={dragStart} onDragMove={dragMove} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
     accessibility={{ announcements, screenReaderInstructions: { draggable: "Use the arrow keys to move this widget one place at a time." } }}>
-    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+    {editable && <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
       {customizing && <p className="mr-auto text-sm text-muted-foreground">Drag a widget by its handle, or focus the handle and use the arrow keys. On a phone, hold a widget to drag it.</p>}
       {hidden.length > 0 && <div className="relative">
         <button type="button" aria-expanded={menu} onClick={() => setMenu(open => !open)}
@@ -230,7 +230,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
         </ul>}
       </div>}
       <button type="button" aria-pressed={customizing} onClick={() => { setCustomizing(on => !on); setMenu(false); }} className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">{customizing ? "Done" : "Customize"}</button>
-    </div>
+    </div>}
     <SortableContext items={shown} strategy={stay}>
       <div ref={grid} className="grid items-start gap-4 lg:grid-flow-row-dense lg:grid-cols-6 lg:data-masonry:auto-rows-[4px] lg:data-masonry:gap-y-0 lg:data-masonry:[&>*]:[grid-row-end:span_var(--rows,1)]">
         {shown.map(key => {
