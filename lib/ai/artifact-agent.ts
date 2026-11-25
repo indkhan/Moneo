@@ -2,7 +2,7 @@ import { generateText, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { requireWorkspace } from "@/lib/auth";
-import { modelForSettings } from "@/lib/ai/provider";
+import { getModel, modelForSettings } from "@/lib/ai/provider";
 import { calendarDate } from "@/lib/finance/calendar";
 import { offeredQueriesSchema, offeredSources, sourceGuide, checkQueries, type ScalableArtifactAccess, resolveToken, runArtifactQueries, type ArtifactQuery } from "@/lib/ai/artifact-data";
 import { cardParamsSchema, resolveParams, type CardParam } from "@/lib/cards/params";
@@ -15,7 +15,7 @@ import { dropDraft, keepDraft } from "@/lib/ai/artifact-drafts";
 import { draftCardPath, draftPagePath, type PreviewTheme } from "@/lib/draft-preview";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-type Run = { context: Context; artifactId: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[]; session: Session };
+type Run = { context: Context; artifactId: string; model?: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[]; session: Session };
 
 const SCALABLE_HELP: Record<"snapshot" | "live", string> = {
   snapshot: "Scalable sources show the portfolio as of the last sync (dataFrom last_sync, syncedAt), the same figures as Wealth: say \"as of\" with that date. Your investments_ tools read Scalable live and their fields differ, so take field paths for a brief from the sample the designer gets, not from them. Quotes, charts and news for other securities need live Scalable data, which the owner can turn on in Settings.",
@@ -94,7 +94,7 @@ const shorten = (value: unknown): unknown => Array.isArray(value)
 const sample = (data: unknown) => { const json = JSON.stringify(shorten(data), null, 1); return json.length > 24000 ? `${json.slice(0, 24000)}\n… (truncated)` : json; };
 
 async function design(run: Run, system: string, input: string | ModelMessage[]) {
-  const model = await modelForSettings(run.context.settings, "artifacts");
+  const model = run.model ? await getModel(run.model) : await modelForSettings(run.context.settings, "artifacts");
   const { text } = await generateText({
     model, instructions: system, ...typeof input === "string" ? { prompt: input } : { messages: input }, maxOutputTokens: 32000,
     providerOptions: { openai: { reasoningEffort: "medium" } },

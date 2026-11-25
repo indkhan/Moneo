@@ -10,7 +10,7 @@ type WireFields<Fields> = { [Field in keyof Fields]: Wire<Fields[Field]> };
 type WireArgs<Args> = { [Arg in keyof Args]: Wire<Args[Arg]> | null };
 
 type JsonReturns = {
-  start_chat_request: { started: boolean; status: string; answer: string | null };
+  start_chat_request: { started: boolean; status: string; answer: string | null; parent: string | null };
   control_import: { started: boolean; totalRows: number; runVersion: number };
   create_organization_review: { id: string };
   create_manual_transaction: { id: string | null };

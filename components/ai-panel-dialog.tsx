@@ -14,7 +14,9 @@ import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { useChatAttachments } from "@/lib/ai/use-chat-attachments";
 import { ATTACHMENT_ONLY_MESSAGE, type ChatAttachment } from "@/lib/ai/chat-attachments";
 import { ChatQueue } from "./chat-queue";
-import { ChatMessages, DRAFT_EVENT, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { ChatMessages, DRAFT_EVENT, RESUMED_RUN, applyChatEvent, localExchange, type ChatItem, type PendingExchange } from "./chat-messages";
+import { useChatPath } from "@/lib/ai/use-chat-path";
+import type { ChatNode } from "@/lib/ai/chat-tree";
 import { selectConversation } from "@/lib/ai/selected-conversation";
 import type { AskSeed } from "./ask-about";
 
@@ -55,6 +57,8 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   if (seed && seed.nonce !== seenSeed) { setSeenSeed(seed.nonce); setQuestion(seed.question); setAbout(seed.about ?? null); }
   const [pending, setPending] = useState<PendingExchange | null>(null);
   const [history, setHistory] = useState<ChatItem[]>([]);
+  const [requests, setRequests] = useState<ChatNode[]>([]);
+  const branch = useChatPath(requests);
   const [older, setOlder] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -75,6 +79,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       setConversationId(result.selected?.id ?? null);
       selectConversation(result.selectionKey, result.selected?.id ?? "new", false);
       setHistory(current => cursor ? [...result.messages, ...current] : result.messages);
+      if (!cursor) setRequests(result.requests ?? []);
       setOlder(result.messagesCursor);
       if (!cursor) setRunning(Boolean(result.running));
     } catch (cause) {
@@ -127,13 +132,14 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     let live: PendingExchange = { question, attachments, tools: [], spoken };
     setPending(live);
     if (!queued) { setQuestion(""); files.clear(); }
-    const result = await send({ conversationId: id, message: question, context, ...(attachments.length && { attachments }) }, event => { live = applyChatEvent(live, withSteers(event)); setPending(live); });
+    const parent = !queued && conversationId ? branch.end : null;
+    const result = await send({ conversationId: id, message: question, context, ...(parent && { parent }), ...(attachments.length && { attachments }) }, event => { live = applyChatEvent(live, withSteers(event)); setPending(live); });
     setPending(null);
     if (result && selectionGeneration === generation.current) {
       selectConversation(selectionKey, id);
-      const now = new Date().toISOString();
-      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken },
-        ...(live.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })), { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: live.tools.length ? live.tools : result.toolsUsed, plan: live.plan, followUps: result.followUps }]);
+      const exchange = localExchange(question, result, live, attachments);
+      setHistory(current => [...current, ...exchange.messages]);
+      setRequests(current => [...current, exchange.node]);
       setAbout(null);
       if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }
     } else if (!result && !queued) { setQuestion(current => current || typed); files.restore(attachments); }
@@ -157,7 +163,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
         {historyError && <div role="alert" className="text-sm"><p>{historyError}</p><button type="button" onClick={() => void load()} className="mt-2 underline">Try again</button></div>}
         {loading && <p role="status" className="text-sm text-muted-foreground">Loading conversation...</p>}
         {older && !historyError && <button type="button" disabled={loading || busy} onClick={() => void load(older)} className="mx-auto mb-4 block text-sm text-muted-foreground hover:text-foreground">Older messages</button>}
-        {!historyError && <ChatMessages compact messages={history} pending={pending ?? (running && !busy ? RESUMED_RUN : null)} />}
+        {!historyError && <ChatMessages compact messages={history} path={branch.path} onPick={branch.pick} pending={pending ?? (running && !busy ? RESUMED_RUN : null)} />}
         <div ref={end} />
         {!history.length && !pending && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
       </div>

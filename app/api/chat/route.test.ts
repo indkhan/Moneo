@@ -39,6 +39,19 @@ beforeEach(() => {
   vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from: () => query, rpc }, user: { id: "00000000-0000-4000-8000-000000000099" }, workspace: { id: "workspace", display_currency: "EUR" }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
 });
 const requestId = "00000000-0000-4000-8000-000000000001";
+type Row = { role: string; content: string; context?: unknown; request_id?: string | null; reply_to?: string | null; chat_request_id: string };
+async function withHistory(nodes: { id: string; parent_id: string | null; regenerates?: string }[], rows: Row[], parent: string) {
+  const context = await requireWorkspace();
+  const skeleton = nodes.map((node, index) => ({ regenerates: null, ...node, created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString() }));
+  const query = (table: string) => {
+    const chain = { select: () => chain, eq: () => chain, in: () => chain, is: () => chain, order: () => table === "messages" ? Promise.resolve({ data: rows, error: null }) : chain,
+      limit: async () => ({ data: table === "chat_requests" ? skeleton.toReversed() : [], error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
+    return chain;
+  };
+  const rpc = vi.fn(async (name: string) => ({ error: null, data: name === "start_chat_request" ? { started: true, parent } : "completed" }));
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts"] }, supabase: { from: query, rpc } } as unknown as typeof context);
+}
+const replayed = () => (vi.mocked(generateText).mock.calls[0][0].messages as { content: unknown }[]).map(item => String(item.content).split("\n")[0]);
 const request = (message: string) => new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message }) });
 it("publishes the model's own Markdown answer with usage and tool calls", async () => {
   vi.mocked(generateText).mockImplementationOnce(async options => {
@@ -72,10 +85,8 @@ it("saves a chart with the exact numbers of the chart_data it references", async
   expect(JSON.parse(block!)).toEqual({ type: "bar", title: "Spending", unit: { kind: "money", currency: "EUR" }, labels: ["2026-09", "2026-10"], series: [{ name: "Spending", values: ["123456", "7"] }] });
 });
 it("keeps earlier assistant turns in history without their chart blocks", async () => {
-  const context = await requireWorkspace();
-  const history = [{ role: "assistant", content: "Here:\n```moneo-chart\n{\"type\":\"bar\"}\n```\nDone", context: null }, { role: "user", content: "Earlier", context: {} }];
-  const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: history, error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
-  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts"] }, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
+  await withHistory([{ id: "q1", parent_id: null }], [{ role: "user", content: "Earlier", context: {}, request_id: "q1", chat_request_id: "q1" },
+    { role: "assistant", content: "Here:\n```moneo-chart\n{\"type\":\"bar\"}\n```\nDone", context: null, reply_to: "q1", chat_request_id: "q1" }], "q1");
   await POST(request("And now?"));
   expect(vi.mocked(generateText).mock.calls[0][0].messages).toEqual([{ role: "user", content: "Earlier" }, { role: "assistant", content: "Here:\n[chart]\nDone" }, { role: "user", content: "And now?" }]);
 });
@@ -96,14 +107,20 @@ it("lets a call correction replace the last answered request when none is runnin
   expect(String((vi.mocked(generateText).mock.calls[0][0].tools as Record<string, { description?: string }>).call_replace_task.description)).toContain(answered);
 });
 it("leaves this call's still-running questions out of a call request's history", async () => {
-  const context = await requireWorkspace();
   const running = "00000000-0000-4000-8000-000000000003";
-  const history = [{ role: "user", content: "Analyze last month", context: { via: "call" }, request_id: running }, { role: "user", content: "Earlier", context: {}, request_id: "00000000-0000-4000-8000-000000000004" }];
-  const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: history, error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
-  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts"] }, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
+  await withHistory([{ id: "earlier", parent_id: null }, { id: running, parent_id: "earlier" }], [{ role: "user", content: "Earlier", context: {}, request_id: "earlier", chat_request_id: "earlier" },
+    { role: "user", content: "Analyze last month", context: { via: "call" }, request_id: running, chat_request_id: running }], running);
   await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "Total spent last month?",
     context: { via: "call", runningTasks: [{ requestId: running, text: "Analyze last month" }] } }) }));
-  expect((vi.mocked(generateText).mock.calls[0][0].messages as { content: unknown }[]).map(item => String(item.content).split("\n")[0])).toEqual(["Earlier", "Total spent last month?"]);
+  expect(replayed()).toEqual(["Earlier", "Total spent last month?"]);
+});
+it("continues from the reply the owner is viewing, not a newer regenerated one", async () => {
+  await withHistory([{ id: "q1", parent_id: null }, { id: "q1b", parent_id: null, regenerates: "q1" }], [
+    { role: "user", content: "Question", context: {}, request_id: "q1", chat_request_id: "q1" },
+    { role: "assistant", content: "First answer", reply_to: "q1", chat_request_id: "q1" },
+    { role: "assistant", content: "Second answer", reply_to: "q1b", chat_request_id: "q1b" }], "q1");
+  await POST(request("Go on"));
+  expect(replayed()).toEqual(["Question", "First answer", "Go on"]);
 });
 it("offers scoped investigation and question-bound review start within the model step guard", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);

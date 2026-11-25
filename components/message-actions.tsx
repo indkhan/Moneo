@@ -1,46 +1,49 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, RotateCcw } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy, RotateCcw } from "lucide-react";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
+import type { PathStep } from "@/lib/ai/chat-tree";
 import type { ChatItem } from "./chat-messages";
 
 export const RESEND_EVENT = "moneo-chat-resend";
-export type Resend = { message: string; attachments: ChatAttachment[]; spoken: boolean; regenerates: string };
-export type AnswerVersion = { index: number; count: number; onChange: (index: number) => void };
+export type Resend = { message: string; attachments: ChatAttachment[]; spoken: boolean; after: string | null; regenerates?: string; edits?: string; model?: string };
+export type Versions = { index: number; count: number; onChange: (index: number) => void };
 
-export function resendQuestion(messages: ChatItem[], index: number): Resend | null {
-  const regenerates = messages[index]?.answer_of;
-  const question = messages.slice(0, index).findLast(item => item.role === "user");
-  return regenerates && question ? { message: question.content, attachments: question.attachments ?? [], spoken: !!question.spoken, regenerates } : null;
+export const regenerateOf = (step: PathStep, question: ChatItem): Resend =>
+  ({ message: question.content, attachments: question.attachments ?? [], spoken: !!question.spoken, after: step.after, regenerates: step.question });
+export const editOf = (step: PathStep, question: ChatItem, message: string): Resend =>
+  ({ message, attachments: question.attachments ?? [], spoken: false, after: step.after, edits: step.question });
+export const resend = (detail: Resend) => window.dispatchEvent(new CustomEvent(RESEND_EVENT, { detail }));
+
+const button = "flex size-11 items-center justify-center rounded-lg hover:bg-muted hover:text-foreground lg:size-8";
+
+export function VersionPicker({ versions, label }: { versions?: Versions; label: string }) {
+  if (!versions || versions.count < 2) return null;
+  const { index, count, onChange } = versions;
+  return <span className="flex items-center">
+    <button type="button" aria-label={`Previous ${label}`} disabled={index === 0} className={`${button} disabled:opacity-40`} onClick={() => onChange(index - 1)}><ChevronLeft className="size-4" aria-hidden="true" /></button>
+    <span className="text-xs tabular-nums" aria-label={`${label[0]?.toUpperCase()}${label.slice(1)} ${index + 1} of ${count}`}>{index + 1}/{count}</span>
+    <button type="button" aria-label={`Next ${label}`} disabled={index === count - 1} className={`${button} disabled:opacity-40`} onClick={() => onChange(index + 1)}><ChevronRight className="size-4" aria-hidden="true" /></button>
+  </span>;
 }
 
-export function answerGroups(messages: ChatItem[]): ChatItem[][] {
-  const groups: ChatItem[][] = [];
-  const byAnswer = new Map<string, ChatItem[]>();
-  for (const item of messages) {
-    const earlier = item.role === "assistant" && item.answer_of ? byAnswer.get(item.answer_of) : undefined;
-    if (earlier) { groups.splice(groups.indexOf(earlier), 1); earlier.push(item); groups.push(earlier); continue; }
-    const group = [item];
-    groups.push(group);
-    if (item.role === "assistant" && item.answer_of) byAnswer.set(item.answer_of, group);
-  }
-  return groups;
-}
-
-export function MessageActions({ content, model, resend, version }: { content: string; model?: string; resend: Resend | null; version?: AnswerVersion }) {
+export function MessageActions({ content, model, regenerate, models = [], versions }: { content: string; model?: string; regenerate: Resend | null; models?: string[]; versions?: Versions }) {
   const [copied, setCopied] = useState(false);
-  const button = "flex size-11 items-center justify-center rounded-lg hover:bg-muted hover:text-foreground lg:size-8";
   return <div className="mt-2 flex items-center gap-0.5 text-muted-foreground">
-    {version && version.count > 1 && <span className="mr-1 flex items-center">
-      <button type="button" aria-label="Previous answer" disabled={version.index === 0} className={`${button} disabled:opacity-40`} onClick={() => version.onChange(version.index - 1)}><ChevronLeft className="size-4" aria-hidden="true" /></button>
-      <span className="text-xs tabular-nums" aria-label={`Answer ${version.index + 1} of ${version.count}`}>{version.index + 1}/{version.count}</span>
-      <button type="button" aria-label="Next answer" disabled={version.index === version.count - 1} className={`${button} disabled:opacity-40`} onClick={() => version.onChange(version.index + 1)}><ChevronRight className="size-4" aria-hidden="true" /></button>
-    </span>}
+    <span className="mr-1"><VersionPicker versions={versions} label="answer" /></span>
     <button type="button" aria-label="Copy message" title="Copy" className={button} onClick={async () => {
       try { await navigator.clipboard.writeText(content); setCopied(true); } catch { setCopied(false); }
     }}>{copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}</button>
-    {resend && <button type="button" aria-label="Regenerate reply" title="Regenerate" className={button} onClick={() => window.dispatchEvent(new CustomEvent(RESEND_EVENT, { detail: resend }))}><RotateCcw className="size-4" aria-hidden="true" /></button>}
+    {regenerate && <button type="button" aria-label="Regenerate reply" title="Regenerate" className={button} onClick={() => resend(regenerate)}><RotateCcw className="size-4" aria-hidden="true" /></button>}
+    {regenerate && models.length > 0 && <details className="relative">
+      <summary aria-label="Regenerate with another model" title="Regenerate with another model" className={`${button} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}><ChevronDown className="size-4" aria-hidden="true" /></summary>
+      <div className="absolute bottom-full left-0 z-20 mb-1 w-56 rounded-xl border border-border bg-card p-1 shadow-lg">
+        <p className="px-2.5 py-1.5 text-xs text-muted-foreground">Regenerate with</p>
+        {models.map(option => <button key={option} type="button" className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-sm text-foreground hover:bg-muted"
+          onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); resend({ ...regenerate, model: option }); }}>{option}</button>)}
+      </div>
+    </details>}
     {model && <span className="ml-1.5 min-w-0 truncate text-xs"><span className="sr-only">Model: </span>{model}</span>}
   </div>;
 }
