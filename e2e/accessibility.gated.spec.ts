@@ -54,6 +54,14 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
     await expect(page.locator("h1").first()).toBeVisible();
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
   }
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/money/accounts");
+  await page.locator("summary").filter({ hasText: "Add account" }).click();
+  const addAccount = await page.getByRole("textbox", { name: "Name", exact: true }).locator("xpath=ancestor::form[1]").boundingBox();
+  expect(addAccount).not.toBeNull();
+  expect(addAccount!.x).toBeGreaterThanOrEqual(0);
+  expect(addAccount!.x + addAccount!.width).toBeLessThanOrEqual(320);
+  await page.setViewportSize({ width: 360, height: 780 });
   await page.goto("/");
   await page.getByRole("button", { name: "Search or ask Moneo" }).first().click();
   await page.getByRole("combobox", { name: "Search commands" }).fill("What changed this month?");
