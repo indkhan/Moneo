@@ -56,8 +56,9 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   }
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto("/money/accounts");
-  await page.locator("summary").filter({ hasText: "Add account" }).click();
-  const addAccount = await page.getByRole("textbox", { name: "Name", exact: true }).locator("xpath=ancestor::form[1]").boundingBox();
+  const addAccountPanel = page.locator("details").filter({ has: page.locator("summary", { hasText: "Add account" }) });
+  await addAccountPanel.locator("summary").click();
+  const addAccount = await addAccountPanel.locator("form").boundingBox();
   expect(addAccount).not.toBeNull();
   expect(addAccount!.x).toBeGreaterThanOrEqual(0);
   expect(addAccount!.x + addAccount!.width).toBeLessThanOrEqual(320);
