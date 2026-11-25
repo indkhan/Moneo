@@ -6,6 +6,7 @@ import { ChatForm } from "@/components/chat-form";
 import { claimFirstPrompt } from "../actions";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "@/components/chat-messages";
 import { usePolling } from "@/lib/use-polling";
+import { SavedVersion, type HomeVersions } from "./saved-version";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
@@ -21,7 +22,7 @@ export function SendButton({ prompt, idle, label, sending }: { prompt: string; i
   </span>;
 }
 
-export function ArtifactChat({ conversationId, initial, messagesCursor, running: initialRunning, artifactId }: { conversationId: string; initial: ChatItem[]; messagesCursor: string | null; running: string | null; artifactId?: string }) {
+export function ArtifactChat({ conversationId, initial, messagesCursor, running: initialRunning, artifactId, artifact, home }: { conversationId: string; initial: ChatItem[]; messagesCursor: string | null; running: string | null; artifactId?: string; artifact: string; home: HomeVersions }) {
   const router = useRouter();
   const [messages, setMessages] = useState(initial);
   const [older, setOlder] = useState(messagesCursor);
@@ -92,7 +93,7 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     <div ref={scroll} aria-label="Artifact chat messages" className="relative min-h-0 flex-1 overflow-y-auto pr-1">
       {older && <button type="button" disabled={loadingOlder} onClick={() => void loadOlder()} className="mb-4 min-h-9 rounded-lg border border-border px-3 text-xs text-muted-foreground disabled:opacity-50">{loadingOlder ? "Loading older messages…" : "Older messages"}</button>}
       {historyError && <p role="alert" className="mb-3 text-sm text-danger">{historyError}</p>}
-      {messages.length || pending || resuming ? <ChatMessages compact messages={messages} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} />
+      {messages.length || pending || resuming ? <ChatMessages compact messages={messages} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} toolResult={(step, key) => <SavedVersion key={key} step={step} artifactId={artifact} home={home} />} />
         : <p className="text-sm text-muted-foreground">Describe what to build. Ask for a Home card any time, e.g. “add this to Home as a small card”.</p>}
     </div>
     {unreachable && resuming && <p role="alert" className="text-xs text-warning">Could not check on this build. It may still be running. Moneo keeps trying.</p>}

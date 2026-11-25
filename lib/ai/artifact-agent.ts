@@ -37,7 +37,8 @@ export const artifactModePrompt = (scalable: ScalableArtifactAccess) => `This ch
 - For a Home card, use a card_preset when one of its shapes fits exactly; otherwise write_card for custom design or calculations. When the user asks for a derived value that is not already a query field, use write_card and describe the calculation to implement. A preset card the user wants to look different becomes a write_card.
 - Changing a card ("also show the yearly total", "drop the chart") passes its cardId and makes a new draft version; the user previews it in the Home card tab and adds or updates it on Home themselves.
 - Briefs say what to show, the exact field paths that hold it (as you saw them in tool results, e.g. groups[].dimensions.categoryName), and any look the user asked for. Default to Moneo's own look.
-- After a tool saves, answer in one or two sentences; never paste HTML or code into the chat.
+- When a request has more than one reasonable reading, ask which one the user means before building; a build takes minutes.
+- After a tool saves, talk it through like a designer would: say what you made, then what it had to leave out or could not do and why, taken from the result (hidden, lastLookFound, errors), and offer one to three concrete next steps the user can pick. Never paste HTML or code into the chat.
 ${queryHelp(scalable)}`;
 
 const PAGE_DESIGNER = `You write one self-contained interactive HTML page about the user's own finances, from a brief.
@@ -54,7 +55,7 @@ Reply with only the complete HTML document.`;
 const CARD_DESIGNER = `You write one Moneo Home card as a TSX module: \`export default function Card({ data, params, size })\` returning JSX.
 - A pure function: no hooks, state, effects, imports, fetch or timers. Helper functions and components inside the module are fine.
 - data: the query results keyed by query name (a sample is below). Write the calculations the user requests in this card's code: totals, averages, ratios, billing-cadence equivalents and what-ifs are allowed. Calculate money using BigInt from raw *_minor/*Minor fields, keep currencies separate, and round explicitly. Display existing formatted strings or calculated amounts with <Kit.Money minor={calculated.toString()} currency={currency} />. Never parse formatted money strings or hard-code missing amounts. Label cadence equivalents and projections as estimates and state assumptions. Minor amounts may become numbers for bar lengths and chart values. Handle a { error } result or empty lists gracefully.
-- params: the current value of each declared param: a string for month/period/choice, a number for a number param (minor units for money), a boolean for a toggle. Sliders and switches can be at any value in their range, so the card must stay correct and fit at both ends. size: "S" | "M" | "L" | "XL". The body is about ${Object.entries(CARD_SIZES).map(([key, size]) => `${key} ${size.width}`).join(", ")} px wide and ${CARD_BODY_HEIGHT} px tall, fixed: nothing scrolls, so show fewer rows or drop a chart at smaller sizes. The app shows the title above the body; don't repeat it.
+- params: the current value of each declared param: a string for month/period/choice, a number for a number param (minor units for money), a boolean for a toggle. Sliders and switches can be at any value in their range, so the card must stay correct and fit at both ends. size: "S" | "M" | "L" | "XL". The body is about ${Object.entries(CARD_SIZES).map(([key, size]) => `${key} ${size.width}`).join(", ")} px wide and ${CARD_BODY_HEIGHT} px tall, fixed: nothing scrolls, so drop a chart or a secondary figure at smaller sizes. Prefer passing every row to Kit.List, which shows what fits and "+N more"; if you show fewer rows yourself, end with a visible "+N more" line. The rows each size leaves out are counted and reported to the owner. The app shows the title above the body; don't repeat it.
 - Elements: HTML (div, span, p, h1–h6, ul, ol, li, table, strong, small, time, progress…) and SVG (svg, g, path, rect, circle, line, polyline, polygon, text, defs, linearGradient, radialGradient, stop, clipPath, filter, feGaussianBlur, feDropShadow…). SVG ids and url(#id) references work. No links, images, buttons, forms, scripts or event handlers.
 - Style with style={{ … }} objects and <Kit.Style css={"…"} /> for classes, :hover, @keyframes and @media; its CSS applies only inside this card. No url() or @import. Colours: var(--color-foreground), --color-muted-foreground, --color-card, --color-muted, --color-border, --color-brand, --color-ai, --color-success, --color-warning, --color-danger, --color-chart-input, --color-chart-out (they follow light and dark). Fonts: var(--font-sans), var(--font-display), var(--font-mono). Utility classes that exist: eyebrow, font-display, font-mono, tabular-nums, truncate, text-muted-foreground, text-sm, text-xs, font-medium, font-semibold.
 - Build from the Kit blocks first. They are drawn by the app, fit every size on their own and match Moneo in light and dark, so a card made of them looks right without pixel work. Use raw elements and SVG only for what no block shows, or when the brief asks for a custom style.
@@ -113,13 +114,13 @@ const CARD_SHOTS = (path: (size: CardSize, theme: PreviewTheme) => string): Shot
 ];
 const previewUnavailable = (cause: unknown) => { console.error("artifact preview failed", cause); return null; };
 
-type Reviewed = { text: string; looked: string[]; remaining: string[] };
+type Reviewed = { text: string; looked: string[]; remaining: string[]; hiddenRows: string[] };
 async function review(run: Run, { system, prompt, text, what, shots, accept }: {
   system: string; prompt: string; text: string; what: "document" | "module";
   shots: (text: string) => { shots: Shot[]; done: () => void } | null;
   accept: (text: string) => Promise<boolean>;
 }): Promise<Reviewed> {
-  let current = text, looked: string[] = [], remaining: string[] = [];
+  let current = text, looked: string[] = [], remaining: string[] = [], hiddenRows: string[] = [];
   for (let round = 0; round < LOOK_ROUNDS; round++) {
     const planned = shots(current);
     if (!planned) break;
@@ -127,17 +128,18 @@ async function review(run: Run, { system, prompt, text, what, shots, accept }: {
     if (!seen) break;
     looked = seen.map(shot => shot.label);
     remaining = seen.flatMap(shot => shot.problems.map(problem => `${shot.label}: ${problem}`));
+    hiddenRows = seen.flatMap(shot => (shot.hidden ?? []).map(line => `${shot.label} ${line}`));
     const report = `This is how your ${what} renders with the owner's real data (${looked.join("; ")}).\n${remaining.length ? `Measured problems:\n${remaining.map(problem => `- ${problem}`).join("\n")}` : "The measurements found nothing cut off, overlapping or unreadable."}\n\nLook at it as the owner would: calm, clear and readable at every size, nothing cut off, overlapping, crammed or empty. If it is good, reply with exactly OK. Otherwise reply with the whole fixed ${what} and nothing else.`;
     const { text: reply } = await design(run, system, [
       { role: "user", content: prompt },
       { role: "assistant", content: current },
       { role: "user", content: [{ type: "text", text: report }, ...seen.flatMap(shot => [{ type: "text" as const, text: shot.label }, { type: "file" as const, data: shot.png, mediaType: "image/png" }])] },
     ]);
-    if (/^OK\.?$/i.test(reply.trim())) return { text: current, looked, remaining };
+    if (/^OK\.?$/i.test(reply.trim())) return { text: current, looked, remaining, hiddenRows };
     if (!await accept(reply)) break;
     current = reply;
   }
-  return { text: current, looked, remaining };
+  return { text: current, looked, remaining, hiddenRows };
 }
 
 const lookNote = ({ looked, remaining }: Reviewed) => looked.length
@@ -189,7 +191,7 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
   return { saved: true, pageVersion: version, note: "The Page tab shows it now.", ...lookNote(reviewed) };
 }
 
-async function saveCard(run: Run, card: { cardId?: string; title: string; kind: "preset" | "code"; preset?: PresetName; source: string; compiled: string; queries: ArtifactQuery[]; params: CardParam[]; prompt: string; model?: string }) {
+async function saveCard(run: Run, card: { cardId?: string; title: string; kind: "preset" | "code"; preset?: PresetName; source: string; compiled: string; queries: ArtifactQuery[]; params: CardParam[]; prompt: string; model?: string; hidden: string[] }) {
   const { supabase, workspace } = run.context;
   await run.ensureActive();
   let cardId = card.cardId;
@@ -206,7 +208,7 @@ async function saveCard(run: Run, card: { cardId?: string; title: string; kind: 
   const saved = await supabase.from("artifact_card_versions").insert({ workspace_id: workspace.id, card_id: cardId, version, title: card.title, kind: card.kind, preset: card.preset ?? null,
     source: card.source, compiled: card.compiled, queries: card.queries, params: card.params, prompt: card.prompt.slice(0, 4000), model: card.model ?? null });
   if (saved.error) return { saved: false, errors: [saved.error.code === "23505" ? "Another change finished first; try again" : "Could not save the card"] };
-  return { saved: true, cardId, version, note: "It shows as a draft in the Home card tab; the user adds it to Home (or updates Home) from there." };
+  return { saved: true, cardId, version, note: "It shows as a draft in the Home card tab; the user adds it to Home (or updates Home) from there.", ...card.hidden.length ? { hidden: card.hidden } : {} };
 }
 
 export function artifactTools(run: Run) {
@@ -231,7 +233,7 @@ export function artifactTools(run: Run) {
         if (!checked.compiled) return { saved: false, errors: checked.errors };
         const bindings = checkPresetBindings(preset, parsed.data as Record<string, unknown>, checked.data);
         if (bindings.length) return { saved: false, errors: bindings };
-        return saveCard(run, { cardId, title, kind: "preset", preset, source, compiled: checked.compiled, queries, params, prompt: `${preset}: ${title}` });
+        return saveCard(run, { cardId, title, kind: "preset", preset, source, compiled: checked.compiled, queries, params, prompt: `${preset}: ${title}`, hidden: checked.hidden });
       },
     }),
     write_card: tool({
@@ -262,7 +264,8 @@ export function artifactTools(run: Run) {
                 return { shots: CARD_SHOTS((size, theme) => draftCardPath(run.artifactId, token, size, theme)), done: () => dropDraft(token) };
               },
               accept: async source => { const card = await checkCard(source, queries, params, context); if (card.compiled) passed.set(source, card); return !!card.compiled; } });
-            const saved = await saveCard(run, { cardId, title, kind: "code", source: reviewed.text, compiled: passed.get(reviewed.text)?.compiled ?? checked.compiled, queries, params, prompt: brief, model });
+            const final = passed.get(reviewed.text) ?? checked;
+            const saved = await saveCard(run, { cardId, title, kind: "code", source: reviewed.text, compiled: final.compiled ?? checked.compiled, queries, params, prompt: brief, model, hidden: [...final.hidden ?? [], ...reviewed.hiddenRows] });
             return { ...saved, ...lookNote(reviewed) };
           }
           prompt = `${prompt}\n\nYour last version:\n${text}\n\nIt failed these checks; fix them and reply with the whole module again:\n${checked.errors.join("\n")}`;

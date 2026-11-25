@@ -8,6 +8,7 @@ import { compileCard, runCard, type CardNode } from "./sandbox";
 import { CardTreeError, sanitizeTree } from "./tree";
 import { CARD_SIZE_KEYS, type CardSize } from "./sizes";
 import { localValues, type LocalRun } from "./local";
+import { rowCoverage } from "./coverage";
 
 type Context = ReadonlyWorkspace;
 export type CardVersion = { id: string; card_id: string; version: number; title: string; kind: "preset" | "code"; preset: string | null; compiled: string; queries: unknown; params: unknown };
@@ -88,7 +89,7 @@ export async function checkCard(source: string, queries: ArtifactQuery[], params
     }
     catch (cause) { errors.push(`${size}: ${cause instanceof CardTreeError ? "" : "runtime "}${cause instanceof Error ? cause.message : String(cause)}`); }
   }
-  return errors.length ? { errors } : { compiled, errors, data, trees: trees as Record<CardSize, CardNode>, state };
+  return errors.length ? { errors } : { compiled, errors, data, trees: trees as Record<CardSize, CardNode>, state, hidden: rowCoverage(data, trees) };
 }
 
 export async function loadCardVersion(supabase: SupabaseClient, workspaceId: string, cardId: string, version?: number | null) {
