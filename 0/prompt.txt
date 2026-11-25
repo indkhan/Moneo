@@ -1,0 +1,15 @@
+<task-notification>
+<task-id>bq12ogsjq</task-id>
+<summary>Monitor event: "full e2e baseline failures and summary"</summary>
+<event>[Monitor expired after 30m with 4 events delivered. Re-arm it if you still need the watch.]</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bti8wvcg8</task-id>
+<tool-use-id>toolu_01S1dYgyRH2ZV9Bx6QdqP4Kj</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\e4195b62c98d59dd\b2b166ae-b6be-493a-a016-acd75dc04e5a\tasks\bti8wvcg8.output</output-file>
+<status>completed</status>
+<summary>Background command "npx playwright test --workers=1 --reporter=list &gt; ../e2e-full-2.log 2&gt;&amp;1; grep -E "^\s+(x|✘) +[0-9]|^\s+[0-9]+ (passed|failed|flaky|skipped|did not run)" ../e2e-full-2.log" completed (exit code 0)</summary>
+</task-notification>

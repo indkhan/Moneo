@@ -1,0 +1,73 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M8AA6673NTFZK7X6M7X0XYAN",
+  "session_id": "b2b166ae-b6be-493a-a016-acd75dc04e5a",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-25T21:36:05.9686102Z",
+  "branch": "t3/audit-browser-suite",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "e2e/artifact-page-protection.mocked.spec.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "25d23032aa08",
+  "checkpoint_transcript_start": 837,
+  "transcript_lines_at_start": 837,
+  "compact_transcript_start": 90,
+  "token_usage": {
+    "input_tokens": 68,
+    "cache_creation_tokens": 37834,
+    "cache_read_tokens": 6643835,
+    "output_tokens": 19020,
+    "api_call_count": 34
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01KxjYZV8JvrqxjCMb5XaMfd",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "measure-speed"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "25d23032aa08",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1000,
+        "end": 1001,
+        "entry_ids": [
+          "8ea8eff1-a5ce-48a8-aaea-5a4e0e342b08"
+        ],
+        "tool_use_id": "toolu_01KxjYZV8JvrqxjCMb5XaMfd"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01KxjYZV8JvrqxjCMb5XaMfd"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: measure-speed",
+        "default_collapsed": true
+      }
+    }
+  ]
+}
