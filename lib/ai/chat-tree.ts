@@ -29,7 +29,7 @@ export function visiblePath(nodes: ChatNode[], picks: ChatPicks = {}): PathStep[
   const newestOf = (options: ChatNode[], score: (node: ChatNode) => string) => options.reduce((best, node) => score(node) >= score(best) ? node : best);
   const steps: PathStep[] = [];
   for (let after: string | null = null; ;) {
-    const here = children.get(after ?? "") ?? [];
+    const here: ChatNode[] = children.get(after ?? "") ?? [];
     const questions = here.filter(node => !node.regenerates || !here.some(other => other.id === node.regenerates));
     if (!questions.length) return steps;
     const versionsOf = (question: ChatNode) => here.filter(node => node.id === question.id || node.regenerates === question.id);
