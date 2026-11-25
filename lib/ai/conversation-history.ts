@@ -23,28 +23,33 @@ function before(value?: string) {
 function cursor(row: { id: string; created_at: string }) { return JSON.stringify({ id: row.id, created_at: row.created_at }); }
 function likePattern(query: string) { return `%${query.replace(/[\\%_]/g, "\\$&").replaceAll("*", "_")}%`; }
 
+const MATCHED_CONVERSATIONS = 100;
+
 export async function loadThreads(supabase: SupabaseClient, workspace: string, threadsBefore?: string, query?: string) {
-  const live = () => supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).is("deleted_at", null).is("artifact_id", null);
+  const tc = before(threadsBefore);
   const q = query?.trim().slice(0, 100);
+  const live = () => supabase.from("conversations").select("id,title,created_at", q ? { count: "exact" } : undefined).eq("workspace_id", workspace).is("deleted_at", null).is("artifact_id", null);
+  const page = (filter: (base: ReturnType<typeof live>) => ReturnType<typeof live>) => {
+    let tq = filter(live()).order("created_at", { ascending: false }).order("id", { ascending: false });
+    if (tc) tq = tq.or(`created_at.lt.${tc.created_at},and(created_at.eq.${tc.created_at},id.lt.${tc.id})`);
+    return tq.limit(THREAD_PAGE + 1);
+  };
   if (q) {
     const pattern = likePattern(q);
     const [titles, hits] = await Promise.all([
-      live().ilike("title", pattern).order("created_at", { ascending: false }).limit(THREAD_PAGE),
+      page(base => base.ilike("title", pattern)),
       supabase.from("messages").select("conversation_id").eq("workspace_id", workspace).ilike("content", pattern).order("created_at", { ascending: false }).limit(200),
     ]);
     if (titles.error || hits.error) throw new Error("Could not search conversations. Try again.");
-    const known = new Set((titles.data ?? []).map(row => row.id));
-    const extra = [...new Set((hits.data ?? []).map(row => row.conversation_id as string))].filter(id => !known.has(id)).slice(0, THREAD_PAGE);
-    const matched = extra.length ? await live().in("id", extra) : { data: [], error: null };
-    if (matched.error) throw new Error("Could not search conversations. Try again.");
-    const threads = [...(titles.data ?? []), ...(matched.data ?? [])]
-      .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, THREAD_PAGE) as HistoryThread[];
-    return { threads, threadsCursor: null };
+    const ids = [...new Set((hits.data ?? []).map(row => row.conversation_id as string))].slice(0, MATCHED_CONVERSATIONS);
+    const extra = ids.length ? await page(base => base.in("id", ids).not("title", "ilike", pattern)) : { data: [], error: null, count: 0 };
+    if (extra.error) throw new Error("Could not search conversations. Try again.");
+    const merged = [...(titles.data ?? []), ...(extra.data ?? [])]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)) as HistoryThread[];
+    const threads = merged.slice(0, THREAD_PAGE);
+    return { threads, threadsCursor: merged.length > THREAD_PAGE ? cursor(threads[threads.length - 1]) : null, total: (titles.count ?? 0) + (extra.count ?? 0) };
   }
-  const tc = before(threadsBefore);
-  let tq = live().order("created_at", { ascending: false }).order("id", { ascending: false });
-  if (tc) tq = tq.or(`created_at.lt.${tc.created_at},and(created_at.eq.${tc.created_at},id.lt.${tc.id})`);
-  const { data, error } = await tq.limit(THREAD_PAGE + 1);
+  const { data, error } = await page(base => base);
   if (error) throw new Error("Could not load conversations. Try again.");
   const threads = (data ?? []).slice(0, THREAD_PAGE) as HistoryThread[];
   return { threads, threadsCursor: (data?.length ?? 0) > THREAD_PAGE ? cursor(threads[threads.length - 1]) : null };
