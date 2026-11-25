@@ -43,7 +43,7 @@ import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
 import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
 import { serviceRoleConfig } from "@/lib/env";
 import { jsonBodyOrNull } from "@/lib/json-body";
-import { modelIdSchema } from "@/lib/ai/model-options";
+import { modelIdSchema } from "@/lib/ai/model-id";
 
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { conversationTitleSchema, loadConversation } from "@/lib/ai/conversation-history";
 import { jsonBodyOrNull } from "@/lib/json-body";
-import { modelIdSchema } from "@/lib/ai/model-options";
+import { modelIdSchema } from "@/lib/ai/model-id";
 
 const changeSchema = z.union([z.object({ title: conversationTitleSchema }).strict(), z.object({ model: modelIdSchema.nullable() }).strict()]);
 
