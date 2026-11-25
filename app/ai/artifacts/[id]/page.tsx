@@ -13,7 +13,8 @@ import { publishCardSafely, setCardSizeSafely, unpublishCardSafely } from "@/app
 import { SafeForm } from "@/components/safe-form";
 import { DeleteArtifactButton } from "../delete-artifact-button";
 import { ArtifactChat, SendButton } from "./artifact-chat";
-import { BarMenu, ExitFullScreen, PendingSubmit, RenameArtifact } from "./artifact-controls";
+import { BarMenu } from "@/components/details-menu";
+import { ExitFullScreen, PendingSubmit, RenameArtifact } from "./artifact-controls";
 
 const menuItem = "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left hover:bg-muted aria-[current=true]:font-medium";
 const primary = "inline-flex min-h-8 items-center gap-1 rounded-lg bg-primary px-3 py-1 font-medium text-primary-foreground hover:opacity-90";

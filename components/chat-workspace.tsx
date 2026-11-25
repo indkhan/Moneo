@@ -6,7 +6,8 @@ import { useFollowOutput } from "@/lib/use-follow-output";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, ChevronLeft, Menu, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, SquarePen, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, Menu, MoreHorizontal, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, SquarePen, Trash2, X } from "lucide-react";
+import { DetailsMenu, useDismissDetails } from "@/components/details-menu";
 import { ChatForm } from "@/components/chat-form";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, localExchange, type ChatItem, type PendingExchange } from "./chat-messages";
 import { useChatPath } from "@/lib/ai/use-chat-path";
@@ -27,6 +28,7 @@ const VoiceCall = dynamic(() => import("./voice-call").then(module => module.Voi
 
 type Entry = { conversation: HistoryThread; messages: ChatItem[]; requests: ChatNode[]; cursor: string | null; running?: string | null };
 type Loaded = { selected: HistoryThread; messages: ChatItem[]; requests?: ChatNode[]; messagesCursor: string | null; running?: string | null };
+type SearchPage = { threads: HistoryThread[]; threadsCursor: string | null; total: number };
 type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; requests: ChatNode[]; messagesCursor: string | null; running?: string | null };
 const NO_REQUESTS: ChatNode[] = [];
 
@@ -53,13 +55,15 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const [pending, setPending] = useState<Record<string, PendingExchange>>({});
   const [draftId, setDraftId] = useState(newConversationId);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<HistoryThread[] | null>(null);
+  const [search, setSearch] = useState<SearchPage | null>(null);
+  const results = search?.threads ?? null;
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const loading = useRef(new Set<string>());
   const menu = useRef<HTMLDetailsElement>(null);
+  useDismissDetails(menu);
   const reviewDialog = useRef<HTMLDialogElement>(null);
   const [searching, setSearching] = useState(false);
   const end = useRef<HTMLDivElement>(null);
@@ -105,8 +109,8 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     const q = query.trim();
     if (!q) return;
     const controller = new AbortController();
-    later(() => json<{ threads: HistoryThread[] }>(`/api/conversations?${new URLSearchParams({ view: "threads", q })}`, { signal: controller.signal })
-      .then(data => { setResults(data.threads); setSearching(false); }).catch(cause => { if (!controller.signal.aborted) { setResults(null); setSearching(false); setNotice(cause.message); } }), 250);
+    later(() => json<SearchPage>(`/api/conversations?${new URLSearchParams({ view: "threads", q })}`, { signal: controller.signal })
+      .then(data => { setSearch(data); setSearching(false); }).catch(cause => { if (!controller.signal.aborted) { setSearch(null); setSearching(false); setNotice(cause.message); } }), 250);
     return () => { cancelLater(); controller.abort(); };
   }, [query, later, cancelLater]);
 
@@ -129,6 +133,16 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     } catch (cause) { setNotice((cause as Error).message); } finally { setBusy(false); }
   }
 
+  async function olderMatches() {
+    if (!search?.threadsCursor) return;
+    const q = query.trim();
+    setBusy(true);
+    try {
+      const data = await json<SearchPage>(`/api/conversations?${new URLSearchParams({ view: "threads", q, threadsBefore: search.threadsCursor })}`);
+      setSearch(current => current && q === query.trim() ? { ...data, threads: [...current.threads, ...data.threads.filter(thread => !current.threads.some(item => item.id === thread.id))] } : current);
+    } catch (cause) { setNotice((cause as Error).message); } finally { setBusy(false); }
+  }
+
   async function olderMessages() {
     if (!entry?.cursor) return;
     const id = activeId, cursor = entry.cursor;
@@ -141,7 +155,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   function retitle(id: string, title: string) {
     const rename = (list: HistoryThread[]) => list.map(thread => thread.id === id ? { ...thread, title } : thread);
-    setThreads(rename); setResults(current => current && rename(current));
+    setThreads(rename); setSearch(current => current && { ...current, threads: rename(current.threads) });
     setEntries(current => current[id] ? { ...current, [id]: { ...current[id], conversation: { ...current[id].conversation, title } } } : current);
   }
   async function rename(event: React.FormEvent<HTMLFormElement>, thread: HistoryThread) {
@@ -162,7 +176,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     try {
       await json(`/api/conversations/${thread.id}`, { method: "DELETE" });
       const keep = (list: HistoryThread[]) => list.filter(item => item.id !== thread.id);
-      setThreads(keep); setResults(current => current && keep(current));
+      setThreads(keep); setSearch(current => current && { ...current, threads: keep(current.threads), total: current.total - (current.threads.some(item => item.id === thread.id) ? 1 : 0) });
       setEntries(current => omit(current, thread.id));
       if (thread.id === selectedId) window.history.pushState(null, "", href("new"));
     } catch (cause) { setNotice((cause as Error).message); }
@@ -203,10 +217,11 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   const title = entry?.conversation.title ?? threads.find(thread => thread.id === selectedId)?.title ?? (selectedId ? "" : "New chat");
   const list = results ?? threads;
+  const rowAction = "flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted lg:pointer-fine:min-h-8";
   const sidebar = (prefix: string) => <>
     <Link href={href("new")} onClick={event => open(event, null)} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground hover:opacity-90"><Plus className="size-4" aria-hidden="true" />New chat</Link>
     <label className="relative mt-3 block"><span className="sr-only">Search chats</span><Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-      <input id={`${prefix}-search`} type="search" value={query} onChange={event => { setQuery(event.target.value); setSearching(!!event.target.value.trim()); if (!event.target.value.trim()) setResults(null); }} maxLength={100} placeholder="Search chats" className="w-full rounded-lg border border-border bg-background py-2 pr-2 pl-8 text-sm focus:border-muted-foreground/40 focus:outline-none" /></label>
+      <input id={`${prefix}-search`} type="search" value={query} onChange={event => { setQuery(event.target.value); setSearching(!!event.target.value.trim()); if (!event.target.value.trim()) setSearch(null); }} maxLength={100} placeholder="Search chats" className="w-full rounded-lg border border-border bg-background py-2 pr-2 pl-8 text-sm focus:border-muted-foreground/40 focus:outline-none" /></label>
     <p className="eyebrow mt-5 px-2.5 pb-1.5">Conversations</p>
     <nav aria-label="Conversations" aria-busy={searching} className={`space-y-0.5 ${searching ? "opacity-60" : ""}`}>
       {searching && <p className="px-3 py-1 text-xs text-muted-foreground">Searching…</p>}
@@ -219,15 +234,22 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           <button type="button" aria-label="Cancel rename" onClick={() => setEditing(null)} className="rounded-md p-1.5 hover:bg-muted"><X className="size-4" aria-hidden="true" /></button>
         </form>
         : <div key={thread.id} className={`group flex items-center rounded-[10px] ${selectedId === thread.id ? "bg-muted" : "hover:bg-muted/60"}`}>
-          <Link href={href(thread.id)} prefetch={false} onClick={event => open(event, thread.id)} onPointerEnter={() => load(thread.id)} onFocus={() => load(thread.id)} aria-current={selectedId === thread.id ? "page" : undefined}
-            className={`min-w-0 flex-1 truncate px-2.5 py-2.5 text-[13px] ${selectedId === thread.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"}`}>{thread.title}{pending[thread.id] && <span className="sr-only"> (answering)</span>}<span className="block text-[11px] text-muted-foreground">{new Date(thread.created_at).toLocaleDateString(locale, { timeZone: timezone, dateStyle: "medium" })}</span></Link>
-          <span className="flex shrink-0 pr-1 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
-            <button type="button" onClick={() => setEditing(thread.id)} aria-label={`Rename ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"><Pencil className="size-3.5" aria-hidden="true" /></button>
-            <button type="button" onClick={() => void regenerate(thread)} aria-label={`Write a new title for ${thread.title}`} title="Write a new title" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"><RefreshCw className="size-3.5" aria-hidden="true" /></button>
-            <button type="button" onClick={() => void remove(thread)} aria-label={`Delete ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-danger"><Trash2 className="size-3.5" aria-hidden="true" /></button>
-          </span>
+          <Link href={href(thread.id)} prefetch={false} title={thread.title} onClick={event => open(event, thread.id)} onPointerEnter={() => load(thread.id)} onFocus={() => load(thread.id)} aria-current={selectedId === thread.id ? "page" : undefined}
+            className={`min-w-0 flex-1 px-2.5 py-2.5 text-[13px] ${selectedId === thread.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"}`}><span className="line-clamp-2 break-words">{thread.title}</span>{pending[thread.id] && <span className="sr-only"> (answering)</span>}<span className="block text-[11px] text-muted-foreground">{new Date(thread.created_at).toLocaleDateString(locale, { timeZone: timezone, dateStyle: "medium" })}</span></Link>
+          <DetailsMenu label={`Actions for ${thread.title}`} summary={<MoreHorizontal className="size-4" aria-hidden="true" />}
+            className="relative shrink-0 pr-1 lg:pointer-fine:opacity-0 lg:pointer-fine:group-hover:opacity-100 lg:pointer-fine:group-focus-within:opacity-100 lg:pointer-fine:open:opacity-100"
+            summaryClassName="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-background/60 hover:text-foreground lg:pointer-fine:size-8"
+            panelClassName="absolute right-1 top-full z-30 mt-1 grid w-56 gap-0.5 rounded-lg border border-border bg-card p-1 text-sm shadow-lg">
+            <p className="break-words px-2 py-1.5 text-xs text-muted-foreground">{thread.title}</p>
+            <button type="button" onClick={() => setEditing(thread.id)} className={rowAction}><Pencil className="size-3.5" aria-hidden="true" />Rename</button>
+            <button type="button" onClick={() => void regenerate(thread)} className={rowAction}><RefreshCw className="size-3.5" aria-hidden="true" />New title</button>
+            <hr className="my-1 border-border" />
+            <button type="button" onClick={() => void remove(thread)} className={`${rowAction} text-danger`}><Trash2 className="size-3.5" aria-hidden="true" />Delete</button>
+          </DetailsMenu>
         </div>)}
     </nav>
+    {search && search.total > search.threads.length && <p className="mt-2 px-3 text-xs text-muted-foreground">Showing {search.threads.length} of {search.total}</p>}
+    {search?.threadsCursor && <button type="button" disabled={busy} onClick={() => void olderMatches()} className="mt-2 block px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older matches</button>}
     {!results && threadsCursor && <button type="button" disabled={busy} onClick={() => void olderThreads()} className="mt-2 block px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older conversations</button>}
     <div className="mt-6 space-y-0.5 border-t border-border pt-4 text-sm text-muted-foreground">
       <Link href="/ai/activity" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Activity log</Link>
@@ -241,13 +263,13 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   return <main className="flex h-full">
     <ConversationSelection selectionKey={selectionKey} id={selectedId ?? "new"} />
-    <aside className="scroll-fade hidden h-full w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
+    <aside className="scroll-fade relative hidden h-full w-72 shrink-0 overflow-y-auto overscroll-contain border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {calling && !callBlocked ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [], VOICE_CALL_TITLE)} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex items-center gap-0.5 border-b border-border px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1 lg:flex-wrap lg:gap-2 lg:px-8 lg:py-4">
         <button type="button" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} aria-label="Back" className={`${summary} lg:hidden`}><ChevronLeft className="size-7" strokeWidth={1.8} aria-hidden="true" /></button>
         <h1 title={title} className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight lg:font-display lg:text-2xl">{title}</h1>
-        <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className={icon} aria-hidden="true" /></summary><div className="absolute inset-x-2 top-full z-20 mt-1 max-h-[75dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
+        <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className={icon} aria-hidden="true" /></summary><div className="absolute inset-x-2 top-full z-20 mt-1 max-h-[75dvh] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         <Link href={href("new")} onClick={event => open(event, null)} aria-label="New chat" className={`${summary} lg:hidden`}><SquarePen className={icon} aria-hidden="true" /></Link>
         <button type="button" aria-haspopup="dialog" aria-label="Run a deep review" onClick={() => { if (menu.current) menu.current.open = false; setReviewOpen(true); reviewDialog.current?.showModal(); }} className={summary}><Sparkles className={icon} aria-hidden="true" /><span className="max-lg:hidden">Run a deep review</span></button>
         <dialog ref={reviewDialog} aria-label="Deep review" className="m-auto max-h-[85dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card text-foreground shadow-lg backdrop:bg-black/50">
@@ -256,7 +278,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
         </dialog>
         <button type="button" onClick={() => setCalling(true)} title={access?.voice === false ? VOICE_NEEDS_OPENAI_KEY : undefined} aria-label="Call" className={summary}><Phone className={icon} aria-hidden="true" /><span className="max-lg:hidden">Call</span></button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
         {access?.ai === false && <p role="status" className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">No AI is set up yet. Sign in with ChatGPT or Claude, or add an OpenAI or OpenRouter API key in <Link href="/settings#ai-access" className="underline">Settings → AI access</Link> to start chatting.</p>}
         {callBlocked && <VoiceKeyToast onDismiss={() => setCalling(false)} />}
