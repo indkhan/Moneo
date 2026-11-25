@@ -1,0 +1,48 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, tests only where they catch a real bug, QA backend only — never the owner's backend on port 3000 or `.env`; mock AI/bank). Your checkout is based on the latest `main`. Create a branch `t3/audit-onboarding`, commit in plain-language steps, push, and open ONE pull request to `main`. Do not merge it. Do not touch PR #313.
+
+## Make the first-run checklist on Home the clear first thing, AI first
+
+Today (see `app/first-steps.tsx`, and where Home renders it — it currently sits inside the Net worth widget; also `app/agent-briefing.tsx`) a fresh workspace shows "Turn on AI → Connect your bank → Run the agent team" inside the Net worth widget, while Search, Call Moneo, Add widget and Customize are more prominent. A QA audit found: the checklist is easy to miss; "Connect your bank" gives no hint it needs an Enable Banking account, a Production application, three URLs, an application ID and a private key; and "Run the agent team" promises category sorting, recurring payments and budget suggestions before the owner has any data (in an empty workspace the review finished in 1.5 s with nothing to review).
+
+The owner chose this design (A1, AI first):
+1. **Own first card.** While the workspace is still in first-run (define it from real state — e.g. no AI provider set up and/or no transactions; read how `first-steps.tsx` decides today and keep one source of truth), the checklist is its own full-width first card on Home, above the widgets, not inside Net worth. Add widget and Customize are hidden (or disabled with a reason) until the workspace has data. Search and Call Moneo stay.
+2. **Step 1 — Turn on AI**, with a **Skip** option. Skipping is remembered (a workspace setting — check `lib/workspace-settings` and `lib/settings.ts`; settings must never block sign-in if unreadable, see `lib/settings.test.ts`) and step 2 never depends on step 1. Clicking it opens the right Settings section (as today).
+3. **Step 2 — Add your money**: two routes in one step: "Import a statement" (the quick route, `/import`) and "Connect a bank" with a short note that it needs a free Enable Banking account and takes about 10 minutes (link to the connected banks section, as today). Done when the workspace has any transaction or account balance (match today's completion rule if one exists).
+4. **Step 3 — Run the agent team** appears only once there are transactions (it has nothing to review before). Keep today's action.
+5. When all steps are done (or the owner dismisses the card, if today's checklist has a dismiss — keep it), Home returns to the normal layout.
+
+Copy is short and plain (no exclamation marks, match the app's tone). Everything works offline from the cloud. Check "Hit every surface" in AGENTS.md: mobile layout, light and dark, the command palette and FEATURES.md (`npm run feature-map` if a widget or palette entry changes), and `README.md` / `docs/` if the first-run steps are described there.
+
+## Checks
+- Unit-test the first-run state logic in `lib/` (which steps show and which are done for: empty workspace; AI skipped; AI on but no data; data but AI off; everything done) — that is the behaviour worth locking.
+- Extend an existing browser journey rather than add one (e.g. `e2e/service-keys.mocked.spec.ts` or `e2e/core-journey.smoke.spec.ts`): a fresh QA user sees the checklist card first, can Skip AI, sees both money routes, and does not see Run the agent team until a transaction exists.
+- `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run check:bundle`.
+- Skill `verify-ui`: before/after of an empty Home (desktop light, dark, mobile), and Home after Skip + a statement import. Embed in the PR (pattern: `pr-assets/<pr>` branch).
+- **Speed** section (skill `measure-speed`): Home open time on an empty and a populated QA workspace, before/after.
+- End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Stop any servers you start; leave no temporary checkouts.
+
+When done, your last line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bb65h6exk</task-id>
+<tool-use-id>toolu_01TmJhdTWiDoDQPqmEJP4c14</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\fe2655cad42c0b83\7d461b36-ccc2-4bbe-877c-a78ca96c0d5b\tasks\bb65h6exk.output</output-file>
+<status>completed</status>
+<summary>Background command "(npm ci --no-audit --no-fund &gt; ../ci-onb.log 2&gt;&amp;1; echo done &gt;&gt; ../ci-onb.log) ; tail -3 ../ci-onb.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bt7lyn5ey</task-id>
+<tool-use-id>toolu_018i1DavTy3q9tUpkvZAgEWe</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\fe2655cad42c0b83\7d461b36-ccc2-4bbe-877c-a78ca96c0d5b\tasks\bt7lyn5ey.output</output-file>
+<status>completed</status>
+<summary>Background command "git worktree add ../moneo-speed-base-onb origin/main -q --detach 2&gt;&amp;1 | tail -1; cd ../moneo-speed-base-onb &amp;&amp; (npm ci --no-audit --no-fund &gt; ../base-onb-ci.log 2&gt;&amp;1 &amp;&amp; npm run setup -- --qa &gt;&gt; ../base-onb-ci.log 2&gt;&amp;1; echo EXIT $? &gt;&gt; ../base-onb-ci.log)" completed (exit code 0)</summary>
+</task-notification>
