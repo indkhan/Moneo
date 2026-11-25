@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>b0mybapcf</task-id>
+<tool-use-id>toolu_01DsKdVkbEE4DNWxG9UPmYUp</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\71aed899bb6e835e\27ecbdf0-f1fd-4439-b7e4-b99b7602ea84\tasks\b0mybapcf.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-3befa7b5-9473690bb1b2a767; until grep -qE "Ready in|Error|error|exited" ../qaserver.log; do sleep 2; done; tail -4 ../qaserver.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bdfbgi7mh</task-id>
+<tool-use-id>toolu_01Gcbjg1wpBjcLc3N7cogJB6</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\71aed899bb6e835e\27ecbdf0-f1fd-4439-b7e4-b99b7602ea84\tasks\bdfbgi7mh.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-3befa7b5-9473690bb1b2a767; until grep -qE "Ready in|Failed to compile|Build error|ELIFECYCLE" ../qaserver.log; do sleep 3; done; tail -5 ../qaserver.log" completed (exit code 0)</summary>
+</task-notification>
