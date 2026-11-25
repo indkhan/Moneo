@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useHydrated } from "@/lib/use-hydrated";
 import { usePolling } from "@/lib/use-polling";
 import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/import/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
@@ -49,7 +50,6 @@ function formatMinor(value: string, currency: string) {
   return `${amount >= 0n ? "+" : ""}${formatMoney(amount, currency)}`;
 }
 
-const subscribeToHydration = () => () => {};
 
 function SourceFields({ row }: { row: SourceRow }) {
   return <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[max-content_1fr]">{Object.entries(row).filter(([column]) => !column.startsWith("__moneo_csv_")).map(([column, value]) =>
@@ -91,7 +91,7 @@ function dayLabel(iso: string) {
 }
 
 export default function ImportPage() {
-  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const hydrated = useHydrated();
   const [files, setFiles] = useState<File[]>([]);
   const [index, setIndex] = useState(0);
   const [inspection, setInspection] = useState<Inspection | null>(null);
