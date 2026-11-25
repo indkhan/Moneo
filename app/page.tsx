@@ -19,7 +19,7 @@ import { getSupabaseConfig } from "@/lib/env";
 import { minorDigits } from "@/lib/finance/fx";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
-import { describeMissingInputs, describeOutdated } from "@/lib/finance/format";
+import { describeMissingInputs, describeOutdated, formatCompactMoney } from "@/lib/finance/format";
 import { loadSyncProblems } from "@/lib/sync-problems";
 import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
@@ -154,7 +154,7 @@ async function HomeDashboard({ context, asOf, today, accountId }: { context: Awa
           <Link href="/plan/currency" className="rounded-lg border border-input px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">{displayCurrency}</Link>
         </div>
         {!accounts.length && !wealthItems.length ? <FirstSteps ai={await aiPromise} />
-          : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
+          : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} compact={formatCompactMoney(netWorthMinor, displayCurrency, locale)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
             {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{signedMoney(monthChange)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         <CoverageNote counted={accountsCounted} total={accounts.length} />
@@ -187,8 +187,8 @@ async function HomeDashboard({ context, asOf, today, accountId }: { context: Awa
       {!accounts.length && <p className="mt-3 text-sm text-muted-foreground">No accounts yet. <Link className="text-brand underline" href="/import">Import a statement</Link> or <Link className="text-brand underline" href="/money/accounts">add one</Link>.</p>}
       <ul className="mt-3 divide-y divide-border border-t border-border">{accounts.map(account => { const { balance } = account; const isSynced = synced.has(JSON.stringify([account.name, account.currency_code])); return <li key={account.id}><article className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
         <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold">{account.name.trim().charAt(0).toUpperCase()}</span>
-        <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-medium">{account.name}</h3><p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground"><span className="rounded border border-input px-1 font-mono text-[9px] uppercase">{isSynced ? "Bank" : "Manual"}</span>{balance.as_of ? `${isSynced ? "synced" : "set"} ${ago(balance.as_of)}` : "Add a dated balance"}</p></div>
-        {(({ amount, label }) => <p className="text-right font-mono text-sm">{amount !== null ? money(amount, account.currency_code) : "Balance unknown"}{label !== "Current" && amount !== null && <span className="block font-sans text-[11px] text-muted-foreground">{balance.amount_minor === null ? `${label} · not in total` : label}</span>}</p>)(shownBalance(balance))}
+        <div className="min-w-0 flex-1"><h3 title={account.name} className="line-clamp-2 break-words text-sm font-medium">{account.name}</h3><p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground"><span className="rounded border border-input px-1 font-mono text-[9px] uppercase">{isSynced ? "Bank" : "Manual"}</span>{balance.as_of ? `${isSynced ? "synced" : "set"} ${ago(balance.as_of)}` : "Add a dated balance"}</p></div>
+        {(({ amount, label }) => <p className="ml-auto whitespace-nowrap text-right font-mono text-sm tabular-nums">{amount !== null ? money(amount, account.currency_code) : "Balance unknown"}{label !== "Current" && amount !== null && <span className="block font-sans text-[11px] text-muted-foreground">{balance.amount_minor === null ? `${label} · not in total` : label}</span>}</p>)(shownBalance(balance))}
         {!isSynced && <details className="w-full [&:not([open])]:-mt-1"><summary className="cursor-pointer text-xs font-medium text-brand hover:underline">Update balance</summary><div className="mt-2 rounded-lg border border-border p-3"><ManualBalanceForm account={account} snapshots={balanceEvidence.snapshots} ledger={balanceEvidence.ledger} asOf={balanceEvidence.asOf} timeZone={workspace.timezone} locale={locale} /></div></details>}
         {balance.warnings.length > 0 && <p className="w-full text-xs text-warning">{balance.warnings.join("; ")}</p>}
         {balance.status === "stale" && balance.snapshot_amount_minor !== null && <p className="w-full text-xs text-muted-foreground">Last set to {money(balance.snapshot_amount_minor, balance.currency_code)}, plus activity recorded since. Update the balance to confirm.</p>}
@@ -207,9 +207,9 @@ async function HomeDashboard({ context, asOf, today, accountId }: { context: Awa
         {upcoming.length > 0 && <span className="font-mono text-[11px] text-subtle">{money(-upcomingMinor, displayCurrency)} · {projection.input?.horizonDays ?? 30} days</span>}</div>
       {upcoming.length ? <ul className="mt-3 divide-y divide-border">{upcoming.slice(0, 6).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex items-center gap-3 py-3">
         <span className="flex w-10 shrink-0 flex-col items-center rounded-lg border border-border py-1 leading-none"><span className="font-mono text-[9px] uppercase text-subtle">{dateTile(event.date).month}</span><span className="mt-0.5 font-mono text-[15px] font-semibold">{dateTile(event.date).day}</span></span>
-        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{event.name ?? "Confirmed payment"}</span><span className="block truncate text-xs text-muted-foreground">{(price => price ? <span className={price.changeMinor > 0n ? "text-warning" : "text-brand"}>Price {price.changeMinor > 0n ? "up" : "down"} {money(price.changeMinor > 0n ? price.changeMinor : -price.changeMinor, price.currencyCode)}</span>
+        <span className="min-w-0 flex-1"><span title={event.name ?? undefined} className="line-clamp-2 break-words text-sm font-medium">{event.name ?? "Confirmed payment"}</span><span className="block truncate text-xs text-muted-foreground">{(price => price ? <span className={price.changeMinor > 0n ? "text-warning" : "text-brand"}>Price {price.changeMinor > 0n ? "up" : "down"} {money(price.changeMinor > 0n ? price.changeMinor : -price.changeMinor, price.currencyCode)}</span>
           : <>{event.source === "debt" ? "Loan payment" : "Recurring"} · {accountNames.get(event.accountId) ?? "Account"}</>)(priceChanges.get(`${event.accountId}:${event.name}`))}</span></span>
-        <span className="shrink-0 font-mono text-sm">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
+        <span className="shrink-0 whitespace-nowrap font-mono text-sm tabular-nums">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
         : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in the next {projection.input?.horizonDays ?? 30} days.</p>}
     </section>;
   }

@@ -17,7 +17,7 @@ vi.mock("@/lib/finance/dashboard-spending", async original => {
     { ...row, id: "2", posted_on: "2026-09-02", amount_minor: "-2000", category_id: "food", merchant_id: "shop" },
     { ...row, id: "3", posted_on: "2026-10-01", amount_minor: "250000", category_id: "salary", merchant_id: "employer" },
   ], [], "EUR", "2026-10-16");
-  return { ...actual, loadHomeSpending: async () => ({ ...summary, categoryNames: new Map([["food", "Food"], ["salary", "Salary"]]), merchantNames: new Map([["employer", "Acme GmbH"]]) }) };
+  return { ...actual, loadHomeSpending: async () => ({ ...summary, categoryNames: new Map([["food", "Food"], ["salary", "Salary"]]), merchantNames: new Map([["employer", "Acme GmbH"]]), history: "in range" as const }) };
 });
 const props = { data: loadHomeSpending({} as SupabaseClient, "w", "EUR", "2026-10-16"), currency: "EUR", locale: "en" };
 

@@ -142,11 +142,11 @@ export async function WeeklyBriefing(props: InsightPanelProps) {
   const types = [...new Set(findings.map(finding => finding.type))];
   const action = "rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted";
   return <section aria-labelledby="home-briefing" className={card}>
-    <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="relative flex flex-wrap items-start justify-between gap-3">
       <div><h2 id="home-briefing" className="flex items-center gap-2 text-sm font-medium"><Sparkle className="size-3.5 fill-current text-ai" aria-hidden="true" />Weekly briefing</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">{sentences.size ? "Insight writer · " : ""}from {findings.length} verified finding{findings.length === 1 ? "" : "s"}</p></div>
       <div className="flex items-center gap-2">
-        <details className="relative"><summary className={`${action} cursor-pointer list-none`}>Mute type</summary>
+        <details><summary className={`${action} cursor-pointer list-none`}>Mute type</summary>
           <div className="absolute right-0 z-10 mt-1 flex min-w-40 flex-col rounded-lg border border-border bg-card p-1 shadow-lg">{types.map(type => <form key={type} action={muteInsightType}><input type="hidden" name="type" value={type} /><button className="w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted">{LABELS[type]?.[0] ?? type}</button></form>)}</div></details>
         <form action={dismissInsights}>{findings.map(finding => <span key={finding.key}><input type="hidden" name="key" value={finding.key} /><input type="hidden" name="type" value={finding.type} /></span>)}<button className={action}>Dismiss all</button></form>
       </div>

@@ -68,6 +68,12 @@ export const loadHomeSpending = cache(async (db: Db, workspaceId: string, curren
     if (error) throw error;
     return new Map((data ?? []).map(row => [row.id as string, row.name as string]));
   }
-  const [categoryNames, merchantNames] = await Promise.all([names("categories", summary.months.flatMap(m => [...m.categories, ...m.incomeCategories])), names("merchants", summary.months.flatMap(m => [...m.merchants, ...m.incomeMerchants]))]);
-  return { ...summary, categoryNames, merchantNames };
+  async function activity(): Promise<"in range" | "earlier" | "none"> {
+    if (rows.length) return "in range";
+    const { data, error } = await db.from("transactions").select("id").eq("workspace_id", workspaceId).limit(1);
+    if (error) throw error;
+    return data.length ? "earlier" : "none";
+  }
+  const [categoryNames, merchantNames, history] = await Promise.all([names("categories", summary.months.flatMap(m => [...m.categories, ...m.incomeCategories])), names("merchants", summary.months.flatMap(m => [...m.merchants, ...m.incomeMerchants])), activity()]);
+  return { ...summary, categoryNames, merchantNames, history };
 });

@@ -127,10 +127,10 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="relative flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">Money · balances and sources</p><h1 className="page-title">Accounts</h1></div>
         <AddAccountPanel>
-          <SafeForm action={addAccountSafely} className="absolute right-0 z-10 mt-2 grid w-72 max-w-[calc(100vw-2rem)] gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
+          <SafeForm action={addAccountSafely} className="absolute right-0 z-10 mt-2 grid w-72 max-w-full gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
             <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
             <div className="flex gap-3">
               <label className="grid flex-1 gap-1 text-sm">Type<select name="type" className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
