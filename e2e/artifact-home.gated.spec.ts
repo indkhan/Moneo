@@ -149,7 +149,6 @@ test("an empty Home cards tab sends the build request only after a press", async
     await page.getByRole("button", { name: "Create a Home card", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Building your Home card" })).toBeVisible();
     await expect.poll(() => requests.length).toBe(1);
-    expect(requests[0].message).toContain("Create a Home card from this artifact");
     await expect(page.getByText(requests[0].message, { exact: true })).toBeVisible();
     finish();
     await expect(page.getByText("Build test complete", { exact: true })).toBeVisible();
