@@ -1,0 +1,26 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, tests only where they catch a real bug, QA backend only — never the owner's backend on port 3000 or `.env`). Your checkout is based on the latest `main`. Create a branch `t3/audit-home-categorize-dialog`, commit in plain-language steps, push, and open ONE pull request to `main`. Do not merge it. Do not touch PR #313.
+
+## Bug: the Home bulk-categorize review closes itself when the last group is filed
+
+Repro from a QA audit: Home shows "N transactions need a category" (`app/waiting-for-you-list.tsx`, entry key `uncategorized`, shown only while `review.uncategorized > 0`). Its dialog (`app/home-review.tsx`) lists uncategorized groups; with 36 groups / 72 rows, applying "Apply to all" saved everything in ~1.6 s and then the dialog vanished, taking the per-group results and the "Change" buttons with it.
+
+Cause (confirmed in code): `categorizeGroups` in `app/home-review-actions.ts` calls `revalidatePath("/", "layout")` (line ~89; there is another at ~63 for a sibling action — check which actions run while the dialog is open). A server action that revalidates refreshes the current route at once, so Home re-renders with 0 uncategorized, the summary card is removed, and the open dialog unmounts with it.
+
+## Fix the owner chose
+Stop refreshing Home in the middle of the review: the actions the dialog calls while it is open must not revalidate the Home route. The dialog already calls `router.refresh()` in its `onClose` (`app/home-review.tsx` ~line 32), so Home updates when the owner closes it. Make sure:
+- results and "Change" stay visible after the final batch, and "Change" still works (re-categorizes, undo still listed);
+- other pages that show categories (Transactions, Plan/spending, etc.) are still fresh when the owner navigates there afterwards — check how Next 16 client router caching behaves here (read `node_modules/next/dist/docs/` for revalidatePath / router cache) and if needed revalidate those specific paths instead of the Home layout, or refresh on close;
+- "Skip all" persistence (commit b7b20512) and the existing behaviour of every other action in that file still work.
+
+## Checks
+- Extend `e2e/home-categorize.gated.spec.ts` (it already covers #230 and currently FAILS on exactly this — the audit saw it time out at 121 s) so it asserts the dialog stays open with its results and Change after the last batch, and that Home shows no uncategorized card after closing. Run it against the QA app (`npm run qa:server`, `npm run test:e2e -- e2e/home-categorize.gated.spec.ts`; see `e2e/README.md`; set up QA with `npm run setup -- --qa` and `npm run qa:auth` if needed).
+- Update `app/home-review-actions.test.ts` if it asserts revalidation.
+- Run `npm test`, `npm run lint`, `npm run typecheck`.
+- Use skill `verify-ui` for before/after evidence (a screenshot of the dialog after the last batch) and embed it in the PR. Add a **Speed** section (skill `measure-speed`; the action should get faster since Home no longer re-renders mid-review — measure the apply time before/after if practical).
+- End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+
+When done, your last line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
