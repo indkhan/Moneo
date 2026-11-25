@@ -4,11 +4,13 @@ import { z } from "zod";
 import { awaitedLater } from "@/lib/awaited-later";
 import { isSpoken } from "./voice-context";
 import { callStubs, loadCalls, type CallCard } from "./voice-call-history";
+import { chatSkeleton } from "./branch-history";
+import type { ChatNode } from "./chat-tree";
 
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
-export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; model?: string; attachments?: ChatAttachment[]; spoken?: boolean; call?: CallCard; answer_of?: string | null };
+export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; model?: string; attachments?: ChatAttachment[]; spoken?: boolean; call?: CallCard; answer_of?: string | null; request?: string | null; steer?: boolean; requests?: string[] };
 export type SavedToolStep = { name: string; state: "done"; input?: unknown; output?: string };
-export type HistoryThread = { id: string; title: string; created_at: string };
+export type HistoryThread = { id: string; title: string; created_at: string; model?: string | null };
 const THREAD_PAGE = 30;
 const MESSAGE_PAGE = 30;
 const OUTPUT_PREVIEW = 2000;
@@ -53,29 +55,30 @@ export async function loadThreads(supabase: SupabaseClient, workspace: string, t
 export async function loadConversation(supabase: SupabaseClient, workspace: string, id: string, messagesBefore?: string) {
   const mc = before(messagesBefore);
   if (!z.uuid().safeParse(id).success) throw new Error("Conversation unavailable");
-  let mq = supabase.from("messages").select("id,role,content,created_at,request_id,reply_to,answer_of,attachments,context").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
+  let mq = supabase.from("messages").select("id,role,content,created_at,request_id,reply_to,answer_of,chat_request_id,attachments,context").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (mc) mq = mq.or(`created_at.lt.${mc.created_at},and(created_at.eq.${mc.created_at},id.lt.${mc.id})`);
-  const [conversation, page, run, stubs] = await Promise.all([
-    supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),
+  const [conversation, page, run, stubs, requests] = await Promise.all([
+    supabase.from("conversations").select("id,title,created_at,model").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),
     mq.limit(MESSAGE_PAGE + 1),
     mc ? null : supabase.from("chat_requests").select("id,created_at").eq("workspace_id", workspace).eq("conversation_id", id).eq("status", "running")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     callStubs(supabase, workspace, id),
+    mc ? null : chatSkeleton(supabase, workspace, id),
   ]);
   if (conversation.error) throw new Error("Could not load conversation. Try again.");
   if (!conversation.data) throw new Error("Conversation unavailable. It may be missing or belong to another workspace.");
   if (page.error) throw new Error("Could not load messages. Try again.");
-  const rows = (page.data ?? []).slice(0, MESSAGE_PAGE) as (HistoryMessage & { request_id?: string | null; reply_to?: string | null; context?: unknown })[];
+  const rows = (page.data ?? []).slice(0, MESSAGE_PAGE) as (HistoryMessage & { request_id?: string | null; reply_to?: string | null; chat_request_id?: string | null; context?: unknown })[];
   const messagesCursor = (page.data?.length ?? 0) > MESSAGE_PAGE ? cursor(rows[rows.length - 1]) : null;
   const calls = await loadCalls(supabase, workspace, id, stubs, { requestIds: rows.flatMap(row => row.request_id ?? row.reply_to ?? []),
     from: messagesCursor ? rows[rows.length - 1].created_at : undefined, to: mc?.created_at });
   const visible = rows.filter(row => !calls.hidden.has((row.request_id ?? row.reply_to) as string));
   const activity = await savedActivity(supabase, workspace, visible.flatMap(row => row.role === "assistant" && row.reply_to ? [row.reply_to] : []));
-  const messages: HistoryMessage[] = [...visible.map(({ reply_to, context, ...message }) => ({ ...message, request_id: undefined, ...(isSpoken(context) && { spoken: true }), ...(reply_to ? activity.get(reply_to) : undefined) })), ...calls.items]
+  const messages: HistoryMessage[] = [...visible.map(({ reply_to, context, chat_request_id, request_id, ...message }) => ({ ...message, request: chat_request_id ?? null, ...(message.role === "user" && !request_id && { steer: true }), ...(isSpoken(context) && { spoken: true }), ...(reply_to ? activity.get(reply_to) : undefined) })), ...calls.items]
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const latest = run?.data as { id: string; created_at: string } | null | undefined;
   const running = latest && Date.parse(latest.created_at) > Date.now() - RUN_WINDOW_MS ? latest.id : null;
-  return { selected: conversation.data as HistoryThread, messages: messages.reverse(), messagesCursor, running };
+  return { selected: conversation.data as HistoryThread, messages: messages.reverse(), messagesCursor, running, ...(requests && { requests }) };
 }
 
 const savedCall = z.object({ name: z.string(), input: z.unknown().optional(), output: z.string().optional() });
@@ -104,5 +107,5 @@ export async function loadConversationHistory(supabase: SupabaseClient, workspac
   const explicit = requested && requested !== "new" ? awaitedLater(loadConversation(supabase, workspace, requested, messagesBefore)) : null;
   const { threads, threadsCursor } = await loadThreads(supabase, workspace, threadsBefore);
   const conversation = await explicit;
-  return { threads, threadsCursor, selected: conversation?.selected ?? null, messages: conversation?.messages ?? [], messagesCursor: conversation?.messagesCursor ?? null, running: conversation?.running ?? null };
+  return { threads, threadsCursor, selected: conversation?.selected ?? null, messages: conversation?.messages ?? [], messagesCursor: conversation?.messagesCursor ?? null, running: conversation?.running ?? null, requests: conversation?.requests ?? ([] as ChatNode[]) };
 }

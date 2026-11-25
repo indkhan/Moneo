@@ -4,13 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatForm } from "@/components/chat-form";
 import { claimFirstPrompt } from "../actions";
-import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "@/components/chat-messages";
+import { ChatMessages, RESUMED_RUN, applyChatEvent, localExchange, type ChatItem, type PendingExchange } from "@/components/chat-messages";
+import { useChatPath } from "@/lib/ai/use-chat-path";
+import { useAiAccess } from "@/lib/ai/use-ai-access";
+import type { ChatNode } from "@/lib/ai/chat-tree";
 import { usePolling } from "@/lib/use-polling";
 import { SavedVersion, type HomeVersions } from "./saved-version";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
-type Loaded = { messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
+type Loaded = { messages: ChatItem[]; requests?: ChatNode[]; messagesCursor: string | null; running?: string | null };
 const SEND_EVENT = "moneo-artifact-send";
 
 export function SendButton({ prompt, idle, label, sending }: { prompt: string; idle: string; label: string; sending: string }) {
@@ -22,9 +25,12 @@ export function SendButton({ prompt, idle, label, sending }: { prompt: string; i
   </span>;
 }
 
-export function ArtifactChat({ conversationId, initial, messagesCursor, running: initialRunning, artifactId, artifact, home }: { conversationId: string; initial: ChatItem[]; messagesCursor: string | null; running: string | null; artifactId?: string; artifact: string; home: HomeVersions }) {
+export function ArtifactChat({ conversationId, initial, requests: initialRequests, model, messagesCursor, running: initialRunning, artifactId, artifact, home }: { conversationId: string; initial: ChatItem[]; requests: ChatNode[]; model: string | null; messagesCursor: string | null; running: string | null; artifactId?: string; artifact: string; home: HomeVersions }) {
   const router = useRouter();
   const [messages, setMessages] = useState(initial);
+  const [requests, setRequests] = useState(initialRequests);
+  const branch = useChatPath(requests);
+  const access = useAiAccess();
   const [older, setOlder] = useState(messagesCursor);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -52,7 +58,7 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
   usePolling(signal => fetch(`/api/conversations/${conversationId}`, { cache: "no-store", signal }).then(response => { if (!response.ok) throw new Error(); return response.json() as Promise<Loaded>; }).then(data => {
     setUnreachable(false);
     if (data.running) return;
-    setMessages(current => [...current.filter(message => !data.messages.some(item => item.id === message.id)), ...data.messages]); setRunning(null); router.refresh();
+    setMessages(current => [...current.filter(message => !data.messages.some(item => item.id === message.id)), ...data.messages]); if (data.requests) setRequests(data.requests); setRunning(null); router.refresh();
   }).catch(() => { if (!signal.aborted) setUnreachable(true); }), 3000, !!resuming);
 
   async function loadOlder() {
@@ -69,7 +75,7 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     finally { setLoadingOlder(false); }
   }
 
-  function onStart(_id: string, question: string, attachments: ChatAttachment[], spoken: boolean, regenerating = false) { live.current = { question, attachments, tools: [], spoken, regenerating }; setPending(live.current); }
+  function onStart(_id: string, question: string, attachments: ChatAttachment[], spoken: boolean, after?: string | null) { live.current = { question, attachments, tools: [], spoken, after }; setPending(live.current); }
   function onEvent(_id: string, event: ChatStreamEvent) {
     if (!live.current) return;
     const before = live.current;
@@ -77,15 +83,13 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     setPending(live.current);
     if (event.type === "tool" && event.state === "done" && ["write_page", "card_preset", "write_card", "remove_card"].includes(event.name ?? "")) router.refresh();
   }
-  function onDone(_id: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[]) {
-    const finished = live.current;
+  function onDone(_id: string, question: string, result: (ChatAnswer & { requestId: string }) | null, attachments: ChatAttachment[]) {
+    const finished = live.current ?? undefined;
     live.current = null; setPending(null); setRequest(undefined);
     if (!result) return;
-    const now = new Date().toISOString();
-    setMessages(current => [...current,
-      ...(result.regenerates ? [] : [{ id: `local-${crypto.randomUUID()}`, role: "user" as const, content: question.trim(), created_at: now, attachments, spoken: finished?.spoken }]),
-      ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
-      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, answer_of: result.regenerates ?? result.requestId, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan }]);
+    const exchange = localExchange(question, result, finished, attachments);
+    setMessages(current => [...current, ...exchange.messages]);
+    setRequests(current => [...current, exchange.node]);
     router.refresh();
   }
 
@@ -93,11 +97,11 @@ export function ArtifactChat({ conversationId, initial, messagesCursor, running:
     <div ref={scroll} aria-label="Artifact chat messages" className="relative min-h-0 flex-1 overflow-y-auto pr-1">
       {older && <button type="button" disabled={loadingOlder} onClick={() => void loadOlder()} className="mb-4 min-h-9 rounded-lg border border-border px-3 text-xs text-muted-foreground disabled:opacity-50">{loadingOlder ? "Loading older messages…" : "Older messages"}</button>}
       {historyError && <p role="alert" className="mb-3 text-sm text-danger">{historyError}</p>}
-      {messages.length || pending || resuming ? <ChatMessages compact messages={messages} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} toolResult={(step, key) => <SavedVersion key={key} step={step} artifactId={artifact} home={home} />} />
+      {messages.length || pending || resuming ? <ChatMessages compact messages={messages} path={branch.path} onPick={branch.pick} editable models={access?.models} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} toolResult={(step, key) => <SavedVersion key={key} step={step} artifactId={artifact} home={home} />} />
         : <p className="text-sm text-muted-foreground">Describe what to build. Ask for a Home card any time, e.g. “add this to Home as a small card”.</p>}
     </div>
     {unreachable && resuming && <p role="alert" className="text-xs text-warning">Could not check on this build. It may still be running. Moneo keeps trying.</p>}
     {claimFailed && <p role="alert" className="text-sm text-danger">Could not start your request. <button type="button" onClick={() => setClaimAttempt(count => count + 1)} className="underline">Try again</button></p>}
-    <ChatForm conversationId={conversationId} selectionKey={`moneo-artifact-${conversationId}`} autoSend={request} placeholder="Change the page or a card…" onStart={onStart} onEvent={onEvent} onDone={onDone} />
+    <ChatForm conversationId={conversationId} selectionKey={`moneo-artifact-${conversationId}`} autoSend={request} placeholder="Change the page or a card…" parent={branch.end} model={model} persisted onStart={onStart} onEvent={onEvent} onDone={onDone} />
   </div>;
 }

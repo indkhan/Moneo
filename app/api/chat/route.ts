@@ -43,6 +43,7 @@ import { chartDatasets, resolveChartBlocks } from "@/lib/ai/chart-spec";
 import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from "@/lib/ai/chart-data";
 import { serviceRoleConfig } from "@/lib/env";
 import { jsonBodyOrNull } from "@/lib/json-body";
+import { modelIdSchema } from "@/lib/ai/model-options";
 
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
@@ -59,7 +60,7 @@ const inputSchema = z.object({
   regenerates: z.uuid().optional(),
   parent: z.uuid().optional(),
   edits: z.uuid().optional(),
-  model: z.string().trim().min(1).max(200).optional(),
+  model: modelIdSchema.optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional(),
 }).strict();
@@ -100,10 +101,11 @@ export async function POST(request: Request) {
   });
   if (claim.error) return Response.json({ error: claim.error.message }, { status: 400 });
   if (!claim.data.started) {
-    if (claim.data.status === "completed") return Response.json({ conversationId, answer: claim.data.answer });
+    if (claim.data.status === "completed") return Response.json({ conversationId, answer: claim.data.answer, parent: claim.data.parent ?? null });
     return Response.json({ error: `Request is ${claim.data.status}`, status: claim.data.status }, { status: 409 });
   }
-  const historyPromise = awaitedLater(skeletonPromise.then(nodes => branchHistory(supabase, workspace.id, conversationId, nodes, claim.data.parent ?? null)));
+  const claimedParent = claim.data.parent ?? null;
+  const historyPromise = awaitedLater(skeletonPromise.then(nodes => branchHistory(supabase, workspace.id, conversationId, nodes, claimedParent)));
   if (attachments.length && !regenerates) {
     const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
       .eq("request_id", requestId).eq("role", "user");
@@ -302,7 +304,7 @@ ${artifact.briefing}` : ""}`,
             if (isImage(file.type)) return { error: `"${file.name}" is a photo; it can only be seen in the message it was attached to.` };
             return { text: readDocument(await documentText(supabase, file), { name: file.name, id: attachmentId(file.path), location, search }) };
           } }),
-        ...(artifact && artifactId ? artifact.agent.artifactTools({ context, artifactId, scalable: scalableConnection ? settings.artifact_scalable_data : null, ownerWords: [message, ...priorUserText.filter(text => text !== message)], session: artifact.session, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
+        ...(artifact && artifactId ? artifact.agent.artifactTools({ context, artifactId, model: chosenModel, scalable: scalableConnection ? settings.artifact_scalable_data : null, ownerWords: [message, ...priorUserText.filter(text => text !== message)], session: artifact.session, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports"), sourceVersions: false }), false, true) }),
           finance_entities: tool({ description: "Optional: list owned account, category and merchant names with ids, tags and events. Other tools already accept names and label ids with names.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),
@@ -412,12 +414,12 @@ ${artifact.briefing}` : ""}`,
     requireAiScope(current.settings, ...readScopes);
     const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [moneoToolName(toolResult.toolName)] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
-    emit({ type: "answer", conversationId, answer, toolsUsed, followUps, model: model.modelId });
+    emit({ type: "answer", conversationId, answer, toolsUsed, followUps, model: model.modelId, parent: claimedParent });
     const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer,
       p_usage: reportedUsage(model.modelId, usage), p_tool_calls: toolCalls });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return [{ status: finished.data, error: `Request is ${finished.data}` }, 409];
-    return [{ conversationId, answer, toolsUsed, followUps, model: model.modelId }, 200];
+    return [{ conversationId, answer, toolsUsed, followUps, model: model.modelId, parent: claimedParent }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
     await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });

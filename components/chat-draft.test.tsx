@@ -18,6 +18,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   },
   useEffect: (effect: () => void) => { host.effects.push(effect); },
   useCallback: (callback: unknown) => callback,
+  useMemo: (factory: () => unknown) => factory(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/money/transactions" }));
 vi.mock("@/lib/ai/use-chat-request", () => ({ useChatRequest: () => ({ send: host.send, cancel: vi.fn(), busy: false, error: "", status: "idle" }) }));

@@ -15,9 +15,9 @@ export function ancestors(nodes: ChatNode[], leaf: string | null): ChatNode[] {
 export function visiblePath(nodes: ChatNode[], picks: ChatPicks = {}): PathStep[] {
   const sorted = [...nodes].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
   const known = new Set(sorted.map(node => node.id));
-  const children = new Map<string, ChatNode[]>();
+  const children = new Map<string | null, ChatNode[]>();
   for (const node of sorted) {
-    const key = node.parent && known.has(node.parent) ? node.parent : "";
+    const key = node.parent && known.has(node.parent) ? node.parent : null;
     children.set(key, [...children.get(key) ?? [], node]);
   }
   const newest = new Map<string, string>();
@@ -29,7 +29,7 @@ export function visiblePath(nodes: ChatNode[], picks: ChatPicks = {}): PathStep[
   const newestOf = (options: ChatNode[], score: (node: ChatNode) => string) => options.reduce((best, node) => score(node) >= score(best) ? node : best);
   const steps: PathStep[] = [];
   for (let after: string | null = null; ;) {
-    const here: ChatNode[] = children.get(after ?? "") ?? [];
+    const here: ChatNode[] = children.get(after) ?? [];
     const questions = here.filter(node => !node.regenerates || !here.some(other => other.id === node.regenerates));
     if (!questions.length) return steps;
     const versionsOf = (question: ChatNode) => here.filter(node => node.id === question.id || node.regenerates === question.id);

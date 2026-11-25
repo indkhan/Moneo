@@ -1,4 +1,7 @@
+import { z } from "zod";
 import { AI_AGENTS, type AiAgent } from "@/lib/workspace-settings-options";
+
+export const modelIdSchema = z.string().trim().min(1).max(200);
 
 export type ModelConnections = { openai: boolean; claude: boolean; openrouter: boolean };
 

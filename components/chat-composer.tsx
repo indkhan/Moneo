@@ -7,10 +7,10 @@ const ATTACH_HINT = `Attach ${ATTACHMENT_HINT}: up to ${MAX_ATTACHMENTS} files o
 
 export const withSpoken = (typed: string, spoken: string) => [typed.trim(), spoken].filter(Boolean).join(" ");
 
-export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, busy, disabled = false, placeholder, compact = false, busyText, attachments, voice }: {
+export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, busy, disabled = false, placeholder, compact = false, busyText, attachments, voice, tools }: {
   id: string; label: string; value: string; onChange: (value: string) => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onStop: () => void; busy: boolean; disabled?: boolean; placeholder: string; compact?: boolean; busyText: string; attachments?: ChatAttachments;
-  voice?: { onSend: (text: string) => void };
+  voice?: { onSend: (text: string) => void }; tools?: React.ReactNode;
 }) {
   const button = `flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 ${compact ? "size-9" : "size-11"}`;
   const files = attachments?.items ?? [];
@@ -33,6 +33,7 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
           <span className="sr-only">{ATTACH_HINT}</span><Paperclip className="size-4" aria-hidden="true" />
           <input type="file" accept={ATTACHMENT_ACCEPT} multiple disabled={disabled || attachments.full} className="sr-only" onChange={event => { if (event.target.files) attachments.add(event.target.files); event.target.value = ""; }} />
         </label>}
+        {tools}
         <span role={busy ? "status" : undefined} className="truncate text-xs text-muted-foreground">{busy ? files.length ? "Files send after this reply finishes." : busyText : ""}</span>
       </div>
       <div className="flex items-center gap-1.5">{voice && <VoiceInput compact={compact} disabled={disabled} onSend={voice.onSend}

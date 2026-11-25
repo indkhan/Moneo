@@ -49,7 +49,7 @@ export async function loadCalls(supabase: SupabaseClient, workspace: string, con
     const tasks = parseTasks(row.tasks);
     const transcript = z.array(callTurnSchema).safeParse(row.transcript);
     return {
-      id: row.id, role: "assistant", content: "", created_at: row.created_at,
+      id: row.id, role: "assistant", content: "", created_at: row.created_at, requests: row.request_ids,
       call: {
         id: row.id, durationSeconds: row.duration_seconds, summary: row.summary, summaryStatus: row.summary_status,
         transcript: transcript.success ? transcript.data : [],

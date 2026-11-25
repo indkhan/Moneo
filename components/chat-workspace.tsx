@@ -8,7 +8,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ChevronLeft, Menu, Pencil, Phone, Plus, RefreshCw, Search, Sparkles, SquarePen, Trash2, X } from "lucide-react";
 import { ChatForm } from "@/components/chat-form";
-import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { ChatMessages, RESUMED_RUN, applyChatEvent, localExchange, type ChatItem, type PendingExchange } from "./chat-messages";
+import { useChatPath } from "@/lib/ai/use-chat-path";
+import type { ChatNode } from "@/lib/ai/chat-tree";
 import { usePolling } from "@/lib/use-polling";
 import { useDelay } from "@/lib/use-timeout";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
@@ -23,9 +25,10 @@ const AnalysisPanel = dynamic(() => import("@/components/analysis-panel").then(m
 });
 const VoiceCall = dynamic(() => import("./voice-call").then(module => module.VoiceCall), { ssr: false });
 
-type Entry = { conversation: HistoryThread; messages: ChatItem[]; cursor: string | null; running?: string | null };
-type Loaded = { selected: HistoryThread; messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
-type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
+type Entry = { conversation: HistoryThread; messages: ChatItem[]; requests: ChatNode[]; cursor: string | null; running?: string | null };
+type Loaded = { selected: HistoryThread; messages: ChatItem[]; requests?: ChatNode[]; messagesCursor: string | null; running?: string | null };
+type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; requests: ChatNode[]; messagesCursor: string | null; running?: string | null };
+const NO_REQUESTS: ChatNode[] = [];
 
 async function json<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { cache: "no-store", ...init });
@@ -33,8 +36,8 @@ async function json<T>(input: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw new Error(body.error ?? "Request failed. Try again.");
   return body as T;
 }
-const seed = (initial: ChatWorkspaceInitial): Record<string, Entry> => initial.selected ? { [initial.selected.id]: { conversation: initial.selected, messages: initial.messages, cursor: initial.messagesCursor, running: initial.running } } : {};
-const loaded = (data: Loaded): Entry => ({ conversation: data.selected, messages: data.messages, cursor: data.messagesCursor, running: data.running });
+const seed = (initial: ChatWorkspaceInitial): Record<string, Entry> => initial.selected ? { [initial.selected.id]: { conversation: initial.selected, messages: initial.messages, requests: initial.requests, cursor: initial.messagesCursor, running: initial.running } } : {};
+const loaded = (data: Loaded): Entry => ({ conversation: data.selected, messages: data.messages, requests: data.requests ?? [], cursor: data.messagesCursor, running: data.running });
 function omit<T>(record: Record<string, T>, key: string) { const next = { ...record }; delete next[key]; return next; }
 const href = (id: string) => `/ai?conversation=${id}`;
 const fetchEntry = (id: string) => json<Loaded>(`/api/conversations/${id}`);
@@ -75,6 +78,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const activeId = selectedId ?? draftId;
   const entry = entries[activeId];
   const active = pending[activeId];
+  const branch = useChatPath(entry?.requests ?? NO_REQUESTS);
 
   function load(id: string) {
     if (entries[id] || errors[id] || loading.current.has(id)) return;
@@ -165,7 +169,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   }
 
   const live = useRef<Record<string, PendingExchange>>({});
-  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean, regenerating = false) { followOutput(); live.current[id] = { question, attachments, tools: [], spoken, regenerating }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean, after?: string | null) { followOutput(); live.current[id] = { question, attachments, tools: [], spoken, after }; setPending(current => ({ ...current, [id]: live.current[id] })); }
   const written = useRef<Record<string, string>>({});
   function onEvent(id: string, event: ChatStreamEvent) {
     if (event.type === "title") { written.current[id] = event.title; retitle(id, event.title); return; }
@@ -173,19 +177,16 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     const next = live.current[id] = applyChatEvent(live.current[id], event);
     setPending(current => current[id] ? { ...current, [id]: next } : current);
   }
-  function onDone(id: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[], standIn = question.trim().slice(0, 80)) {
+  function onDone(id: string, question: string, answered: ChatAnswer | null, attachments: ChatAttachment[], standIn = question.trim().slice(0, 80)) {
     const finished = live.current[id];
     delete live.current[id];
     setPending(current => omit(current, id));
-    if (!result) return;
-    const now = new Date().toISOString();
-    const conversation = { id, title: written.current[id] ?? standIn, created_at: now };
-    const exchange: ChatItem[] = [
-      ...(result.regenerates ? [] : [{ id: `local-${crypto.randomUUID()}`, role: "user" as const, content: question.trim(), created_at: now, attachments, spoken: finished?.spoken }]),
-      ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
-      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, answer_of: result.regenerates ?? result.requestId, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps, model: result.model },
-    ];
-    setEntries(current => ({ ...current, [id]: current[id] ? { ...current[id], messages: [...current[id].messages, ...exchange] } : { conversation, messages: exchange, cursor: null } }));
+    const requestId = answered?.requestId;
+    if (!answered || !requestId) return;
+    const result = { ...answered, requestId };
+    const conversation = { id, title: written.current[id] ?? standIn, created_at: new Date().toISOString() };
+    const { messages: exchange, node } = localExchange(question, result, finished, attachments);
+    setEntries(current => ({ ...current, [id]: current[id] ? { ...current[id], messages: [...current[id].messages, ...exchange], requests: [...current[id].requests, node] } : { conversation, messages: exchange, requests: [node], cursor: null } }));
     setThreads(current => current.some(thread => thread.id === id) ? current : [conversation, ...current]);
     if (latest.current.selectedId === null && latest.current.draftId === id) window.history.replaceState(null, "", href(id));
   }
@@ -264,8 +265,8 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           : selectedId && !entry ? <div className="space-y-6 py-6" role="status" aria-label="Loading conversation">{[0, 1].map(row => <div key={row} className="space-y-3"><div className="ml-auto h-9 w-1/2 animate-pulse rounded-3xl bg-muted" /><div className="h-4 w-5/6 animate-pulse rounded bg-muted" /><div className="h-4 w-2/3 animate-pulse rounded bg-muted" /></div>)}</div>
           : <>
             {entry?.cursor && <button type="button" disabled={busy} onClick={() => void olderMessages()} className="mt-2 self-center text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older messages</button>}
-            {!empty && <div className="py-6"><ChatMessages messages={entry?.messages ?? []} pending={active ?? (resuming ? RESUMED_RUN : undefined)} /></div>}
-            <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} onStart={onStart} onEvent={onEvent} onDone={onDone} />
+            {!empty && <div className="py-6"><ChatMessages messages={entry?.messages ?? []} path={branch.path} onPick={branch.pick} editable models={access?.models} pending={active ?? (resuming ? RESUMED_RUN : undefined)} /></div>}
+            <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} parent={branch.end} model={entry?.conversation.model} persisted={!!entry} onStart={onStart} onEvent={onEvent} onDone={onDone} />
           </>}
         <div ref={end} />
       </div>

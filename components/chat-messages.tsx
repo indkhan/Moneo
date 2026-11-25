@@ -2,14 +2,16 @@
 
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
+import { answerPick, questionPick, type ChatNode, type PathStep } from "@/lib/ai/chat-tree";
+import type { ChatAnswer } from "@/lib/ai/use-chat-request";
 import { AiToolActivity, type ToolStep } from "./ai-tool-activity";
 import type { HistoryMessage } from "@/lib/ai/conversation-history";
 import type { FollowUp } from "@/lib/ai/follow-ups";
 import Link from "next/link";
-import { ChevronRight, FileText, ListChecks, LoaderCircle, Mic, Sparkle } from "lucide-react";
+import { ChevronRight, FileText, ListChecks, LoaderCircle, Mic, Pencil, Sparkle } from "lucide-react";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 import { VoiceCallCard } from "./voice-call-card";
-import { MessageActions, answerGroups, resendQuestion } from "./message-actions";
+import { MessageActions, VersionPicker, editOf, regenerateOf, resend, type Resend, type Versions } from "./message-actions";
 
 export const DRAFT_EVENT = "moneo-chat-draft";
 function FollowUps({ items, compact }: { items: FollowUp[]; compact: boolean }) {
@@ -44,31 +46,80 @@ const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiM
 
 export type ChatItem = Omit<HistoryMessage, "tools"> & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
 export const RESUMED_RUN: PendingExchange = { question: "", tools: [] };
-export type PendingExchange = { question: string; spoken?: boolean; attachments?: ChatAttachment[]; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[]; regenerating?: boolean };
+export type PendingExchange = { question: string; spoken?: boolean; attachments?: ChatAttachment[]; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[]; after?: string | null };
+
+export function localExchange(question: string, result: ChatAnswer & { requestId: string }, finished: PendingExchange | undefined, attachments: ChatAttachment[]): { messages: ChatItem[]; node: ChatNode } {
+  const now = new Date().toISOString();
+  const request = result.requestId;
+  return {
+    node: { id: request, parent: result.parent ?? null, regenerates: result.regenerates ?? null, created_at: now },
+    messages: [
+      ...(result.regenerates ? [] : [{ id: `local-${crypto.randomUUID()}`, role: "user" as const, content: question.trim(), created_at: now, attachments, spoken: finished?.spoken, request }]),
+      ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now, request, steer: true })),
+      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, request, answer_of: result.regenerates ?? request, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps, model: result.model },
+    ],
+  };
+}
+
+function QuestionEditor({ initial, onSave, onCancel }: { initial: string; onSave: (text: string) => void; onCancel: () => void }) {
+  const [text, setText] = useState(initial);
+  return <form className="ml-auto w-full max-w-[85%] space-y-2" onSubmit={event => { event.preventDefault(); if (text.trim()) onSave(text.trim()); }}>
+    <label className="sr-only" htmlFor="edit-question">Edit your message</label>
+    <textarea id="edit-question" autoFocus value={text} maxLength={4000} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Escape") onCancel(); }}
+      className="block max-h-60 min-h-20 w-full resize-none rounded-2xl border border-border bg-input px-4 py-3 text-[15px] [field-sizing:content] focus:outline-none" />
+    <span className="flex justify-end gap-2">
+      <button type="button" onClick={onCancel} className="min-h-10 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">Cancel</button>
+      <button disabled={!text.trim()} className="min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40">Send</button>
+    </span>
+  </form>;
+}
 
 function Spoken({ show }: { show?: boolean }) {
   return show ? <><Mic className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" aria-hidden="true" /><span className="sr-only">Spoken: </span></> : null;
 }
 
-export function ChatMessages({ messages, pending, compact = false, toolResult }: { messages: ChatItem[]; pending?: PendingExchange | null; compact?: boolean; toolResult?: (step: ToolStep, key: number) => React.ReactNode }) {
+export function ChatMessages({ messages, path = [], onPick, editable = false, models, pending, compact = false, toolResult }: { messages: ChatItem[]; path?: PathStep[]; onPick?: (key: string, id: string) => void; editable?: boolean; models?: string[]; pending?: PendingExchange | null; compact?: boolean; toolResult?: (step: ToolStep, key: number) => React.ReactNode }) {
   const bubble = `ml-auto w-fit max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[18px_18px_4px_18px] bg-input ${compact ? "px-3.5 py-2 text-sm" : "px-[18px] py-3.5 text-[15px]"}`;
   const files = useMemo(() => [...messages.flatMap(item => item.attachments ?? []), ...(pending?.attachments ?? [])], [messages, pending?.attachments]);
-  const [picked, setPicked] = useState<Record<string, number>>({});
-  const groups = answerGroups(messages);
-  const shownGroups = pending?.regenerating && groups.at(-1)?.[0].answer_of ? groups.slice(0, -1) : groups;
+  const [editing, setEditing] = useState<string | null>(null);
   const results = (tools: (string | ToolStep)[]) => toolResult && tools.map((step, index) => typeof step === "string" ? null : toolResult(step, index));
   const assistant = (body: React.ReactNode) => <div className="min-w-0"><p className="mb-2 flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Moneo</p>{body}</div>;
+  const time = (at: string) => <time className="sr-only" dateTime={at} suppressHydrationWarning>{new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>;
+  const answer = (item: ChatItem, actions: { regenerate?: Resend | null; versions?: Versions; last?: boolean } = {}) => assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} />{results(item.tools ?? [])}<AiMessage content={item.content} files={files} />
+    <MessageActions content={item.content} model={item.model} regenerate={actions.regenerate ?? null} models={models} versions={actions.versions} />{actions.last && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>);
+  const userBubble = (item: ChatItem) => <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></>;
+  const shownUntil = pending?.after === undefined ? path.length : pending.after === null ? 0 : path.findIndex(step => step.answer === pending.after) + 1 || path.length;
+  const shown = path.slice(0, shownUntil);
+  const onPath = new Set(shown.flatMap(step => [step.question, step.answer]));
+  const calls = messages.filter(item => item.call && item.requests?.some(id => onPath.has(id)));
+  const canChange = editable && !pending;
+  const blocks: { key: string; at: string; body: React.ReactNode }[] = [
+    ...messages.filter(item => item.call ? !item.requests?.length : !item.request).map(item => ({ key: item.id, at: item.created_at,
+      body: <>{time(item.created_at)}{item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? userBubble(item) : answer(item, { last: item === messages.at(-1) })}</> })),
+    ...calls.map(item => ({ key: item.id, at: item.created_at, body: item.call && <VoiceCallCard call={item.call} createdAt={item.created_at} /> })),
+    ...shown.flatMap((step, position) => {
+      if (calls.some(call => call.requests?.includes(step.answer))) return [];
+      const question = messages.find(item => item.role === "user" && !item.steer && !item.call && item.request === step.question);
+      const reply = messages.find(item => item.role === "assistant" && !item.call && item.request === step.answer);
+      if (!question && !reply) return [];
+      const steers = messages.filter(item => item.steer && item.request === step.answer);
+      const questionVersions = step.questions.length > 1 ? { index: step.questions.indexOf(step.question), count: step.questions.length, onChange: (next: number) => onPick?.(questionPick(step), step.questions[next]) } : undefined;
+      const answerVersions = { index: step.answers.indexOf(step.answer), count: step.answers.length, onChange: (next: number) => onPick?.(answerPick(step), step.answers[next]) };
+      return [{ key: step.answer, at: question?.created_at ?? reply?.created_at ?? "", body: <div className={compact ? "space-y-6" : "space-y-8"}>
+        {question && (editing === step.question ? <QuestionEditor initial={question.content} onCancel={() => setEditing(null)} onSave={text => { setEditing(null); resend(editOf(step, question, text)); }} />
+          : <div className="group">{time(question.created_at)}{userBubble(question)}
+            {(questionVersions || canChange) && <div className="mt-1 flex items-center justify-end text-muted-foreground">
+              <VersionPicker label="question" versions={questionVersions} />
+              {canChange && <button type="button" aria-label="Edit message" title="Edit" onClick={() => setEditing(step.question)} className="flex size-11 items-center justify-center rounded-lg hover:bg-muted hover:text-foreground lg:size-8 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"><Pencil className="size-4" aria-hidden="true" /></button>}
+            </div>}
+          </div>)}
+        {steers.map(steer => <p key={steer.id} className={bubble}>{steer.content}</p>)}
+        {reply && answer(reply, { regenerate: canChange && question ? regenerateOf(step, question) : null, last: position === shown.length - 1, versions: answerVersions })}
+      </div> }];
+    }),
+  ].sort((a, b) => a.at.localeCompare(b.at));
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
-    {shownGroups.map((group, position) => {
-      const pickKey = `${group[0].id}:${group.length}`;
-      const item = group[picked[pickKey] ?? group.length - 1];
-      const index = messages.indexOf(item);
-      const lastGroup = position === shownGroups.length - 1;
-      return <article key={group[0].id}>
-      <time className="sr-only" dateTime={item.created_at} suppressHydrationWarning>{new Date(item.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
-      {item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} />{results(item.tools ?? [])}<AiMessage content={item.content} files={files} /><MessageActions content={item.content} model={item.model} resend={lastGroup && !pending ? resendQuestion(messages, index) : null} version={{ index: group.indexOf(item), count: group.length, onChange: next => setPicked(current => ({ ...current, [pickKey]: next })) }} />{lastGroup && item === group.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
-    </article>;
-    })}
+    {blocks.map(block => <article key={block.key}>{block.body}</article>)}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
       {pending.question && <div><MessageFiles files={pending.attachments} /><p className={bubble}><Spoken show={pending.spoken} />{pending.question}</p></div>}
       {pending.steers?.map((steer, index) => <p key={index} className={bubble}>{steer}</p>)}

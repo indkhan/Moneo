@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import type { FollowUp } from "./follow-ups";
 import type { ChatAttachment } from "./chat-attachments";
 
-export type ChatAnswer = { answer: string; conversationId: string; toolsUsed?: string[]; followUps?: FollowUp[]; model?: string; requestId?: string; regenerates?: string };
+export type ChatAnswer = { answer: string; conversationId: string; toolsUsed?: string[]; followUps?: FollowUp[]; model?: string; requestId?: string; regenerates?: string; parent?: string | null };
 export type ChatStreamEvent =
   | { type: "started" }
   | { type: "tool"; id?: string; name: string; state: "running" | "done" | "failed"; input?: unknown; output?: string }
@@ -39,7 +39,7 @@ export function useChatRequest() {
   const [error, setError] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
 
-  async function send(payload: { conversationId: string; message: string; regenerates?: string; context?: Record<string, unknown>; attachments?: ChatAttachment[] }, onEvent?: (event: ChatStreamEvent) => void) {
+  async function send(payload: { conversationId: string; message: string; regenerates?: string; parent?: string; edits?: string; model?: string; context?: Record<string, unknown>; attachments?: ChatAttachment[] }, onEvent?: (event: ChatStreamEvent) => void) {
     if (active.current) return null;
     const run = { requestId: crypto.randomUUID(), controller: new AbortController() };
     active.current = run;
@@ -53,7 +53,7 @@ export function useChatRequest() {
       if (active.current !== run) return null;
       if (!result.ok) throw new Error(result.body.error ?? "Could not answer");
       setStatus("completed");
-      return { ...result.body, requestId: run.requestId, ...(payload.regenerates && { regenerates: payload.regenerates }) } as ChatAnswer;
+      return { ...result.body, requestId: run.requestId, ...(payload.regenerates && { regenerates: payload.regenerates }) } as ChatAnswer & { requestId: string };
     } catch (cause) {
       if (active.current === run) { setStatus("failed"); setError(cause instanceof Error ? cause.message : "Could not answer"); }
       return null;
