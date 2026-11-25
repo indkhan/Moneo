@@ -1,0 +1,53 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, tests only where they catch a real bug, QA backend only — never the owner's backend on port 3000 or `.env`). Your checkout is based on the latest `main`. Create a branch `t3/audit-chat-list`, commit in plain-language steps, push, and open ONE pull request to `main`. Do not merge it. Do not touch PR #313.
+
+## Improve the chat conversation list (`components/chat-workspace.tsx`, the `sidebar()` used by the desktop `aside` and the mobile "Show conversations" `<details>` menu)
+
+A QA audit found four problems; the owner chose these fixes:
+
+1. **UI1 — row actions.** Each row shows Rename (pencil), regenerate title, and Delete (trash) as adjacent 26×26 px icon buttons (~lines 222–226); Delete looks like the others. Replace them with ONE "⋯" menu button per row (≥40 px touch target on mobile, visible on hover/focus on desktop and always on touch), containing: Rename, New title (the regenerate action), then Delete — set apart (separator) and in the danger colour. Keep the existing actions' behaviour (rename inline input with Escape, the regenerate call, the `window.confirm` delete). The menu must be keyboard-accessible and close on Escape, outside click and after choosing an item. Look for an existing small menu primitive first: PR #327 added `BarMenu` (a `<details>` that closes on outside click, Escape or a link choice) in `app/ai/artifacts/[id]/artifact-controls.tsx` — if you reuse it, move it down to `components/` (imports go app → components → lib only) rather than duplicating it.
+2. **UI2 — long titles.** At 320 px, long titles that share a prefix were indistinguishable because the inline actions took the space. With a single ⋯ button the title gets the room; also expose the full title directly from the list (a `title` attribute for hover, plus the full title readable on long-press/focus — e.g. the menu's header shows the full title).
+3. **UX1 — search limit.** Searching with 65 matching titles shows 30 with no count and no way to see more; "Older conversations" is hidden while results are shown (`{!results && threadsCursor && …}` ~line 230). Show "Showing 30 of N" (or "30+" if the server can't count cheaply — check the search query/route and prefer an exact count if it's cheap) and an "Older matches" button that loads the next page of search results. Find the search server code (the function behind the search input ~line 208) and add cursor paging there in the same style as `olderThreads`.
+4. **UX2 — mobile menu dismissal.** The compact "Show conversations" `<details>` (~line 249) covers the composer and stays open after Escape or a tap outside; only its toggle closes it. Make it close on Escape and on outside click/tap (and keep closing when a conversation is chosen, as now at ~line 112). If you extract a shared "details menu that closes on Escape/outside" hook or component for items 1 and 4, put it in `components/`.
+
+## Checks
+- Extend an existing chat journey spec rather than adding a new one (e.g. `e2e/chat-background.gated.spec.ts`, which PR #330 just seeded with 65 synthetic chats; or `e2e/accessibility.gated.spec.ts`): search matching >30 titles shows the count and Older matches reaches the rest; the row ⋯ menu offers Rename/New title/Delete and closes on Escape; on 390×844 the conversations menu closes on Escape and on an outside tap. Synthetic QA data only.
+- Unit-test the search paging in `lib/` if the cursor logic lives there.
+- Run against QA (`npm run qa:server`, `npm run test:e2e -- <spec>`; `e2e/README.md`; `npm run setup -- --qa` and `npm run qa:auth` if needed). `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`.
+- Skill `verify-ui`: before/after screenshots of the list at 1440×900 and 320×568, light and dark, plus the open ⋯ menu; embed them in the PR (pattern: a `pr-assets/<pr>` branch).
+- **Speed** section (skill `measure-speed`): /ai open time and search response time before/after.
+- End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+
+When done, your last line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b606rfpdd</task-id>
+<tool-use-id>toolu_01XnMTLiXM2Mv6dzU9ZvKvTJ</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f41f8964b16d7d26\d54a59f7-3c98-4d79-b2a3-f01e310a65c2\tasks\b606rfpdd.output</output-file>
+<status>completed</status>
+<summary>Background command "cat &gt; /tmp/patch2.py &lt;&lt;'EOF'
+import io
+p='lib/ai/conversation-history.ts'
+s=io.open(p,encoding='utf-8').read()
+old_live='''  const live = () =&gt; supabase.from("conversations").select("id,title,created_at", { count: "exact" }).eq("workspace_id", workspace).is("deleted_at", null).is("artifact_id", null);
+'''
+s=s.replace(old_live,'')
+s=s.replace('''  const tc = before(threadsBefore);
+  const page = (filter: (base: ReturnType&lt;typeof live&gt;) =&gt; ReturnType&lt;typeof live&gt;) =&gt; {
+    let 
+
+... [503 characters truncated] ...
+
+.slice(0, 100);
+''','''    return tq.limit(THREAD_PAGE + 1);
+  };
+''')
+io.open(p,'w',encoding='utf-8',newline='').write(s)
+EOF
+python /tmp/patch2.py &amp;&amp; sed -n 24,58p lib/ai/conversation-history.ts &amp;&amp; (ls node_modules &gt;/dev/null 2&gt;&amp;1 || npm ci &gt;/dev/null 2&gt;&amp;1; echo installed)" completed (exit code 0)</summary>
+</task-notification>
