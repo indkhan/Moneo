@@ -26,7 +26,7 @@ export function useDismissDetails(ref: RefObject<HTMLDetailsElement | null>) {
 export function DetailsMenu({ label, summary, className = "relative", summaryClassName, panelClassName, children }: { label?: string; summary: ReactNode; className?: string; summaryClassName: string; panelClassName: string; children: ReactNode }) {
   const menu = useRef<HTMLDetailsElement>(null);
   useDismissDetails(menu);
-  return <details ref={menu} className={className}>
+  return <details ref={menu} className={className} onToggle={event => { if (event.currentTarget.open) event.currentTarget.lastElementChild?.scrollIntoView({ block: "nearest" }); }}>
     <summary aria-label={label} className={`cursor-pointer list-none [&::-webkit-details-marker]:hidden ${summaryClassName}`}>{summary}</summary>
     <div onClick={event => { if ((event.target as HTMLElement).closest("a, button")) menu.current?.removeAttribute("open"); }} className={panelClassName}>{children}</div>
   </details>;
