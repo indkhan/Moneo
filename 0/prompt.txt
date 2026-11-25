@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b5q1m4dwv</task-id>
+<tool-use-id>toolu_013HRsTR71NvCpXbTYdTjN9o</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\f41f8964b16d7d26\d54a59f7-3c98-4d79-b2a3-f01e310a65c2\tasks\b5q1m4dwv.output</output-file>
+<status>failed</status>
+<summary>Background command "netstat -ano | grep -E ":(3100|3101|3102) .*LISTEN"; QA_PORT=3101 npm run qa:server -- --production" failed with exit code 127</summary>
+</task-notification>
