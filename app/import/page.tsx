@@ -511,7 +511,7 @@ export default function ImportPage() {
     <ConnectedBanks />
     <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
 
-    <section className="space-y-4" aria-label="Import history">
+    <section id="import-history" className="scroll-mt-20 space-y-4" aria-label="Import history">
       <h2 className="text-sm font-medium text-foreground">Import history</h2>
       {historyState === "failed" && <div className="space-y-1"><p role="alert" className="text-sm text-danger">{HISTORY_UNAVAILABLE}</p><button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button></div>}
       {historyState === "loading" && <p role="status" className="text-sm text-muted-foreground">Loading imports…</p>}

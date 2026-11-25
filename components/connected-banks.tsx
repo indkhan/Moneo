@@ -32,6 +32,10 @@ export function consentState(connection: Pick<Connection, "status" | "valid_unti
   return null;
 }
 
+export function canSync(connection: Pick<Connection, "status" | "valid_until">, running: boolean, now = Date.now()) {
+  return connection.status === "active" && !running && consentState(connection, now) !== "expired";
+}
+
 type StepState = "done" | "active" | "pending";
 const processedRows = (item: SyncImport) => item.new_rows + item.matched_rows + item.review_rows + item.rejected_rows;
 
@@ -76,9 +80,15 @@ export function syncSummary(connection: Pick<Connection, "sync" | "sync_started_
   const imports = connection.sync.imports;
   if (!connection.sync_started_at || !connection.last_synced_at || Date.parse(connection.last_synced_at) < Date.parse(connection.sync_started_at)) return null;
   if (!imports.length) return { text: "Last sync found no new transactions.", href: null };
-  const sum = (key: "new_rows" | "matched_rows" | "review_rows") => imports.reduce((total, item) => total + item[key], 0);
+  const sum = (key: "new_rows" | "matched_rows" | "review_rows" | "rejected_rows") => imports.reduce((total, item) => total + item[key], 0);
   const review = sum("review_rows");
-  return { text: `Last sync: ${sum("new_rows")} new · ${sum("matched_rows")} already imported${review ? ` · ${review} need review` : ""}.`, href: `/import/${imports[imports.length - 1].id}/review` };
+  const rejected = sum("rejected_rows");
+  const toReview = imports.filter(item => item.review_rows > 0);
+  const target = toReview.length > 1 ? null : toReview[0] ?? imports[imports.length - 1];
+  return {
+    text: `Last sync: ${sum("new_rows")} new · ${sum("matched_rows")} already imported${review ? ` · ${review} need review` : ""}${rejected ? ` · ${rejected} rejected` : ""}.`,
+    href: target ? `/import/${target.id}/review` : "/import#import-history",
+  };
 }
 
 type ConnectionsData = { configured: boolean; credentials: BankCredentials; redirectUrl: string; connections: Connection[] };
@@ -172,7 +182,7 @@ export function ConnectedBanks() {
               <p className="text-xs text-muted-foreground">Last sync {date(connection.last_synced_at)} · consent until {date(connection.valid_until)}</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" disabled={!!busy || connection.status !== "active" || !data.configured}
+              <Button size="sm" variant="outline" disabled={!!busy || !data.configured || !canSync(connection, running(connection))}
                 onClick={() => { const at = Date.now(); setNow(at); setRequested(current => ({ ...current, [connection.id]: at }));
                   void act(`sync:${connection.id}`, () => fetch(`/api/bank/connections/${connection.id}/sync`, { method: "POST" }))
                     .then(ok => { if (!ok) setRequested(current => { const next = { ...current }; delete next[connection.id]; return next; }); }); }}>
