@@ -43,6 +43,7 @@ test("the Home review shows every uncategorized group at once, files them under 
     await sheet.getByRole("button", { name: `Apply to all ${GROUPS * 2}` }).click();
     await expect(sheet.getByRole("status").filter({ hasText: "2 categorized as Everything else" })).toHaveCount(GROUPS, { timeout: 120_000 });
     expect(await categories()).toEqual([{ name: "Everything else", count: GROUPS * 2 }]);
+    await page.waitForLoadState("networkidle");
     await expect(sheet).toBeVisible();
     await expect(sheet.getByRole("button", { name: "Change" })).toHaveCount(GROUPS);
 
