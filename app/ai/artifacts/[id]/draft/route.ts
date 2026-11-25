@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { artifactDraftCsp, artifactPage } from "@/lib/ai/artifact-data";
+import { artifactDraftCsp, artifactPage } from "@/lib/ai/artifact-page";
 import { findDraft } from "@/lib/ai/artifact-drafts";
 import { requestOrigin } from "@/lib/remote-device";
 

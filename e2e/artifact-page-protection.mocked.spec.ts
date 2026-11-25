@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { artifactDocument, artifactFrameCsp } from "../lib/ai/artifact-data";
+import { artifactDocument, artifactFrameCsp } from "../lib/ai/artifact-page";
 
 const HOSTILE = `<!doctype html><html><head><meta http-equiv="refresh" content="1;url=http://receiver.test/meta"></head><body>
 <p id="status">waiting</p>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { artifactDocument, artifactFrameCsp, artifactQueriesSchema, runArtifactQueries } from "@/lib/ai/artifact-data";
+import { artifactQueriesSchema, runArtifactQueries } from "@/lib/ai/artifact-data";
+import { artifactDocument, artifactFrameCsp } from "@/lib/ai/artifact-page";
 import { calendarDate } from "@/lib/finance/calendar";
 import { requestOrigin } from "@/lib/remote-device";
 
