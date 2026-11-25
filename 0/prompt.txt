@@ -1,0 +1,29 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, tests only where they catch a real bug, QA backend only — never the owner's backend on port 3000 or `.env`). Your checkout is based on the latest `main`. Create a branch `t3/audit-small-ui`, commit each part separately in plain language, push, and open ONE pull request to `main`. Do not merge it. Do not touch PR #313.
+
+## Three UI fixes from a QA audit (owner chose all three in one PR)
+
+### (a) Add account popover opens off screen at 320 px
+`app/money/accounts/page.tsx` (~line 132) renders the form inside `AddAccountPanel` (`app/money/accounts/add-account-panel.tsx`, a `<details>`) with `absolute right-0 … w-72 max-w-[calc(100vw-2rem)]`. At 320×568 the trigger wraps under the heading on the left, so a right-aligned 288 px panel starts 163 px left of the viewport, clipping labels, fields and submit. At 390 px it fits. Make the panel stay fully on screen at any width (e.g. align to the left edge when the trigger is on the left / at small widths, or position it within the viewport) without changing desktop placement. Escape/focus-return already works — keep it. Check whether other `<details>` popovers in the app use the same `absolute right-0` pattern next to a wrapping trigger and fix them the same way if so (fix the class, not just this case) — but keep it surgical.
+
+### (b) Fresh Overview shows an empty Cash flow chart with no message
+On a workspace with no transactions, Home/Overview shows a large empty Cash flow chart with its controls and no explanation, which reads as a chart that failed to load. Find the Cash flow widget (search `components/` and `app/` for the cash flow widget used on Home; see `FEATURES.md` for widget names). When there are no transactions in the range because the workspace has no transactions at all, show a short empty state instead of the blank canvas: "Import a statement or connect a bank to see cash flow." with links to `/import` (statement) and the bank section. If there ARE transactions but none in the chosen range, say so instead ("No transactions in this period"). Keep the card's height stable so Home doesn't shift.
+
+### (c) Mobile truncation
+On phones (390 px), from audit screenshots with synthetic data:
+- Home stacked cards truncate account names and agent role labels to one line.
+- A large amount wrapped across multiple lines.
+- Mobile Transactions shortens several distinct row descriptions to the same visible prefix.
+Fix: names, role labels and transaction descriptions get up to two lines (`line-clamp-2`, with the full text in a `title` attribute) instead of single-line truncation, on mobile widths. Money amounts never wrap: `whitespace-nowrap` + tabular nums, and where the space is too narrow show the compact form (e.g. €1.2M) with the full value in `title`/accessible label. Look for the existing money formatting helper (in `lib/` — e.g. a `formatMoney`/`money` function) and add the compact variant there rather than formatting in components; money is integer minor units with an explicit currency (AGENTS.md). Unit-test the compact formatter (rounding, negative values, a currency with 0 minor digits like JPY) — that is money display logic worth a test.
+
+## Checks
+- `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run check:bundle`.
+- Skill `verify-ui` on the QA app (`npm run qa:server`; `npm run qa:shots -- <label> home money/accounts money/transactions` — see AGENTS.md; set up QA with `npm run setup -- --qa` / `npm run qa:auth` if needed; seed only synthetic data, including an empty workspace for (b) and a long account name + a large amount for (c)). Before/after at 320×568 for (a), empty Home for (b), 390×844 Home and Transactions for (c), light and dark. Embed them in the PR (pattern: a `pr-assets/<pr>` branch).
+- If an existing browser journey (e.g. `e2e/accessibility.gated.spec.ts` "core screens fit mobile") can assert the popover is within the viewport at 320 px, extend it rather than adding a new spec.
+- **Speed** section (skill `measure-speed`): Home and Accounts open times before/after.
+- End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+
+When done, your last line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
