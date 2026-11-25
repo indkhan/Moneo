@@ -1,0 +1,28 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, tests only where they catch a real bug, QA backend only — never the owner's backend on port 3000 or `.env`). Your checkout is based on the latest `main`. Create a branch `t3/audit-chat-layout`, commit in plain-language steps, push, and open ONE pull request to `main`. Do not merge it. Do not touch PR #313.
+
+## Two layout bugs on the Ask/chat page (`/ai`, `components/chat-workspace.tsx` and the app shell/layout around it)
+
+Found by a QA audit; nothing in these files changed since. Fix both in this one PR.
+
+### B1 — a populated chat scrolls the whole app off screen
+Repro: open a conversation with many messages (audit: 42 messages, 65 conversations in the sidebar), click "Older conversations" in the sidebar until the list ends, then keep scrolling down with the wheel over the sidebar after it reaches its bottom. The scroll chains to the outer document: `document.scrollingElement.scrollTop` went from 0 to 7,637 px (1440×900), 9,559 (1024×500) and 14,014 (390×844); the app moved entirely above the viewport and the visible area was the bare HTML background. A new empty chat stayed at 0. A temporary `overscroll-behavior: contain` on the sidebar stopped the chaining, but the document was still taller than the viewport — so there are two causes to fix at the source:
+1. The document itself is taller than the viewport on `/ai` (find which element overflows the app shell — likely the populated message pane or the sidebar not being constrained to the shell's height — and make the shell own the height so only the inner panels scroll; the page should never get document-level scroll on this route).
+2. Scroll chaining from inner scrollers (sidebar `aside` at ~line 243, the message pane at ~258, the mobile conversations menu at ~249) — add `overscroll-contain` where an inner panel scrolls.
+Check the other app pages share the same shell, and don't break pages that legitimately scroll the document (check Home, Transactions, Settings on desktop and mobile still scroll normally).
+
+### B3 — a fresh chat's text box is unreachable on a short desktop window
+Repro: at 1024×500, open New chat. The textarea sat at y=131–179 px while its visible scroll pane started at y=190 px, so clicking where it should be couldn't focus it; attachment and send were only partly visible. Present before any scrolling. Make the composer always fully visible and clickable on short viewports (e.g. the empty-chat intro/suggestions should scroll or shrink, not the composer).
+
+## Checks
+- Add a browser check to an existing chat journey spec if one fits (e.g. `e2e/chat-*.gated.spec.ts` or `e2e/accessibility.gated.spec.ts`) — per AGENTS.md add to an existing journey rather than a new spec: wheel past the sidebar's end on a populated chat and assert document scroll stays 0 and the heading stays visible; at 1024×500 assert the composer textarea can be clicked and typed into. Seed only synthetic QA data; reuse existing fixture helpers.
+- Run against the QA app (`npm run qa:server`; `npm run test:e2e -- <spec>`; see `e2e/README.md`; `npm run setup -- --qa` and `npm run qa:auth` if needed).
+- `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`.
+- Skill `verify-ui`: before/after screenshots at 1440×900, 1024×500 and 390×844, light and dark; embed them in the PR (pattern used by recent PRs: a `pr-assets/<name>` branch).
+- **Speed** section (skill `measure-speed`) — CSS-only should be no change; say so with numbers for /ai open time.
+- End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+
+When done, your last line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
