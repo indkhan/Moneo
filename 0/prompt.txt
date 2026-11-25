@@ -1,0 +1,19 @@
+Honestly now thinking more about it I think the chat or artifact and both of these two should have the default agent that is being used which is there which is nice in the setting but in the chat itself there should be a way for me to select the model in chat and artifact it could also be that at the startup I was using one model and later I changed it to another model plus right now when I click on regenerate it just regenerates it but yeah it should be that plus there should be a way for me to edit the old message right now regenerate just regenerate it but regenerates should let me choose whichever model I want so that should be as per model I have selected in the chatting if I click on regional it does not use the model that it was using till now it uses the model which the chat is open on right now and when you are continuing the conversation and there were a few regenerated things and you tell it something it continues from the one that you have opened for example I regenerate four times and I finally go back to the second one or the third one or whichever one I am on and then I continue the scene it has that one before
+
+
+what do you think
+
+---
+
+1. yes
+2. yes it lets and continues from that chat  like chatgpt
+
+---
+
+<task-notification>
+<task-id>bii1ooepq</task-id>
+<tool-use-id>toolu_01BWBX3ggxno8fUETHRkt3uX</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\71aed899bb6e835e\27ecbdf0-f1fd-4439-b7e4-b99b7602ea84\tasks\bii1ooepq.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-3befa7b5-9473690bb1b2a767; npm ci --no-audit --no-fund &gt; ../npmci.log 2&gt;&amp;1; echo $?; tail -3 ../npmci.log" completed (exit code 0)</summary>
+</task-notification>
