@@ -1,0 +1,22 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, QA backend only — never the owner's backend on port 3000, `.env` or Docker project `moneo`). Check out the existing branch `t3/audit-large-import` (PR https://github.com/indkhan/Moneo/pull/336) — `git fetch origin t3/audit-large-import && git checkout -B t3/audit-large-import origin/t3/audit-large-import` — and push fixes to that same branch. Do not open a new PR. Do not merge. Do not touch PR #313.
+
+## Context
+PR #336 fixes large statement imports hitting the 8 s statement timeout. Cause found: pooled PostgREST connections keep plans built while tables were near-empty, so per-row lookups seq-scan rows the import already loaded. Fix: migration `supabase/migrations/202611260001_large_import_plans.sql` adds `public.refresh_import_statistics()` (security definer; runs `ANALYZE` on transactions, source_transactions, transaction_sources, balance_snapshots when `n_mod_since_analyze > greatest(reltuples,250)`) and patches `ingest_import_batch` to call it. New test `lib/import/large-import.live.test.ts` (flag `RUN_LARGE_IMPORT_DB_TESTS`, added to `scripts/test-db.mjs`) imports 2,500 rows in 250-row batches on one connection and asserts per-row buffer blocks stay flat. Locally it took ~4 s.
+
+## Failure to fix
+CI job `database` (run https://github.com/indkhan/Moneo/actions/runs/45729756846, job 139608539715) fails: `lib/import/large-import.live.test.ts` "Test timed out in 60000ms". Every other live test passed in <6 s. `test:db` runs `supabase/tests/migrations.mjs` first (which includes heavy SQL regressions such as `supabase/tests/import-batch-throughput.mjs`), then vitest with `--no-file-parallelism`. Read the full log with `gh run view 45729756846 --log` / `gh run view --job 139608539715 --log`.
+
+## What to do
+1. Reproduce the CI order locally on a FRESH test backend exactly as CI does it (see `.github/workflows/*.yml` database job: `docker compose -p moneo-qa down -v` then `npm run setup -- --qa`, then `npm run test:db`). Find where it hangs: run with `pg_stat_activity` / `pg_locks` sampling from a second connection (wait_event, blocking pids) and per-step timing.
+2. Decide whether it is a real product problem or test-only. Important production questions to answer either way: can `ANALYZE` inside `ingest_import_batch` wait on a lock (it holds SHARE UPDATE EXCLUSIVE until the batch transaction commits — so two concurrent import batches, an autovacuum, or another session's ANALYZE/VACUUM can serialize or block it)? Can it make a batch exceed the statement timeout on a large owner database? If yes, fix the design at the source (e.g. avoid holding ANALYZE inside the batch transaction, use a lock-safe approach, or a different way to keep plans fresh) — measure that the 5,000-row speedup in the PR description still holds (before 19.9 s → after 5.5 s).
+3. If it is test-only (e.g. the test's own state or the earlier SQL regressions leaving data/locks), fix the test so it is deterministic and stays under 10 s (AGENTS.md), while still failing on the old SQL.
+4. New migration only if the SQL changes and #336's migration has not been applied anywhere but QA — since #336 is unmerged, you MAY edit `202611260001_large_import_plans.sql` in place; re-run `npm run db:types`.
+
+## Checks
+`npm run test:db` on a fresh QA backend passes twice in a row; `npm test`, `npm run lint`, `npm run typecheck`. Update the PR description (`gh pr edit 336 --body-file ...`) with the cause of the CI hang, what changed, and refreshed Speed numbers. End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; keep the PR body ending with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Stop servers you start; delete synthetic files; leave QA clean.
+
+When done, your last line must be: PR https://github.com/indkhan/Moneo/pull/336, head <SHA>, checks and reviews <state>.
