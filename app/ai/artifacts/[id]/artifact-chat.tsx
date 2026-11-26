@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChatForm } from "@/components/chat-form";
 import { claimFirstPrompt } from "../actions";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, localExchange, type ChatItem, type PendingExchange } from "@/components/chat-messages";
@@ -9,7 +9,7 @@ import { useChatPath } from "@/lib/ai/use-chat-path";
 import { useAiAccess } from "@/lib/ai/use-ai-access";
 import type { ChatNode } from "@/lib/ai/chat-tree";
 import { usePolling } from "@/lib/use-polling";
-import { SavedVersion, type HomeVersions } from "./saved-version";
+import { SavedVersion, savedVersion, type HomeVersions } from "./saved-version";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
@@ -25,11 +25,23 @@ export function SendButton({ prompt, idle, label, sending }: { prompt: string; i
   </span>;
 }
 
-export function ArtifactChat({ conversationId, initial, requests: initialRequests, model, messagesCursor, running: initialRunning, artifactId, artifact, home }: { conversationId: string; initial: ChatItem[]; requests: ChatNode[]; model: string | null; messagesCursor: string | null; running: string | null; artifactId?: string; artifact: string; home: HomeVersions }) {
+export function ArtifactChat({ conversationId, initial, requests: initialRequests, end, model, messagesCursor, running: initialRunning, artifactId, artifact, home }: { conversationId: string; initial: ChatItem[]; requests: ChatNode[]; end: string | null; model: string | null; messagesCursor: string | null; running: string | null; artifactId?: string; artifact: string; home: HomeVersions }) {
   const router = useRouter();
+  const search = useSearchParams();
   const [messages, setMessages] = useState(initial);
   const [requests, setRequests] = useState(initialRequests);
-  const branch = useChatPath(requests);
+  const branch = useChatPath(requests, end);
+  const shownEnd = useRef(branch.end);
+  const show = (changes: Record<string, string | null>) => {
+    const params = new URLSearchParams(search);
+    for (const [name, value] of Object.entries(changes)) if (value === null) params.delete(name); else params.set(name, value);
+    router.replace(`?${params}`, { scroll: false });
+  };
+  useEffect(() => {
+    if (!branch.end || branch.end === shownEnd.current) return;
+    shownEnd.current = branch.end;
+    show({ branch: branch.end, v: null, cv: null });
+  });
   const access = useAiAccess();
   const [older, setOlder] = useState(messagesCursor);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -81,7 +93,11 @@ export function ArtifactChat({ conversationId, initial, requests: initialRequest
     const before = live.current;
     live.current = applyChatEvent(before, event);
     setPending(live.current);
-    if (event.type === "tool" && event.state === "done" && ["write_page", "card_preset", "write_card", "remove_card"].includes(event.name ?? "")) router.refresh();
+    if (event.type !== "tool" || event.state !== "done") return;
+    const saved = savedVersion({ name: event.name, state: event.state, output: event.output, input: event.input });
+    if (saved?.kind === "page") show({ v: String(saved.version) });
+    else if (saved?.kind === "card") show({ card: saved.cardId, cv: String(saved.version) });
+    else if (event.name === "remove_card") router.refresh();
   }
   function onDone(_id: string, question: string, result: (ChatAnswer & { requestId: string }) | null, attachments: ChatAttachment[]) {
     const finished = live.current ?? undefined;
@@ -90,18 +106,17 @@ export function ArtifactChat({ conversationId, initial, requests: initialRequest
     const exchange = localExchange(question, result, finished, attachments);
     setMessages(current => [...current, ...exchange.messages]);
     setRequests(current => [...current, exchange.node]);
-    router.refresh();
   }
 
   return <div className="flex min-h-0 flex-1 flex-col">
     <div ref={scroll} aria-label="Artifact chat messages" className="relative min-h-0 flex-1 overflow-y-auto pr-1">
       {older && <button type="button" disabled={loadingOlder} onClick={() => void loadOlder()} className="mb-4 min-h-9 rounded-lg border border-border px-3 text-xs text-muted-foreground disabled:opacity-50">{loadingOlder ? "Loading older messages…" : "Older messages"}</button>}
       {historyError && <p role="alert" className="mb-3 text-sm text-danger">{historyError}</p>}
-      {messages.length || pending || resuming ? <ChatMessages compact messages={messages} path={branch.path} onPick={branch.pick} editable models={access?.models} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} toolResult={(step, key) => <SavedVersion key={key} step={step} artifactId={artifact} home={home} />} />
+      {messages.length || pending || resuming ? <ChatMessages compact messages={messages} path={branch.path} onPick={branch.pick} editable models={access?.models} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} toolResult={(step, key, regenerate) => <SavedVersion key={key} step={step} artifactId={artifact} home={home} regenerate={regenerate} models={access?.models ?? []} />} />
         : <p className="text-sm text-muted-foreground">Describe what to build. Ask for a Home card any time, e.g. “add this to Home as a small card”.</p>}
     </div>
     {unreachable && resuming && <p role="alert" className="text-xs text-warning">Could not check on this build. It may still be running. Moneo keeps trying.</p>}
     {claimFailed && <p role="alert" className="text-sm text-danger">Could not start your request. <button type="button" onClick={() => setClaimAttempt(count => count + 1)} className="underline">Try again</button></p>}
-    <ChatForm conversationId={conversationId} selectionKey={`moneo-artifact-${conversationId}`} autoSend={request} placeholder="Change the page or a card…" parent={branch.end} model={model} persisted onStart={onStart} onEvent={onEvent} onDone={onDone} />
+    <ChatForm conversationId={conversationId} selectionKey={`moneo-artifact-${conversationId}`} autoSend={request} placeholder="Change the page or a card…" parent={branch.end} model={model} persisted agent="artifacts" onStart={onStart} onEvent={onEvent} onDone={onDone} />
   </div>;
 }

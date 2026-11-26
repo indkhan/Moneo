@@ -12,7 +12,7 @@ import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { ChatQueue } from "@/components/chat-queue";
 import { DRAFT_EVENT } from "@/components/chat-messages";
 import { RESEND_EVENT, type Resend } from "@/components/message-actions";
-import { useAiAccess } from "@/lib/ai/use-ai-access";
+import { ModelPicker } from "@/components/model-picker";
 
 const draftIsNotKeptWhenStorageIsBlocked = () => undefined;
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
@@ -23,29 +23,18 @@ export type ChatFormEvents = {
   onDone?: (conversationId: string, question: string, result: (ChatAnswer & { requestId: string }) | null, attachments: ChatAttachment[]) => void;
 };
 
-function ModelSelect({ conversationId, saved, persisted, value, onChange }: { conversationId: string; saved: boolean; persisted: boolean; value: string; onChange: (model: string) => void }) {
-  const access = useAiAccess();
+function ModelSelect({ conversationId, agent, saved, persisted, value, onChange }: { conversationId: string; agent: "chat" | "artifacts"; saved: boolean; persisted: boolean; value: string; onChange: (model: string) => void }) {
   const [problem, setProblem] = useState("");
-  if (!access?.models.length && !value) return null;
   async function choose(next: string) {
     onChange(next); setProblem("");
     if (!persisted) return;
     const response = await fetch(`/api/conversations/${conversationId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: next || null }) }).catch(() => null);
     if (!response?.ok) setProblem("Could not save the model for this chat. Try again.");
   }
-  const options = [...new Set([...access?.models ?? [], ...value ? [value] : []])];
-  return <label className="flex min-w-0 items-center" title={problem || (saved ? "Model for this chat" : "Model for this chat; the default comes from Settings")}>
-    <span className="sr-only">Model for this chat</span>
-    <select value={value} onChange={event => void choose(event.target.value)} aria-invalid={!!problem || undefined}
-      className={`h-8 max-w-40 min-w-0 truncate rounded-lg bg-transparent px-1.5 text-xs hover:bg-muted hover:text-foreground focus:outline-none sm:max-w-56 ${problem ? "text-danger" : "text-muted-foreground"}`}>
-      <option value="">{access?.chatModel ? `Default · ${access.chatModel}` : "Default model"}</option>
-      {options.map(option => <option key={option} value={option}>{option}</option>)}
-    </select>
-    {problem && <span role="alert" className="sr-only">{problem}</span>}
-  </label>;
+  return <ModelPicker agent={agent} value={value} onChange={next => void choose(next)} problem={problem} title={saved ? "Model for this chat" : "Model for this chat; the default comes from Settings"} />;
 }
 
-export function ChatForm({ conversationId, selectionKey, empty = false, scope, placeholder = "Ask anything about your money", autoSend, parent, model, persisted = false, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode; placeholder?: string; autoSend?: string; parent?: string | null; model?: string | null; persisted?: boolean } & ChatFormEvents) {
+export function ChatForm({ conversationId, selectionKey, empty = false, scope, placeholder = "Ask anything about your money", autoSend, parent, model, persisted = false, agent = "chat", onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode; placeholder?: string; autoSend?: string; parent?: string | null; model?: string | null; persisted?: boolean; agent?: "chat" | "artifacts" } & ChatFormEvents) {
   const [message, setMessage] = useState("");
   const [chosen, setChosen] = useState(model ?? "");
   const draftKey = `moneo-chat-draft:${conversationId}`;
@@ -118,7 +107,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
   });
 
   const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder={placeholder} busyText="Working on a reply. Anything you send now is queued." attachments={files} voice={{ onSend: sendSpoken }}
-    tools={<ModelSelect conversationId={conversationId} saved={!!model} persisted={persisted} value={chosen} onChange={setChosen} />} /></>;
+    tools={<ModelSelect conversationId={conversationId} agent={agent} saved={!!model} persisted={persisted} value={chosen} onChange={setChosen} />} /></>;
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 

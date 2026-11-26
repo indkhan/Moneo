@@ -6,6 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { ArtifactFrame } from "@/components/artifact-frame";
 import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { loadConversation } from "@/lib/ai/conversation-history";
+import { branchOf, newestOnBranch, newestOnBranchOrLatest, visiblePath } from "@/lib/ai/chat-tree";
 import { cardWidgetKey, homeLayout } from "@/lib/finance/dashboard";
 import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
 
@@ -21,8 +22,8 @@ const primary = "inline-flex min-h-8 items-center gap-1 rounded-lg bg-primary px
 
 export const metadata = { title: "Artifact" };
 
-type Search = { v?: string; full?: string; tab?: string; card?: string; cv?: string };
-type CardRow = { id: string; title: string; size: string; published_version: number | null; artifact_card_versions: { version: number; title: string }[] };
+type Search = { v?: string; full?: string; tab?: string; card?: string; cv?: string; branch?: string };
+type CardRow = { id: string; title: string; size: string; published_version: number | null; artifact_card_versions: { version: number; title: string; request_id: string | null }[] };
 
 export default async function ArtifactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -32,8 +33,8 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const [artifact, versions, cards, layout, chat] = await Promise.all([
     supabase.from("artifacts").select("id, title, first_prompt, first_prompt_claimed_at").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
-    supabase.from("artifact_versions").select("version, prompt").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
-    supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, title)").eq("workspace_id", workspace.id).eq("artifact_id", id).is("deleted_at", null).order("created_at"),
+    supabase.from("artifact_versions").select("version, prompt, model, request_id").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
+    supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, title, request_id)").eq("workspace_id", workspace.id).eq("artifact_id", id).is("deleted_at", null).order("created_at"),
     supabase.from("dashboard_layouts").select("items").eq("workspace_id", workspace.id).maybeSingle(),
     supabase.from("conversations").select("id").eq("workspace_id", workspace.id).eq("artifact_id", id).maybeSingle(),
   ]);
@@ -50,20 +51,24 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const start = waiting && !artifact.data.first_prompt_claimed_at;
   const retry = waiting && !start ? artifact.data.first_prompt : null;
 
+  const requests = history.requests ?? [];
+  const end = requests.some(node => node.id === search.branch) ? search.branch ?? null : visiblePath(requests).at(-1)?.answer ?? null;
+  const branch = branchOf(requests, end);
   const pages = versions.data ?? [];
-  const current = pages.find(item => String(item.version) === search.v) ?? pages.at(-1);
+  const onBranch = newestOnBranch(pages, branch);
+  const current = pages.find(item => String(item.version) === search.v) ?? onBranch;
   const latest = pages.at(-1)?.version ?? 0;
   const tab = search.tab === "cards" ? "cards" : "page";
-  const at = (query: Partial<Search>) => `/ai/artifacts/${id}?${new URLSearchParams(Object.entries({ tab, ...(current ? { v: String(current.version) } : {}), ...query }).filter((entry): entry is [string, string] => !!entry[1]))}`;
+  const at = (query: Partial<Search>) => `/ai/artifacts/${id}?${new URLSearchParams(Object.entries({ tab, ...(search.branch ? { branch: search.branch } : {}), ...(current ? { v: String(current.version) } : {}), ...query }).filter((entry): entry is [string, string] => !!entry[1]))}`;
   const dataAsOf = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone }).format(new Date());
-  const older = !!current && current.version < latest;
+  const older = !!current && current.version < (onBranch?.version ?? latest);
   const dataLabel = `${older ? "Older design, current data" : "Data"} as of ${dataAsOf}`;
   const frame = current && <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} className="size-full" />;
 
   if (search.full && frame) return <div className="fixed inset-0 z-50 flex flex-col bg-background">
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-card px-3 py-1.5 text-xs">
       <h1 className="min-w-0 flex-1 basis-40 truncate text-sm font-medium">{artifact.data.title}</h1>
-      <span>Design v{current.version} of {latest}</span><span className="text-muted-foreground">{dataLabel}</span>
+      <span>Design v{current.version} of {latest}{current.model && ` · ${current.model}`}</span><span className="text-muted-foreground">{dataLabel}</span>
       <ExitFullScreen href={at({ full: undefined })} />
     </div>
     <div className="min-h-0 flex-1">{frame}</div>
@@ -86,7 +91,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const cardView = card && (() => {
     const all = card.artifact_card_versions.map(item => item.version).sort((a, b) => a - b);
     const newest = all.at(-1) ?? 0;
-    const shown = search.card === card.id && all.includes(Number(search.cv)) ? Number(search.cv) : newest;
+    const shown = search.card === card.id && all.includes(Number(search.cv)) ? Number(search.cv) : newestOnBranchOrLatest(card.artifact_card_versions, branch)?.version ?? newest;
     const onHome = card.published_version !== null && homeItems.includes(cardWidgetKey(card.id));
     const size = cardSize(card.size);
     const name = card.artifact_card_versions.find(item => item.version === shown)?.title ?? card.title;
@@ -126,7 +131,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
         </div>
         <DeleteArtifactButton id={id} title={artifact.data.title} label="" className="mt-6" />
       </div>
-      <ArtifactChat conversationId={conversationId} initial={history.messages} requests={history.requests ?? []} model={history.selected.model ?? null} messagesCursor={history.messagesCursor} running={history.running ?? null} artifactId={start ? id : undefined} artifact={id} home={home} />
+      <ArtifactChat conversationId={conversationId} initial={history.messages} requests={requests} end={end} model={history.selected.model ?? null} messagesCursor={history.messagesCursor} running={history.running ?? null} artifactId={start ? id : undefined} artifact={id} home={home} />
     </aside>
     <section aria-label="Artifact" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border max-lg:h-[85dvh] lg:min-h-0">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-card px-3 py-1.5 text-xs">
@@ -135,12 +140,13 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
           {tab === "page" && current && <>
             <span title={dataLabel} className="inline-flex items-center gap-1 px-1 text-muted-foreground"><Clock className="size-3.5" aria-hidden="true" /><span className="sr-only">{dataLabel}</span><span aria-hidden="true" className="max-2xl:hidden">{dataLabel}</span>{older && <span aria-hidden="true" className="2xl:hidden">Older design</span>}</span>
             {stepper(current.version, latest, version => at({ v: String(version) }), "Design ")}
+            {current.model && <span title={`Page v${current.version} was written by ${current.model}`} className="max-w-36 truncate text-muted-foreground"><span className="sr-only">Written by </span>{current.model}</span>}
             <Link href={at({ full: "1" })} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
           </>}
           {tab === "cards" && cardView?.controls}
         </div>
       </div>
-      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || start ? "Building your artifact… Follow the progress in the chat." : retry ? <SendButton prompt={retry} idle="Your first request did not finish." label="Send it again" sending="Building your artifact… Follow the progress in the chat." /> : "No page yet. Describe what to build in the chat."}</p>}</div>
+      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || start ? "Building your artifact… Follow the progress in the chat." : pages.length ? "This reply has no page yet. Pick another reply, or ask for a page in the chat." : retry ? <SendButton prompt={retry} idle="Your first request did not finish." label="Send it again" sending="Building your artifact… Follow the progress in the chat." /> : "No page yet. Describe what to build in the chat."}</p>}</div>
         : <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 sm:p-8">
           {cardView?.preview ?? (history.running || start ? <p role="status" className="text-sm text-muted-foreground">Follow the progress in the chat.</p> : <SendButton prompt={buildCard} idle="No Home card yet. Moneo can make one from this page, using an AI request." label="Create a Home card" sending="Building your Home card… Follow the progress in the chat." />)}
         </div>}
