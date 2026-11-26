@@ -7,29 +7,56 @@ test.skip(!signedIn, "Needs the QA session (scripts/e2e-auth.mjs)");
 
 const pem = "-----BEGIN PRIVATE KEY-----\nMIIsynthetic\n-----END PRIVATE KEY-----\n";
 
-test("Connected banks asks for the Enable Banking App ID and key when none is set up", async ({ page }) => {
+test("a new owner connects a first and a second bank from Accounts without visiting Settings", async ({ page }) => {
   let configured = false;
   const saved: unknown[] = [];
+  const connections: unknown[] = [];
+  const bank = (id: string, name: string) => ({ id, aspsp_name: name, aspsp_country: "DE", status: "active", valid_until: "2027-05-01T00:00:00Z", last_synced_at: null,
+    sync_started_at: null, last_error: null, problem: null, next_sync_at: null, accounts: [{ provider_account_uid: `${id}-1`, account_name: `${name} Girokonto`, currency_code: "EUR", last_booked_on: null }],
+    sync: { running: false, imports: [] } });
   await page.route("**/api/bank/connections", route => route.fulfill({ json: {
     configured, credentials: configured ? { source: "app", hint: "f00d" } : { source: null, hint: null },
-    redirectUrl: "https://localhost:3443/api/bank/callback", connections: [] } }));
+    redirectUrl: "https://localhost:3443/api/bank/callback", connections } }));
+  await page.route("**/api/scalable/connections", route => route.fulfill({ json: { configured: true, connection: null } }));
   await page.route("**/api/bank/credentials", async route => {
     saved.push(route.request().postDataJSON());
     configured = true;
     await route.fulfill({ json: { saved: true } });
   });
-  await page.goto("/import#connected-banks");
-  const banks = page.getByRole("region", { name: "Connected banks" });
-  await expect(banks.getByText("https://localhost:3443/api/bank/callback")).toBeVisible();
-  await expect(banks.getByText("https://indkhan.github.io/Moneo/privacy.html")).toBeVisible();
-  await banks.getByLabel("App ID").fill("app-synthetic");
-  await banks.getByLabel("Or upload the .pem file").setInputFiles({ name: "app-synthetic.pem", mimeType: "application/x-pem-file", buffer: Buffer.from(pem) });
-  await expect(banks.getByLabel("Private key")).toHaveValue(pem);
-  await banks.getByRole("button", { name: "Save and check" }).click();
-  await expect(banks.getByText("Enable Banking is set up. Choose your bank to connect it.")).toBeVisible();
-  await expect(banks.getByRole("button", { name: "Choose a bank" })).toBeVisible();
-  await expect(banks.getByText("Enable Banking app ending in f00d")).toBeVisible();
+  await page.route("**/api/bank/aspsps?country=*", route => route.fulfill({ json: { banks: [{ name: "Testbank", country: "DE" }, { name: "Other Bank", country: "DE" }] } }));
+  const opened: string[] = [];
+  await page.route("**/api/bank/connect", async route => {
+    const { aspspName } = route.request().postDataJSON();
+    opened.push(aspspName);
+    connections.unshift(bank(`b${connections.length + 1}`, aspspName));
+    await route.fulfill({ json: { url: "/money/accounts?bank=connected#connected" } });
+  });
+
+  await page.goto("/money/accounts?connect=bank#connected");
+  const flow = page.getByRole("group", { name: "Connect a bank" });
+  await expect(flow.getByText("https://localhost:3443/api/bank/callback")).toBeVisible();
+  await flow.getByLabel("App ID").fill("app-synthetic");
+  await flow.getByLabel("Or upload the .pem file").setInputFiles({ name: "app-synthetic.pem", mimeType: "application/x-pem-file", buffer: Buffer.from(pem) });
+  await expect(flow.getByLabel("Private key")).toHaveValue(pem);
+  await flow.getByRole("button", { name: "Save and check" }).click();
+  await expect(flow.getByText("Enable Banking is set up. Choose your bank to connect it.")).toBeVisible();
   expect(saved).toEqual([{ appId: "app-synthetic", privateKey: pem }]);
+  await flow.getByLabel("Search").fill("test");
+  await expect(flow.getByRole("button", { name: /Other Bank/ })).toHaveCount(0);
+  await flow.getByRole("button", { name: /Testbank/ }).click();
+
+  await expect(page).toHaveURL(/\/money\/accounts\?bank=connected#connected$/);
+  const first = page.getByRole("article", { name: "Testbank" });
+  await expect(first).toContainText("Testbank Girokonto");
+  await expect(page.getByText("Enable Banking app ending in f00d")).toBeVisible();
+
+  await page.getByRole("button", { name: "Connect another bank" }).click();
+  const again = page.getByRole("group", { name: "Connect a bank" });
+  await expect(again.getByLabel("App ID")).toHaveCount(0);
+  await again.getByRole("button", { name: /Other Bank/ }).click();
+  await expect(page.getByRole("article", { name: "Other Bank" })).toBeVisible();
+  await expect(page.getByRole("article", { name: "Testbank" })).toBeVisible();
+  expect(opened).toEqual(["Testbank", "Other Bank"]);
 });
 
 test("Ask explains missing AI and voice access instead of failing", async ({ page }) => {
@@ -55,7 +82,7 @@ test("Settings keeps every key and connection in one section", async ({ page }) 
   await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Keys and connections" }).click();
   await expect(page).toHaveURL(/#connections$/);
   const section = page.getByRole("region", { name: "Keys and connections" });
-  for (const name of ["AI access", "Connected banks", "Scalable Capital", "Set up automatically"])
+  for (const name of ["AI access", "Set up automatically"])
     await expect(section.getByRole("heading", { name, exact: true }).first()).toBeVisible();
   await expect(section.getByText("Encryption for saved keys and bank sessions")).toBeVisible();
   await expect(section.getByText("Missing: run npm run setup")).toHaveCount(0);

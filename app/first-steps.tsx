@@ -33,7 +33,7 @@ export function FirstSteps({ steps }: { steps: FirstRun }) {
       <Step n={2} done={money} title={money ? "Money added" : "Add your money"}>
         {money ? <p className="text-sm text-muted-foreground">Your accounts are on <Link href="/money/accounts" className={quiet}>Accounts</Link>. Import more any time.</p> : <>
           <div className="space-y-1"><Link href="/import" className={primary}>Import a statement</Link><p className="text-xs text-muted-foreground">A CSV or PDF from your bank. The quick way.</p></div>
-          <div className="space-y-1"><Link href="/settings#banks" className={secondary}>Connect a bank</Link><p className="text-xs text-muted-foreground">Needs a free Enable Banking account and takes about 10 minutes once.</p></div>
+          <div className="space-y-1"><Link href="/money/accounts?connect=bank#connected" className={secondary}>Connect a bank</Link><p className="text-xs text-muted-foreground">Needs a free Enable Banking account and takes about 10 minutes once.</p></div>
           <p className="mt-auto text-xs text-muted-foreground">or <Link href="/money/accounts" className={quiet}>add an account by hand</Link></p>
         </>}
       </Step>

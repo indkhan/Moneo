@@ -30,7 +30,7 @@ export async function CashFlowPanel({ data: spending, currency, locale }: Pick<S
   if (data.history !== "in range") return <section id="cash-flow" aria-label="Cash flow" className={card}><h2 className="text-sm font-medium">Cash flow · 6 months</h2>
     <div className="mt-4 flex h-[240px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border px-4 text-center text-sm text-muted-foreground">
       {data.history === "none" ? <p>Import a statement or connect a bank to see cash flow.</p> : <p>No transactions in this period.</p>}
-      {data.history === "none" && <p><Link href="/import" className="text-brand hover:underline">Import a statement</Link> · <Link href="/import#connected-banks" className="text-brand hover:underline">Connect a bank</Link></p>}
+      {data.history === "none" && <p><Link href="/import" className="text-brand hover:underline">Import a statement</Link> · <Link href="/money/accounts?connect=bank#connected" className="text-brand hover:underline">Connect a bank</Link></p>}
     </div></section>;
   const months = data.months.map((month, index) => ({ ...month, label: monthName(month.from, locale, "short"), name: monthName(month.from, locale),
     incomeMinor: data.trend[index].incomeMinor, spendingMinor: data.trend[index].spendingMinor }));

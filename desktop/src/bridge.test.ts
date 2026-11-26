@@ -15,19 +15,19 @@ it("does only what Moneo's server asks, on fixed routes and Moneo's own connecti
     const base = bridge.url.slice(0, bridge.url.lastIndexOf("/"));
     expect((await fetch(`${base}/guess/update/install`, { method: "POST" })).status).toBe(403);
     expect((await fetch(`${bridge.url}/update/install`, { method: "POST", headers: { origin: "https://example.com" } })).status).toBe(403);
-    expect((await post("/import?bank=connected", { origin: "https://example.com" })).status).toBe(403);
+    expect((await post("/money/accounts?bank=connected#connected", { origin: "https://example.com" })).status).toBe(403);
     expect((await fetch(`${bridge.url}/update/install`)).status).toBe(404);
-    for (const path of ["https://example.com", "//example.com/import?bank=connected", "/import?bank=connected&next=/x", "/settings?chatgpt=a b#ai-access"]) {
+    for (const path of ["https://example.com", "//example.com/money/accounts?bank=connected#connected", "/money/accounts?bank=connected&next=/x#connected", "/import?bank=connected", "/settings?chatgpt=a b#ai-access"]) {
       expect((await post(path)).status).toBe(400);
     }
     expect(onReturn).not.toHaveBeenCalled();
     expect(update.install).not.toHaveBeenCalled();
 
-    expect((await post("/import?scalable=connected#scalable")).status).toBe(204);
+    expect((await post("/money/accounts?scalable=connected#scalable")).status).toBe(204);
     expect((await post("/settings?chatgpt=ChatGPT%20sign-in%20failed.#ai-access")).status).toBe(204);
-    expect(onReturn).toHaveBeenCalledWith("/import?scalable=connected#scalable");
+    expect(onReturn).toHaveBeenCalledWith("/money/accounts?scalable=connected#scalable");
     onReturn.mockRejectedValueOnce(new Error("window closed"));
-    expect((await post("/import?bank=connected")).status).toBe(503);
+    expect((await post("/money/accounts?bank=connected#connected")).status).toBe(503);
 
     expect(await (await fetch(`${bridge.url}/update`)).json()).toEqual(status);
     expect((await fetch(`${bridge.url}/update/install`, { method: "POST" })).status).toBe(200);

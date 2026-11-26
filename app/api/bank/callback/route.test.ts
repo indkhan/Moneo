@@ -46,7 +46,7 @@ const callback = (query: string) => GET(new Request(`http://localhost:3000/api/b
 it("rejects an unknown, malformed or stale state without touching the bank", async () => {
   for (const query of ["code=c&state=not-a-uuid", "code=c&state=11111111-2222-4333-8444-555555555555"]) {
     const response = await callback(query);
-    expect(response.headers.get("location")).toBe("http://localhost:3000/import?bank=invalid");
+    expect(response.headers.get("location")).toBe("http://localhost:3000/money/accounts?bank=invalid#connected");
   }
   pending = { ...pending!, created_at: new Date(Date.now() - 2 * 3_600_000).toISOString() };
   expect((await callback(`code=c&state=${state}`)).headers.get("location")).toContain("bank=invalid");

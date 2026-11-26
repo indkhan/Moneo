@@ -7,8 +7,6 @@ import { usePolling } from "@/lib/use-polling";
 import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/import/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
-import { ConnectedBanks } from "@/components/connected-banks";
-import { ScalableConnection } from "@/components/scalable-connection";
 import { PhoneCollapse } from "@/components/phone-collapse";
 
 type Preview = {
@@ -373,7 +371,7 @@ export default function ImportPage() {
           event.target.value = "";
         }} />
     </label>
-    {!file && <p className="text-sm text-muted-foreground">Or <a className="underline" href="#connected-banks">connect a bank</a> to sync automatically.</p>}
+    {!file && <p className="text-sm text-muted-foreground">Or <Link className="underline" href="/money/accounts?connect=bank#connected">connect a bank</Link> to sync automatically.</p>}
 
     {busy && <p role="status" className="text-sm text-muted-foreground">{interpreting ? `Reading ${file?.name ?? "statement"}…` : "Working…"}{interpreting && <button type="button" className="ml-3 underline" onClick={clearFiles}>Cancel interpretation</button>}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
@@ -507,9 +505,6 @@ export default function ImportPage() {
         {result && !stale && !mappingReady && <p className="text-sm text-muted-foreground">{!mapping?.numericConvention ? "Choose the number format to continue." : namesMissing ? "Name every account to continue." : "Confirm the timezone to continue."}</p>}
       </div>
     </section>}
-
-    <ConnectedBanks />
-    <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
 
     <section id="import-history" className="scroll-mt-20 space-y-4" aria-label="Import history">
       <h2 className="text-sm font-medium text-foreground">Import history</h2>

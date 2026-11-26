@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import type { UpdateStatus } from "./updates";
 import { renderRequest, type RenderRequest, type Rendered } from "./render-request";
 
-const RETURN_PATH = /^\/(import\?(bank|scalable)=(connected|error|invalid)(#scalable)?|settings\?chatgpt=[A-Za-z0-9%._~-]{1,600}#ai-access)$/;
+const RETURN_PATH = /^\/(money\/accounts\?(bank=(connected|error|invalid)#connected|scalable=(connected|error|invalid)#scalable)|settings\?chatgpt=[A-Za-z0-9%._~-]{1,600}#ai-access)$/;
 
 export type BridgeHandlers = {
   onReturn(path: string): Promise<void>;
