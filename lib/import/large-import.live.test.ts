@@ -13,7 +13,7 @@ it.skipIf(process.env.RUN_LARGE_IMPORT_DB_TESTS !== "1")("keeps per-row work fla
   try {
     await db`insert into auth.users(id,email,raw_user_meta_data) values(${actor},${`qa-${actor}@example.invalid`},'{"qa_test":"large-import"}')`;
     const [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${actor}`;
-    await db`analyze public.transactions, public.source_transactions, public.transaction_sources, public.balance_snapshots`;
+    await db`vacuum analyze public.transactions, public.source_transactions, public.transaction_sources, public.balance_snapshots`;
     const importId = randomUUID(), accountId = stableId(`${workspace}:account:Large synthetic:EUR`);
     await db`insert into public.imports(id,workspace_id,filename,storage_path,file_hash,status,total_rows,mapping)
       values(${importId},${workspace},'large.csv',${`${workspace}/large.csv`},${importId},'queued',${rows},'{"rowContractVersion":"normalized-row-v1"}'::jsonb)`;
