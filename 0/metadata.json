@@ -33,5 +33,39 @@
       "provider_token": 0,
       "shell_stdin": 0
     }
-  }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01DpkZbSbNoZDwXycSbqtaXv",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "measure-speed"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "11adbd855517",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1132,
+        "end": 1133,
+        "entry_ids": [
+          "f33c20da-38e7-4828-a646-c6f0aab3569e"
+        ],
+        "tool_use_id": "toolu_01DpkZbSbNoZDwXycSbqtaXv"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01DpkZbSbNoZDwXycSbqtaXv"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: measure-speed",
+        "default_collapsed": true
+      }
+    }
+  ]
 }
