@@ -67,3 +67,53 @@ test("switching replies, regenerating with another model and editing all continu
     await db.end();
   }
 });
+
+test("an artifact's page follows the reply on screen, and the next request continues from that reply's page", async ({ page }) => {
+  test.setTimeout(90_000);
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
+  const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
+  const artifactId = randomUUID(), conversationId = randomUUID(), first = randomUUID(), again = randomUUID();
+  const title = `Branch artifact ${first.slice(0, 8)}`;
+  const html = (text: string) => `<!doctype html><html><body><h1>${text}</h1></body></html>`;
+  const sent: Record<string, unknown>[] = [];
+  try {
+    await db`insert into public.artifacts (id, workspace_id, title) values (${artifactId}, ${workspaceId}, ${title})`;
+    await db`insert into public.conversations (id, workspace_id, title, artifact_id) values (${conversationId}, ${workspaceId}, ${title}, ${artifactId})`;
+    await db`insert into public.chat_requests (id, workspace_id, conversation_id, message, status, answer, created_at) values (${first}, ${workspaceId}, ${conversationId}, 'Build it', 'completed', 'Monthly built', now() - interval '2 minutes')`;
+    await db`insert into public.messages (workspace_id, conversation_id, role, content, context, request_id, created_at) values (${workspaceId}, ${conversationId}, 'user', 'Build it', '{}', ${first}, now() - interval '2 minutes')`;
+    await db`insert into public.messages (workspace_id, conversation_id, role, content, reply_to, created_at) values (${workspaceId}, ${conversationId}, 'assistant', 'Monthly built', ${first}, now() - interval '2 minutes')`;
+    await db`insert into public.chat_requests (id, workspace_id, conversation_id, message, status, answer, regenerates, created_at) values (${again}, ${workspaceId}, ${conversationId}, 'Build it', 'completed', 'Weekly built', ${first}, now() - interval '1 minute')`;
+    await db`insert into public.messages (workspace_id, conversation_id, role, content, reply_to, created_at) values (${workspaceId}, ${conversationId}, 'assistant', 'Weekly built', ${again}, now() - interval '1 minute')`;
+    await db`insert into public.artifact_versions (workspace_id, artifact_id, version, prompt, html, request_id) values (${workspaceId}, ${artifactId}, 1, 'Build it', ${html("Monthly page")}, ${first}), (${workspaceId}, ${artifactId}, 2, 'Build it', ${html("Weekly page")}, ${again})`;
+
+    await page.route("**/api/chat", async route => {
+      if (route.request().method() !== "POST") return route.fallback();
+      sent.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ json: { conversationId, answer: "Noted", parent: first } });
+    });
+    const shown = page.getByRole("region", { name: "Artifact" }).frameLocator("iframe").frameLocator("iframe");
+    const chat = page.getByLabel("Artifact chat messages");
+
+    await page.goto(`/ai/artifacts/${artifactId}`);
+    await expect(shown.getByText("Weekly page")).toBeVisible({ timeout: 30_000 });
+    await chat.getByRole("button", { name: "Previous answer" }).click();
+    await expect(chat.getByText("Monthly built")).toBeVisible();
+    await expect(shown.getByText("Monthly page")).toBeVisible({ timeout: 30_000 });
+    await expect(page).toHaveURL(new RegExp(`branch=${first}`));
+
+    await page.reload();
+    await expect(chat.getByText("Monthly built")).toBeVisible();
+    await expect(shown.getByText("Monthly page")).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel("Ask about your finances").fill("Add an average line");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toMatchObject({ message: "Add an average line", parent: first });
+  } finally {
+    await db`delete from public.messages where conversation_id = ${conversationId}`;
+    await db`delete from public.artifact_versions where artifact_id = ${artifactId}`;
+    await db`delete from public.chat_requests where conversation_id = ${conversationId}`;
+    await db`delete from public.conversations where id = ${conversationId}`;
+    await db`delete from public.artifacts where id = ${artifactId}`;
+    await db.end();
+  }
+});
