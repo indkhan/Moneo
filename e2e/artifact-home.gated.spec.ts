@@ -101,7 +101,7 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await widget.hover();
     await widget.getByRole("button", { name: `Hide ${title} card` }).click();
     await expect(widget).toHaveCount(0);
-    await page.waitForLoadState("networkidle");
+    await expect.poll(async () => (await db`select items from public.dashboard_layouts where workspace_id = ${workspaceId}`)[0]?.items, { timeout: 30_000 }).not.toContain(`card:${cardId}`);
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Add widget", exact: true }).click();
     await page.getByRole("list", { name: "Hidden widgets" }).getByRole("button", { name: `${title} card`, exact: true }).click();
