@@ -1,0 +1,24 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, money is bigint minor units, history/source records/undo must be preserved, QA backend only — never the owner's backend on port 3000, `.env` or Docker project `moneo`; mock AI). Your checkout is based on the latest `main`. Create a branch `t3/audit-large-import`, commit in plain-language steps, push, and open ONE pull request to `main` — ONLY if you reproduce the problem. Do not merge it. Do not touch PR #313.
+
+## Problem: a 5,000-row statement import hits the Postgres statement timeout
+
+A QA audit imported a 5,000-row synthetic statement through the durable import (`workflows/import-file.ts`). It never showed partial progress within 60 s, and the server logs showed `processImportBatch` (~line 129) exhausting its three attempts after statements timed out. Each batch is `IMPORT_BATCH_ROWS = 250` (`lib/import/batch.ts`). A step calls `import_batch_candidates` (RPC) then `ingest_import_batch` (RPC) with `p_offset`. The spec `e2e/import-control.gated.spec.ts` "durable import Stop, Resume, byte deduplication, undo and reimport preserve exact sources" exercises this path (it passed in a later run on a fresh user, so the slowness may depend on how many rows/transactions the workspace already has).
+
+## What to do (owner chose: reproduce, then fix the cause — NOT just smaller batches)
+1. **Reproduce** on the QA backend (`npm run setup -- --qa`, `npm run qa:auth`, `npm run qa:server`): import a synthetic 5,000-row CSV (generate fictional data in a scratch folder, never commit it), also with a workspace that already holds e.g. 10–20k transactions. Record per-batch timings for each RPC. Find the statement timeout in effect (PostgREST/role `statement_timeout`) for the service role.
+2. **Find the slow statement** with `EXPLAIN (ANALYZE, BUFFERS)` on the SQL inside those RPCs (find their latest definitions in `supabase/migrations/`; recent ones include `202611180001_import_batch_progress_delta.sql`). Likely suspects: an `OFFSET` scan over import rows that grows each batch, a candidate match without a supporting index (e.g. on workspace + account + date + amount), or per-row progress updates.
+3. **Fix the cause** in a NEW migration (never rewrite an applied one): e.g. an index, keyset instead of offset, or a set-based rewrite. Keep behaviour identical: same dedup decisions, same source rows kept, undo and reimport unchanged. Migrations must work on the desktop app's bundled Postgres (no supautils, pg_graphql, pg_net, pg_cron, pgsodium, pg_stat_statements, uuid-ossp) and on existing owner databases. Keep `lib/schema.ts` aligned and run `npm run db:types`. If you apply a migration to moneo-qa and need to revert it, revert without CASCADE.
+4. **If it does not reproduce** (each batch is well under the timeout even with a large workspace), do NOT open a PR; report the measured numbers instead.
+
+## Checks
+- A `*.live.test.ts` (runs with `npm run test:db`) that imports a large synthetic batch against QA and asserts it completes and keeps every source row — and, if practical, fails on the old SQL. Or extend an existing SQL regression in `supabase/tests/`. Follow AGENTS.md test rules; keep test files under ~10 s (use a smaller N that still showed the slowdown, if the slowdown is per-batch).
+- Run `e2e/import-control.gated.spec.ts` (the durable import spec) 3× and report.
+- `npm test`, `npm run lint`, `npm run typecheck`, `npm run test:db`, `npm run build`.
+- PR description: the measured before/after per-batch times and total import time for 5,000 rows (this is the **Speed** section), the EXPLAIN finding, and the fix. End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- Stop any servers you start; leave no temporary checkouts; delete your synthetic files and QA rows you created (or run `npm run qa:reset`).
+
+When done, your last line must be either: PR <full URL>, head <SHA>, checks and reviews <state> — or: No PR: <one-line reason with the measured numbers>.
