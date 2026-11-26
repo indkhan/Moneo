@@ -1,0 +1,79 @@
+[T3 Code: the agent in T3 thread "c8d8c05a-d815-49e5-8e39-b5a4a31bd45c" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are working in the Moneo repo (read AGENTS.md first and follow it exactly: no comments, surgical changes, QA backend only — never the owner's backend on port 3000, `.env` or the owner's desktop app/user-data; mock AI/bank/Scalable). Your checkout is based on the latest `main`. Create a branch `t3/audit-home-speed` and open ONE pull request to `main` ONLY if something reproduces and you fix it. Do not merge. Do not touch PR #313.
+
+## Owner's choice: measure first, then fix only what is still bad
+A QA audit (before the Nov 23 speed PRs #318–#322 and later changes) reported three Home problems. Use skill `measure-speed` and the memory-free setup in AGENTS.md: production build (`npm run qa:server` builds `.next-qa`), seeded QA workspace with realistic synthetic volume (e.g. 10+ accounts, several thousand transactions, an artifact card on Home, widgets customized) plus an empty workspace. Five runs each; report medians.
+
+1. **Layout shift on Home.** The browser suite's `e2e/home-performance.gated.spec.ts` "Home stays quiet while idle, stops entirely in a hidden tab, and does not shift" measured CLS 0.307 (audit) and 0.26 (on 2026-11-25, after PR #334), limit 0.1; an empty workspace measured 0.005. PR #335 (merged) moved the first-run checklist to its own card and #333 added a Cash flow empty state. Reproduce with the spec and with a PerformanceObserver (`layout-shift` entries with `sources`) to name the elements that move and when (streamed Suspense boundaries, widget skeletons with the wrong height, fonts, images, the masonry grid re-flowing). Fix at the source — e.g. skeletons that reserve the real height, or the grid not re-flowing when a late widget arrives — so the spec passes reliably (`--repeat-each=5`).
+2. **Slow page opens.** Live (owner's desktop app, data volume unknown) Home took 18.4 s and Settings 13.9 s to show their heading on recheck, with load events >15 s; Transactions 1.3 s. QA measured Home 2.7 s on a first context, ~0.5 s after. Measure Home and Settings heading time and server response time on the seeded QA workspace, cold and warm. If either is slow, trace which server reads dominate (server timing / logs) and fix the slow read. Also check startup of background jobs (`lib/scheduler.ts`) competing with the first request. If they are fast on QA, say so with numbers and note what could make the live desktop slower (data size, first start after update with migrations/backup) — do not guess-fix.
+3. **A hidden artifact card came back after reload.** In one full e2e run on 2026-11-25, `e2e/artifact-home.gated.spec.ts` "an artifact card previews natively, goes on Home at its size, reacts to its control and leaves with the artifact": after hiding the card and reloading, it was still on Home — possibly a Home layout save lost or raced (the dev server was still starting). Try to reproduce (`--repeat-each=10`, and under load). If you find a lost/raced layout write (e.g. two concurrent saves of the home layout with last-write-wins, or a save fired before hydration), fix it at the source and add a test where it belongs (`lib/` unit test for the merge/version logic, or extend the spec).
+
+## Checks and output
+- If you change code: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run check:bundle`; the affected specs pass 5× in a row. Skill `verify-ui` before/after for any visual change (light, dark, mobile), embedded in the PR (pattern: `pr-assets/<pr>` branch). The PR's **Speed** section has the before/after medians for Home and Settings (heading time, CLS, LCP).
+- End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the PR description with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- Stop servers you start; leave no temporary checkouts; reset QA (`npm run qa:reset`) when done.
+
+When done, your last line must be either: PR <full URL>, head <SHA>, checks and reviews <state> — or: No PR: <one-line summary with the measured medians>.
+
+---
+
+<task-notification>
+<task-id>brhbe22zo</task-id>
+<summary>Monitor event: "full e2e suite failures and finish"</summary>
+<event>[6/58] [chromium] › e2e\artifact-home.gated.spec.ts:164:5 › a new artifact sends its first request once, and a failed one takes a press</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>brhbe22zo</task-id>
+<summary>Monitor event: "full e2e suite failures and finish"</summary>
+<event>PostgresError: deadlock detected
+test-results\import-control.gated-durab-4a08a-port-preserve-exact-sources-chromium\test-failed-1.png</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>biohu2tcz</task-id>
+<tool-use-id>toolu_01H2UUMej8jDYMdCuxzgsyX5</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\65502c708c0b67c0\1dced526-b9f8-4b38-9f2e-21f86083ab46\tasks\biohu2tcz.output</output-file>
+<status>completed</status>
+<summary>Background command "Run the full browser suite on the dev server" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>brhbe22zo</task-id>
+<summary>Monitor event: "full e2e suite failures and finish"</summary>
+<event>1 failed
+57 passed (4.9m)</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bwlic7uuo</task-id>
+<tool-use-id>toolu_01Q9WSiQx5mEYkTtK1zAESfs</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\65502c708c0b67c0\1dced526-b9f8-4b38-9f2e-21f86083ab46\tasks\bwlic7uuo.output</output-file>
+<status>killed</status>
+<summary>Background command "Build and start the QA production server on port 3101" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>brzuoywtv</task-id>
+<tool-use-id>toolu_01Md8VDkcun7cNzgzuY38BAg</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\65502c708c0b67c0\1dced526-b9f8-4b38-9f2e-21f86083ab46\tasks\brzuoywtv.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun the artifact Home spec 12 times on cold dev servers under CPU load" completed (exit code 0)</summary>
+</task-notification>
