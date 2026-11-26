@@ -2918,6 +2918,9 @@ isOneToOne: false
 "recurring_scheduled_date":
 { Args: { "p_anchor": string,"p_cadence": string,"p_index": number }; Returns: string
                            },
+"refresh_import_statistics":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
 "register_financial_review_run":
 { Args: { "p_job_id": string,"p_run_id": string,"p_workspace_id": string }; Returns: boolean
                            },
