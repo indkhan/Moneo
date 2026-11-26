@@ -1,0 +1,46 @@
+[T3 Code: the agent in T3 thread "9b581f9e-99f2-4346-8611-1ad1fdba6dd5" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are implementing PR 1 of a 6-PR stack that simplifies Moneo's Settings page. Follow AGENTS.md exactly (no comments, tests rules, QA backend only, never touch the owner's backend on port 3000, Speed section, screenshots embedded in the PR).
+
+Context of the whole stack (for awareness only; do ONLY PR 1):
+1. (this) Accounts "Connected" area; banks and Scalable leave Settings and Import.
+2. Scalable per-holding detail on Accounts (table + line chart).
+3. Update pill in the top bar.
+4. Settings cleanup (toggles, autosave, voice rewrite).
+5. Diagnostics page: health + AI token usage for every AI task.
+6. Logs of everything, with audio and a retention setting.
+
+PR 1 requirements (owner's words, condensed):
+- On `/money/accounts` add a "Connected" area. One card per bank connection (`components/connected-banks.tsx` today) and one for Scalable (`components/scalable-connection.tsx` today). Each card shows as much as possible: bank/source name and country, status (active, expiring in N days, login ended, error), last sync time and next automatic sync, the last sync problem in plain words (`lib/sync-problems.ts`), and buttons Sync now, Reconnect, Disconnect.
+- The accounts a connection feeds are shown INSIDE that connection's card with their balances and details. They must not be listed a second time elsewhere on the page — no duplicate details. Manual and file-imported accounts stay below, each tagged with its source ("Imported file" / "Entered by hand"). Keep everything the current account rows can do (balance entry, rename, archive, history) reachable.
+- The existing Scalable portfolio block on Accounts (`ScalablePortfolioView`) moves into the Scalable connection card; keep all its data (PR 2 will add per-holding charts, don't do that here).
+- "Add account" becomes the single entry point with four choices: Connect a bank, Connect Scalable, Import a file (link to /import), Enter by hand. The one-time Enable Banking App ID + key setup becomes a step inside "Connect a bank" when credentials are missing (remove-credentials stays available on the bank area).
+- Remove `ConnectedBanks` and `ScalableConnection` from `app/settings/page.tsx` and `app/import/page.tsx`. Move the "Live Scalable data in artifacts" toggle (`artifact_scalable_data` in `app/settings/form.tsx`) onto the Scalable card, saving through the existing settings action or a small dedicated one.
+- Repoint every link to `/settings#banks`, `/settings#scalable`, `/import#scalable` (first steps, chat, agent briefing, chat API route messages, voice-key-toast etc. — grep for them) to the new Accounts anchors. Update FEATURES.md (`npm run feature-map`), README where it describes where to connect a bank, the voice/system prompt only if it names those locations.
+- Check the reverse paths still work: reconnect, disconnect, reset all data. Bank callback return URLs (`lib/bank/return-listener.ts`, Scalable callback) must land the owner back on Accounts.
+- Mobile, light and dark layouts.
+
+Workflow:
+- Start from the current commit; create branch `t3/settings-1-connected-accounts`. Commit in steps with plain-language messages ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Before changing anything, take BEFORE screenshots with skill `verify-ui` (`npm run qa:shots -- before money/accounts settings import`) and AFTER ones at the end, light/dark/mobile. Seed the QA workspace with a mocked bank connection and Scalable connection so the cards show real states (never real bank calls).
+- Run `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, and any affected Playwright journeys. Measure speed (skill `measure-speed`).
+- Push and open a PR against `main` titled "Accounts: one Connected area for banks and Scalable". Embed before/after screenshots in the description (upload them so they render; a local path is not enough), add the Speed section, end the body with "🤖 Generated with [Claude Code](https://claude.com/claude-code)". Do not merge.
+- If a decision is genuinely ambiguous, pick the option closest to the owner's intent above and list it under "Decisions" in the PR body.
+- Final line of your reply: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+[T3 Code: the agent in T3 thread "9b581f9e-99f2-4346-8611-1ad1fdba6dd5" sent this message, not the user.]
+
+Added requirement from the owner — design the full new-user bank journey on Accounts, all inside the Connected area:
+
+1. Empty state (no accounts, no Enable Banking app): the Connected area explains in one line that Moneo connects banks through a free Enable Banking app, with a "Connect a bank" button.
+2. First "Connect a bank" with no App ID/key: a guided step INSIDE that flow (panel/dialog on Accounts, not Settings) — short numbered steps for creating the Enable Banking app (registering the redirect `https://localhost:3443/api/bank/callback`), paste App ID + upload/paste key, verify, then continue straight into choosing a bank. The owner must never be sent to Settings.
+3. Choose bank: country + search, then the bank login opens; on return the owner lands back on Accounts with the new bank card highlighted, its accounts inside it, and the first sync running/visible.
+4. Adding more banks, one by one: a "Connect another bank" button in the Connected area header that skips the Enable Banking step entirely once credentials exist. Each bank becomes its own card.
+5. The Enable Banking app itself shows as a small quiet row in the Connected area (status/App ID, Replace key, Remove) — present only once credentials exist.
+6. Home first steps "Connect a bank" goes to this same flow.
+
+Include screenshots of each stage (empty state, Enable Banking setup step, bank picker, one bank connected, two banks connected) in the PR description, using mocked Enable Banking responses on the QA backend.
