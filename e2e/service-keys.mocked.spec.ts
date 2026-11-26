@@ -41,7 +41,7 @@ test("a new owner connects a first and a second bank from Accounts without visit
   await flow.getByRole("button", { name: "Save and check" }).click();
   await expect(flow.getByText("Enable Banking is set up. Choose your bank to connect it.")).toBeVisible();
   expect(saved).toEqual([{ appId: "app-synthetic", privateKey: pem }]);
-  await flow.getByLabel("Search").fill("test");
+  await flow.getByLabel("Search", { exact: true }).fill("test");
   await expect(flow.getByRole("button", { name: /Other Bank/ })).toHaveCount(0);
   await flow.getByRole("button", { name: /Testbank/ }).click();
 
@@ -75,7 +75,7 @@ test("Ask explains missing AI and voice access instead of failing", async ({ pag
   await expect.poll(() => access.evaluate(section => Math.abs(section.getBoundingClientRect().top - parseFloat(getComputedStyle(section).scrollMarginTop)))).toBeLessThan(2);
 });
 
-test("Settings keeps every key and connection in one section", async ({ page }) => {
+test("Settings keeps the AI keys and setup status in one section", async ({ page }) => {
   await page.route("**/api/bank/connections", route => route.fulfill({ json: {
     configured: false, credentials: { source: null, hint: null }, redirectUrl: "https://localhost:3443/api/bank/callback", connections: [] } }));
   await page.goto("/settings");

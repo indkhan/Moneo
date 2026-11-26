@@ -1,6 +1,6 @@
 const row = (area, route, action, expected, ux, type = 'Functional', priority = 'P1') => [area, route, type, priority, action, expected, ux];
 const groups = [
-['W17','P11','Bank connection and consent lifecycle','/settings#banks',[
+['W17','P11','Bank connection and consent lifecycle','/money/accounts#connected',[
 ['Open Connected banks and review supported countries','Provider/countries and read-only nature explained','Bank connection reachable from Accounts and Import'],
 ['Choose a country then request banks','Loading state then available banks or actionable error','Country codes understandable without country names?'],
 ['Change country after selecting a bank','Stale bank selection cleared','No accidental consent to wrong bank'],

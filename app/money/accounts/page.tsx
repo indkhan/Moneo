@@ -168,7 +168,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
         : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: {active.length} {active.length === 1 ? "account needs" : "accounts need"} a usable balance. <a className="underline" href="#needs-balance">Review {active.length === 1 ? "it" : "them"}</a>.</p> : null}
     </header>
 
-    <ConnectedArea feeds={feeds} hasScalable={Boolean(scalable)} scalable={scalable ? <ScalableCard setting={<ScalableLiveToggle live={settings.artifact_scalable_data === "live"} />}>
+    <ConnectedArea feeds={feeds} hasScalable={Boolean(scalable)} scalable={scalable ? <ScalableCard key="scalable" setting={<ScalableLiveToggle live={settings.artifact_scalable_data === "live"} />}>
       {scalable.portfolio ? <ScalablePortfolioView portfolio={scalable.portfolio as ScalablePortfolio} locale={locale} /> : <p className="text-sm text-muted-foreground">Holdings appear after the first sync.</p>}
     </ScalableCard> : null} />
 
