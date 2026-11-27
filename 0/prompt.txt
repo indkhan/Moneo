@@ -1,0 +1,26 @@
+[T3 Code: the agent in T3 thread "9b581f9e-99f2-4346-8611-1ad1fdba6dd5" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are implementing PR 4 of a 6-PR stacked series that simplifies Moneo's Settings page. Follow AGENTS.md exactly (no comments, test rules, QA backend only — never the owner's backend or port 3000, Speed section, screenshots embedded in the PR).
+
+Stacking: `git fetch origin`, create branch `t3/settings-4-cleanup` from `origin/t3/settings-3-update-pill` (PR #343, on #342, on #341). Open your PR with base `t3/settings-3-update-pill`. Earlier PRs already removed banks/Scalable (moved to Accounts) and App updates (now a top-bar pill) from Settings.
+
+Owner's goal: Settings is a place you only visit when you need to change something. Target layout of `app/settings/page.tsx`:
+| General | display currency, timezone, locale, appearance |
+| AI access | connect ChatGPT / Claude / API keys (existing `ai-access.tsx`), default model, per-task models under a collapsed "Advanced", what data the AI may see as toggle switches |
+| Voice | its OWN section (do NOT merge into AI). Rewrite in plain words — owner says it is currently hard to understand. E.g. "Voice for calls" (picker + play sample) and "When you speak in chat" (speech-to-text engine with one-line plain descriptions of each choice; local model download and OpenRouter model only when that engine is chosen). Keep all existing capability. |
+| Insights | ONE section: each insight type as an on/off toggle switch ("Show X") instead of "Mute X" checkboxes; merge the separate "Insight relevance" section (`insights.tsx`/`insights-form.tsx`) in; summaries Off/Weekly/Monthly + time |
+| Phone and tablet | existing Tailscale phone access |
+| Your data | link to Diagnostics (placeholder anchor/text is fine — PR 5 builds `/settings/diagnostics`; if you add the link, point it at that path and render nothing broken; acceptable to leave the link out and let PR 5 add it), Reset all data (danger) |
+
+Remove from Settings:
+- "Set up automatically" secrets list (`setup-secrets.tsx`): show only as a warning banner when something is missing.
+- "Scheduled summaries" run log (`summary-runs.tsx`) and "AI chat token usage" (`ai-usage.tsx`, usage chart/plot): PR 5 will move these to a Diagnostics page. Leave the components in place for PR 5 to reuse but unmounted is fine — or better, keep them mounted until PR 5? Decide: remove them from Settings here and note in the PR that PR 5 re-homes them (keep the files; lint may complain about unused exports — if so, keep them mounted under "Your data" temporarily and say so).
+- Explanatory walls of text: keep one short line per section; details behind "More details" only where it matters for privacy (what data AI receives).
+
+Autosave: every control saves on change (debounced for text/time inputs, via the existing `saveSettings` action or per-field actions), shows a small "Saved"/error state next to the control, and the sticky "Save preferences" bar and beforeunload warning go away. Keep server-side validation (Zod) and the field-focused error behaviour. Make sure concurrent autosaves can't overwrite each other's fields (save only the changed field, or send the full latest form state in order) — write a test for that if it is real behaviour in `lib/`.
+
+Hit every surface: section anchors used elsewhere (`/settings#ai-access`, `#voice`, `#insights`, `#phone` etc. — grep links in app/, components/, lib/ai system prompt/app guide, palette commands, FEATURES.md, README) keep working or are repointed. Mobile, light and dark. Command palette: add entries that jump to each settings section if the palette supports it cheaply.
+
+Workflow: commit in steps, messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Before/after screenshots (skill `verify-ui`) light/dark/mobile of the full Settings page plus a close-up of Voice and Insights and an autosave "Saved" state. Run `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run check:bundle`, affected Playwright specs (fix ones this PR breaks). Measure speed (skill `measure-speed`) — Settings open and a save. Push, open PR titled "Settings: fewer, clearer sections that save on their own", screenshots uploaded so they render (as earlier PRs did on the `pr-assets` branch), Speed and Decisions sections, body ends with "🤖 Generated with [Claude Code](https://claude.com/claude-code)". Do not merge. Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
