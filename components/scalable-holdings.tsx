@@ -6,8 +6,8 @@ import type { ValueHistoryView } from "@/lib/scalable/value-history";
 
 export type HoldingRow = ReturnType<typeof holdingRows>[number];
 
-const holdingDetail = () => import("@/components/scalable-holding-detail").then(({ ScalableHoldingDetail }) => (view: HoldingView) => <ScalableHoldingDetail view={view} />);
-const portfolioHistory = () => import("@/components/scalable-value-history").then(({ ValueHistory }) => (view: ValueHistoryView) => <ValueHistory view={view} label="Scalable portfolio value by day" />);
+const holdingDetail = () => import("@/components/scalable-holding-detail").then(({ ScalableHoldingDetail }) => function renderHolding(view: HoldingView) { return <ScalableHoldingDetail view={view} />; });
+const portfolioHistory = () => import("@/components/scalable-value-history").then(({ ValueHistory }) => function renderPortfolio(view: ValueHistoryView) { return <ValueHistory view={view} label="Scalable portfolio value by day" />; });
 const GAIN = { up: "text-success", down: "text-danger", flat: "text-muted-foreground" };
 
 type State = { status: "loading" } | { status: "ready"; content: ReactNode } | { status: "error"; message: string };
