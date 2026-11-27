@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
@@ -11,8 +12,11 @@ import { AiPanel } from "@/components/ai-panel";
 import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
 import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
 import { IntentLink } from "@/components/intent-link";
+import { UpdatePill, useAppUpdate } from "@/components/update-pill";
 import { cn } from "@/lib/utils";
 import { isDraftCardPreview } from "@/lib/draft-preview";
+
+const UpdateDialog = dynamic(() => import("@/components/update-dialog").then(module => module.UpdateDialog), { ssr: false });
 
 export type ShellData = { accounts: { id: string; name: string }[]; counts: Partial<Record<string, number>> } | null;
 
@@ -114,6 +118,9 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const bare = pathname === "/setup" || isDraftCardPreview(pathname);
+  const { update, setUpdate } = useAppUpdate(!bare);
   const current = activeItem(pathname);
   const section = railFor(current);
 
@@ -137,7 +144,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
   const scrolledTitle = useSyncExternalStore(subscribeScroll, pastTitle, () => "");
   const scrolled = scrolledTitle !== "";
 
-  if (pathname === "/setup" || isDraftCardPreview(pathname)) return <>{children}</>;
+  if (bare) return <>{children}</>;
 
   const commands: Command[] = [
     { id: "new-chat", label: "New AI chat", group: "Actions", keywords: "ask conversation assistant", run: () => router.push("/ai?conversation=new") },
@@ -173,6 +180,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
       {!chat && <header className={cn("sticky top-0 z-20 shrink-0 border-b pt-[env(safe-area-inset-top)] transition-colors lg:hidden", scrolled ? "border-border bg-background/80 backdrop-blur-xl" : "border-transparent bg-background")}>
         <div className="flex h-12 items-center gap-1 pr-2 pl-4">
           <p aria-hidden="true" className={cn("min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight transition-opacity", scrolled ? "opacity-100" : "opacity-0")}>{scrolledTitle.trim() || current?.label}</p>
+          <UpdatePill update={update} onClick={() => setUpdateOpen(true)} />
           <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex size-11 items-center justify-center rounded-full text-foreground active:bg-muted"><Search className="size-[21px]" strokeWidth={1.8} aria-hidden="true" /></button>
           <IntentLink href={notificationsItem.href} aria-label={notificationsItem.label} className="flex size-11 items-center justify-center rounded-full text-foreground active:bg-muted"><Bell className="size-[21px]" strokeWidth={1.8} aria-hidden="true" /></IntentLink>
         </div>
@@ -192,6 +200,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
             <span className="hidden gap-0.5 sm:flex" aria-hidden="true"><Kbd>{apple ? "⌘" : "Ctrl"}</Kbd><Kbd>K</Kbd></span>
           </button>
           <div className="ml-auto flex items-center gap-2">
+            <UpdatePill update={update} onClick={() => setUpdateOpen(true)} />
             <AiPanel />
             <IntentLink href={notificationsItem.href} aria-label={notificationsItem.label} title={notificationsItem.label}
               className="flex size-11 items-center justify-center rounded-xl border border-input hover:bg-muted"><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></IntentLink>
@@ -233,6 +242,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
       </nav>
     </Modal>
     {palette && <Suspense fallback={<CommandPalette commands={commands} {...paletteProps} />}><AccountCommands shell={shell} base={commands} {...paletteProps} /></Suspense>}
+    {updateOpen && update && <UpdateDialog update={update} onUpdate={setUpdate} onClose={() => setUpdateOpen(false)} />}
     <ShortcutHelp open={help} onClose={() => setHelp(false)} shortcuts={shortcuts} />
   </div>;
 }

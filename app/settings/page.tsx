@@ -14,8 +14,6 @@ import { serviceKeyStatus } from "@/lib/service-keys";
 import { SetupSecrets } from "./setup-secrets";
 import { PhoneAccessSection } from "./phone-access";
 import { parseUsageWindow } from "@/lib/ai/usage";
-import { desktopUpdate, isDesktop } from "@/lib/desktop-bridge";
-import { AppUpdate } from "./app-update";
 import { cronSecret } from "@/lib/env";
 import { awaitedLater } from "@/lib/awaited-later";
 
@@ -24,7 +22,7 @@ export const metadata = { title: "Settings" };
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
-  ["updates", "App updates"], ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["voice", "Voice"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
+  ["connections", "Keys and connections"], ["display", "Display and calendar"], ["ai", "AI and your data"], ["voice", "Voice"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
   ["summaries", "Scheduled summaries"], ["usage", "AI chat tokens"], ["danger", "Danger zone"],
 ] as const;
 
@@ -39,8 +37,6 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
   });
 }
 
-const updatesSectionIsHiddenWhenStatusIsUnavailable = () => null;
-
 type SearchParams = { usage?: string; chatgpt?: string; claude?: string };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -48,21 +44,17 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
   const runs = awaitedLater(loadRuns(context));
-  const [update, status, keys, claude] = await Promise.all([
-    isDesktop() ? desktopUpdate("status").catch(updatesSectionIsHiddenWhenStatusIsUnavailable) : null,
-    chatgptStatus(), serviceKeyStatus(), claudeAccount(),
-  ]);
+  const [status, keys, claude] = await Promise.all([chatgptStatus(), serviceKeyStatus(), claudeAccount()]);
   const connections = { openai: status.signedIn || Boolean(keys.openai_api_key.source), claude: claude.signedIn, openrouter: Boolean(keys.openrouter_api_key.source) };
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private, self-hosted workspace</p></div>
     <div className="mt-8 grid gap-8 max-lg:mt-4 max-lg:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-24 lg:self-start">
-        <ul className="flex flex-wrap gap-1 max-lg:flex-nowrap max-lg:gap-2 max-lg:overflow-x-auto lg:flex-col [&>li]:shrink-0">{sectionNav.filter(([id]) => id !== "updates" || update).map(([id, label]) => <li key={id}>
+        <ul className="flex flex-wrap gap-1 max-lg:flex-nowrap max-lg:gap-2 max-lg:overflow-x-auto lg:flex-col [&>li]:shrink-0">{sectionNav.map(([id, label]) => <li key={id}>
           <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm max-lg:rounded-full max-lg:border max-lg:border-border max-lg:bg-card max-lg:px-3.5 max-lg:py-2 hover:bg-muted hover:text-foreground ${id === "danger" ? "text-danger" : "text-muted-foreground"}`}>{label}</a>
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
-        {update && <AppUpdate initial={update} />}
         <section id="connections" aria-labelledby="connections-title" className="scroll-mt-20 space-y-4">
           <div><h2 id="connections-title" className="text-base font-semibold">Keys and connections</h2>
             <p className="mt-1 text-sm text-muted-foreground">AI keys, phone access and what setup made. Keys are checked before they are saved and stored encrypted in your database; there is no file to edit. Banks and Scalable are connected on <Link href="/money/accounts#connected" className="underline hover:text-foreground">Accounts</Link>.</p></div>
