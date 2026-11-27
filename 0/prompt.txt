@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>bpa7elq0n</task-id>
+<tool-use-id>toolu_01SBmzZxxuhfGQRvfceCniuu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\97ad92ad887e6c53\8746f75f-6abe-4eee-93a9-e253e100bc80\tasks\bpa7elq0n.output</output-file>
+<status>failed</status>
+<summary>Background command "Rebuild and restart the after QA app" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>beeu0fi2a</task-id>
+<tool-use-id>toolu_01FA7JRkGsitWpJxgYBb6B5N</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\97ad92ad887e6c53\8746f75f-6abe-4eee-93a9-e253e100bc80\tasks\beeu0fi2a.output</output-file>
+<status>failed</status>
+<summary>Background command "Rebuild and restart the after QA app" failed with exit code 127</summary>
+</task-notification>
