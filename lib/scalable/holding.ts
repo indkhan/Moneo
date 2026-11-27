@@ -33,11 +33,12 @@ async function pricedChart(db: SupabaseClient, workspaceId: string, isin: string
 }
 
 export async function loadHolding(db: SupabaseClient, workspace: Workspace, itemId: string): Promise<HoldingView | null> {
-  const [items, events, isin, portfolio] = await Promise.all([
-    loadWealthItems(db, workspace.id), loadWealthEvents(db, workspace.id, itemId), storedIsin(db, workspace.id, itemId), latestPortfolio(db, workspace.id),
+  const [items, events, { isin, chart }, portfolio] = await Promise.all([
+    loadWealthItems(db, workspace.id), loadWealthEvents(db, workspace.id, itemId),
+    storedIsin(db, workspace.id, itemId).then(async isin => ({ isin, chart: await pricedChart(db, workspace.id, isin) })), latestPortfolio(db, workspace.id),
   ]);
   const item = items.find(entry => entry.id === itemId && entry.kind === "holding");
   if (!item || !portfolio?.itemIds?.includes(itemId)) return null;
-  return holdingView({ item, isin, events, chart: await pricedChart(db, workspace.id, isin), timeZone: workspace.timezone,
+  return holdingView({ item, isin, events, chart, timeZone: workspace.timezone,
     format: displayFormat(workspace.locale, workspace.timezone), portfolioTotalMinor: portfolio.currency === item.currency_code ? BigInt(portfolio.totalMinor) : null });
 }
