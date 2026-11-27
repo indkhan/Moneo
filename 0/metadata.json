@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M8DHRNEDEMB8B2D0AXBVJGQ4",
+  "session_id": "394a04b8-5972-49c2-9245-11a900cc0c24",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-27T03:46:14.967447Z",
+  "branch": "t3/settings-5-diagnostics",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/database.types.ts",
+    "lib/schema.ts",
+    "supabase/migrations/202611270001_ai_usage.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "6006e9974ecc",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 75007,
+    "cache_read_tokens": 1554593,
+    "output_tokens": 10205,
+    "api_call_count": 18
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
