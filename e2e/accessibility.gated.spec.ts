@@ -58,6 +58,7 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   await page.goto("/money/accounts");
   const addAccountPanel = page.locator("details").filter({ has: page.locator("summary", { hasText: "Add account" }) });
   await addAccountPanel.locator("summary").click();
+  await addAccountPanel.getByRole("button", { name: "Enter by hand" }).click();
   const addAccount = await addAccountPanel.locator("form").boundingBox();
   expect(addAccount).not.toBeNull();
   expect(addAccount!.x).toBeGreaterThanOrEqual(0);
