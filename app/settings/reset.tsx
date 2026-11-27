@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { resetAllData } from "./actions";
 
 export function ResetData() {
@@ -8,6 +9,10 @@ export function ResetData() {
   const [typed, setTyped] = useState("");
   return <section aria-labelledby="data-title" className="rounded-xl border border-border bg-card p-6">
     <h2 id="data-title" className="text-base font-semibold">Your data</h2>
+    <Link href="/settings/diagnostics" className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border p-4 hover:bg-muted">
+      <span><span className="block text-sm font-medium">Diagnostics</span><span className="mt-1 block text-sm text-muted-foreground">AI usage for every task, background jobs and whether each part of Moneo is running.</span></span>
+      <span aria-hidden="true" className="text-muted-foreground">→</span>
+    </Link>
     <div className="mt-4 rounded-lg border border-danger/40 p-4">
       <h3 className="text-sm font-medium text-danger">Reset all data</h3>
     <p className="mt-1 text-sm text-muted-foreground">Permanently deletes your accounts, transactions, imports, goals, plans, AI conversations and settings, leaving a fresh workspace. You stay signed in.</p>

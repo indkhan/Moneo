@@ -4,7 +4,7 @@ import { claudeAccount } from "./claude";
 import { generateText } from "ai";
 import { AI_AGENTS, settingsSchema } from "@/lib/settings";
 
-const inserted = vi.fn(async (_row: unknown) => ({ error: null }));
+const inserted = vi.fn<(row: unknown) => Promise<{ error: null }>>(async () => ({ error: null }));
 vi.mock("@/lib/service-db", () => ({ serviceDb: (() => ({ from: () => ({ insert: inserted }) })) }));
 vi.mock("./claude", async original => ({ ...await original<typeof import("./claude")>(), claudeAccount: vi.fn() }));
 afterEach(() => { vi.unstubAllEnvs(); });
