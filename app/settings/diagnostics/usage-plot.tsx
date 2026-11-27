@@ -35,6 +35,7 @@ export function UsagePlot({ bars, locale, by, layout }: { bars: UsageBar[]; loca
     {visible && <ReactECharts
       style={{ height }}
       option={{
+        animation: false,
         grid: { left: 8, right: 16, top: 40, bottom: 8, containLabel: true },
         legend: { top: 0, textStyle: { color: colors.muted } },
         tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: format },
