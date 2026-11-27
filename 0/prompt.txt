@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b3nloa7gz</task-id>
+<tool-use-id>toolu_01JicuduSYGPyvLo1dGydhko</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\5721dbdb6535862b\8357bdcf-47cb-4f34-9674-5bcfec252980\tasks\b3nloa7gz.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-e0831984-2777470736d7232b; S=/c/Users/mgsuk/AppData/Local/Temp/claude/5721dbdb6535862b/8357bdcf-47cb-4f34-9674-5bcfec252980/scratchpad; for p in 3108 3109; do for i in $(seq 1 90); do c=$(curl -s -o /dev/null -w "%{http_code}" -H "x-moneo-test: 1" http://localhost:$p/api/health); [ "$c" = 200 -o "$c" = 401 ] &amp;&amp; break; sleep 10; done; echo $p $c; done; for f in seed-one seed-two; do docker exec -i moneo-qa-db-1 psql -1 -U postgres -d postgres &lt; $S/$f.sql &gt;/dev/null; done; npm run qa:auth 2&gt;&amp;1 | tail -1; node scripts/perf-pages.mjs 5 before=http://localhost:3109 after=http://localhost:3108 2&gt;&amp;1 | tail -40" completed (exit code 0)</summary>
+</task-notification>
