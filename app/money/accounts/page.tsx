@@ -16,7 +16,8 @@ import { balanceTrend, shownBalance, trendSummary } from "./history";
 import { Sparkline } from "./sparkline";
 import { OwnAccounts } from "./own-accounts";
 import { ScalablePortfolioView } from "@/components/scalable-portfolio";
-import { ConnectedArea } from "@/components/connected-banks";
+import { ConnectedArea, type ConnectionsData } from "@/components/connected-banks";
+import { loadBankConnections } from "@/lib/bank/connections";
 import { ScalableCard } from "@/components/scalable-connection";
 import { maskAccountNumber } from "@/lib/import/csv";
 import { ScalableLiveToggle } from "./scalable-live-toggle";
@@ -40,16 +41,17 @@ function describeEvent(event: MetaEvent) {
   return `${event.entity_type === "account" ? "Account" : "Saved view"} ${String(after.name ?? before.name ?? "")}${changes.length ? `: ${changes.join(", ")}` : ""}`;
 }
 
-export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string }> } = {}) {
-  const { transfers, saved } = (await searchParams) ?? {};
+export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string; bank?: string; connect?: string }> } = {}) {
+  const { transfers, saved, bank, connect } = (await searchParams) ?? {};
   const { supabase, workspace, settings } = await requireWorkspace();
-  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }, { data: fileSources, error: sourceError }] = await Promise.all([
+  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }, { data: fileSources, error: sourceError }, bankConnections] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()),
     supabase.from("bank_connection_accounts").select("connection_id,account_name,currency_code,iban,last_booked_on,bank_connections(status)").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
     supabase.from("scalable_connections").select("portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("data_sources").select("account_id").eq("workspace_id", workspace.id).eq("kind", "file").not("account_id", "is", null),
+    loadBankConnections(supabase, workspace.id),
   ]);
   if (bankError || identifierError || sourceError) throw new Error("Could not load account identifiers");
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
@@ -144,6 +146,9 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
       </details> : null}
     </article>;
   }
+  const scalableCard = scalable ? <ScalableCard key="scalable" setting={<ScalableLiveToggle live={settings.artifact_scalable_data === "live"} />}>
+      {scalable.portfolio ? <ScalablePortfolioView portfolio={scalable.portfolio as ScalablePortfolio} locale={locale} /> : <p className="text-sm text-muted-foreground">Holdings appear after the first sync.</p>}
+  </ScalableCard> : null;
   const others = active.filter(account => !fedIds.has(account.id));
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
@@ -168,9 +173,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
         : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: {active.length} {active.length === 1 ? "account needs" : "accounts need"} a usable balance. <a className="underline" href="#needs-balance">Review {active.length === 1 ? "it" : "them"}</a>.</p> : null}
     </header>
 
-    <ConnectedArea feeds={feeds} hasScalable={Boolean(scalable)} scalable={scalable ? <ScalableCard key="scalable" setting={<ScalableLiveToggle live={settings.artifact_scalable_data === "live"} />}>
-      {scalable.portfolio ? <ScalablePortfolioView portfolio={scalable.portfolio as ScalablePortfolio} locale={locale} /> : <p className="text-sm text-muted-foreground">Holdings appear after the first sync.</p>}
-    </ScalableCard> : null} />
+    <ConnectedArea locale={locale} timeZone={timeZone} result={bank} connect={connect} initial={bankConnections as ConnectionsData} feeds={feeds} hasScalable={Boolean(scalable)} scalable={scalableCard} />
 
     {others.length ? <section id="needs-balance" className="scroll-mt-20 space-y-3" aria-labelledby="other-accounts"><h2 id="other-accounts" className="text-base font-semibold">Imported and entered by hand</h2>
       <div className="divide-y divide-border rounded-xl border border-border bg-card">{others.map(account => row(account))}</div></section>
@@ -206,3 +209,4 @@ async function AccountHistory({ accounts }: { accounts: Resolved[] }) {
       </li>)}</ul>
     </section> : null;
 }
+

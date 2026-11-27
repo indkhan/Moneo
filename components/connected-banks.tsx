@@ -19,7 +19,7 @@ type Connection = {
 type Bank = { name: string; country: string };
 
 const COUNTRIES = ["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IS", "IT", "LT", "LU", "LV", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK"];
-const countryName = (code: string) => { try { return new Intl.DisplayNames(undefined, { type: "region" }).of(code) ?? code; } catch { return code; } };
+const countryName = (code: string, locale?: string) => { try { return new Intl.DisplayNames(locale, { type: "region" }).of(code) ?? code; } catch { return code; } };
 const RESULTS: Record<string, string> = {
   connected: "Bank connected. The first sync is running; its accounts appear in the bank's card when it finishes.",
   error: "The bank connection was cancelled or failed. Try again.",
@@ -94,14 +94,13 @@ export function syncSummary(connection: Pick<Connection, "sync" | "sync_started_
 }
 
 
-type ConnectionsData = { configured: boolean; credentials: BankCredentials; redirectUrl: string; connections: Connection[] };
+export type ConnectionsData = { configured: boolean; credentials: BankCredentials; redirectUrl: string; connections: Connection[] };
 async function fetchConnections(): Promise<ConnectionsData> {
   const response = await fetch("/api/bank/connections", { cache: "no-store" });
   if (!response.ok) throw new Error("Connected banks are unavailable");
   return response.json();
 }
 
-const date = (value: string | null) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "never";
 const select = "min-h-10 w-full min-w-0 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal";
 
 async function startConnection(aspspName: string, country: string) {
@@ -190,12 +189,15 @@ export function ConnectBank({ onCancel }: { onCancel?: () => void }) {
   </div>;
 }
 
-export function ConnectedArea({ feeds, scalable, hasScalable }: { feeds: Record<string, ReactNode>; scalable: ReactNode; hasScalable: boolean }) {
+export function ConnectedArea({ initial, feeds, scalable, hasScalable, result, connect, locale, timeZone }: {
+  initial: ConnectionsData; feeds: Record<string, ReactNode>; scalable: ReactNode; hasScalable: boolean; result?: string; connect?: string; locale: string; timeZone: string;
+}) {
   const router = useRouter();
-  const [data, setData] = useState<ConnectionsData | null>(null);
-  const [connecting, setConnecting] = useState(false);
+  const date = (value: string | null) => value ? new Date(value).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone }) : "never";
+  const [data, setData] = useState<ConnectionsData>(initial);
+  const [connecting, setConnecting] = useState(connect === "bank");
   const [replacing, setReplacing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(result ? RESULTS[result] ?? null : null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -203,24 +205,21 @@ export function ConnectedArea({ feeds, scalable, hasScalable }: { feeds: Record<
 
   const load = useCallback(() => fetchConnections().then(setData, () => setError("Connected banks are unavailable.")), []);
   useEffect(() => {
+    if (result !== "connected") return;
     let live = true;
-    const query = new URLSearchParams(window.location.search);
     fetchConnections().then(loaded => {
+      const newest = loaded.connections[0];
       if (!live) return;
       setData(loaded);
-      if (query.get("connect") === "bank") setConnecting(true);
-      const result = query.get("bank");
-      if (result && RESULTS[result]) setMessage(RESULTS[result]);
-      const newest = loaded.connections[0];
-      if (result === "connected" && newest) { setHighlight(newest.id); setRequested({ [newest.id]: Date.now() }); }
+      if (newest) { setHighlight(newest.id); setRequested({ [newest.id]: Date.now() }); }
     }, () => { if (live) setError("Connected banks are unavailable."); });
     return () => { live = false; };
-  }, []);
+  }, [result]);
 
   const [now, setNow] = useState(() => Date.now());
   const running = (connection: Connection) => connection.sync.running || (now - (requested[connection.id] ?? 0) < REQUEST_GRACE_MS
     && (!connection.last_synced_at || Date.parse(connection.last_synced_at) < requested[connection.id]));
-  const syncing = !!data?.connections.some(running);
+  const syncing = data.connections.some(running);
   usePolling(() => { setNow(Date.now()); return fetchConnections().then(setData, () => undefined); }, 2000, syncing);
   const wasSyncing = useRef(false);
   useEffect(() => { if (wasSyncing.current && !syncing) router.refresh(); wasSyncing.current = syncing; }, [syncing, router]);
@@ -250,20 +249,17 @@ export function ConnectedArea({ feeds, scalable, hasScalable }: { feeds: Record<
     void act(`sync:${connection.id}`, () => fetch(`/api/bank/connections/${connection.id}/sync`, { method: "POST" }))
       .then(ok => { if (!ok) setRequested(current => { const next = { ...current }; delete next[connection.id]; return next; }); });
   };
-  const connections = data?.connections ?? [];
-  const empty = !!data && !connections.length && !hasScalable;
+  const connections = data.connections;
+  const empty = !connections.length && !hasScalable;
 
   return <section id="connected" aria-labelledby="connected-title" className="scroll-mt-20 space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 id="connected-title" className="text-base font-semibold">Connected</h2>
         <p className="mt-1 text-sm text-muted-foreground">Banks and brokers that sync on their own. Each card lists the accounts it feeds.</p></div>
-      {data && !connecting && !empty && <Button variant="outline" className="min-h-10" onClick={() => setConnecting(true)}>{connections.length ? "Connect another bank" : "Connect a bank"}</Button>}
+      {!connecting && !empty && <Button variant="outline" className="min-h-10" onClick={() => setConnecting(true)}>{connections.length ? "Connect another bank" : "Connect a bank"}</Button>}
     </div>
     {message && <p role="status" className="text-sm text-foreground">{message}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-    {!data && !error && Object.entries(feeds).map(([id, feed]) => <article key={id} aria-busy="true" className="space-y-3 rounded-xl border border-border bg-card p-5">
-      <div className="h-12 w-1/2 animate-pulse rounded-md bg-muted" />{feed}</article>)}
-    {!data && error && <Button variant="outline" className="min-h-10" onClick={() => { setError(null); void load(); }}>Try again</Button>}
     {connecting && <div role="group" aria-label="Connect a bank" className="rounded-xl border border-brand/40 bg-card p-5"><ConnectBank onCancel={() => setConnecting(false)} /></div>}
     {empty && !connecting && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card p-5">
       <p className="max-w-xl text-sm text-muted-foreground">Moneo connects your bank through a free Enable Banking app that you set up once. After that, transactions and balances sync on their own.</p>
@@ -278,16 +274,16 @@ export function ConnectedArea({ feeds, scalable, hasScalable }: { feeds: Record<
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <h3 className="flex flex-wrap items-center gap-2 font-medium">{connection.aspsp_name}
-              <span className="text-xs font-normal text-muted-foreground">{countryName(connection.aspsp_country)}</span>
+              <span className="text-xs font-normal text-muted-foreground">{countryName(connection.aspsp_country, locale)}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TONES[status.tone]}`}>{status.label}</span></h3>
             <p className="text-xs text-muted-foreground">Last sync {date(connection.last_synced_at)}
               {connection.next_sync_at && status.tone !== "bad" ? ` · next automatic sync around ${date(connection.next_sync_at)}` : ""}
               {connection.valid_until ? ` · login valid until ${date(connection.valid_until)}` : ""}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={!!busy || !data?.configured || !canSync(connection, isRunning, now)} onClick={() => sync(connection, Date.now())}>
+            <Button size="sm" variant="outline" disabled={!!busy || !data.configured || !canSync(connection, isRunning, now)} onClick={() => sync(connection, Date.now())}>
               {busy === `sync:${connection.id}` ? "Starting…" : isRunning ? "Syncing…" : "Sync now"}</Button>
-            <Button size="sm" variant={status.tone === "ok" ? "ghost" : "default"} disabled={!!busy || !data?.configured} onClick={() => void reconnect(connection)}>
+            <Button size="sm" variant={status.tone === "ok" ? "ghost" : "default"} disabled={!!busy || !data.configured} onClick={() => void reconnect(connection)}>
               {busy === `connect:${connection.id}` ? "Opening bank…" : "Reconnect"}</Button>
             <Button size="sm" variant="ghost" disabled={!!busy}
               onClick={() => { if (window.confirm(`Disconnect ${connection.aspsp_name}? Imported transactions stay; undo imports separately.`))
@@ -308,7 +304,7 @@ export function ConnectedArea({ feeds, scalable, hasScalable }: { feeds: Record<
       </article>;
     })}
     {scalable}
-    {data?.credentials.source && (replacing ? <BankCredentialsForm redirectUrl={data.redirectUrl} onCancel={() => setReplacing(false)}
+    {data.credentials.source && (replacing ? <BankCredentialsForm redirectUrl={data.redirectUrl} onCancel={() => setReplacing(false)}
       onSaved={() => { setReplacing(false); setMessage("The new Enable Banking key is saved."); void load(); }} />
       : <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
         <span>Enable Banking app{data.credentials.hint ? ` ending in ${data.credentials.hint}` : ""}{data.credentials.source === "env" ? ", read from .env or a system environment variable" : ""}</span>
