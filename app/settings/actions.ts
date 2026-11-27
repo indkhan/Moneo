@@ -8,7 +8,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
 import { minorDigits } from "@/lib/finance/fx";
 import { revokeBankSessions } from "@/lib/bank/server";
-import { deleteAllLogs } from "@/lib/logs/store";
+import { LOG_AUDIO_BUCKET } from "@/lib/logs/options";
 import { logError } from "@/lib/log";
 
 export type SaveSettingsState = { error?: string; field?: string; saved?: boolean };
@@ -46,7 +46,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
 }
 
 async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>) {
-  for (const bucket of ["imports", "chat"]) {
+  for (const bucket of ["imports", "chat", LOG_AUDIO_BUCKET]) {
     for (;;) {
       const listed = await supabase.storage.from(bucket).list(workspace.id, { limit: 1000 });
       if (listed.error) throw listed.error;
@@ -64,7 +64,8 @@ export async function resetAllData(_previous: { error?: string }, form: FormData
     if (!z.literal("RESET").safeParse(form.get("confirmation")).success) return { error: "Type RESET to confirm" };
     await removeWorkspaceFiles(context);
     await revokeBankSessions(context.workspace.id);
-    await deleteAllLogs(context.supabase, context.workspace.id);
+    const logs = await context.supabase.from("app_logs").delete().eq("workspace_id", context.workspace.id);
+    if (logs.error) throw logs.error;
     const result = await context.supabase.rpc("reset_workspace");
     if (result.error) throw result.error;
   } catch {

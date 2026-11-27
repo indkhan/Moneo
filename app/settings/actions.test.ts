@@ -96,14 +96,16 @@ function resetForm(confirmation: string) {
   const data = new FormData(); data.set("confirmation", confirmation); return data;
 }
 
-function resetWorkspaceWith(rpc: ReturnType<typeof vi.fn>, files: string[] = []) {
-  const remaining = new Map([["imports", files.map(name => ({ name }))]])
+function resetWorkspaceWith(rpc: ReturnType<typeof vi.fn>, files: string[] = [], audio: string[] = []) {
+  const remaining = new Map([["imports", files.map(name => ({ name }))], ["logs", audio.map(name => ({ name }))]]);
+  const clearedLogs = vi.fn<(column: string, workspace: string) => Promise<{ error: null }>>(async () => ({ error: null }));
   const remove = vi.fn(async (paths: string[]) => ({ data: paths, error: null }));
   const from = (bucket: string) => ({
     list: async () => ({ data: remaining.get(bucket) ?? [], error: null }),
     remove: async (paths: string[]) => { remaining.set(bucket, []); return remove(paths); },
   });
-  return { remove, context: { workspace: { id: "owned" }, supabase: { rpc, storage: { from } } } as unknown as Awaited<ReturnType<typeof requireWorkspace>> };
+  const table = (name: string) => ({ delete: () => ({ eq: name === "app_logs" ? clearedLogs : vi.fn() }) });
+  return { remove, clearedLogs, context: { workspace: { id: "owned" }, supabase: { rpc, from: table, storage: { from } } } as unknown as Awaited<ReturnType<typeof requireWorkspace>> };
 }
 
 it("requires a signed-in user before resetting anything", async () => {
@@ -121,13 +123,15 @@ it("requires the exact RESET confirmation", async () => {
   expect(remove).not.toHaveBeenCalled();
 });
 
-it("removes uploaded statements, calls the reset RPC and returns to Home", async () => {
+it("removes uploaded statements, logs and their audio, calls the reset RPC and returns to Home", async () => {
   vi.mocked(redirect).mockClear();
   const rpc = vi.fn(async () => ({ error: null }));
-  const { remove, context } = resetWorkspaceWith(rpc, ["a.csv", "b.xlsx"]);
+  const { remove, clearedLogs, context } = resetWorkspaceWith(rpc, ["a.csv", "b.xlsx"], ["clip.wav"]);
   vi.mocked(requireWorkspace).mockResolvedValue(context);
   await resetAllData({}, resetForm("RESET"));
   expect(remove).toHaveBeenCalledWith(["owned/a.csv", "owned/b.xlsx"]);
+  expect(remove).toHaveBeenCalledWith(["owned/clip.wav"]);
+  expect(clearedLogs).toHaveBeenCalledWith("workspace_id", "owned");
   expect(rpc).toHaveBeenCalledWith("reset_workspace");
   expect(redirect).toHaveBeenCalledWith("/");
 });
