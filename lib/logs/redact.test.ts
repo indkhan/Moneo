@@ -34,6 +34,12 @@ describe("redactText", () => {
     expect(redactText("Rewe Markt and REWE and Rewetal paid by Jane", ["Rewe", "Rewe Markt", "Jane"])).toBe("[name] and [name] and Rewetal paid by [name]");
   });
 
+  it("removes the owner's user folder from file paths in stack traces", () => {
+    expect(redactText(String.raw`at f (C:\Users\jane\Moneo\lib\x.ts:1:2)`)).toBe(String.raw`at f (~\Moneo\lib\x.ts:1:2)`);
+    expect(redactText(JSON.stringify({ stack: String.raw`C:\Users\jane\Moneo` }))).toBe(JSON.stringify({ stack: String.raw`~\Moneo` }));
+    expect(redactText("at f (c:/Users/jane/Moneo/x.ts) and /home/jane/app and /Users/jane/app")).toBe("at f (~/Moneo/x.ts) and ~/app and ~/app");
+  });
+
   it("keeps ids, timestamps, durations and counts that make a report useful", () => {
     const text = "run 3f2b6c1e-1234-4a5b-9c8d-0123456789ab at 2026-11-27T10:00:00.000Z took 1500 ms, http 502, 12 rows";
     expect(redactText(text)).toBe(text);
@@ -49,6 +55,10 @@ describe("redactValue", () => {
       model: "gpt-6-luna", apiKey: "[secret]", headers: { Authorization: "[secret]" }, amount_minor: "[amount]", balance: "[amount]", merchant_name: "[name]", account: "[name]",
       text: "[text, 16 chars]", reasoning: "[text, 17 chars]", toolCalls: [{ toolName: "transactions_search", input: "[text]" }], durationMs: 1200,
     });
+  });
+
+  it("keeps error names, which say what failed and name no one", () => {
+    expect(redactValue({ error: { name: "AI_APICallError" }, merchant: { name: "Edeka" } })).toEqual({ error: { name: "AI_APICallError" }, merchant: { name: "[name]" } });
   });
 
   it("redacts patterns inside string values under neutral keys", () => {

@@ -18,6 +18,8 @@ const PROTECTED = [
   /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g,
 ];
 const REPLACEMENTS: [RegExp, string][] = [
+  [/\b[A-Za-z]:(\\{1,2}|\/)(?:Users|Documents and Settings)\1[^\\/\s"']+/gi, "~"],
+  [/(?<![\w.])\/(?:Users|home)\/[^/\s"']+/g, "~"],
   [/-----BEGIN [A-Z ]+-----[\s\S]*?-----END [A-Z ]+-----/g, "[secret]"],
   [/\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g, "[email]"],
   [/\b(?:bearer|basic)\s+[\w.~+/=-]{8,}/gi, "[secret]"],
@@ -32,6 +34,7 @@ const REPLACEMENTS: [RegExp, string][] = [
   [/(?<![\w-])\d(?:[ -]?\d){7,}(?![\w-])/g, "[number]"],
 ];
 
+const ERROR_NAME = /^[A-Z][A-Za-z_]*(Error|Exception)$/;
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function redactText(text: string, names: readonly string[] = []): string {
@@ -50,7 +53,7 @@ export function redactValue(value: unknown, names: readonly string[] = [], key =
     if (SECRET_KEY.test(key)) return "[secret]";
     if (FREE_TEXT_KEY.test(key)) return typeof value === "string" ? `[text, ${value.length} chars]` : "[text]";
     if (AMOUNT_KEY.test(key) && (typeof value === "number" || typeof value === "string")) return "[amount]";
-    if (NAME_KEY.test(key) && (typeof value === "string" || typeof value === "number")) return "[name]";
+    if (NAME_KEY.test(key) && (typeof value === "string" || typeof value === "number") && !ERROR_NAME.test(String(value))) return "[name]";
   }
   if (typeof value === "number") return value;
   if (typeof value === "string") return redactText(value, names);
