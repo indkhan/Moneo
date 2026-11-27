@@ -81,7 +81,7 @@ function LogRow({ entry, time }: { entry: LogEntryView; time: string }) {
   const thinking = typeof details?.reasoning === "string" ? details.reasoning : null;
   const reply = typeof details?.text === "string" ? details.text : null;
   const rest = details ? Object.fromEntries(Object.entries(details).filter(([key]) => !(key === "reasoning" && thinking) && !(key === "text" && reply))) : entry.details;
-  return <li className="[content-visibility:auto] [contain-intrinsic-size:auto_3.5rem]">
+  return <li>
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex w-full items-start gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/60">
       <ChevronRight className={`mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} aria-hidden="true" />
       <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium uppercase ${LEVEL_STYLE[entry.level]}`}>{entry.level}</span>

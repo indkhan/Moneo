@@ -56,7 +56,10 @@ const storeInDatabase: LogStore = async (row, audio) => {
     else audioPath = path;
   }
   const inserted = await db.from("app_logs").insert({ ...row, audio_path: audioPath });
-  if (inserted.error) reportLogWriteFailure(inserted.error);
+  if (inserted.error) {
+    ownerWorkspace = undefined;
+    reportLogWriteFailure(inserted.error);
+  }
 };
 
 function reportLogWriteFailure(error: unknown) {

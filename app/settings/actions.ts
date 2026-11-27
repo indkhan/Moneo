@@ -64,8 +64,6 @@ export async function resetAllData(_previous: { error?: string }, form: FormData
     if (!z.literal("RESET").safeParse(form.get("confirmation")).success) return { error: "Type RESET to confirm" };
     await removeWorkspaceFiles(context);
     await revokeBankSessions(context.workspace.id);
-    const logs = await context.supabase.from("app_logs").delete().eq("workspace_id", context.workspace.id);
-    if (logs.error) throw logs.error;
     const result = await context.supabase.rpc("reset_workspace");
     if (result.error) throw result.error;
   } catch {
