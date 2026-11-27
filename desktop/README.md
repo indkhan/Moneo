@@ -52,9 +52,10 @@ address and ChatGPT's callback name it). If it is taken on the first run, a free
   loopback address that is random for each launch and refuses browser requests (`src/bridge.ts`);
   if the window cannot take it, the browser shows the result as in a source checkout. Every other address also goes to the browser
   (https only). The window allows only the microphone and copying, for Moneo's own pages.
-- Updates: Settings → App updates checks the newest published GitHub release with update metadata only when the owner
-  asks (`src/updates.ts`, electron-updater). On Windows and with the AppImage, Update downloads it,
-  quits Moneo cleanly, installs it and starts Moneo again; data stays in the user folder, and a pending
+- Updates: when Moneo is open, it asks for the newest published GitHub release with update metadata at most every six
+  hours (`src/updates.ts`, electron-updater; never in a preview run). Only when there is a newer one, the top bar shows
+  an Update pill with its notes. On Windows and with the AppImage, Download fetches it and Restart to install quits
+  Moneo cleanly, installs it and starts Moneo again; data stays in the user folder, and a pending
   migration makes a `pre-upgrade` backup first. macOS (unsigned) and `.deb` installs open the release
   page to download instead. Draft and pre-releases are never offered. `npm run desktop:dist` writes
   the `latest*.yml` files the check reads; the release workflow uploads them with the installers.
@@ -69,7 +70,7 @@ artifacts for 7 days and never create a release.
 3. The Desktop workflow builds every platform and drafts a release with the installers, `latest*.yml`,
    blockmaps and `SHA256SUMS.txt`.
 4. Publish the draft on GitHub. Drafts are invisible to visitors, to the landing page's download
-   button and to Settings → App updates; once published, all three offer it.
+   button and to the app's Update pill; once published, all three offer it.
 
 ### Bank return certificate
 

@@ -4,13 +4,13 @@ Moneo is an open-source personal finance app that runs on your own computer. Imp
 
 Website: **[indkhan.github.io/Moneo](https://indkhan.github.io/Moneo/)** — screenshots, what Moneo does, and the right installer for your computer.
 
-Everything stays on your computer. There are no accounts and no sign-in screen: one owner, one workspace. The only data that leaves your computer goes to the services you connect (your AI provider, and optionally your bank or Scalable Capital).
+Everything stays on your computer. There are no accounts and no sign-in screen: one owner, one workspace. The only data that leaves your computer goes to the services you connect (your AI provider, and optionally your bank or Scalable Capital). Moneo also asks GitHub whether a newer release exists, sending nothing about you or your money.
 
 ## Install
 
 ### Download the app (no terminal needed)
 
-Download the installer for your computer from the [website](https://indkhan.github.io/Moneo/#download) or [GitHub releases](https://github.com/indkhan/Moneo/releases), install it and open Moneo; nothing else is needed. Windows and Linux installers are published; macOS arrives with the next release (until then, use the source installation below). Home then starts with a short checklist: turn on AI (or skip it), add your money by importing a statement or connecting a bank, and, once transactions are in, run the agent team. Settings → App updates installs newer releases and keeps your data. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
+Download the installer for your computer from the [website](https://indkhan.github.io/Moneo/#download) or [GitHub releases](https://github.com/indkhan/Moneo/releases), install it and open Moneo; nothing else is needed. Windows and Linux installers are published; macOS arrives with the next release (until then, use the source installation below). Home then starts with a short checklist: turn on AI (or skip it), add your money by importing a statement or connecting a bank, and, once transactions are in, run the agent team. When a newer release is out, an **Update** button appears in the top bar; it downloads and installs it and keeps your data. See [desktop setup and operation](desktop/README.md) for packaging, data locations, backups and signing requirements. The desktop app bundles its local backend and does not require Docker or Node.js. The source installation below remains supported.
 Scalable questions in chat and voice can combine live holdings, paginated transaction history and transaction details with local JavaScript calculations. The calculation sandbox has no network, filesystem or credentials. Read results remain subject to your AI data scopes and are sent to your configured AI provider as needed to answer. Trades still require accepting an approval card. No additional setup is needed.
 
 Chat can also answer questions no built-in tool covers by running a read-only SQL query over your finance records. It runs as you, only within your own data and AI data scopes, can't change anything, and can't see stored bank or Scalable tokens, AI keys or settings; each query is shown under the answer's tools.
@@ -92,6 +92,8 @@ That's it. Want it on your phone or tablet too? See [Use it from your phone or t
   npm start
   ```
   Your data and secrets are kept.
+
+  When a newer release is out, an **Update** button in the top bar shows what changed and these commands. To find out, the server running Moneo asks GitHub for the latest published release of Moneo at most every six hours while Moneo is open. The request carries nothing about you or your money; offline, no button appears.
 
 While Moneo runs it does its background work by itself: scheduled summaries, and syncing your bank and Scalable about once a day. Anything missed while your computer was off runs shortly after you start Moneo.
 

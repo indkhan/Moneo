@@ -134,7 +134,7 @@
     <div class="ways">
       <div class="way">
         <h3>Download the app</h3>
-        <p>For everyone. Install it and open it: no Docker, Node.js or terminal. Updates come from <b>Settings → App updates</b>.</p>
+        <p>For everyone. Install it and open it: no Docker, Node.js or terminal. When there is a new version, an <b>Update</b> button appears at the top.</p>
         <ol>
           <li>Download Moneo for your computer below.</li>
           <li>Open it. The first start sets up your private database (about a minute).</li>
@@ -186,7 +186,7 @@ npm start</code></pre>
     <h2>Built so your data stays yours</h2>
     <div class="cards">
       <div class="card"><h3>No account, no cloud</h3><p>Moneo runs on your computer. There is no Moneo server and no sign-up.</p></div>
-      <div class="card"><h3>Only what you connect</h3><p>Data goes only to your AI provider, and your bank or Scalable if you connect them. No analytics, no tracking.</p></div>
+      <div class="card"><h3>Only what you connect</h3><p>Data goes only to your AI provider, and your bank or Scalable if you connect them. Moneo asks GitHub whether a newer release exists, sending nothing about you. No analytics, no tracking.</p></div>
       <div class="card"><h3>Numbers come from code</h3><p>Money is stored exactly, in its currency. The AI explains and proposes; it never quietly changes your data.</p></div>
       <div class="card"><h3>Nothing is lost</h3><p>Imports and changes can be undone, and the desktop app backs up your data every day.</p></div>
     </div>
@@ -197,10 +197,10 @@ npm start</code></pre>
     <h2>Questions</h2>
     <div class="faq">
       <details><summary>Is Moneo free?</summary><p>Yes. Moneo is free and open source under the MIT license. The AI uses your own ChatGPT or Claude plan or an API key, so any AI costs are between you and your provider.</p></details>
-      <details><summary>Does any of my financial data go online?</summary><p>Only to services you connect yourself: your AI provider when you ask a question, Enable Banking to sync your bank, and Scalable Capital for investments. Everything else stays in the database on your computer.</p></details>
+      <details><summary>Does any of my financial data go online?</summary><p>Only to services you connect yourself: your AI provider when you ask a question, Enable Banking to sync your bank, and Scalable Capital for investments. Moneo also asks GitHub whether a newer version exists, sending nothing about you or your money. Everything else stays in the database on your computer.</p></details>
       <details><summary>What's the difference between the app and running from source?</summary><p>None in features. The app bundles everything, the database included, so you just install it. Running from source is for people who want to change the code; it uses Docker for the database.</p></details>
       <details><summary>Can I use it on my phone?</summary><p>Yes. Turn on phone access in Settings and connect your phone with Tailscale. Moneo stays on your computer; your phone opens it from there.</p></details>
-      <details><summary>How do updates work?</summary><p>In the app, open <b>Settings → App updates</b> and choose <i>Check for updates</i>. On Windows and Linux (AppImage) Moneo installs the update and restarts with your data. On a Mac it opens the download. From source: <code>git pull</code>, <code>npm ci</code>, <code>npm run setup</code>, <code>npm run build</code>, then <code>npm start</code>.</p></details>
+      <details><summary>How do updates work?</summary><p>When there is a new version, an <b>Update</b> button appears at the top of Moneo. On Windows and Linux (AppImage), download it there and choose <i>Restart to install</i>; your data is kept. On a Mac it opens the download. From source: <code>git pull</code>, <code>npm ci</code>, <code>npm run setup</code>, <code>npm run build</code>, then <code>npm start</code>.</p></details>
       <details><summary>Which banks work?</summary><p>Any bank works through statement import: download a CSV or Excel export from your online banking and drop it into Moneo. To sync automatically, Moneo uses Enable Banking, which covers banks across Europe and is free for personal use. You create a free Enable Banking account once and Moneo walks you through it in <b>Settings → Connected banks</b>.</p></details>
     </div>
   </section>
