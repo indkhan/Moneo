@@ -188,6 +188,7 @@ How it works, step by step: [docs/phone-access-deep-dive.html](docs/phone-access
 
 - Moneo only listens on `127.0.0.1`, so other devices on your network can't open it unless you turn on [phone and tablet access](#use-it-from-your-phone-or-tablet-optional).
 - **Files in chat:** attach photos, PDFs, Word (DOCX), PowerPoint (PPTX), Excel (XLSX) or CSV files, up to four of 25 MB each. Documents are turned into text on your computer, the same way for every AI source; scanned PDF pages are sent as images. Answers show small chips such as `statement.pdf · p.3` that open the page, slide, paragraph or cell they came from.
+- **Diagnostics** (**Settings → Your data → Diagnostics**) shows every AI call Moneo made, per task, model, provider and day, with tokens where the provider reports them (Moneo does not record costs), plus background jobs, scheduled summaries, bank and Scalable sync status and whether the database, sign-in, data API and file storage are running.
 - Your data lives in the Docker volumes `moneo_db-data` and `moneo_storage-data`. `docker compose down` keeps them; **`docker compose down -v` deletes all your data**.
 - If ports 54321 or 54322 are already in use, add `API_PORT=` and `DB_PORT=` with free ports to `.env` and run `npm run setup` again.
 
