@@ -22,8 +22,9 @@ export async function connectionReturn(base: string | URL, path: string) {
 
 const updateStatus = z.object({
   current: z.string(),
-  state: z.enum(["idle", "checking", "current", "available", "downloading", "installing", "error"]),
+  state: z.enum(["idle", "checking", "current", "available", "downloading", "downloaded", "installing", "error"]),
   latest: z.string().optional(),
+  notes: z.string().optional(),
   percent: z.number().optional(),
   error: z.string().optional(),
   installs: z.boolean(),

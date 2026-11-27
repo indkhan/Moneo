@@ -4,8 +4,9 @@ import { z } from "zod";
 
 export type UpdateStatus = {
   current: string;
-  state: "idle" | "checking" | "current" | "available" | "downloading" | "installing" | "error";
+  state: "idle" | "checking" | "current" | "available" | "downloading" | "downloaded" | "installing" | "error";
   latest?: string;
+  notes?: string;
   percent?: number;
   error?: string;
   installs: boolean;
@@ -40,9 +41,10 @@ export function createUpdater(options: {
 
   let checking: Promise<UpdateStatus> | undefined;
   function check() {
-    if (status.state === "downloading" || status.state === "installing") return Promise.resolve(status);
+    if (status.state === "downloading" || status.state === "downloaded" || status.state === "installing") return Promise.resolve(status);
     checking ??= (async () => {
       set({ state: "checking", error: undefined });
+      let notes: string | undefined;
       try {
         if (!options.feed) {
           const response = await fetch("https://api.github.com/repos/indkhan/Moneo/releases?per_page=100", {
@@ -51,39 +53,47 @@ export function createUpdater(options: {
           });
           if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
           const releases = z.array(z.object({
-            draft: z.boolean(), prerelease: z.boolean(),
+            draft: z.boolean(), prerelease: z.boolean(), body: z.string().nullish(),
             assets: z.array(z.object({ name: z.string(), browser_download_url: z.url() })),
           })).parse(await response.json());
           const metadata = process.platform === "win32" ? "latest.yml" : process.platform === "darwin" ? "latest-mac.yml" : "latest-linux.yml";
           const asset = releases.filter(release => !release.draft && !release.prerelease)
-            .flatMap(release => release.assets.filter(item => item.name === metadata))[0];
+            .flatMap(release => release.assets.filter(item => item.name === metadata).map(item => ({ ...item, notes: release.body ?? undefined })))[0];
           if (!asset) return set({ state: "current", latest: undefined });
+          notes = asset.notes;
           autoUpdater.setFeedURL({ provider: "generic", url: asset.browser_download_url.slice(0, asset.browser_download_url.lastIndexOf("/") + 1) });
         }
         const result = await autoUpdater.checkForUpdates();
         if (!result) return set({ state: "error", error: "Updates work in the installed Moneo app." });
         const latest = result.updateInfo.version;
-        return set({ state: result.isUpdateAvailable ? "available" : "current", latest });
+        const packaged = result.updateInfo.releaseNotes;
+        return set({ state: result.isUpdateAvailable ? "available" : "current", latest, notes: notes ?? (typeof packaged === "string" ? packaged : undefined) });
       } catch (error) { return failed(error); }
     })().finally(() => { checking = undefined; });
     return checking;
   }
 
+  function restartToInstall() {
+    set({ state: "installing" });
+    options.log(`Installing Moneo ${status.latest}`);
+    setImmediate(() => {
+      if (process.platform === "linux") {
+        options.relaunchAfterQuit(process.env.APPIMAGE!);
+        autoUpdater.quitAndInstall(true, false);
+      } else autoUpdater.quitAndInstall(true, true);
+    });
+    return status;
+  }
+
   async function install() {
+    if (status.state === "downloaded") return restartToInstall();
     if (status.state !== "available" || !status.latest) return status;
     if (!status.installs) {
       await options.openExternal(`${RELEASES}/tag/v${status.latest}`);
       return status;
     }
     set({ state: "downloading", percent: 0 });
-    void autoUpdater.downloadUpdate().then(() => {
-      set({ state: "installing" });
-      options.log(`Installing Moneo ${status.latest}`);
-      if (process.platform === "linux") {
-        options.relaunchAfterQuit(process.env.APPIMAGE!);
-        autoUpdater.quitAndInstall(true, false);
-      } else autoUpdater.quitAndInstall(true, true);
-    }, failed);
+    void autoUpdater.downloadUpdate().then(() => { set({ state: "downloaded", percent: 100 }); }, failed);
     return status;
   }
 
