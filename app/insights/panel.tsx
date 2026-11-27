@@ -123,8 +123,8 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
 const LABELS: Partial<Record<Insight["type"], [label: string, evidence: string]>> = { cash_shortfall: ["Shortfall", "forecast"], budget_pressure: ["Budget", "budget"],
   unusual_activity: ["Unusual", "transaction"], spending_changes: ["Spending", "transactions"], recurring_changes: ["Recurring", "evidence"] };
 
-const cachedWording = unstable_cache(async (_workspaceId: string, modelId: string, findings: Pick<Insight, "key" | "type" | "title" | "detail">[]) =>
-  Object.fromEntries(await rephraseFindings(await getModel(modelId), findings)), ["weekly-briefing-wording", "v2"], { revalidate: 7 * 86400 });
+const cachedWording = unstable_cache(async (workspaceId: string, modelId: string, findings: Pick<Insight, "key" | "type" | "title" | "detail">[]) =>
+  Object.fromEntries(await rephraseFindings(await getModel(modelId, { workspaceId: workspaceId, task: "insights" }), findings)), ["weekly-briefing-wording", "v2"], { revalidate: 7 * 86400 });
 
 async function wording(props: InsightPanelProps, findings: Insight[]) {
   try {

@@ -6,10 +6,12 @@ import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImpo
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;
+  let workspaceId: string;
   let settings: WorkspaceSettings | undefined;
   try {
     const context = await requireWorkspace();
     workspaceCurrency = context.workspace.display_currency;
+    workspaceId = context.workspace.id;
     settings = context.settings;
   } catch {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
       try {
         requireAiScope(settings, "imports");
         const result = await generateObject({
-          model: await modelForSettings(settings, "imports"),
+          model: await modelForSettings(settings, "imports", { workspaceId }),
           abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]),
           maxRetries: 0,
           maxOutputTokens: 1800,

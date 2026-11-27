@@ -21,16 +21,24 @@ export async function speechAvailability(engines: BatchSpeechEngines): Promise<S
   return Object.fromEntries(entries) as SpeechAvailability;
 }
 
-export async function transcribeWithFallback({ chosen, engines, audio, hints, signal }: {
-  chosen: SpeechEngineId; engines: BatchSpeechEngines; audio: SpeechAudio; hints: SpeechHints; signal?: AbortSignal;
+export type SpeechAttempt = { engine: SpeechEngineId; durationMs: number; audioSeconds: number; error: unknown | null };
+
+export async function transcribeWithFallback({ chosen, engines, audio, hints, signal, onAttempt }: {
+  chosen: SpeechEngineId; engines: BatchSpeechEngines; audio: SpeechAudio; hints: SpeechHints; signal?: AbortSignal; onAttempt: (attempt: SpeechAttempt) => void;
 }): Promise<SpeechResult> {
   const available = await speechAvailability(engines);
   const choice = chooseSpeechEngine(chosen, available);
   if (!choice.engine) return { ok: false, reason: choice.reason, status: 503 };
-  const attempt = (engine: SpeechEngineId) => engines[engine]!.transcribe(audio, hints, signal).then(text => text.trim(), () => {
-    console.warn("[speech] engine-failed", engine);
-    return null;
-  });
+  const audioSeconds = audio.samples.length / audio.sampleRate;
+  const attempt = (engine: SpeechEngineId) => {
+    const started = performance.now();
+    const report = (error: unknown | null) => onAttempt({ engine, durationMs: performance.now() - started, audioSeconds, error });
+    return engines[engine]!.transcribe(audio, hints, signal).then(text => { report(null); return text.trim(); }, error => {
+      report(error);
+      console.warn("[speech] engine-failed", engine);
+      return null;
+    });
+  };
   const failed: SpeechResult = { ok: false, reason: "Voice input is unavailable. Try again.", status: 502 };
   const first = await attempt(choice.engine);
   if (first !== null) return { ok: true, text: first, engine: choice.engine, fellBack: choice.fellBack };

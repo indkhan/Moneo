@@ -30,6 +30,6 @@ export async function POST(request: Request) {
     return existing.data ? Response.json({ id }) : Response.json({ error: "Call id is already used" }, { status: 409 });
   }
   if (saved.error) throw saved.error;
-  after(() => summarizeCall(supabase, { workspaceId: workspace.id, callId: id, conversationId, transcript, model: () => modelForSettings(settings, "chat") }));
+  after(() => summarizeCall(supabase, { workspaceId: workspace.id, callId: id, conversationId, transcript, model: () => modelForSettings(settings, "chat", { workspaceId: workspace.id, task: "voice_summary", conversationId }) }));
   return Response.json({ id }, { status: 201 });
 }

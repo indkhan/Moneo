@@ -22,7 +22,7 @@ export const GET = cronRoute(async () => {
   for (const row of data ?? []) {
     const words = await conversationWords(db, row.workspace_id, row.id);
     if (!words) { await db.from("conversations").update({ title_settled: true }).eq("id", row.id); continue; }
-    const written = await writeTitle(async () => modelForSettings(await loadWorkspaceSettings(db, row.workspace_id), "titles"), words);
+    const written = await writeTitle(async () => modelForSettings(await loadWorkspaceSettings(db, row.workspace_id), "titles", { workspaceId: row.workspace_id, conversationId: row.id }), words);
     if (!written) break;
     await saveTitle(db, row.workspace_id, row.id, written.title);
     titled++;

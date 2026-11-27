@@ -2,7 +2,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { decodeSpeechAudio, MAX_SPEECH_BYTES } from "@/lib/ai/speech/audio";
 import { transcribeWithFallback } from "@/lib/ai/speech/choose";
 import { loadSpeechHints } from "@/lib/ai/speech/hints";
-import { batchEngines } from "@/lib/ai/speech/registry";
+import { batchEngines, speechModelId } from "@/lib/ai/speech/registry";
+import { outcomeOf, recordUsage } from "@/lib/ai/usage-ledger";
 
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -13,7 +14,10 @@ export async function POST(request: Request) {
   if (!audio) return Response.json({ error: "Invalid audio" }, { status: bytes.byteLength > MAX_SPEECH_BYTES ? 413 : 400 });
   const { supabase, workspace, settings } = context;
   const hints = await loadSpeechHints(supabase, workspace.id, settings.ai_data_scopes);
-  const result = await transcribeWithFallback({ chosen: settings.speech_engine, engines: batchEngines(settings), audio, hints, signal: request.signal });
+  const result = await transcribeWithFallback({ chosen: settings.speech_engine, engines: batchEngines(settings), audio, hints, signal: request.signal,
+    onAttempt: ({ engine, durationMs, audioSeconds, error }) => void recordUsage({ workspaceId: workspace.id, task: "speech_to_text" }, {
+      modelId: speechModelId(engine, settings), source: engine, durationMs, tokens: null, audioSeconds, outcome: error === null ? { status: "succeeded" } : outcomeOf(error),
+    }) });
   if (!result.ok) return Response.json({ error: result.reason }, { status: result.status });
   return Response.json({ text: result.text, engine: result.engine, fellBack: result.fellBack }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   const specification = resolveReviewRequest({...parsed.data.investigation ?? {version: 1, question: "Review my finances"}, allowedScopes: context.settings.ai_data_scopes}, calendarDate(new Date(), context.settings.timezone));
   try { requireAiScope(context.settings, "accounts", "transactions", ...(specification.includePlanning ? ["planning" as const] : [])); }
   catch (error) { return Response.json({ error: String(error) }, { status: 403 }); }
-  try { await modelForSettings(context.settings, "review"); }
+  try { await modelForSettings(context.settings, "review", { workspaceId: context.workspace.id }); }
   catch (error) { return Response.json({ error: String(error) }, { status: 503 }); }
   try {
     const result = await startFinancialReview(context.supabase, context.workspace.id, parsed.data.requestId, undefined, specification);

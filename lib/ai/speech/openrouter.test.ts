@@ -57,12 +57,12 @@ it("is the engine the registry returns for the stored OpenRouter model", async (
 
 it("uses OpenAI and says so when OpenRouter fails", async () => {
   fetcher.mockResolvedValue(new Response("{}", { status: 500 }));
-  const result = await transcribeWithFallback({ chosen: "openrouter", engines: { openai, openrouter: openrouterSpeech("m/a", fetcher) }, audio, hints });
+  const result = await transcribeWithFallback({ chosen: "openrouter", engines: { openai, openrouter: openrouterSpeech("m/a", fetcher) }, audio, hints, onAttempt: () => undefined });
   expect(result).toEqual({ ok: true, text: "from openai", engine: "openai", fellBack: true });
 });
 
 it("uses OpenAI and says so when no model is chosen, without calling OpenRouter", async () => {
-  const result = await transcribeWithFallback({ chosen: "openrouter", engines: { openai, openrouter: openrouterSpeech(null, fetcher) }, audio, hints });
+  const result = await transcribeWithFallback({ chosen: "openrouter", engines: { openai, openrouter: openrouterSpeech(null, fetcher) }, audio, hints, onAttempt: () => undefined });
   expect(result).toMatchObject({ engine: "openai", fellBack: true });
   expect(fetcher).not.toHaveBeenCalled();
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { chooseSpeechEngine, transcribeWithFallback } from "./choose";
+import { chooseSpeechEngine, transcribeWithFallback, type SpeechAttempt } from "./choose";
 import type { BatchSpeechEngine, BatchSpeechEngines } from "./engine";
 
 const audio = { samples: new Int16Array([1, 2, 3]), sampleRate: 24000 };
@@ -8,7 +8,7 @@ const fake = (result: string | Error, available = true): BatchSpeechEngine & { t
   available: async () => available,
   transcribe: vi.fn(async () => { if (result instanceof Error) throw result; return result; }),
 });
-const run = (chosen: "openai" | "local" | "openrouter", engines: BatchSpeechEngines) => transcribeWithFallback({ chosen, engines, audio, hints });
+const run = (chosen: "openai" | "local" | "openrouter", engines: BatchSpeechEngines, onAttempt: (attempt: SpeechAttempt) => void = () => undefined) => transcribeWithFallback({ chosen, engines, audio, hints, onAttempt });
 
 describe("choosing a speech engine", () => {
   it("uses the chosen engine when it is available", () => {
@@ -61,5 +61,13 @@ describe("transcribing with a fallback", () => {
     const broken: BatchSpeechEngine = { available: async () => { throw new Error("no"); }, transcribe: vi.fn() };
     expect(await run("local", { local: broken, openai: fake("from openai") })).toMatchObject({ ok: true, engine: "openai", fellBack: true });
     expect(broken.transcribe).not.toHaveBeenCalled();
+  });
+  it("reports every engine it tried, with the audio length and whether it failed", async () => {
+    const failure = new Error("engine down"), attempts: SpeechAttempt[] = [];
+    await run("local", { local: fake(failure), openai: fake("from openai") }, attempt => attempts.push(attempt));
+    expect(attempts.map(({ engine, audioSeconds, error }) => ({ engine, audioSeconds, error }))).toEqual([
+      { engine: "local", audioSeconds: 3 / 24000, error: failure },
+      { engine: "openai", audioSeconds: 3 / 24000, error: null },
+    ]);
   });
 });
