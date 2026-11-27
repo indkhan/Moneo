@@ -1,0 +1,26 @@
+[T3 Code: the agent in T3 thread "9b581f9e-99f2-4346-8611-1ad1fdba6dd5" sent this message, not the user.]
+
+Act as the implementation sub-agent for this task.
+
+You are implementing PR 3 of a 6-PR stacked series in Moneo. Follow AGENTS.md exactly (no comments, test rules, QA backend only — never the owner's backend, port 3000 or the owner's installed desktop app/user-data folder; use MONEO_DESKTOP_HOME scratch; Speed section; screenshots embedded in the PR).
+
+Stacking: `git fetch origin`, create branch `t3/settings-3-update-pill` from `origin/t3/settings-2-scalable-holdings` (PR https://github.com/indkhan/Moneo/pull/342, itself on PR #341). Open your PR with base `t3/settings-2-scalable-holdings`.
+
+Owner's requirement: app updates must not live in Settings. In the top bar (`components/app-shell.tsx`, next to Search, Ask and the "Needs attention" bell — both desktop and mobile headers) show an "Update" pill ONLY when an update is available; when there is none, show nothing. Remove the "App updates" section and nav entry from `app/settings/page.tsx` (`app/settings/app-update.tsx`, `app-update-actions.ts`) — move/reuse that logic, don't duplicate it.
+- Desktop app (`isDesktop()`, `desktopUpdate` in `lib/desktop-bridge.ts`, `desktop/src/updates.ts` using electron-updater with autoDownload false): clicking the pill shows the version and release notes, then Download (with progress), then Restart to install. It should download directly from the pill.
+- Source installation (Docker/npm): no download is possible. Check the latest published GitHub release of indkhan/Moneo against the running version (cache the result, check at most a few times a day server-side, fail silently into "no pill" — but the failure must be named per the lint rule about ignored failures; no client setTimeout/setInterval — use `usePolling`/`useNow`/`useTimeout`). Clicking the pill shows the new version, release notes link, and the commands to update: `git pull` then `npm run setup` (and restart `npm run dev` / their server). Make sure this outside call is acceptable under the local-first rule: it sends no personal data (no identifying User-Agent beyond a generic one); add a line in README describing this check, and if AGENTS.md's local-first list needs updating, propose it in the PR body rather than editing silently.
+- Must not slow first paint: the pill loads after the shell, without layout shift. Measure Home and Settings speed before/after (skill `measure-speed`).
+- Mock GitHub and electron-updater in tests; write tests only for real behaviour (version comparison, caching, no-update → no pill).
+- Update FEATURES.md (`npm run feature-map`), README, palette commands if "check for updates" exists there.
+
+Workflow: commit in steps, messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Before/after screenshots (skill `verify-ui`) in light/dark/mobile: top bar with no update, with update (source install), the pill's dialog for source and for desktop (mocked), and Settings without the updates section. Run `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run check:bundle`, affected Playwright; desktop workflow runs in CI since you touch desktop if you do. Push, open PR titled "Show app updates as a pill in the top bar", screenshots uploaded so they render (as earlier PRs did on the `pr-assets` branch), Speed and Decisions sections, body ends with "🤖 Generated with [Claude Code](https://claude.com/claude-code)". Do not merge. Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b26hrpsx9</task-id>
+<tool-use-id>toolu_019dBjCaEeF172rVdamEmbkg</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\3ad4503d22441dd4\4a0d8af1-48c6-4d16-afeb-0504d3bc953f\tasks\b26hrpsx9.output</output-file>
+<status>completed</status>
+<summary>Background command "npm ci &gt; /tmp/claude-ci.log 2&gt;&amp;1; echo $?; tail -3 /tmp/claude-ci.log; npm run setup -- --qa 2&gt;&amp;1 | tail -5; git worktree add ../moneo-speed-base origin/t3/settings-2-scalable-holdings 2&gt;&amp;1 | tail -1" completed (exit code 0)</summary>
+</task-notification>
