@@ -104,7 +104,7 @@ test("archiving as cash makes a Cash account holding the money, and gone records
   const [cash] = await db`select id from public.accounts where workspace_id=${workspace} and type='cash' and archived_at is null`;
   expect(await db`select amount_minor::text,kind,transfer_id is not null linked from public.transactions where account_id in (${toCash},${cash.id}) order by amount_minor`)
     .toEqual([{ amount_minor: "-12000", kind: "transfer", linked: true }, { amount_minor: "12000", kind: "transfer", linked: true }]);
-  await expect(page.getByRole("region", { name: "Your accounts" }).getByRole("article", { name: "Cash", exact: true })).toContainText("EUR 120.00");
+  await expect(page.getByRole("region", { name: "Imported and entered by hand" }).getByRole("article", { name: "Cash", exact: true })).toContainText("EUR 120.00");
 
   await archive(page, goneName, "It's gone");
   expect(await db`select amount_minor::text,kind,transfer_id from public.transactions where account_id=${gone}`).toEqual([{ amount_minor: "-3400", kind: "ordinary", transfer_id: null }]);
@@ -141,7 +141,7 @@ test("a cash machine card adds the money to Cash once, counts nothing until acce
     await page.reload();
     await expect(card).toHaveCount(0);
   };
-  const cashBalance = async () => { await page.goto("/money/accounts"); return page.getByRole("region", { name: "Your accounts" }).getByRole("article", { name: "Cash", exact: true }); };
+  const cashBalance = async () => { await page.goto("/money/accounts"); return page.getByRole("region", { name: "Imported and entered by hand" }).getByRole("article", { name: "Cash", exact: true }); };
 
   await accept(await raise(4000, day(-4)), "Create Cash account and add");
   const [cash] = await db`select id from public.accounts where workspace_id=${workspace} and type='cash' and archived_at is null`;
