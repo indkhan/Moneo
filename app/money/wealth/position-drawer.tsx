@@ -15,7 +15,6 @@ export async function PositionDrawer({ isin, item }: { isin: string; item: Wealt
   if (!item) return <aside aria-label="Position details" className={`${shell} p-6`}>{close}<p role="alert" className="mt-4 text-sm">This position isn’t available.</p></aside>;
   const { money } = displayFormat(workspace.locale, workspace.timezone);
   const view = await loadHolding(supabase, workspace, item.id);
-  const gain = item.cost_basis_minor === null ? null : BigInt(item.amount_minor) - BigInt(item.cost_basis_minor);
   return <aside aria-label="Position details" className={shell}>
     <FocusOnOpen label={`Details for ${item.name}`} />
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-6 py-1">{close}<span className="font-mono text-[11px] text-subtle">{isin}</span></div>
@@ -23,7 +22,6 @@ export async function PositionDrawer({ isin, item }: { isin: string; item: Wealt
       <header>
         <h2 className="font-display text-[28px] font-semibold leading-tight tracking-tight">{item.name}</h2>
         <p className="mt-1 font-mono text-[26px] tabular-nums">{money(item.amount_minor, item.currency_code)}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{item.quantity_text} shares{gain === null ? "" : ` · ${gain > 0n ? "+" : ""}${money(gain, item.currency_code)} since bought`}</p>
       </header>
       {view && <ScalableHoldingDetail view={view} />}
       <ScalablePositionNews isin={isin} />

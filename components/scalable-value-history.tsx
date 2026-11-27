@@ -25,21 +25,21 @@ export function ValueHistory({ view, label }: { view: ValueHistoryView; label: s
     <div role="group" aria-label="Table rows" className="flex gap-1.5">{([["days", "Days"], ["months", "Months"]] as const).map(([key, text]) =>
       <button key={key} type="button" aria-pressed={by === key} onClick={() => setBy(key)} className={period(by === key)}>{text}</button>)}</div>
     <div tabIndex={0} role="region" aria-label={`${label}, table`} className="max-h-80 overflow-auto rounded-lg border border-border">
-      <table className="w-full text-sm">
+      <table className="w-full text-xs sm:text-sm">
         <thead className="sticky top-0 bg-card text-xs text-muted-foreground"><tr className="border-b border-border">
-          <th scope="col" className="px-3 py-2 text-left font-medium">Date</th>
+          <th scope="col" className="px-2 py-2 text-left font-medium sm:px-3">Date</th>
           {priced && <th scope="col" className="px-2 py-2 text-right font-medium">Price</th>}
-          <th scope="col" className="px-3 py-2 text-right font-medium">Value</th>
+          <th scope="col" className="px-2 py-2 text-right font-medium sm:px-3">Value</th>
         </tr></thead>
         <tbody>{rows.map(row => <tr key={row.date} className="border-b border-border align-top last:border-0">
-          <th scope="row" className="px-3 py-2 text-left font-normal">{row.label}{row.calculated ? " *" : ""}
+          <th scope="row" className="px-2 py-2 text-left font-normal sm:px-3">{row.label}{row.calculated ? " *" : ""}
             {row.shares !== null && <span className="block text-xs text-muted-foreground">{row.shares} shares</span>}
             {row.trades && <span className="block text-xs text-brand">{row.trades}</span>}</th>
-          {priced && <td className="px-2 py-2 text-right font-mono tabular-nums">{row.price ?? "—"}{row.priceChange?.percent && <span className={`block text-xs ${TONE[row.priceChange.direction]}`}>{row.priceChange.percent}</span>}</td>}
-          <td className="px-3 py-2 text-right font-mono tabular-nums">{row.value}{priced ? row.change && <span className={`block text-xs ${TONE[row.change.direction]}`}>{row.change.amount}</span> : <DeltaText delta={row.change} />}</td>
+          {priced && <td className="whitespace-nowrap px-1 py-2 text-right font-mono tabular-nums sm:px-2">{row.price ?? "—"}{row.priceChange?.percent && <span className={`block text-xs ${TONE[row.priceChange.direction]}`}>{row.priceChange.percent}</span>}</td>}
+          <td className="whitespace-nowrap px-2 py-2 text-right font-mono tabular-nums sm:px-3">{row.value}{priced ? row.change && <span className={`block text-xs ${TONE[row.change.direction]}`}>{row.change.amount}</span> : <DeltaText delta={row.change} />}</td>
         </tr>)}</tbody>
       </table>
     </div>
-    <p className="text-xs text-muted-foreground">Each change compares with the row below it, and includes money moved in or out.{by === "days" ? " Showing up to the last 30 stored days." : " Each month shows its last stored day."}</p>
+    <p className="text-xs text-muted-foreground">Each change compares with the row below it. A value change includes {priced ? "shares you bought or sold" : "money moved in or out"}.{by === "days" ? " Showing up to the last 30 stored days." : " Each month shows its last stored day."}</p>
   </div>;
 }

@@ -4,7 +4,7 @@ import { DeltaText, TONE, ValueHistory } from "@/components/scalable-value-histo
 import type { HoldingView } from "@/lib/scalable/holding-view";
 
 const heading = "text-xs font-medium text-muted-foreground";
-const cell = "px-2 py-2 text-right font-mono tabular-nums";
+const cell = "whitespace-nowrap px-1 py-2 text-right font-mono tabular-nums sm:px-2";
 
 export function ScalableHoldingDetail({ view }: { view: HoldingView }) {
   return <div className="@container space-y-6">
@@ -23,7 +23,7 @@ export function ScalableHoldingDetail({ view }: { view: HoldingView }) {
     <section className="space-y-3">
       <h4 className={heading}>Price</h4>
       <ScalablePositionChart name={view.name} views={view.prices} />
-      {view.periods.length > 0 && <table className="w-full text-sm">
+      {view.periods.length > 0 && <table className="w-full text-xs sm:text-sm">
         <caption className="sr-only">Price change of {view.name} by period</caption>
         <thead className="text-xs text-muted-foreground"><tr className="border-b border-border">
           <th scope="col" className="py-2 pr-2 text-left font-medium">Period</th><th scope="col" className="px-2 py-2 text-right font-medium">Price then</th><th scope="col" className="py-2 pl-2 text-right font-medium">Change</th>
@@ -31,7 +31,7 @@ export function ScalableHoldingDetail({ view }: { view: HoldingView }) {
         <tbody>{view.periods.map(row => <tr key={row.label} className="border-b border-border align-top last:border-0">
           <th scope="row" className="py-2 pr-2 text-left font-normal">{row.label}<span className="block text-xs text-muted-foreground">from {row.from}</span></th>
           <td className={cell}>{row.then}<span className="block text-xs text-muted-foreground">now {row.now}</span></td>
-          <td className={`py-2 pl-2 text-right font-mono tabular-nums ${TONE[row.change.direction]}`}>{row.change.percent ?? "—"}<DeltaText delta={{ ...row.change, percent: null }} /></td>
+          <td className={`whitespace-nowrap py-2 pl-1 text-right font-mono tabular-nums sm:pl-2 ${TONE[row.change.direction]}`}>{row.change.percent ?? "—"}<DeltaText delta={{ ...row.change, percent: null }} /></td>
         </tr>)}</tbody>
       </table>}
     </section>
