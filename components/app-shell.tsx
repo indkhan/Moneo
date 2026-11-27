@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
@@ -15,8 +14,6 @@ import { IntentLink } from "@/components/intent-link";
 import { UpdatePill, useAppUpdate } from "@/components/update-pill";
 import { cn } from "@/lib/utils";
 import { isDraftCardPreview } from "@/lib/draft-preview";
-
-const UpdateDialog = dynamic(() => import("@/components/update-dialog").then(module => module.UpdateDialog), { ssr: false });
 
 export type ShellData = { accounts: { id: string; name: string }[]; counts: Partial<Record<string, number>> } | null;
 
@@ -120,7 +117,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
   const [menu, setMenu] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const bare = pathname === "/setup" || isDraftCardPreview(pathname);
-  const { update, setUpdate } = useAppUpdate(!bare);
+  const { update, setUpdate, UpdateDialog } = useAppUpdate(!bare);
   const current = activeItem(pathname);
   const section = railFor(current);
 
@@ -242,7 +239,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
       </nav>
     </Modal>
     {palette && <Suspense fallback={<CommandPalette commands={commands} {...paletteProps} />}><AccountCommands shell={shell} base={commands} {...paletteProps} /></Suspense>}
-    {updateOpen && update && <UpdateDialog update={update} onUpdate={setUpdate} onClose={() => setUpdateOpen(false)} />}
+    {updateOpen && update && UpdateDialog && <UpdateDialog update={update} onUpdate={setUpdate} onClose={() => setUpdateOpen(false)} />}
     <ShortcutHelp open={help} onClose={() => setHelp(false)} shortcuts={shortcuts} />
   </div>;
 }
