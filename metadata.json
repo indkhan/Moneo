@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M8DJSTQ4DD51C3X3Z0HP9FTX",
+  "strategy": "manual-commit",
+  "branch": "t3/settings-5-diagnostics",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "FEATURES.md",
+    "supabase/tests/ai-usage.sql",
+    "supabase/tests/reset-workspace.sql",
+    "supabase/tests/workspace-isolation.sql"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 34,
+    "cache_creation_tokens": 14394,
+    "cache_read_tokens": 3456422,
+    "output_tokens": 4794,
+    "api_call_count": 17
+  },
+  "redaction": {
+    "replacements": 6,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 5,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
