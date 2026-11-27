@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>bd3c7n6w1</task-id>
+<tool-use-id>toolu_013GLjvZ1w1VRHygk29T2z1i</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\97ad92ad887e6c53\8746f75f-6abe-4eee-93a9-e253e100bc80\tasks\bd3c7n6w1.output</output-file>
+<status>failed</status>
+<summary>Background command "Run production QA app for this checkout" failed with exit code 127</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>btqza0wrm</task-id>
+<tool-use-id>toolu_01J4nMRtjQSZNzkyPEJJQdCo</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\97ad92ad887e6c53\8746f75f-6abe-4eee-93a9-e253e100bc80\tasks\btqza0wrm.output</output-file>
+<status>failed</status>
+<summary>Background command "Rebuild and restart the after QA app" failed with exit code 127</summary>
+</task-notification>
