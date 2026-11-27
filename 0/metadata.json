@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M8DEQN8GVM8CZMG8YGQB5V2W",
+  "session_id": "4a0d8af1-48c6-4d16-afeb-0504d3bc953f",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-27T02:53:21.1623206Z",
+  "branch": "t3/settings-3-update-pill",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "e2e/accessibility.gated.spec.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "cb8acdb0d555",
+  "checkpoint_transcript_start": 517,
+  "transcript_lines_at_start": 517,
+  "compact_transcript_start": 82,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "redaction": {
+    "replacements": 7,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}
