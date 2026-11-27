@@ -261,7 +261,8 @@ export function ConnectedArea({ feeds, scalable, hasScalable }: { feeds: Record<
     </div>
     {message && <p role="status" className="text-sm text-foreground">{message}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-    {!data && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
+    {!data && !error && Object.entries(feeds).map(([id, feed]) => <article key={id} aria-busy="true" className="space-y-3 rounded-xl border border-border bg-card p-5">
+      <div className="h-12 w-1/2 animate-pulse rounded-md bg-muted" />{feed}</article>)}
     {!data && error && <Button variant="outline" className="min-h-10" onClick={() => { setError(null); void load(); }}>Try again</Button>}
     {connecting && <div role="group" aria-label="Connect a bank" className="rounded-xl border border-brand/40 bg-card p-5"><ConnectBank onCancel={() => setConnecting(false)} /></div>}
     {empty && !connecting && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-card p-5">
