@@ -1,4 +1,5 @@
 import { cronSecret, loopbackUrl } from "@/lib/env";
+import { log, logWarn } from "@/lib/log";
 
 export const CRON_JOBS = ["/api/cron/summaries", "/api/cron/reviews", "/api/cron/agent-backlog", "/api/cron/bank-sync", "/api/cron/scalable-sync", "/api/cron/scalable-history", "/api/cron/chat-titles"] as const;
 const HOUR = 3_600_000, FIRST_RUN = 60_000;
@@ -7,9 +8,9 @@ export async function runCronJobs(baseUrl: string, secret: string, fetcher: type
   for (const path of CRON_JOBS) {
     try {
       const response = await fetcher(new URL(path, baseUrl), { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(300_000) });
-      if (!response.ok && response.status !== 503) console.warn(`Scheduled job ${path} returned ${response.status}`);
+      log({ level: response.ok || response.status === 503 ? "info" : "warn", area: "jobs", event: "cron.run", message: `Scheduled job ${path} returned ${response.status}`, details: { path, status: response.status } });
     } catch (error) {
-      console.warn(`Scheduled job ${path} failed`, error instanceof Error ? error.message : error);
+      logWarn("jobs", "scheduled_job_failed", `Scheduled job ${path} failed`, error instanceof Error ? error.message : error);
     }
   }
 }

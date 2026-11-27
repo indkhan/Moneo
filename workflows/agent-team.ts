@@ -6,6 +6,7 @@ import { startAgentRun } from "@/lib/ai/agent-dispatch";
 import type { AgentId } from "@/lib/ai/agent-team";
 import { maybeStartFirstReview } from "@/lib/import/follow-up";
 import { isTransientDbError } from "@/lib/service-db";
+import { log, logInfo } from "@/lib/log";
 
 const SYNC_WAIT_MS = 30 * 60_000, SYNC_POLL_MS = 60_000;
 
@@ -45,6 +46,7 @@ async function team(runId: string, workspaceId: string) {
 
 async function planStep(runId: string, workspaceId: string, workflowRunId: string) {
   "use step";
+  logInfo("jobs", "agents.start", "Agent team started", { workflowRunId }, { workspaceId, agentRunId: runId });
   return startRun(runId, workspaceId, workflowRunId);
 }
 
@@ -77,6 +79,7 @@ async function analysisStep(runId: string, workspaceId: string) {
 
 async function finishStep(runId: string, workspaceId: string, error?: string) {
   "use step";
+  log({ level: error ? "error" : "info", area: "jobs", event: "agents.finish", message: error ? "Agent team failed" : "Agent team finished", details: error ? { error } : undefined, workspaceId, agentRunId: runId });
   return finishRun(runId, workspaceId, error);
 }
 

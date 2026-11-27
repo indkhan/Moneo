@@ -8,6 +8,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
 import { minorDigits } from "@/lib/finance/fx";
 import { revokeBankSessions } from "@/lib/bank/server";
+import { logError } from "@/lib/log";
 
 export type SaveSettingsState = { error?: string; field?: string; saved?: boolean };
 
@@ -30,7 +31,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
     field = undefined;
     const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
     if (result.error) {
-      console.error("Preferences save failed", { code: result.error.code });
+      logError("server", "preferences_save_failed", "Preferences save failed", { code: result.error.code });
       throw new Error("Preferences could not be saved. Run setup to apply database updates, then try again.");
     }
     (await cookies()).set("moneo-theme", settings.theme, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 31536000 });

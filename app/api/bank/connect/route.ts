@@ -8,6 +8,7 @@ import { BANK_REDIRECT_URL } from "@/lib/bank/return-listener";
 import { connectOnComputer, fromRemoteDevice } from "@/lib/remote-device";
 import { hasServiceRoleKey } from "@/lib/env";
 import { jsonBodyOrNull } from "@/lib/json-body";
+import { logError } from "@/lib/log";
 
 const bodySchema = z.object({ aspspName: z.string().trim().min(1).max(200), country: z.string().regex(/^[A-Z]{2}$/) }).strict();
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ url });
   } catch (error) {
-    console.error("bank connect failed", error instanceof EnableBankingError ? error.message : error instanceof Error ? error.name : "unknown error");
+    logError("sync", "bank_connect_failed", "bank connect failed", error instanceof EnableBankingError ? error.message : error instanceof Error ? error.name : "unknown error");
     return NextResponse.json({ error: enableBankingErrorMessage(error, "The bank connection could not be started") }, { status: 502 });
   }
 }

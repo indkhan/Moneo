@@ -7,6 +7,7 @@ import { serviceDb } from "@/lib/service-db";
 import { removeServiceKeys, saveServiceKeys } from "@/lib/service-keys";
 import { hasBankTokenKey } from "@/lib/env";
 import { jsonBodyOrNull } from "@/lib/json-body";
+import { logError } from "@/lib/log";
 
 const bodySchema = z.object({
   appId: z.string().trim().min(1, "Enter the App ID").max(200),
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   if (!body.success) return NextResponse.json({ error: body.error.issues[0].message }, { status: 400 });
   const { appId, privateKey } = body.data;
   try { await checkEnableBankingCredentials({ appId, privateKey }); } catch (error) {
-    console.error("bank credentials check failed", error instanceof Error ? error.message : "unknown error");
+    logError("sync", "bank_credentials_check_failed", "bank credentials check failed", error instanceof Error ? error.message : "unknown error");
     const message = !(error instanceof EnableBankingError) ? "Couldn't reach Enable Banking to check the App ID and key. Try again."
       : error.code === "INVALID_PRIVATE_KEY" ? "That private key could not be read. Paste the whole .pem file or upload it."
       : error.status === 401 || error.status === 403 ? "Enable Banking rejected the App ID or private key. Check that the key belongs to this App ID."

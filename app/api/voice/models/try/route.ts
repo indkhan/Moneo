@@ -4,6 +4,7 @@ import { loadSpeechHints } from "@/lib/ai/speech/hints";
 import { transcribeLocally } from "@/lib/ai/speech/local";
 import { workerRunner } from "@/lib/ai/speech/local-runner";
 import { localSpeechSupported, resolveModel } from "@/lib/ai/speech/model-store";
+import { logWarn } from "@/lib/log";
 
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     const text = (await transcribeLocally(ref, workerRunner, audio, hints)).trim();
     return Response.json({ text, seconds: Math.round((performance.now() - started) / 100) / 10 }, { headers: { "Cache-Control": "no-store" } });
   } catch (cause) {
-    console.warn("[speech] local-try-failed", cause instanceof Error ? cause.message : cause);
+    logWarn("voice", "speech_local_try_failed", "[speech] local-try-failed", cause instanceof Error ? cause.message : cause);
     return Response.json({ error: "The model could not transcribe this recording. Check that the folder holds a complete Whisper or Moonshine model." }, { status: 502 });
   }
 }

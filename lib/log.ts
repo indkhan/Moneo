@@ -63,7 +63,7 @@ function reportLogWriteFailure(error: unknown) {
   console.error("[logs] a log entry could not be stored", error instanceof Error ? error.message : error);
 }
 
-const PRINT: Record<LogLevel, ((...args: unknown[]) => void) | null> = { error: console.error, warn: console.warn, info: null };
+const PRINT: Record<LogLevel, ((...args: unknown[]) => void) | null> = { error: (...args) => console.error(...args), warn: (...args) => console.warn(...args), info: null };
 
 export function log(entry: LogEvent, store: LogStore = storeInDatabase): void {
   PRINT[entry.level]?.(`[${entry.area}] ${entry.event}: ${entry.message}`, ...(entry.details === undefined ? [] : [logDetails(entry.details)]));

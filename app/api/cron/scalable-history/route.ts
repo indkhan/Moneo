@@ -6,6 +6,7 @@ import { backfillScalableTransfers } from "@/lib/scalable/transfers";
 import { scalableConfigured } from "@/lib/scalable/server";
 import { loadWorkspaceSettings } from "@/lib/settings";
 import { supabaseUrl } from "@/lib/env";
+import { logError } from "@/lib/log";
 
 export const maxDuration = 300;
 
@@ -19,7 +20,7 @@ export const GET = cronRoute(async () => {
     try {
       const { timezone } = await loadWorkspaceSettings(db, row.workspace_id);
       const today = calendarDate(new Date(), timezone);
-      if (!row.transfers_backfilled_at) await backfillScalableTransfers(row, timezone).catch(cause => console.error("Scalable transfers were not read", cause));
+      if (!row.transfers_backfilled_at) await backfillScalableTransfers(row, timezone).catch(cause => logError("sync", "scalable_transfers_were_not_read", "Scalable transfers were not read", cause));
       if (row.history_status === "ok" || row.history_checked_on === today) continue;
       counts[await rebuildScalableHistory(row, timezone, today)]++;
     } catch { counts.failed++; }

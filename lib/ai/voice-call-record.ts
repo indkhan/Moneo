@@ -2,6 +2,7 @@ import { z } from "zod";
 import { generateText, type LanguageModel } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cleanTitle, saveTitle } from "./chat-title";
+import { logError, logInfo } from "@/lib/log";
 
 export const MAX_TRANSCRIPT_BYTES = 40_000;
 export const MAX_RECORD_BYTES = 64_000;
@@ -62,8 +63,9 @@ export async function summarizeCall(supabase: SupabaseClient, { workspaceId, cal
     const title = parseCallTitle(text);
     if (title) await saveTitle(supabase, workspaceId, conversationId, title);
   } catch (error) {
-    console.error("call summary failed", error);
+    logError("voice", "call_summary_failed", "call summary failed", error);
   }
+  logInfo("voice", "voice.call_end", `Voice call ended after ${transcript.length} turns`, { callId, transcript, summary }, { workspaceId, conversationId });
   const { error } = await supabase.from("voice_calls").update({ summary, summary_status: summary ? "done" : "failed" }).eq("workspace_id", workspaceId).eq("id", callId);
-  if (error) console.error("call summary not saved", error);
+  if (error) logError("voice", "call_summary_not_saved", "call summary not saved", error);
 }

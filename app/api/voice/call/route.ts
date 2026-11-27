@@ -6,6 +6,7 @@ import { voiceApiKey } from "@/lib/ai/configured";
 import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import { jsonBodyOrNull } from "@/lib/json-body";
 import { outcomeOf, recordUsage, type UsageOutcome } from "@/lib/ai/usage-ledger";
+import { logError, logInfo } from "@/lib/log";
 
 const inputSchema = z.object({ sdp: z.string().min(1).max(20_000), conversationId: z.uuid() }).strict();
 
@@ -36,10 +37,11 @@ export async function POST(request: Request) {
       providerOptions: { openai: { delegation: { type: "client" }, input: seedInput(history) } },
     } });
     record({ status: "succeeded" });
+    logInfo("voice", "voice.call_start", "Voice call started", { model: VOICE_MODEL, voice: settings.voice, earlierTurns: history.length }, { workspaceId: workspace.id, conversationId });
     return Response.json({ sdp: session.sdp, sessionId: session.sessionId, workspaceId: workspace.id });
   } catch (error) {
     record(outcomeOf(error));
-    console.error("voice session failed", error);
+    logError("voice", "voice_session_failed", "voice session failed", error);
     return Response.json({ error: "Could not start the call" }, { status: 502 });
   }
 }

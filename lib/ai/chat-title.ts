@@ -2,6 +2,7 @@ import { generateObject, type LanguageModel } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { callTurnSchema } from "./voice-call-record";
+import { logError } from "@/lib/log";
 
 const MAX_TITLE = 80;
 const MAX_INPUT = 2000;
@@ -25,14 +26,14 @@ export async function writeTitle(model: () => Promise<LanguageModel>, text: stri
     const title = cleanTitle(object.title);
     return title ? { title, vague: object.vague } : null;
   } catch (error) {
-    console.error("chat title failed", error);
+    logError("ai", "chat_title_failed", "chat title failed", error);
     return null;
   }
 }
 
 export async function saveTitle(supabase: SupabaseClient, workspaceId: string, conversationId: string, title: string) {
   const { error } = await supabase.from("conversations").update({ title, title_settled: true }).eq("workspace_id", workspaceId).eq("id", conversationId).eq("title_settled", false);
-  if (error) console.error("chat title not saved", error);
+  if (error) logError("ai", "chat_title_not_saved", "chat title not saved", error);
 }
 
 export async function titleChatTurn({ supabase, workspaceId, conversationId, message, model, viaCall, settled, earlier }: {
