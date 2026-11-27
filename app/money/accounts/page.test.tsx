@@ -7,7 +7,7 @@ vi.mock("@/components/connected-banks", () => ({ ConnectedArea: ({ feeds, scalab
   <>{Object.entries(feeds).map(([id, feed]) => <section key={id} data-bank={id}>{feed}</section>)}{scalable}</> }));
 vi.mock("@/components/scalable-connection", () => ({ ScalableCard: ({ children }: { children: React.ReactNode }) => <section data-scalable>{children}</section> }));
 vi.mock("./actions", () => ({ setScalableArtifactDataSafely: async () => ({}),  editAccount: async () => ({}), updateBalance: async () => ({}), undoBalanceSafely: async () => ({}), undoMoneyMetadataSafely: async () => ({}), removeOwnAccountSafely: async () => ({}), findTransfersSafely: async () => ({}), addAccount: async () => {}, addAccountSafely: async () => ({}), addOwnAccountSafely: async () => ({}), addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
-const query = (data: unknown[] | unknown) => { const q = { select: () => q, eq: () => q, gte: () => q, in: () => q, not: () => q, order: () => q, limit: () => q, maybeSingle: () => q,
+const query = (data: unknown[] | unknown) => { const q = { select: () => q, eq: () => q, gte: () => q, is: () => q, range: () => q, in: () => q, not: () => q, order: () => q, limit: () => q, maybeSingle: () => q,
   then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
 const portfolio = { asOf: "2026-11-06", currency: "EUR", totalMinor: "1234500", securitiesMinor: "1000000", cryptoMinor: "34500", cashMinor: "200000",
   performance: [{ timeframe: "ONE_MONTH", returnMinor: "-4200" }] };

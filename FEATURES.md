@@ -228,6 +228,8 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/scalable/connections` | GET | `app/api/scalable/connections/route.ts` |
 | `/api/scalable/connections/[id]` | DELETE | `app/api/scalable/connections/[id]/route.ts` |
 | `/api/scalable/connections/[id]/sync` | POST | `app/api/scalable/connections/[id]/sync/route.ts` |
+| `/api/scalable/history` | GET | `app/api/scalable/history/route.ts` |
+| `/api/scalable/holdings/[id]` | GET | `app/api/scalable/holdings/[id]/route.ts` |
 | `/api/scalable/news` | GET | `app/api/scalable/news/route.ts` |
 | `/api/sync/open` | POST | `app/api/sync/open/route.ts` |
 | `/api/voice/call` | POST | `app/api/voice/call/route.ts` |

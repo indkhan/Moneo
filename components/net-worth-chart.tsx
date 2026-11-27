@@ -6,15 +6,20 @@ export type ChartMarker = { index: number; side: "BUY" | "SELL"; label: string }
 
 const WIDTH = 640, HEIGHT = 140, PAD = 6;
 
-export function NetWorthChart({ points, label, markers = [] }: { points: NetWorthPoint[]; label: string; markers?: ChartMarker[] }) {
+export function NetWorthChart({ points, label, markers = [], byDate = false }: { points: NetWorthPoint[]; label: string; markers?: ChartMarker[]; byDate?: boolean }) {
   const [active, setActive] = useState<number | null>(null);
   const gradient = useId();
   const values = points.map(point => point.y);
   const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
-  const x = (index: number) => points.length === 1 ? WIDTH / 2 : (index / (points.length - 1)) * WIDTH;
+  const positions = points.map((point, index) => byDate ? Date.parse(point.date) : index);
+  const start = positions[0] ?? 0, length = (positions.at(-1) ?? 0) - start;
+  const x = (index: number) => length ? (((positions[index] ?? start) - start) / length) * WIDTH : WIDTH / 2;
   const y = (value: number) => HEIGHT - PAD - ((value - min) / span) * (HEIGHT - PAD * 2);
   const line = points.map((point, index) => `${x(index).toFixed(1)},${y(point.y).toFixed(1)}`).join(" ");
-  const pick = (clientX: number, rect: DOMRect) => setActive(Math.max(0, Math.min(points.length - 1, Math.round(((clientX - rect.left) / rect.width) * (points.length - 1)))));
+  const pick = (clientX: number, rect: DOMRect) => {
+    const target = ((clientX - rect.left) / rect.width) * WIDTH;
+    setActive(points.reduce((best, _, index) => Math.abs(x(index) - target) < Math.abs(x(best) - target) ? index : best, 0));
+  };
   const shown = active === null ? null : points[active];
   const move = (step: number) => setActive(current => Math.max(0, Math.min(points.length - 1, (current ?? points.length) + step)));
   return <div className="relative" onPointerLeave={() => setActive(null)}>

@@ -1,11 +1,10 @@
 import type { PositionChart } from "./charts";
+import { delta } from "./delta";
 import { toMinor } from "./live";
 
 type Format = { money: (minor: bigint | string, currency: string) => string; dateTime: (value: string) => string };
 export type PositionChartView = { key: string; label: string; asOf: string; change: { text: string; direction: "up" | "down" | "flat" } | null;
   points: { date: string; label: string; amount: string; y: number }[]; markers: { index: number; side: "BUY" | "SELL"; label: string }[] }[];
-
-const percentText = (basisPoints: bigint) => `${basisPoints > 0n ? "+" : basisPoints < 0n ? "-" : ""}${(basisPoints < 0n ? -basisPoints : basisPoints) / 100n}.${((basisPoints < 0n ? -basisPoints : basisPoints) % 100n).toString().padStart(2, "0")}%`;
 
 export function positionChartView(chart: PositionChart, format: Format): PositionChartView {
   return chart.periods.map(period => {
@@ -17,10 +16,9 @@ export function positionChartView(chart: PositionChart, format: Format): Positio
       const index = times.reduce((best, time, candidate) => Math.abs(time - at) < Math.abs(times[best] - at) ? candidate : best, 0);
       return [{ index, side: trade.side, label: `${trade.side === "BUY" ? "Bought" : "Sold"} ${trade.quantity} on ${format.dateTime(trade.at)}` }];
     });
-    const start = BigInt(toMinor(period.points[0].price, period.currency)), end = BigInt(toMinor(period.points.at(-1)!.price, period.currency)), moved = end - start;
-    const basisPoints = start > 0n ? moved * 10000n / start : null;
-    const change = basisPoints === null ? null : { direction: moved > 0n ? "up" as const : moved < 0n ? "down" as const : "flat" as const,
-      text: `${moved > 0n ? "+" : ""}${format.money(moved, period.currency)} (${percentText(basisPoints)})` };
+    const start = BigInt(toMinor(period.points[0].price, period.currency)), end = BigInt(toMinor(period.points.at(-1)!.price, period.currency));
+    const moved = delta(start, end, period.currency, format.money);
+    const change = moved.percent === null ? null : { direction: moved.direction, text: `${moved.amount} (${moved.percent})` };
     return { key: period.timeframe, label: period.label, asOf: format.dateTime(period.fetchedAt), change, points, markers };
   });
 }

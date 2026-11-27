@@ -10,7 +10,7 @@ export type ChartTimeframe = (typeof CHART_PERIODS)[number][0];
 export type ChartPoint = { at: string; price: string };
 export type ChartRow = { isin: string; timeframe: ChartTimeframe; currency_code: string; points: ChartPoint[]; fetched_at: string };
 export type TradeRow = { provider_id: string; isin: string; side: "BUY" | "SELL"; occurred_at: string; quantity_text: string };
-export type PositionChart = { periods: { timeframe: ChartTimeframe; label: string; currency: string; points: ChartPoint[]; fetchedAt: string }[]; trades: { at: string; side: "BUY" | "SELL"; quantity: string }[] };
+export type PositionChart = { periods: { timeframe: ChartTimeframe; label: string; currency: string; points: ChartPoint[]; fetchedAt: string }[]; trades: { id?: string; at: string; side: "BUY" | "SELL"; quantity: string; price?: string | null }[] };
 
 const MAX_POINTS = 240, CONCURRENCY = 4;
 const decimal = z.union([z.number().finite(), z.string().regex(/^-?\d+(\.\d+)?$/)]);
@@ -83,7 +83,7 @@ export async function chartedIsins(db: SupabaseClient, workspaceId: string) {
 export async function loadPositionChart(db: SupabaseClient, workspaceId: string, isin: string): Promise<PositionChart> {
   const [charts, trades] = await Promise.all([
     db.from("scalable_security_charts").select("timeframe, currency_code, points, fetched_at").eq("workspace_id", workspaceId).eq("isin", isin),
-    db.from("scalable_security_trades").select("side, occurred_at, quantity_text").eq("workspace_id", workspaceId).eq("isin", isin).order("occurred_at"),
+    db.from("scalable_security_trades").select("provider_id, side, occurred_at, quantity_text").eq("workspace_id", workspaceId).eq("isin", isin).order("occurred_at"),
   ]);
   for (const result of [charts, trades]) if (result.error) throw new Error(result.error.message);
   return {
@@ -92,6 +92,6 @@ export async function loadPositionChart(db: SupabaseClient, workspaceId: string,
       const points = row ? storedPoints.safeParse(row.points) : null;
       return row && points?.success && points.data.length ? [{ timeframe, label, currency: row.currency_code as string, points: points.data, fetchedAt: row.fetched_at as string }] : [];
     }),
-    trades: (trades.data ?? []).map(row => ({ at: row.occurred_at as string, side: row.side as "BUY" | "SELL", quantity: row.quantity_text as string })),
+    trades: (trades.data ?? []).map(row => ({ id: row.provider_id as string, at: row.occurred_at as string, side: row.side as "BUY" | "SELL", quantity: row.quantity_text as string })),
   };
 }
