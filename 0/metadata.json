@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M8DJNHAR2RS3K166QRBNV1B0",
+  "session_id": "394a04b8-5972-49c2-9245-11a900cc0c24",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-27T04:02:01.4913864Z",
+  "branch": "t3/settings-5-diagnostics",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/voice/sample/route.test.ts",
+    "app/settings/ai-usage.tsx",
+    "app/settings/diagnostics/ai-usage.tsx",
+    "app/settings/diagnostics/health.tsx",
+    "app/settings/diagnostics/labels.ts",
+    "app/settings/diagnostics/page.tsx",
+    "app/settings/diagnostics/sections.ts",
+    "app/settings/diagnostics/summary-runs.tsx",
+    "app/settings/diagnostics/usage-chart.tsx",
+    "app/settings/diagnostics/usage-plot.tsx",
+    "app/settings/reset.tsx",
+    "app/settings/setup-secrets.tsx",
+    "app/settings/summary-runs.tsx",
+    "app/settings/usage-chart.tsx",
+    "app/settings/usage-plot.tsx",
+    "components/app-shell.tsx",
+    "lib/ai/app-guide.ts",
+    "lib/ai/provider.test.ts",
+    "lib/ai/usage.test.ts",
+    "lib/ai/usage.ts",
+    "lib/backend-health.ts",
+    "workflows/financial-review.test.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "5065b8c8a279",
+  "checkpoint_transcript_start": 388,
+  "transcript_lines_at_start": 388,
+  "compact_transcript_start": 39,
+  "token_usage": {
+    "input_tokens": 56,
+    "cache_creation_tokens": 45207,
+    "cache_read_tokens": 4811647,
+    "output_tokens": 24227,
+    "api_call_count": 28
+  },
+  "redaction": {
+    "replacements": 6,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 5,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
