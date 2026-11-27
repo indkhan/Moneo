@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bhr28xxp2</task-id>
+<tool-use-id>toolu_015oqc3n6BDRxVxkMY3yzyjB</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\ab68105934ad15a8\4ac4c5b1-2221-4768-b445-1a7706c09954\tasks\bhr28xxp2.output</output-file>
+<status>completed</status>
+<summary>Background command "for p in 3171 3172; do for i in $(seq 1 55); do c=$(curl -s -o /dev/null -w "%{http_code}" -H "x-moneo-test: 1" http://localhost:$p/api/health); [ "$c" = 200 -o "$c" = 401 ] &amp;&amp; break; sleep 10; done; echo $p $c; done; grep -n "Build error\|server-only' cannot" -A0 /c/Users/mgsuk/AppData/Local/Temp/claude/ab68105934ad15a8/4ac4c5b1-2221-4768-b445-1a7706c09954/scratchpad/after.log | head" completed (exit code 0)</summary>
+</task-notification>
