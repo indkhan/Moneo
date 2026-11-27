@@ -1,0 +1,14 @@
+[T3 Code: the agent in T3 thread "9b581f9e-99f2-4346-8611-1ad1fdba6dd5" sent this message, not the user.]
+
+Owner decision: fix the Accounts LCP slowdown in this PR (#341), per AGENTS.md. Move the connection-status loading from `/api/bank/connections` into a shared `lib/` loader, render the card headers on the server with that data, and keep the route using the same loader for client refreshes (Sync now, polling during a sync). Re-measure (same method, median of 5) and update the Speed table; LCP should be back near 136 / 120 ms. Keep layout shift at 0. Rerun tests/lint/typecheck/build and the mocked bank spec, push to the same branch, update the PR body. Final line: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b84lk9ps8</task-id>
+<tool-use-id>toolu_01A4TYak5tYdKeTFssMBdt1n</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\5721dbdb6535862b\8357bdcf-47cb-4f34-9674-5bcfec252980\tasks\b84lk9ps8.output</output-file>
+<status>killed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/msb1; QA_PORT=3109 npm run qa:server -- --production &gt; /c/Users/mgsuk/AppData/Local/Temp/claude/5721dbdb6535862b/8357bdcf-47cb-4f34-9674-5bcfec252980/scratchpad/before3.log 2&gt;&amp;1" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
