@@ -6,9 +6,11 @@ import { resetAllData } from "./actions";
 export function ResetData() {
   const [state, action, pending] = useActionState(resetAllData, {});
   const [typed, setTyped] = useState("");
-  return <section className="rounded-xl border border-danger/40 bg-card p-6">
-    <h2 className="text-sm font-medium text-danger">Danger zone</h2>
-    <p className="mt-1 text-sm text-muted-foreground">Reset all data permanently deletes your accounts, transactions, imports, goals, plans, AI conversations and settings, leaving a fresh workspace. You stay signed in.</p>
+  return <section aria-labelledby="data-title" className="rounded-xl border border-border bg-card p-6">
+    <h2 id="data-title" className="text-base font-semibold">Your data</h2>
+    <div className="mt-4 rounded-lg border border-danger/40 p-4">
+      <h3 className="text-sm font-medium text-danger">Reset all data</h3>
+    <p className="mt-1 text-sm text-muted-foreground">Permanently deletes your accounts, transactions, imports, goals, plans, AI conversations and settings, leaving a fresh workspace. You stay signed in.</p>
     <form action={action} className="mt-4 flex flex-wrap items-end gap-3">
       <label className="grid gap-1.5 text-sm font-medium">Type RESET to confirm
         <input name="confirmation" value={typed} onChange={event => setTyped(event.target.value)} autoComplete="off" spellCheck={false}
@@ -19,5 +21,6 @@ export function ResetData() {
       </button>
     </form>
     {state.error && <p role="alert" className="mt-3 text-sm text-danger">{state.error}</p>}
+    </div>
   </section>;
 }

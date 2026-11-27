@@ -24,24 +24,21 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   const appearance = page.getByRole("combobox", { name: "Appearance", exact: true });
   const originalTheme = await appearance.inputValue();
   await appearance.selectOption("dark");
-  await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
   try {
   await page.getByRole("combobox", { name: "Default model", exact: true }).fill("luna");
   await page.getByRole("combobox", { name: "Default model", exact: true }).press("ArrowDown");
   await page.getByRole("combobox", { name: "Default model", exact: true }).press("Enter");
-  await page.getByLabel("Customize by task", { exact: true }).check();
+  await page.getByText("Advanced: a model per task", { exact: true }).click();
   await page.getByRole("combobox", { name: "Chat titles model", exact: true }).fill("gpt-custom-title");
-  await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Default model", exact: true })).toHaveValue("gpt-6-luna");
   await expect(page.getByRole("combobox", { name: "Chat titles model", exact: true })).toHaveValue("gpt-custom-title");
-  await page.getByLabel("Customize by task", { exact: true }).uncheck();
-  await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+  await page.getByRole("combobox", { name: "Chat titles model", exact: true }).fill("");
+  await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Customize by task", { exact: true })).not.toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Chat titles model", exact: true })).toHaveValue("");
   expect((await db.from("accounts").insert({ id: accountId, workspace_id: workspace!.id, name: accountName, currency_code: "EUR", type: "checking" })).error).toBeNull();
   for (const route of ["/", "/money/transactions", "/money/accounts", "/money/wealth", "/plan", "/plan?horizon=365", "/import", "/settings", "/ai"]) {
     await page.goto(route);
@@ -85,8 +82,7 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
     try {
     await page.goto("/settings");
     await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption(originalTheme);
-    await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
     } finally {
       expect((await cleanup.from("accounts").delete().eq("id", accountId).eq("workspace_id", workspace!.id)).error).toBeNull();
     }

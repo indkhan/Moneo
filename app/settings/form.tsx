@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { CurrencySelect } from "@/components/currency-select";
 import { displayFormat } from "@/lib/display-format";
@@ -8,7 +8,7 @@ import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, deviceTimeZone, SPEECH_ENGINE
 import type { WorkspaceSettings } from "@/lib/settings";
 import { INSIGHT_TYPES } from "@/lib/insight-types";
 import { SPEECH_ENGINE_LABELS } from "@/lib/ai/speech/engine";
-import { saveSettings } from "./actions";
+import { SaveError, SaveStatus, useSettingsSection } from "./autosave";
 import { SpeechModels } from "./speech-models";
 import { SpeechOpenRouter } from "./speech-openrouter";
 import type { AiSource } from "@/lib/ai/chatgpt";
@@ -17,8 +17,6 @@ import { connectedDefault, modelOptions, type ModelConnections } from "@/lib/ai/
 import { VoiceKeyToast } from "@/components/voice-key-toast";
 
 const input = "min-h-10 min-w-0 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal text-foreground";
-const card = "scroll-mt-20 space-y-4 rounded-xl border border-border bg-card p-6";
-const legend = "px-2 text-base font-semibold";
 const label = "grid gap-1.5 text-sm font-medium";
 const help = "text-sm text-muted-foreground";
 const scopeDescriptions = { accounts: "Account names and dated balances", transactions: "Booked transactions, categories and spending evidence",
@@ -26,7 +24,7 @@ const scopeDescriptions = { accounts: "Account names and dated balances", transa
 
 const LOCALES = [["en-GB", "English (United Kingdom)"], ["en-US", "English (United States)"], ["en-IE", "English (Ireland)"], ["de-DE", "German (Germany)"], ["de-AT", "German (Austria)"], ["de-CH", "German (Switzerland)"],
   ["fr-FR", "French (France)"], ["es-ES", "Spanish (Spain)"], ["it-IT", "Italian (Italy)"], ["nl-NL", "Dutch (Netherlands)"], ["pt-PT", "Portuguese (Portugal)"], ["pl-PL", "Polish (Poland)"], ["sv-SE", "Swedish (Sweden)"], ["tr-TR", "Turkish (Turkey)"], ["ur-PK", "Urdu (Pakistan)"]];
-const muteLabels: Partial<Record<(typeof INSIGHT_TYPES)[number], string>> = { asset_debt: "asset and debt changes", upcoming_obligations: "upcoming payments" };
+const insightLabels: Partial<Record<(typeof INSIGHT_TYPES)[number], string>> = { asset_debt: "asset and debt changes", upcoming_obligations: "upcoming payments" };
 
 function ModelPicker({ name, initial, placeholder, options, invalid, onChange }: { name: string; initial: string; placeholder: string; options: string[]; invalid: object; onChange: () => void }) {
   const [value, setValue] = useState(initial);
@@ -64,7 +62,7 @@ function ModelPicker({ name, initial, placeholder, options, invalid, onChange }:
   </div>;
 }
 
-function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
+function VoicePicker({ value, onChange }: { value: WorkspaceSettings["voice"]; onChange: () => void }) {
   const selectId = useId();
   const [voice, setVoice] = useState(value);
   const [state, setState] = useState<"idle" | "loading" | "playing" | "failed">("idle");
@@ -86,9 +84,9 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
       setState("playing");
     } catch { setState("failed"); }
   }
-  return <div className="grid gap-1.5 text-sm font-medium"><label htmlFor={selectId}>Call voice</label>
+  return <div className="grid gap-1.5 text-sm font-medium"><label htmlFor={selectId}>Voice</label>
     <div className="flex gap-2">
-      <select id={selectId} name="voice" className={input} value={voice} onChange={event => { stop(); setVoice(event.target.value as typeof voice); }}>{VOICES.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}</option>)}</select>
+      <select id={selectId} name="voice" className={input} value={voice} onChange={event => { stop(); setVoice(event.target.value as typeof voice); onChange(); }}>{VOICES.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}</option>)}</select>
       <button type="button" onClick={() => void play()} disabled={state === "loading"} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-60">
         {state === "loading" ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : state === "playing" ? <Square className="size-4 text-ai" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
         {state === "loading" ? "Loading…" : state === "playing" ? "Stop sample" : "Play sample"}</button>
@@ -98,89 +96,116 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
 }
 
 const neverChanges = () => () => {};
+const engineDescriptions: Record<(typeof SPEECH_ENGINES)[number], string> = {
+  openai: "Sends your recording to OpenAI. Needs an OpenAI API key.",
+  local: "Runs on this computer after a one-time download. Your recording never leaves it.",
+  openrouter: "Sends your recording to a model you pick on OpenRouter. Needs an OpenRouter key.",
+};
+type SectionStatus = Parameters<typeof SaveStatus>[0]["status"];
 
-export function SettingsForm({ settings, currency, timeZones, aiSource, connections }: { settings: WorkspaceSettings; currency: string; timeZones: string[]; aiSource: AiSource; connections: ModelConnections }) {
-  const [state, action, pending] = useActionState(saveSettings, {});
-  const [customize, setCustomize] = useState(AI_AGENT_KEYS.some(agent => Boolean(settings.ai_models[agent])));
-  const [dirty, setDirty] = useState(false);
+export function Section({ id, title, intro, status, children }: { id: string; title: string; intro: React.ReactNode; status?: SectionStatus; children: React.ReactNode }) {
+  return <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 space-y-4 rounded-xl border border-border bg-card p-6">
+    <div><div className="flex flex-wrap items-center gap-x-3"><h2 id={`${id}-title`} className="text-base font-semibold">{title}</h2>{status !== undefined && <SaveStatus status={status} />}</div>
+      <p className={`mt-1 ${help}`}>{intro}</p></div>
+    {children}
+    {status && <SaveError status={status} />}
+  </section>;
+}
+
+function Toggle({ label: text, description, checked, onChange, name, value }: { label: string; description?: string; checked: boolean; onChange: (checked: boolean) => void; name?: string; value?: string }) {
+  return <label className="flex cursor-pointer items-start justify-between gap-4 py-3 text-sm">
+    <span><span className="block font-medium">{text}</span>{description && <span className="text-muted-foreground">{description}</span>}</span>
+    <input type="checkbox" role="switch" name={name} value={value} checked={checked} onChange={event => onChange(event.target.checked)}
+      className="relative mt-0.5 h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-muted-foreground/30 transition-colors before:absolute before:left-0.5 before:top-0.5 before:size-5 before:rounded-full before:bg-background before:shadow before:transition-transform checked:bg-primary checked:before:translate-x-5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai" />
+  </label>;
+}
+
+export function GeneralSettings({ settings, currency, timeZones }: { settings: WorkspaceSettings; currency: string; timeZones: string[] }) {
+  const { form, changed, invalid, status } = useSettingsSection("general");
   const [zone, setZone] = useState(settings.timezone);
   const deviceZone = useSyncExternalStore(neverChanges, deviceTimeZone, () => null);
   const [locale, setLocale] = useState(settings.locale);
-  const [speechEngine, setSpeechEngine] = useState(settings.speech_engine);
-  const form = useRef<HTMLFormElement>(null);
-  const unsaved = dirty || !!state.error;
-  const invalid = (name: string) => state.field === name ? { "aria-invalid": true, "aria-describedby": "settings-error" } : {};
-  useEffect(() => {
-    if (!unsaved) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [unsaved]);
-  useEffect(() => {
-    const named = state.field && form.current?.elements.namedItem(state.field);
-    const field = named instanceof HTMLInputElement && named.type === "hidden" ? named.nextElementSibling : named;
-    if (!(field instanceof HTMLElement)) return;
-    field.closest("details")?.setAttribute("open", "");
-    field.focus();
-  }, [state]);
+  const [shownCurrency, setShownCurrency] = useState(currency);
   const zones = timeZones.includes(settings.timezone) ? timeZones : [settings.timezone, ...timeZones];
   const locales = LOCALES.some(([code]) => code === settings.locale) ? LOCALES : [[settings.locale, settings.locale], ...LOCALES];
   const example = displayFormat(locale);
-  return <form ref={form} action={action} onChange={() => setDirty(true)} onSubmit={() => setDirty(false)} onReset={event => event.preventDefault()} className="space-y-8">
-    <fieldset id="display" className={card}><legend className={legend}>Display and calendar</legend>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={label}>Display currency<CurrencySelect name="display_currency" label="Display currency" defaultValue={currency} locale={settings.locale} onChange={() => setDirty(true)} /></label>
-        <div><label className={label}>Timezone<select className={input} name="timezone" value={zone} onChange={event => setZone(event.target.value)} {...invalid("timezone")}>{zones.map(name => <option key={name} value={name}>{name.replaceAll("_", " ")}</option>)}</select></label>
-          {deviceZone && deviceZone !== zone && zones.includes(deviceZone) && <button type="button" className="mt-1 text-xs font-medium text-brand hover:underline" onClick={() => { setZone(deviceZone); setDirty(true); }}>Use this device&apos;s timezone ({deviceZone.replaceAll("_", " ")})</button>}</div>
-        <label className={label}>Date and number locale<select className={input} name="locale" defaultValue={settings.locale} onChange={event => setLocale(event.target.value)} {...invalid("locale")}>{locales.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
-        <label className={label}>Appearance<select className={input} name="theme" defaultValue={settings.theme}><option value="system">Follow device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-      </div><p className={help}>Dates and numbers will look like {example.longDate("2026-01-31")} and {example.money(123456, currency)}.</p>
-      <p className={help}>Totals are converted to your display currency using the rates available. Your original currencies and amounts are never changed. The app is available in English only.</p>
-    </fieldset>
-    <fieldset id="ai" className={card}><legend className={legend}>AI and your data</legend>
-      <p className={help}>Choose which of your data the AI may use. Secrets are never sent.</p>
-      <div className="space-y-4 border-t border-border pt-4">
-        <div className={label}><label htmlFor="model:default">Default model</label>
-          <ModelPicker onChange={() => setDirty(true)} invalid={invalid("model:default")} name="model:default" initial={settings.ai_models.default ?? ""}
-            placeholder={connectedDefault("chat", connections, aiSource === "claude")} options={modelOptions(connections)} />
-          <p className={help}>Used for every AI task. Type a model ID or choose a suggestion. Leave blank for the default shown.</p>
-        </div>
-        <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" className="size-4" checked={customize} onChange={event => setCustomize(event.target.checked)} />Customize by task</label>
-        <fieldset disabled={!customize} hidden={!customize} className="grid gap-3 sm:grid-cols-2">{AI_AGENT_KEYS.map(agent => <div key={agent} className={label}>
-          <label htmlFor={`model:${agent}`}>{AI_AGENTS[agent].label} model</label>
-          <ModelPicker onChange={() => setDirty(true)} invalid={invalid(`model:${agent}`)} name={`model:${agent}`} initial={settings.ai_models[agent] ?? ""}
-            placeholder="Use default model" options={modelOptions(connections)} />
-        </div>)}</fieldset>
-        <p className={help}>OpenRouter IDs include vendor/model. Saving does not call the AI provider.</p>
-      </div>
-      <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI, Anthropic or OpenRouter (depending on the model) receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key, or counts toward your ChatGPT or Claude plan.</p></details>
-      <div className="divide-y divide-border">{AI_DATA_SCOPES.map(scope => <label key={scope} className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_data_scopes" value={scope} defaultChecked={settings.ai_data_scopes.includes(scope)} /><span><strong className="block capitalize">{scope}</strong><span className="text-muted-foreground">{scopeDescriptions[scope]}</span></span></label>)}</div>
-    </fieldset>
-    <fieldset id="voice" className={card}><legend className={legend}>Voice</legend>
-      <VoicePicker value={settings.voice} />
-      <label className={label}>Speech to text
-        <select name="speech_engine" className={input} value={speechEngine} onChange={event => setSpeechEngine(event.target.value as typeof speechEngine)}>
-          {SPEECH_ENGINES.map(engine => <option key={engine} value={engine} disabled={engine === "openrouter" && !connections.openrouter && engine !== settings.speech_engine}>{SPEECH_ENGINE_LABELS[engine]}{engine === "openrouter" && !connections.openrouter ? " (needs an OpenRouter key)" : ""}</option>)}
-        </select>
-        <span className={`${help} font-normal`}>Turns what you say into text when you use the microphone in chat. Voice calls always use OpenAI. If the engine you choose can&apos;t run, Moneo uses OpenAI when you have added an API key.</span>
-      </label>
-      <SpeechOpenRouter initial={settings.speech_openrouter_model} hidden={speechEngine !== "openrouter"} onChange={() => setDirty(true)} />
-      <SpeechModels initial={settings.speech_local_model} hidden={speechEngine !== "local"} onChange={() => setDirty(true)} />
-    </fieldset>
-    <fieldset id="insights" className={card}><legend className={legend}>Insights and summaries</legend>
-      <p className={help}>Mute the insight types you do not want to see.</p>
-      <div className="grid gap-3 sm:grid-cols-2">{INSIGHT_TYPES.map(type => <label key={type} className="flex items-center gap-2 text-sm"><input type="checkbox" name="muted_insight_types" value={type} defaultChecked={settings.muted_insight_types.includes(type)} /><span>Mute {muteLabels[type] ?? type.replaceAll("_", " ")}</span></label>)}</div>
-      <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-medium">In-app summary preference<select className={input} name="summary_cadence" defaultValue={settings.summary_cadence}><option value="none">Off</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label className={label}>Preferred local time<input className={input} type="time" name="summary_time" defaultValue={settings.summary_time} required {...invalid("summary_time")} /></label></div>
-      <p className={help}>Summaries appear in the Activity log and may arrive up to a day late.</p>
-    </fieldset>
-    <div className="sticky bottom-20 z-10 max-lg:bottom-[calc(4rem+env(safe-area-inset-bottom))] space-y-2 rounded-xl border border-border bg-card p-3 shadow-sm lg:bottom-4">
-      {state.error && !pending && <p id="settings-error" role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger">{state.error}</p>}
-      <div className="flex flex-wrap items-center gap-3">
-        <button disabled={pending} className="min-h-10 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">{pending ? "Saving…" : "Save preferences"}</button>
-        {pending ? <span className="text-sm text-muted-foreground">Saving your preferences...</span>
-          : dirty ? <span className="text-sm text-warning">Unsaved changes</span>
-          : state.saved ? <p role="status" className="text-sm text-success">Preferences saved.</p> : null}
-      </div>
-    </div>
-  </form>;
+  return <Section id="general" title="General" status={status}
+    intro={<>Dates and numbers look like {example.longDate("2026-01-31")} and {example.money(123456, shownCurrency)}. Totals are converted to your display currency; original amounts never change.</>}>
+    <form {...form} className="grid gap-3 sm:grid-cols-2">
+      <label className={label}>Display currency<CurrencySelect name="display_currency" label="Display currency" defaultValue={currency} locale={settings.locale} onChange={code => { setShownCurrency(code); changed(); }} /></label>
+      <div><label className={label}>Timezone<select className={input} name="timezone" value={zone} onChange={event => setZone(event.target.value)} {...invalid("timezone")}>{zones.map(name => <option key={name} value={name}>{name.replaceAll("_", " ")}</option>)}</select></label>
+        {deviceZone && deviceZone !== zone && zones.includes(deviceZone) && <button type="button" className="mt-1 text-xs font-medium text-brand hover:underline" onClick={() => { setZone(deviceZone); changed(); }}>Use this device&apos;s timezone ({deviceZone.replaceAll("_", " ")})</button>}</div>
+      <label className={label}>Date and number format<select className={input} name="locale" defaultValue={settings.locale} onChange={event => setLocale(event.target.value)} {...invalid("locale")}>{locales.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
+      <label className={label}>Appearance<select className={input} name="theme" defaultValue={settings.theme}><option value="system">Follow device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    </form>
+  </Section>;
 }
+
+export function AiModelSettings({ settings, aiSource, connections }: { settings: WorkspaceSettings; aiSource: AiSource; connections: ModelConnections }) {
+  const { form, changed, invalid, status } = useSettingsSection("ai");
+  const [scopes, setScopes] = useState<string[]>(settings.ai_data_scopes);
+  return <Section id="ai" title="Models and data" intro="Which model answers, and which of your data the AI may read. Secrets are never sent." status={status}>
+    <form {...form} className="space-y-4">
+      <div className={label}><label htmlFor="model:default">Default model</label>
+        <ModelPicker onChange={() => changed()} invalid={invalid("model:default")} name="model:default" initial={settings.ai_models.default ?? ""}
+          placeholder={connectedDefault("chat", connections, aiSource === "claude")} options={modelOptions(connections)} />
+        <p className={`${help} font-normal`}>Leave blank to use the one shown.</p>
+      </div>
+      <details open={AI_AGENT_KEYS.some(agent => Boolean(settings.ai_models[agent]))} className="text-sm"><summary className="cursor-pointer font-medium">Advanced: a model per task</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">{AI_AGENT_KEYS.map(agent => <div key={agent} className={label}>
+          <label htmlFor={`model:${agent}`}>{AI_AGENTS[agent].label} model</label>
+          <ModelPicker onChange={() => changed()} invalid={invalid(`model:${agent}`)} name={`model:${agent}`} initial={settings.ai_models[agent] ?? ""}
+            placeholder="Use default model" options={modelOptions(connections)} />
+        </div>)}</div>
+        <p className={`mt-2 ${help}`}>OpenRouter IDs include vendor/model.</p>
+      </details>
+      <div className="divide-y divide-border border-t border-border">{AI_DATA_SCOPES.map(scope => <Toggle key={scope} name="ai_data_scopes" value={scope} label={`Let AI read ${scope}`} description={scopeDescriptions[scope]}
+        checked={scopes.includes(scope)} onChange={on => setScopes(current => on ? [...current, scope] : current.filter(item => item !== scope))} />)}</div>
+      <details className={help}><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI, Anthropic or OpenRouter (depending on the model) receives your prompts and only the data switched on above that the task needs. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key, or counts toward your ChatGPT or Claude plan.</p></details>
+    </form>
+  </Section>;
+}
+
+export function VoiceSettings({ settings, connections }: { settings: WorkspaceSettings; connections: ModelConnections }) {
+  const { form, changed, status } = useSettingsSection("voice");
+  const [speechEngine, setSpeechEngine] = useState(settings.speech_engine);
+  return <Section id="voice" title="Voice" intro="How Moneo sounds on a call, and how it hears you when you talk in chat." status={status}>
+    <form {...form} className="space-y-6">
+      <div className="space-y-2"><h3 className="text-sm font-semibold">Voice for calls</h3>
+        <VoicePicker value={settings.voice} onChange={() => changed()} />
+        <p className={help}>Calls always run through OpenAI and need an OpenAI API key.</p>
+      </div>
+      <fieldset className="space-y-3"><legend className="text-sm font-semibold">When you speak in chat</legend>
+        <p className={help}>Who turns your words into text when you tap the microphone.</p>
+        <div className="divide-y divide-border rounded-lg border border-border">{SPEECH_ENGINES.map(engine => {
+          const locked = engine === "openrouter" && !connections.openrouter && engine !== settings.speech_engine;
+          return <label key={engine} className={`flex items-start gap-3 p-3 text-sm ${locked ? "opacity-60" : "cursor-pointer"}`}>
+            <input type="radio" className="mt-1 size-4" name="speech_engine" value={engine} checked={speechEngine === engine} disabled={locked} onChange={() => setSpeechEngine(engine)} />
+            <span><strong className="block font-medium">{SPEECH_ENGINE_LABELS[engine]}</strong><span className="text-muted-foreground">{engineDescriptions[engine]}{locked ? " Add one under AI access first." : ""}</span></span>
+          </label>;
+        })}</div>
+        <p className={help}>If your choice can&apos;t run, Moneo falls back to OpenAI when you have a key.</p>
+      </fieldset>
+      <SpeechOpenRouter initial={settings.speech_openrouter_model} hidden={speechEngine !== "openrouter"} onChange={() => changed()} />
+      <SpeechModels initial={settings.speech_local_model} hidden={speechEngine !== "local"} onChange={() => changed()} />
+    </form>
+  </Section>;
+}
+
+export function InsightSwitches({ settings, children }: { settings: WorkspaceSettings; children: React.ReactNode }) {
+  const { form, invalid, status } = useSettingsSection("insights");
+  const [muted, setMuted] = useState<string[]>(settings.muted_insight_types);
+  return <Section id="insights" title="Insights" intro="Worked out in the app from your data; no AI provider sees them." status={status}>
+    <form {...form} className="space-y-4">
+      {muted.map(type => <input key={type} type="hidden" name="muted_insight_types" value={type} />)}
+      <div className="grid gap-x-8 divide-y divide-border sm:grid-cols-2 sm:divide-y-0">{INSIGHT_TYPES.map(type => <Toggle key={type} label={`Show ${insightLabels[type] ?? type.replaceAll("_", " ")}`}
+        checked={!muted.includes(type)} onChange={on => setMuted(current => on ? current.filter(item => item !== type) : [...current, type])} />)}</div>
+      <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+        <label className={label}>Summary in the Activity log<select className={input} name="summary_cadence" defaultValue={settings.summary_cadence}><option value="none">Off</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
+        <label className={label}>At about<input className={input} type="time" name="summary_time" defaultValue={settings.summary_time} required {...invalid("summary_time")} /></label>
+      </div>
+    </form>
+    {children}
+  </Section>;
+}
+

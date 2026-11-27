@@ -134,6 +134,7 @@ Every page with a navigation label in Pages is also a palette command in group P
 | Actions | New AI chat |  |
 | Actions | Set a spending limit |  |
 | Ask Moneo | Ask Moneo “… |  |
+| Settings | Settings: … |  |
 | Transactions | Search transactions for “… |  |
 
 ## Background work

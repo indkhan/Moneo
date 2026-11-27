@@ -59,9 +59,7 @@ async function expectReadable(page: Page, target: Locator, label: string) {
 }
 
 async function expectSaved(target: Page, theme: string) {
-  await target.getByRole("button", { name: "Save preferences", exact: true }).click();
-  await expect(target.getByRole("button", { name: "Save preferences", exact: true })).toBeEnabled({ timeout: 20_000 });
-  await expect(target.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+  await expect(target.getByRole("status").filter({ hasText: "Saved" })).toBeVisible({ timeout: 20_000 });
   await expect(target.locator("html")).toHaveAttribute("data-theme", theme);
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { SETTINGS_SECTIONS } from "@/components/settings-sections";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
@@ -152,6 +153,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     { id: "shortcuts", label: "Keyboard shortcuts", group: "Actions", hint: "?", run: () => setHelp(true) },
     ...allItems.map(item => ({ id: item.href, label: item.label, group: "Pages", keywords: [railFor(item)?.label, item.about, item === notificationsItem && "notifications"].filter(Boolean).join(" "),
       hint: item.go && `G ${item.go.toUpperCase()}`, run: () => router.push(item.href) })),
+    ...SETTINGS_SECTIONS.map(([id, label]) => ({ id: `settings:${id}`, label: `Settings: ${label}`, group: "Settings", keywords: "preferences", run: () => router.push(`/settings#${id}`) })),
   ];
   const paletteProps = { open: palette, onClose: () => setPalette(false), onAsk: (question: string) => window.dispatchEvent(new CustomEvent<AskSeed>(ASK_EVENT, { detail: { question } })),
     onSearch: (text: string) => router.push(`/money/transactions?q=${encodeURIComponent(text)}`) };

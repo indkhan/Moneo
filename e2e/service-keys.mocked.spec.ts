@@ -75,17 +75,14 @@ test("Ask explains missing AI and voice access instead of failing", async ({ pag
   await expect.poll(() => access.evaluate(section => Math.abs(section.getBoundingClientRect().top - parseFloat(getComputedStyle(section).scrollMarginTop)))).toBeLessThan(2);
 });
 
-test("Settings keeps the AI keys and setup status in one section", async ({ page }) => {
+test("Settings jumps to AI access and shows no setup warning when setup is complete", async ({ page }) => {
   await page.route("**/api/bank/connections", route => route.fulfill({ json: {
     configured: false, credentials: { source: null, hint: null }, redirectUrl: "https://localhost:3443/api/bank/callback", connections: [] } }));
   await page.goto("/settings");
-  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Keys and connections" }).click();
-  await expect(page).toHaveURL(/#connections$/);
-  const section = page.getByRole("region", { name: "Keys and connections" });
-  for (const name of ["AI access", "Set up automatically"])
-    await expect(section.getByRole("heading", { name, exact: true }).first()).toBeVisible();
-  await expect(section.getByText("Encryption for saved keys and bank sessions")).toBeVisible();
-  await expect(section.getByText("Missing: run npm run setup")).toHaveCount(0);
+  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "AI access" }).click();
+  await expect(page).toHaveURL(/#ai-access$/);
+  await expect(page.getByRole("heading", { name: "AI access", exact: true }).first()).toBeInViewport();
+  await expect(page.getByText("Setup is incomplete")).toHaveCount(0);
 });
 
 test("ChatGPT or OpenRouter chat stays available while voice shows a missing-key toast", async ({ page }) => {
