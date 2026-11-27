@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, primaryKey, foreignKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, numeric, jsonb, boolean, uniqueIndex, unique, index, check, primaryKey, foreignKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const dashboardLayouts = pgTable("dashboard_layouts", {
   workspaceId: uuid("workspace_id").primaryKey().references((): AnyPgColumn => workspaces.id, { onDelete: "cascade" }),
@@ -1192,6 +1192,39 @@ export const planningEvents = pgTable("planning_events", {
   unique("planning_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId),
   index("planning_events_entity_idx").on(table.workspaceId, table.entityType, table.entityId, table.createdAt),
   check("planning_events_entity_type_check", sql`${table.entityType} in ('assumption', 'spending_plan')`),
+]);
+
+export const aiUsage = pgTable("ai_usage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  task: text("task").notNull(),
+  modelId: text("model_id").notNull(),
+  source: text("source").notNull(),
+  inputTokens: bigint("input_tokens", { mode: "number" }),
+  outputTokens: bigint("output_tokens", { mode: "number" }),
+  reasoningTokens: bigint("reasoning_tokens", { mode: "number" }),
+  cachedInputTokens: bigint("cached_input_tokens", { mode: "number" }),
+  audioSeconds: numeric("audio_seconds", { precision: 12, scale: 3 }),
+  durationMs: integer("duration_ms"),
+  status: text("status").notNull(),
+  errorKind: text("error_kind"),
+  conversationId: uuid("conversation_id"),
+  jobId: uuid("job_id"),
+  agentRunId: uuid("agent_run_id"),
+}, (table) => [
+  index("ai_usage_workspace_created").on(table.workspaceId, table.createdAt.desc()),
+  check("ai_usage_task_check", sql`${table.task} ~ '^[a-z_]{1,40}$'`),
+  check("ai_usage_model_id_check", sql`char_length(${table.modelId}) between 1 and 200`),
+  check("ai_usage_source_check", sql`${table.source} in ('chatgpt','claude','openai','openrouter','local','unknown')`),
+  check("ai_usage_input_tokens_check", sql`${table.inputTokens} >= 0`),
+  check("ai_usage_output_tokens_check", sql`${table.outputTokens} >= 0`),
+  check("ai_usage_reasoning_tokens_check", sql`${table.reasoningTokens} >= 0`),
+  check("ai_usage_cached_input_tokens_check", sql`${table.cachedInputTokens} >= 0`),
+  check("ai_usage_audio_seconds_check", sql`${table.audioSeconds} >= 0`),
+  check("ai_usage_duration_ms_check", sql`${table.durationMs} >= 0`),
+  check("ai_usage_status_check", sql`${table.status} in ('succeeded','failed','canceled')`),
+  check("ai_usage_error_kind_check", sql`char_length(${table.errorKind}) between 1 and 100`),
 ]);
 
 export const chatRequests = pgTable("chat_requests", {
