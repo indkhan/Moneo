@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { AppShell, type ShellData } from "@/components/app-shell";
 import { SyncOnOpen } from "@/components/sync-on-open";
 import { ServiceWorker } from "@/components/service-worker";
+import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { PendingCallRecords } from "@/components/pending-call-records";
 import { cookies } from "next/headers";
 import { ThemePreference } from "@/components/theme-preference";
@@ -71,6 +72,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         {hasSupabase() ? <Suspense fallback={<ThemePreference preference={theme} />}><WorkspaceTheme fallback={theme} /></Suspense> : <ThemePreference preference={theme} />}
         {hasSupabase() && <SyncOnOpen />}
+        {hasSupabase() && <ClientErrorReporter />}
         {hasSupabase() && <Suspense fallback={null}><CallRecordSync /></Suspense>}
         <ServiceWorker />
         <AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell>

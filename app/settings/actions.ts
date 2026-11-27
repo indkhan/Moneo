@@ -8,6 +8,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
 import { minorDigits } from "@/lib/finance/fx";
 import { revokeBankSessions } from "@/lib/bank/server";
+import { deleteAllLogs } from "@/lib/logs/store";
 import { logError } from "@/lib/log";
 
 export type SaveSettingsState = { error?: string; field?: string; saved?: boolean };
@@ -63,6 +64,7 @@ export async function resetAllData(_previous: { error?: string }, form: FormData
     if (!z.literal("RESET").safeParse(form.get("confirmation")).success) return { error: "Type RESET to confirm" };
     await removeWorkspaceFiles(context);
     await revokeBankSessions(context.workspace.id);
+    await deleteAllLogs(context.supabase, context.workspace.id);
     const result = await context.supabase.rpc("reset_workspace");
     if (result.error) throw result.error;
   } catch {

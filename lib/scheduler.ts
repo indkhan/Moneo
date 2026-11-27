@@ -1,7 +1,7 @@
 import { cronSecret, loopbackUrl } from "@/lib/env";
 import { log, logWarn } from "@/lib/log";
 
-export const CRON_JOBS = ["/api/cron/summaries", "/api/cron/reviews", "/api/cron/agent-backlog", "/api/cron/bank-sync", "/api/cron/scalable-sync", "/api/cron/scalable-history", "/api/cron/chat-titles"] as const;
+export const CRON_JOBS = ["/api/cron/summaries", "/api/cron/reviews", "/api/cron/agent-backlog", "/api/cron/bank-sync", "/api/cron/scalable-sync", "/api/cron/scalable-history", "/api/cron/chat-titles", "/api/cron/log-cleanup"] as const;
 const HOUR = 3_600_000, FIRST_RUN = 60_000;
 
 export async function runCronJobs(baseUrl: string, secret: string, fetcher: typeof fetch = fetch) {
