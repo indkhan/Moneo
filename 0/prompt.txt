@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bo72luwj3</task-id>
+<tool-use-id>toolu_011aZaZWEPrhJ6hQBA5kVDmG</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\3ad4503d22441dd4\4a0d8af1-48c6-4d16-afeb-0504d3bc953f\tasks\bo72luwj3.output</output-file>
+<status>completed</status>
+<summary>Background command "grep -n -e "--color-primary\b\|--color-brand\|--color-primary:" app/globals.css | head; node scripts/perf-pages.mjs 7 before=http://localhost:3102 after=http://localhost:3101 2&gt;&amp;1 | grep -v "^$" | head -80" completed (exit code 0)</summary>
+</task-notification>
