@@ -38,7 +38,7 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   await page.getByRole("combobox", { name: "Chat titles model", exact: true }).fill("");
   await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Chat titles model", exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Chat titles model", { exact: true })).toHaveValue("");
   expect((await db.from("accounts").insert({ id: accountId, workspace_id: workspace!.id, name: accountName, currency_code: "EUR", type: "checking" })).error).toBeNull();
   for (const route of ["/", "/money/transactions", "/money/accounts", "/money/wealth", "/plan", "/plan?horizon=365", "/import", "/settings", "/ai"]) {
     await page.goto(route);
