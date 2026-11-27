@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { INSIGHT_TYPES } from "@/lib/insight-types";
+import { DEFAULT_LOG_RETENTION, LOG_RETENTIONS } from "@/lib/logs/options";
 
 import { AI_AGENT_KEYS, AI_DATA_SCOPES, DEFAULT_VOICE, SPEECH_ENGINES, VOICES, deviceTimeZone, type AiAgent, type AiDataScope } from "@/lib/workspace-settings-options";
 
@@ -19,6 +20,7 @@ export const settingsSchema = z.object({
   summary_cadence: z.enum(["none", "weekly", "monthly"]).default("none"),
   summary_time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).default("09:00"),
   artifact_scalable_data: z.enum(["snapshot", "live"]).default("snapshot"),
+  log_retention: z.enum(LOG_RETENTIONS).default(DEFAULT_LOG_RETENTION),
 });
 export type WorkspaceSettings = z.infer<typeof settingsSchema>;
 export const DEFAULT_SETTINGS = settingsSchema.parse({});

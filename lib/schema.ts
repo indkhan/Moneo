@@ -1227,6 +1227,29 @@ export const aiUsage = pgTable("ai_usage", {
   check("ai_usage_error_kind_check", sql`char_length(${table.errorKind}) between 1 and 100`),
 ]);
 
+export const appLogs = pgTable("app_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  level: text("level").notNull(),
+  area: text("area").notNull(),
+  event: text("event").notNull(),
+  message: text("message").notNull(),
+  details: jsonb("details"),
+  conversationId: uuid("conversation_id"),
+  usageId: uuid("usage_id"),
+  agentRunId: uuid("agent_run_id"),
+  jobId: uuid("job_id"),
+  audioPath: text("audio_path"),
+}, (table) => [
+  index("app_logs_workspace_created").on(table.workspaceId, table.createdAt.desc()),
+  check("app_logs_level_check", sql`${table.level} in ('error','warn','info')`),
+  check("app_logs_area_check", sql`${table.area} in ('ai','voice','sync','import','jobs','server','browser')`),
+  check("app_logs_event_check", sql`${table.event} ~ '^[a-z0-9_.:-]{1,80}$'`),
+  check("app_logs_message_check", sql`char_length(${table.message}) between 1 and 2000`),
+  check("app_logs_audio_path_check", sql`char_length(${table.audioPath}) between 1 and 300`),
+]);
+
 export const chatRequests = pgTable("chat_requests", {
   id: uuid("id").primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -1305,6 +1328,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   speechEngine: text("speech_engine").notNull().default("openai"),
   speechLocalModel: text("speech_local_model"),
   speechOpenrouterModel: text("speech_openrouter_model"),
+  logRetention: text("log_retention").notNull().default("14"),
   uncategorizedSkippedAt: timestamp("uncategorized_skipped_at", { withTimezone: true }),
   aiSetupSkippedAt: timestamp("ai_setup_skipped_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1322,6 +1346,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   check("workspace_settings_speech_engine_check", sql`${table.speechEngine} in ('openai','local','openrouter')`),
   check("workspace_settings_speech_local_model_check", sql`length(${table.speechLocalModel}) between 1 and 1000`),
   check("workspace_settings_speech_openrouter_model_check", sql`length(${table.speechOpenrouterModel}) between 1 and 200`),
+  check("workspace_settings_log_retention_check", sql`${table.logRetention} in ('7','14','30','90','forever')`),
 ]);
 
 export const voiceCalls = pgTable("voice_calls", {
