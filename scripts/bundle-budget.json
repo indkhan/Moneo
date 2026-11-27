@@ -24,5 +24,6 @@
   "/plan/currency": 167,
   "/plan/spending": 166,
   "/settings": 187,
+  "/settings/diagnostics": 163,
   "/setup": 163
 }
