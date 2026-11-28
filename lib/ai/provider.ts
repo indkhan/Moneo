@@ -6,6 +6,7 @@ import { claudeAccount, claudeModel, type ClaudeSteering } from "./claude";
 import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 import { connectedDefault } from "./model-options";
+import { qaMockAi } from "@/lib/env";
 
 export async function modelConnections() {
   const [chatgpt, claude, openai, openrouter] = await Promise.all([chatgptStatus(), claudeAccount(), serviceKey("openai_api_key"), serviceKey("openrouter_api_key")]);
@@ -13,6 +14,7 @@ export async function modelConnections() {
 }
 
 export async function getModel(modelId: string) {
+  if (qaMockAi()) return (await import("./qa-model")).qaModel(modelId);
   if (modelId.includes("/")) {
     const apiKey = await serviceKey("openrouter_api_key");
     if (!apiKey) throw new Error("Model IDs with a / run on OpenRouter. Add an OpenRouter API key under Settings → AI access.");
