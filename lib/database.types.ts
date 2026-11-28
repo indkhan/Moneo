@@ -151,14 +151,14 @@ isOneToOne: false
                   ]
                 },"artifact_card_versions": {
                   Row: {
-                    "card_id": string,"compiled": string,"created_at": string,"id": string,"kind": string,"model": string | null,"params": NonNullable<Json>,"preset": string | null,"prompt": string,"queries": NonNullable<Json>,"source": string,"title": string,"version": number,"workspace_id": string
+                    "card_id": string,"compiled": string,"created_at": string,"id": string,"kind": string,"model": string | null,"params": NonNullable<Json>,"preset": string | null,"prompt": string,"queries": NonNullable<Json>,"request_id": string | null,"source": string,"title": string,"version": number,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "card_id": string,"compiled": string,"created_at"?: string,"id"?: string,"kind": string,"model"?: string | null,"params"?: NonNullable<Json>,"preset"?: string | null,"prompt": string,"queries"?: NonNullable<Json>,"source": string,"title": string,"version": number,"workspace_id": string
+                    "card_id": string,"compiled": string,"created_at"?: string,"id"?: string,"kind": string,"model"?: string | null,"params"?: NonNullable<Json>,"preset"?: string | null,"prompt": string,"queries"?: NonNullable<Json>,"request_id"?: string | null,"source": string,"title": string,"version": number,"workspace_id": string
                   }
                   Update: {
-                    "card_id"?: string,"compiled"?: string,"created_at"?: string,"id"?: string,"kind"?: string,"model"?: string | null,"params"?: NonNullable<Json>,"preset"?: string | null,"prompt"?: string,"queries"?: NonNullable<Json>,"source"?: string,"title"?: string,"version"?: number,"workspace_id"?: string
+                    "card_id"?: string,"compiled"?: string,"created_at"?: string,"id"?: string,"kind"?: string,"model"?: string | null,"params"?: NonNullable<Json>,"preset"?: string | null,"prompt"?: string,"queries"?: NonNullable<Json>,"request_id"?: string | null,"source"?: string,"title"?: string,"version"?: number,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -167,6 +167,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "artifact_cards"
       referencedColumns: ["id","workspace_id"]
+    },{
+      foreignKeyName: "artifact_card_versions_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "chat_requests"
+      referencedColumns: ["id"]
     },{
       foreignKeyName: "artifact_card_versions_workspace_id_fkey"
       columns: ["workspace_id"]
@@ -203,14 +209,14 @@ isOneToOne: false
                   ]
                 },"artifact_versions": {
                   Row: {
-                    "artifact_id": string,"created_at": string,"html": string,"id": string,"model": string | null,"prompt": string,"queries": NonNullable<Json>,"version": number,"workspace_id": string
+                    "artifact_id": string,"created_at": string,"html": string,"id": string,"model": string | null,"prompt": string,"queries": NonNullable<Json>,"request_id": string | null,"version": number,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "artifact_id": string,"created_at"?: string,"html": string,"id"?: string,"model"?: string | null,"prompt": string,"queries"?: NonNullable<Json>,"version": number,"workspace_id": string
+                    "artifact_id": string,"created_at"?: string,"html": string,"id"?: string,"model"?: string | null,"prompt": string,"queries"?: NonNullable<Json>,"request_id"?: string | null,"version": number,"workspace_id": string
                   }
                   Update: {
-                    "artifact_id"?: string,"created_at"?: string,"html"?: string,"id"?: string,"model"?: string | null,"prompt"?: string,"queries"?: NonNullable<Json>,"version"?: number,"workspace_id"?: string
+                    "artifact_id"?: string,"created_at"?: string,"html"?: string,"id"?: string,"model"?: string | null,"prompt"?: string,"queries"?: NonNullable<Json>,"request_id"?: string | null,"version"?: number,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -218,6 +224,12 @@ isOneToOne: false
       columns: ["artifact_id"]
 isOneToOne: false
       referencedRelation: "artifacts"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "artifact_versions_request_id_fkey"
+      columns: ["request_id"]
+isOneToOne: false
+      referencedRelation: "chat_requests"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "artifact_versions_workspace_id_fkey"

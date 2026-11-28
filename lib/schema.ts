@@ -967,9 +967,11 @@ export const artifactVersions = pgTable("artifact_versions", {
   html: text("html").notNull(),
   queries: jsonb("queries").notNull().default([]),
   model: text("model"),
+  requestId: uuid("request_id").references(() => chatRequests.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("artifact_versions_workspace").on(table.workspaceId),
+  index("artifact_versions_request").on(table.requestId).where(sql`${table.requestId} is not null`),
   unique("artifact_versions_artifact_id_version_key").on(table.artifactId, table.version),
 ]);
 
@@ -1006,8 +1008,10 @@ export const artifactCardVersions = pgTable("artifact_card_versions", {
   params: jsonb("params").notNull().default([]),
   prompt: text("prompt").notNull(),
   model: text("model"),
+  requestId: uuid("request_id").references(() => chatRequests.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("artifact_card_versions_request").on(table.requestId).where(sql`${table.requestId} is not null`),
   unique("artifact_card_versions_card_id_version_key").on(table.cardId, table.version),
   foreignKey({ name: "artifact_card_versions_card_id_workspace_id_fkey", columns: [table.cardId, table.workspaceId], foreignColumns: [artifactCards.id, artifactCards.workspaceId] }).onDelete("cascade"),
   check("artifact_card_versions_version_check", sql`${table.version} >= 1`),

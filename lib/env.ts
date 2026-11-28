@@ -98,6 +98,7 @@ export function supabaseClientConfig() {
 }
 
 export const supabaseUrl = () => publicSupabaseUrl();
+export const qaMockAi = () => read("MONEO_QA_MOCK_AI") === "1" && /^(http:\/\/(localhost|127\.0\.0\.1):54521)\/?$/.test(publicSupabaseUrl() ?? "");
 export const hasServiceRoleKey = () => Boolean(read("SUPABASE_SERVICE_ROLE_KEY"));
 
 export function serviceRoleConfig() {
