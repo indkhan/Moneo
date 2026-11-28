@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
 import { minorDigits } from "@/lib/finance/fx";
+import { UPDATE_CHECKS_COOKIE } from "@/lib/app-update";
 import { revokeBankSessions } from "@/lib/bank/server";
 
 export type SaveSettingsState = { error?: string; field?: string; saved?: boolean };
@@ -33,7 +34,10 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
       console.error("Preferences save failed", { code: result.error.code });
       throw new Error("Preferences could not be saved. Run setup to apply database updates, then try again.");
     }
-    (await cookies()).set("moneo-theme", settings.theme, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 31536000 });
+    const preferences = await cookies();
+    const cookieOptions = { httpOnly: true, sameSite: "lax", path: "/", maxAge: 31536000 } as const;
+    preferences.set("moneo-theme", settings.theme, cookieOptions);
+    if (form.has("update_checks")) preferences.set(UPDATE_CHECKS_COOKIE, form.get("update_checks") === "1" ? "1" : "0", cookieOptions);
     revalidatePath("/", "layout");
     return { saved: true };
   } catch (error) {

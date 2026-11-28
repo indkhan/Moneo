@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { UPDATE_CHECKS_COOKIE } from "@/lib/app-update";
 import { Suspense } from "react";
 import Link from "next/link";
 import { InsightSettings } from "./insights";
@@ -22,6 +24,7 @@ type SearchParams = { chatgpt?: string; claude?: string };
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [context, query] = await Promise.all([requireWorkspace(), searchParams]);
   const { workspace, settings } = context;
+  const updateChecks = (await cookies()).get(UPDATE_CHECKS_COOKIE)?.value === "1";
   const [status, keys, claude] = await Promise.all([chatgptStatus(), serviceKeyStatus(), claudeAccount()]);
   const connections = { openai: status.signedIn || Boolean(keys.openai_api_key.source), claude: claude.signedIn, openrouter: Boolean(keys.openrouter_api_key.source) };
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
@@ -35,7 +38,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <div className="min-w-0 space-y-8">
         <SetupSecrets />
         <SettingsAutosave>
-          <GeneralSettings settings={settings} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
+          <GeneralSettings updateChecks={updateChecks} settings={settings} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
           <div className="space-y-4">
             <AiAccess status={status} keys={keys} claude={claude} message={query.chatgpt} claudeMessage={query.claude} />
             <AiModelSettings settings={settings} aiSource={status.source} connections={connections} />
