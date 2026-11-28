@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import type { LocalSpeechModel, ModelFile } from "./local-models";
 import { isInstalled, modelFolder, speechModelsDir } from "./model-store";
+import { logWarn } from "@/lib/log";
 
 export type DownloadStatus =
   | { state: "missing" }
@@ -62,7 +63,7 @@ export function createModelDownloads({ dir = speechModelsDir, fetcher = (url: st
       progress.delete(model.id);
     } catch (cause) {
       counter.error = cause instanceof Error ? cause.message : "The download failed";
-      console.warn("[speech] model-download-failed", model.id);
+      logWarn("voice", "speech_model_download_failed", "[speech] model-download-failed", model.id);
     }
   }
 

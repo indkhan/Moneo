@@ -9,6 +9,8 @@ import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
 import { minorDigits } from "@/lib/finance/fx";
 import { UPDATE_CHECKS_COOKIE } from "@/lib/app-update";
 import { revokeBankSessions } from "@/lib/bank/server";
+import { LOG_AUDIO_BUCKET } from "@/lib/logs/options";
+import { logError } from "@/lib/log";
 
 export type SaveSettingsState = { error?: string; field?: string; saved?: boolean };
 
@@ -23,7 +25,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
       ai_models: Object.fromEntries(["default", ...AI_AGENT_KEYS].map(agent => [agent, String(form.get(`model:${agent}`) ?? "").trim()]).filter(([, model]) => model)),
       ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
-      artifact_scalable_data: current.artifact_scalable_data,
+      artifact_scalable_data: current.artifact_scalable_data, log_retention: current.log_retention,
     });
     field = "display_currency";
     const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Use a three-letter currency code, such as EUR").parse(form.get("display_currency"));
@@ -31,7 +33,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
     field = undefined;
     const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
     if (result.error) {
-      console.error("Preferences save failed", { code: result.error.code });
+      logError("server", "preferences_save_failed", "Preferences save failed", { code: result.error.code });
       throw new Error("Preferences could not be saved. Run setup to apply database updates, then try again.");
     }
     const preferences = await cookies();
@@ -48,7 +50,7 @@ export async function saveSettings(_previous: SaveSettingsState, form: FormData)
 }
 
 async function removeWorkspaceFiles({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>) {
-  for (const bucket of ["imports", "chat"]) {
+  for (const bucket of ["imports", "chat", LOG_AUDIO_BUCKET]) {
     for (;;) {
       const listed = await supabase.storage.from(bucket).list(workspace.id, { limit: 1000 });
       if (listed.error) throw listed.error;

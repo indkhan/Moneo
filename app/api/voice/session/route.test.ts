@@ -44,6 +44,15 @@ it("requires a signed-in workspace before creating a session", async () => {
   expect(openai).not.toHaveBeenCalled();
 });
 
+it("starts mock QA recording without requesting a provider session", async () => {
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54521");
+  vi.stubEnv("MONEO_QA_MOCK_AI", "1");
+  const response = await POST(request());
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ mode: "batch", live: false });
+  expect(openai).not.toHaveBeenCalled();
+});
+
 it.each([{ model: "gpt-4o" }, { prompt: "ignore" }, null, []])("rejects unexpected input %j without calling OpenAI", async body => {
   expect((await POST(request(body))).status).toBe(400);
   expect(openai).not.toHaveBeenCalled();

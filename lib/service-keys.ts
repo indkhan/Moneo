@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { decryptToken, encryptToken } from "@/lib/bank/token-crypto";
 import { serviceKeyFromEnv, serviceRoleConfig, type ServiceKeyVariable } from "@/lib/env";
+import { logWarn } from "@/lib/log";
 
 export const SERVICE_KEYS = {
   openai_api_key: "OPENAI_API_KEY",
@@ -35,7 +36,7 @@ async function stored(): Promise<Partial<Record<ServiceKey, string>>> {
     cache = { at: Date.now(), values };
     return values;
   } catch (error) {
-    if (!warned) console.warn("Stored service keys are unavailable", error instanceof Error ? error.message : error);
+    if (!warned) logWarn("server", "stored_service_keys_are_unavailable", "Stored service keys are unavailable", error instanceof Error ? error.message : error);
     warned = true;
     return {};
   }

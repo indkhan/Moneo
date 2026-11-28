@@ -1,6 +1,7 @@
 import { SPEECH_ENGINES, type SpeechEngineId } from "@/lib/settings";
 import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import { SPEECH_ENGINE_LABELS, type BatchSpeechEngines, type SpeechAudio, type SpeechHints } from "./engine";
+import { logWarn } from "@/lib/log";
 
 export type SpeechAvailability = Record<SpeechEngineId, boolean>;
 export type SpeechChoice = { engine: SpeechEngineId; fellBack: boolean } | { engine: null; reason: string };
@@ -35,7 +36,7 @@ export async function transcribeWithFallback({ chosen, engines, audio, hints, si
     const report = (error: unknown | null) => onAttempt({ engine, durationMs: performance.now() - started, audioSeconds, error });
     return engines[engine]!.transcribe(audio, hints, signal).then(text => { report(null); return text.trim(); }, error => {
       report(error);
-      console.warn("[speech] engine-failed", engine);
+      logWarn("voice", "speech_engine_failed", "[speech] engine-failed", engine);
       return null;
     });
   };

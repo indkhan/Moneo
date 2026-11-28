@@ -73,6 +73,7 @@ export function applicationMigrationSql(file, sql, schema) {
     if (boundary < 0) throw new Error("Chat storage boundary changed; review disposable replay isolation");
     return sql.slice(boundary);
   }
+  if (file === "202611280002_log_audio_bucket.sql") return "";
   if (file === "202610200003_remove_artifacts_and_library.sql") {
     const start = sql.indexOf("drop policy private_finance_files on storage.objects;");
     const end = sql.indexOf("create or replace function public.reset_workspace()", start);

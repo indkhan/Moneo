@@ -43,3 +43,28 @@ export function visiblePath(nodes: ChatNode[], picks: ChatPicks = {}): PathStep[
     after = answer.id;
   }
 }
+
+export function branchOf(nodes: ChatNode[], end: string | null): Set<string> {
+  const branch = new Set(ancestors(nodes, end).map(node => node.id));
+  if (!end || !branch.has(end)) return branch;
+  const children = Map.groupBy(nodes, node => node.parent);
+  for (let frontier = [end]; frontier.length;) frontier = frontier.flatMap(id => (children.get(id) ?? []).map(child => (branch.add(child.id), child.id)));
+  return branch;
+}
+
+type BranchVersion = { version: number; request_id: string | null };
+const newest = <T extends BranchVersion>(rows: T[]) => rows.reduce<T | undefined>((found, row) => !found || row.version > found.version ? row : found, undefined);
+export const versionsOnBranch = <T extends BranchVersion>(rows: T[], branch: Set<string>) => rows.filter(row => !row.request_id || branch.has(row.request_id));
+export const newestOnBranch = <T extends BranchVersion>(rows: T[], branch: Set<string>) => newest(versionsOnBranch(rows, branch));
+
+export function picksTo(nodes: ChatNode[], end: string | null): ChatPicks {
+  const picks: ChatPicks = {};
+  ancestors(nodes, end).forEach((node, index) => {
+    const step = visiblePath(nodes, picks)[index];
+    if (!step) return;
+    picks[questionPick(step)] = node.regenerates && step.questions.includes(node.regenerates) ? node.regenerates : node.id;
+    const chosen = visiblePath(nodes, picks)[index];
+    if (chosen) picks[answerPick(chosen)] = node.id;
+  });
+  return picks;
+}

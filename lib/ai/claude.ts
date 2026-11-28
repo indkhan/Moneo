@@ -7,6 +7,7 @@ import type { ToolSet } from "ai";
 import type { ClaudeCodeSettings, MessageInjector } from "ai-sdk-provider-claude-code";
 import { z } from "zod";
 import { childProcessEnv, dataDir } from "@/lib/env";
+import { logError } from "@/lib/log";
 
 export class ClaudeError extends Error {}
 
@@ -132,7 +133,7 @@ export function steerClaudeRun(injector: MessageInjector, steering: ClaudeSteeri
         if (ended) break;
         injector.inject(steer.content, delivered => { if (delivered) steering.delivered([steer]); });
       }
-    } catch (error) { console.error("Steering Claude failed", error); }
+    } catch (error) { logError("ai", "steering_claude_failed", "Steering Claude failed", error); }
     finally { polling = false; }
   };
   const timer = setInterval(() => void poll(), pollMs);

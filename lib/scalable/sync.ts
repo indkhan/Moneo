@@ -7,6 +7,7 @@ import { investmentsWatchlist, readTransactions, tradingAccess } from "./live";
 import { cashSchema, holdingsSchema, overviewSchema, scalableWealth, type ScalableExtras } from "./portfolio";
 import { withScalable } from "./server";
 import { saveTransfers, transferRows } from "./transfers";
+import { logError, logInfo } from "@/lib/log";
 
 const optionalExtraIsSkipped = () => undefined;
 const RECENT_TRANSACTIONS = 100, ACTIVITY_SHOWN = 8;
@@ -32,17 +33,19 @@ export async function syncScalable(connectionId: string, workspaceId: string) {
     const known = new Set([...(previous.data ?? []).flatMap(row => { const ids = (row.portfolio as ScalableExtras | null); return [...(ids?.knownItemIds ?? []), ...(ids?.itemIds ?? [])]; }), ...items.map(item => item.id)]);
     const { data, error } = await db.rpc("sync_scalable_wealth", { p_connection_id: connectionId, p_items: items, p_portfolio: { ...portfolio, ...extras, knownItemIds: [...known] }, p_fetched_at: fetchedAt });
     if (error) throw new Error(error.message);
-    if (recent !== undefined) try { await saveTransfers(connectionId, transferRows(recent, timezone), false); } catch (cause) { console.error("Scalable transfers were not saved", cause); }
+    if (recent !== undefined) try { await saveTransfers(connectionId, transferRows(recent, timezone), false); } catch (cause) { logError("sync", "scalable_transfers_were_not_saved", "Scalable transfers were not saved", cause); }
     try {
-      if (charts.failed) console.error(`Scalable charts missing for ${charts.failed} requests`);
+      if (charts.failed) logError("sync", "scalable_charts_missing_for_requests", `Scalable charts missing for ${charts.failed} requests`);
       await saveCharts(connectionId, { charts: charts.rows, trades: recent === undefined ? [] : tradeRows(recent), held: charts.held });
-    } catch (cause) { console.error("Scalable charts were not saved", cause); }
+    } catch (cause) { logError("sync", "scalable_charts_were_not_saved", "Scalable charts were not saved", cause); }
     if (access) {
       const saved = await db.from("scalable_connections").update({ trading_access: access }).eq("id", connectionId);
       if (saved.error) throw new Error(saved.error.message);
     }
+    logInfo("sync", "scalable.sync_finish", `Scalable sync updated ${data as number} items`, { connectionId, holdings: items.length }, { workspaceId });
     return { changed: data as number, portfolio };
   } catch (error) {
+    logError("sync", "scalable.sync_failed", "Scalable sync failed", { connectionId, error }, { workspaceId });
     if (!(error instanceof ScalableError && error.expired))
       await db.from("scalable_connections").update({ last_error: "The Scalable sync failed. It retries on the next sync." }).eq("id", connectionId);
     throw error;

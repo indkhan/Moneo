@@ -1,10 +1,11 @@
-import { getSupabaseConfig, hasSupabase } from "@/lib/env";
+import { getSupabaseConfig, hasSupabase, qaMockAi } from "@/lib/env";
 import { serviceKey } from "@/lib/service-keys";
 
 export async function GET() {
   const supabaseConfig = getSupabaseConfig();
   return Response.json({
     ok: true,
+    ...(qaMockAi() && { qaMockAi: true }),
     supabase: hasSupabase(),
     supabaseStatus: supabaseConfig.status,
     detail: supabaseConfig.detail,

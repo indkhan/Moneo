@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { generateText, streamText, wrapLanguageModel } from "ai";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
-import { usageMiddleware, usageRow, type AiUsageRow } from "./usage-ledger";
+import { usageMiddleware, usageRow, type AiTrace, type AiUsageRow } from "./usage-ledger";
 
 const scope = { workspaceId: "00000000-0000-4000-8000-000000000001", task: "chat" as const, conversationId: "00000000-0000-4000-8000-000000000002" };
 const usage = { inputTokens: { total: 120, noCache: 20, cacheRead: 100, cacheWrite: undefined }, outputTokens: { total: 40, text: 30, reasoning: 10 } };
@@ -61,10 +61,28 @@ describe("recording model calls", () => {
     expect(rows[0]).toMatchObject({ model_id: "claude-test", source: "claude", input_tokens: 120, output_tokens: 40, status: "succeeded" });
   });
 
+  it("logs the streamed reply with its thinking and tool calls, linked to the usage row", async () => {
+    const { rows, write } = recording();
+    const traces: Parameters<AiTrace>[0][] = [];
+    const stream = simulateReadableStream({ chunks: [
+      { type: "reasoning-start" as const, id: "r" }, { type: "reasoning-delta" as const, id: "r", delta: "Check the " }, { type: "reasoning-delta" as const, id: "r", delta: "groceries." }, { type: "reasoning-end" as const, id: "r" },
+      { type: "text-start" as const, id: "1" }, { type: "text-delta" as const, id: "1", delta: "Looking" }, { type: "text-end" as const, id: "1" },
+      { type: "tool-call" as const, toolCallId: "c1", toolName: "transactions_search", input: "{\"q\":\"food\"}" },
+      { type: "finish" as const, finishReason: { unified: "tool-calls" as const, raw: "tool_use" }, usage },
+    ] });
+    const model = wrapLanguageModel({ model: new MockLanguageModelV4({ modelId: "claude-test", doStream: { stream } }), middleware: usageMiddleware(scope, "claude", write, entry => traces.push(entry)) });
+    await streamText({ model, prompt: "what did I spend on food?" }).consumeStream();
+    await vi.waitFor(() => expect(rows).toHaveLength(1));
+    expect(traces).toHaveLength(1);
+    expect(traces[0]).toMatchObject({ usageId: rows[0]?.id, modelId: "claude-test", outcome: { status: "succeeded" },
+      reply: { reasoning: "Check the groceries.", text: "Looking", toolCalls: [{ toolName: "transactions_search", input: "{\"q\":\"food\"}" }], finishReason: "tool-calls" } });
+    expect(JSON.stringify(traces[0]?.prompt)).toContain("what did I spend on food?");
+  });
+
   it("never fails the answer when the usage row cannot be saved", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const model = wrapLanguageModel({ model: new MockLanguageModelV4({ doGenerate: generated }), middleware: usageMiddleware(scope, "openai", async () => ({ error: new Error("database down") })) });
     expect((await generateText({ model, prompt: "hello" })).text).toBe("hi");
-    await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.stringContaining("could not be recorded"), expect.any(Error)));
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.stringContaining("could not be recorded"), expect.objectContaining({ message: "database down" })));
   });
 });

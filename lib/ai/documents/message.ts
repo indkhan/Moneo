@@ -3,6 +3,7 @@ import { attachmentId, isImage, type ChatAttachment } from "@/lib/ai/chat-attach
 import { renderPdfPages } from "./extract";
 import { documentForModel } from "./read";
 import { documentText, downloadAttachment } from "./store";
+import { logError } from "@/lib/log";
 
 const TEXT_BUDGET = 150_000;
 const MIN_DOCUMENT_BUDGET = 20_000;
@@ -37,7 +38,7 @@ export async function attachmentParts(supabase: SupabaseClient, files: ChatAttac
     const scanned = document.scannedPages ?? [];
     const drawn = scanned.slice(0, images);
     images -= drawn.length;
-    const pageImages = drawn.length ? await render(bytes, drawn).catch(error => { console.error("rendering PDF pages failed", error); return []; }) : [];
+    const pageImages = drawn.length ? await render(bytes, drawn).catch(error => { logError("ai", "rendering_pdf_pages_failed", "rendering PDF pages failed", error); return []; }) : [];
     const sent = new Set(pageImages.map(item => item.page));
     const skipped = scanned.filter(page => !sent.has(page));
     parts.push({ type: "text", text: documentForModel(document, file.name, id, budget, sent)

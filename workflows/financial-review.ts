@@ -17,6 +17,7 @@ import {buildReviewPrompt, prioritizeReviewReceipts, withFormattedValue} from "@
 import {synthesizeReview} from "@/lib/finance/review-synthesis";
 import type { GuardedFinanceContext } from "@/lib/finance/finance-context";
 import { serviceRoleConfig } from "@/lib/env";
+import { logError, logInfo } from "@/lib/log";
 
 function service(signal?: AbortSignal) {
   const config = serviceRoleConfig();
@@ -69,6 +70,7 @@ async function enterStage(db: ReturnType<typeof service>, jobId: string, workspa
 
 async function registerRun(jobId: string, workspaceId: string, runId: string) {
   "use step";
+  logInfo("jobs", "review.start", "Financial review started", { runId }, { workspaceId, jobId });
   try {
     const receipt = await service().rpc("register_financial_review_run", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: runId });
     if (receipt.error) throw receipt.error;
@@ -80,6 +82,7 @@ async function registerRun(jobId: string, workspaceId: string, runId: string) {
 
 async function failReview(jobId: string, workspaceId: string, runId: string, stage: string, error: string) {
   "use step";
+  logError("jobs", "review.failed", `Financial review failed while ${stage.replaceAll("_", " ")}`, { runId, stage, error }, { workspaceId, jobId });
   try {
     const failed = await service().rpc("fail_financial_review", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: runId, p_stage: stage, p_error: error.slice(0, 2000) });
     if (failed.error) throw failed.error;
@@ -250,6 +253,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: NonNull
 
 async function saveReview(jobId: string, workspaceId: string, evidence: NonNullable<Awaited<ReturnType<typeof gatherEvidence>>>, body: string, scheduled: boolean, runId: string) {
   "use step";
+  logInfo("jobs", "review.finish", "Financial review written", { runId, scheduled, chars: body.length }, { workspaceId, jobId });
   try {
     const db = service();
     if (!await enterStage(db, jobId, workspaceId, runId, "saving_review")) return;

@@ -10,6 +10,7 @@ import { resolveNewIdentities } from "@/lib/organize/resolve";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
 import { serviceRoleConfig } from "@/lib/env";
+import { logError, logInfo } from "@/lib/log";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
@@ -38,8 +39,8 @@ async function linkOwnTransfersStep(workspaceId: string) {
   const config = serviceRoleConfig();
   if (!config) return;
   const db = serviceClient(config.url, config.key);
-  try { await resolveNewIdentities(db, workspaceId); } catch (error) { console.error("Identities were not resolved", error); }
-  try { const { locale, timezone } = await loadWorkspaceSettings(db, workspaceId); await linkOwnTransfers(db, workspaceId, { locale, timezone, now: new Date() }); } catch (error) { console.error("Own-account transfers were not linked", error); }
+  try { await resolveNewIdentities(db, workspaceId); } catch (error) { logError("import", "identities_were_not_resolved", "Identities were not resolved", error); }
+  try { const { locale, timezone } = await loadWorkspaceSettings(db, workspaceId); await linkOwnTransfers(db, workspaceId, { locale, timezone, now: new Date() }); } catch (error) { logError("import", "own_account_transfers_were_not_linked", "Own-account transfers were not linked", error); }
 }
 
 async function startAgentTeam(importId: string, workspaceId: string) {
@@ -50,11 +51,12 @@ async function startAgentTeam(importId: string, workspaceId: string) {
   try {
     const imported = checked(await db.from("imports").select("new_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number | null };
     if (imported.new_rows) await startAgentRun(db, workspaceId, { importId });
-  } catch (error) { console.error("Agent team did not start", error); }
+  } catch (error) { logError("import", "agent_team_did_not_start", "Agent team did not start", error); }
 }
 
 async function prepareImport(importId: string, workspaceId: string, rowCount: number, runVersion: number) {
   "use step";
+  logInfo("import", "import.start", `Import started with ${rowCount} rows`, { importId, runVersion }, { workspaceId });
   const config = serviceRoleConfig();
   if (!config) throw new Error("Supabase import service is not configured");
   const db = serviceClient(config.url, config.key);
@@ -141,11 +143,14 @@ async function processImportBatch(importId: string, workspaceId: string, offset:
 async function finishImport(importId: string, workspaceId: string, runVersion: number) {
   "use step";
   const db = serviceDb();
-  return checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: null })) === "completed";
+  const status = checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: null }));
+  logInfo("import", "import.finish", `Import finished: ${status}`, { importId, runVersion, status }, { workspaceId });
+  return status === "completed";
 }
 
 async function failImport(importId: string, workspaceId: string, error: string, runVersion: number) {
   "use step";
   const db = serviceDb();
+  logError("import", "import.failed", "Import failed", { importId, runVersion, error }, { workspaceId });
   checked(await db.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_error: error }));
 }

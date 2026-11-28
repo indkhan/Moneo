@@ -90,7 +90,7 @@ The voice call hands every request to the same chat (`/api/chat`), so these are 
 | `related_rows` | organizer (internal) | Other payments whose description shares words with an item's payee, labelled by the owner or not… | `lib/organize/organizer.ts` |
 
 ## Voice
-Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-record-queue.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-usage-server.ts`, `lib/ai/voice-usage.ts`, `lib/ai/voice-vocabulary.ts`.
+Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-audio.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-record-queue.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-usage-server.ts`, `lib/ai/voice-usage.ts`, `lib/ai/voice-vocabulary.ts`.
 
 | Route | Methods | File |
 | --- | --- | --- |
@@ -146,6 +146,7 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/cron/agent-backlog` | `app/api/cron/agent-backlog/route.ts` |
 | `/api/cron/bank-sync` | `app/api/cron/bank-sync/route.ts` |
 | `/api/cron/chat-titles` | `app/api/cron/chat-titles/route.ts` |
+| `/api/cron/log-cleanup` | `app/api/cron/log-cleanup/route.ts` |
 | `/api/cron/reviews` | `app/api/cron/reviews/route.ts` |
 | `/api/cron/scalable-history` | `app/api/cron/scalable-history/route.ts` |
 | `/api/cron/scalable-sync` | `app/api/cron/scalable-sync/route.ts` |
@@ -210,6 +211,7 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/cron/agent-backlog` | GET | `app/api/cron/agent-backlog/route.ts` |
 | `/api/cron/bank-sync` | GET | `app/api/cron/bank-sync/route.ts` |
 | `/api/cron/chat-titles` | GET | `app/api/cron/chat-titles/route.ts` |
+| `/api/cron/log-cleanup` | GET | `app/api/cron/log-cleanup/route.ts` |
 | `/api/cron/reviews` | GET | `app/api/cron/reviews/route.ts` |
 | `/api/cron/scalable-history` | GET | `app/api/cron/scalable-history/route.ts` |
 | `/api/cron/scalable-sync` | GET | `app/api/cron/scalable-sync/route.ts` |
@@ -225,6 +227,11 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/imports/confirm` | POST | `app/api/imports/confirm/route.ts` |
 | `/api/imports/inspect` | POST | `app/api/imports/inspect/route.ts` |
 | `/api/investigations` | POST | `app/api/investigations/route.ts` |
+| `/api/logs` | GET | `app/api/logs/route.ts` |
+| `/api/logs/audio/[id]` | GET | `app/api/logs/audio/[id]/route.ts` |
+| `/api/logs/client` | POST | `app/api/logs/client/route.ts` |
+| `/api/logs/report` | GET | `app/api/logs/report/route.ts` |
+| `/api/logs/voice-call` | POST | `app/api/logs/voice-call/route.ts` |
 | `/api/money/organization/preview` | POST | `app/api/money/organization/preview/route.ts` |
 | `/api/money/organization/suggestions` | POST | `app/api/money/organization/suggestions/route.ts` |
 | `/api/pending-holds` | POST | `app/api/pending-holds/route.ts` |

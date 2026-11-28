@@ -7,6 +7,7 @@ import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 import { connectedDefault } from "./model-options";
 import { usageMiddleware, type UsageScope, type UsageSource, type UsageTask } from "./usage-ledger";
+import { qaMockAi } from "@/lib/env";
 
 export async function modelConnections() {
   const [chatgpt, claude, openai, openrouter] = await Promise.all([chatgptStatus(), claudeAccount(), serviceKey("openai_api_key"), serviceKey("openrouter_api_key")]);
@@ -24,6 +25,7 @@ function recorded(model: SourceModel, scope: UsageScope, source: UsageSource) {
 }
 
 async function sourceModel(modelId: string): Promise<{ model: SourceModel; source: UsageSource }> {
+  if (qaMockAi()) return { model: (await import("./qa-model")).qaModel(modelId), source: "local" };
   if (modelId.includes("/")) {
     const apiKey = await serviceKey("openrouter_api_key");
     if (!apiKey) throw new Error("Model IDs with a / run on OpenRouter. Add an OpenRouter API key under Settings → AI access.");

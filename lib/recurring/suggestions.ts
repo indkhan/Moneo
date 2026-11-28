@@ -55,7 +55,7 @@ export const loadSuggestions = cache(async (supabase: ReadonlyDb, workspace: { i
   const { data: storedData, error: storedError } = await storedQuery;
   const stored = storedData ?? [];
   const truncated = rows.length > MAX_TRANSACTIONS;
-  const cutoff = truncated ? rows[MAX_TRANSACTIONS].posted_on : null;
+  const cutoff = rows[MAX_TRANSACTIONS]?.posted_on ?? null;
   if (cutoff) rows.splice(0, rows.length, ...rows.filter(row => row.posted_on > cutoff));
   const observedFrom = rows.at(-1)?.posted_on;
   const observedTo = rows[0]?.posted_on;
@@ -104,7 +104,8 @@ export function seriesDecision({ series, evidence }: Pick<Suggestion, "series" |
 
 export function priceChanges(candidates: Suggestion[]) {
   return candidates.flatMap(item => {
-    const schedule = item.assumption, linked = item.related.length === 1 ? item.related[0].recurring_series_transactions ?? [] : null;
+    const [related] = item.related;
+    const schedule = item.assumption, linked = related && item.related.length === 1 ? related.recurring_series_transactions ?? [] : null;
     const latest = item.evidence.at(-1);
     if (item.status !== "confirmed" || !linked || !schedule?.confirmed || !schedule.enabled || schedule.removed_at || !latest) return [];
     if (linked.some(link => link.transaction_id === latest.id) || latest.amount_minor === schedule.amount_minor) return [];

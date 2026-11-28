@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { enableBankingClient, enableBankingConfigured } from "@/lib/bank/enable-banking";
 import { enableBankingErrorMessage } from "@/lib/bank/server";
+import { logError } from "@/lib/log";
 
 export async function GET(request: Request) {
   try { await requireWorkspace(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ banks: banks.map(({ name, country, logo }) => ({ name, country, logo: logo ?? null })) },
       { headers: { "cache-control": "private, max-age=86400" } });
   } catch (error) {
-    console.error("bank list failed", error instanceof Error ? error.message : "unknown error");
+    logError("sync", "bank_list_failed", "bank list failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: enableBankingErrorMessage(error, "Banks could not be loaded") }, { status: 502 });
   }
 }

@@ -30,7 +30,7 @@ begin
   foreach target_table in array array['workspace_settings','accounts','balance_snapshots','data_sources','imports','source_transactions','categories','merchants',
     'transactions','pending_hold_resolutions','transaction_sources','correction_events','goals','goal_allocations','financial_assumptions','scenarios','scenario_overrides',
     'forecast_runs','background_jobs','saved_analyses','conversations','messages',
-    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','chat_steers','manual_transaction_entries','transaction_batches','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews','bank_transaction_raw','ai_usage'] loop
+    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','chat_steers','manual_transaction_entries','transaction_batches','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews','bank_transaction_raw','ai_usage','app_logs'] loop
     -- The same fixture also verifies older private upgrade baselines.
     if target_table in ('organization_rules','organization_reviews') and to_regclass(format('%I.%I',app_schema,target_table)) is null then continue; end if;
     data := jsonb_build_object('id',md5(target_table||workspace_b)::uuid,'workspace_id',workspace_b,'name','Synthetic foreign',
@@ -62,6 +62,7 @@ begin
     if target_table='dashboard_layouts' then data := data || '{"items":[]}'::jsonb; end if;
     if target_table='transaction_splits' then data := data || jsonb_build_object('parent_transaction_id',md5('transactions'||workspace_b)::uuid,'split_set_id',md5('transaction_split_sets'||workspace_b)::uuid,'ordinal',1); end if;
     if target_table='ai_usage' then data := data || '{"task":"chat","model_id":"gpt-test","source":"openai","status":"succeeded"}'::jsonb; end if;
+    if target_table='app_logs' then data := data || '{"level":"info","area":"ai","event":"ai.chat","message":"synthetic"}'::jsonb; end if;
     if target_table='summary_runs' then data := data || '{"period_start":"2026-10-01"}'::jsonb; end if;
     if target_table='spending_plan_limits' then data := data || jsonb_build_object('plan_id',md5('spending_plans'||workspace_b)::uuid,'enabled',true,'effective_month','2026-10-01','version',99); end if;
     if target_table='insight_dismissals' then data := data || jsonb_build_object('evidence_key',repeat('a',64),'insight_type','data_quality'); end if;

@@ -78,14 +78,14 @@ function Spoken({ show }: { show?: boolean }) {
   return show ? <><Mic className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" aria-hidden="true" /><span className="sr-only">Spoken: </span></> : null;
 }
 
-export function ChatMessages({ messages, path = [], onPick, editable = false, models, pending, compact = false, toolResult }: { messages: ChatItem[]; path?: PathStep[]; onPick?: (key: string, id: string) => void; editable?: boolean; models?: string[]; pending?: PendingExchange | null; compact?: boolean; toolResult?: (step: ToolStep, key: number) => React.ReactNode }) {
+export function ChatMessages({ messages, path = [], onPick, editable = false, models, pending, compact = false, toolResult }: { messages: ChatItem[]; path?: PathStep[]; onPick?: (key: string, id: string) => void; editable?: boolean; models?: string[]; pending?: PendingExchange | null; compact?: boolean; toolResult?: (step: ToolStep, key: number, regenerate: Resend | null) => React.ReactNode }) {
   const bubble = `ml-auto w-fit max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[18px_18px_4px_18px] bg-input ${compact ? "px-3.5 py-2 text-sm" : "px-[18px] py-3.5 text-[15px]"}`;
   const files = useMemo(() => [...messages.flatMap(item => item.attachments ?? []), ...(pending?.attachments ?? [])], [messages, pending?.attachments]);
   const [editing, setEditing] = useState<string | null>(null);
-  const results = (tools: (string | ToolStep)[]) => toolResult && tools.map((step, index) => typeof step === "string" ? null : toolResult(step, index));
+  const results = (tools: (string | ToolStep)[], regenerate: Resend | null = null) => toolResult && tools.map((step, index) => typeof step === "string" ? null : toolResult(step, index, regenerate));
   const assistant = (body: React.ReactNode) => <div className="min-w-0"><p className="mb-2 flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Moneo</p>{body}</div>;
   const time = (at: string) => <time className="sr-only" dateTime={at} suppressHydrationWarning>{new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>;
-  const answer = (item: ChatItem, actions: { regenerate?: Resend | null; versions?: Versions; last?: boolean } = {}) => assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} />{results(item.tools ?? [])}<AiMessage content={item.content} files={files} />
+  const answer = (item: ChatItem, actions: { regenerate?: Resend | null; versions?: Versions; last?: boolean } = {}) => assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} />{results(item.tools ?? [], actions.regenerate ?? null)}<AiMessage content={item.content} files={files} />
     <MessageActions content={item.content} model={item.model} regenerate={actions.regenerate ?? null} models={models} versions={actions.versions} />{actions.last && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>);
   const userBubble = (item: ChatItem) => <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></>;
   const shownUntil = pending?.after === undefined ? path.length : pending.after === null ? 0 : path.findIndex(step => step.answer === pending.after) + 1 || path.length;

@@ -8,6 +8,7 @@ import { groupUncategorized, type UncategorizedRow } from "@/lib/import/uncatego
 
 const groupsStayUnsuggestedWhenHistoryIsUnavailable = () => null;
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
+import { logError } from "@/lib/log";
 
 const PAGE = 1000;
 const SUGGESTION_BATCH = 50;
@@ -57,7 +58,7 @@ export async function skipUncategorized(): Promise<string | undefined> {
   const { supabase, workspace } = await requireWorkspace();
   const { error } = await supabase.from("workspace_settings").update({ uncategorized_skipped_at: new Date().toISOString() }).eq("workspace_id", workspace.id);
   if (error) {
-    console.error("skipUncategorized failed", { code: error.code });
+    logError("ai", "skipuncategorized_failed", "skipUncategorized failed", { code: error.code });
     return "Could not save. Try again.";
   }
   return undefined;
@@ -87,7 +88,7 @@ export async function categorizeGroups(inputs: z.input<typeof groupInput>[], rem
       rows[group.key] = await currentVersions(context, group.rows);
     }
   } catch (cause) {
-    console.error("categorizeGroups failed", cause);
+    logError("ai", "categorizegroups_failed", "categorizeGroups failed", cause);
     error = cause instanceof z.ZodError || !(cause instanceof Error) ? "Could not categorize these transactions. Reload and try again." : cause.message;
   }
   return { applied, rows, error };
