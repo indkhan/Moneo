@@ -4,6 +4,6 @@
     "noUncheckedIndexedAccess": true,
     "incremental": true
   },
-  "include": ["lib/bank/**/*.ts", "lib/finance/**/*.ts"],
+  "include": ["lib/bank/**/*.ts", "lib/finance/**/*.ts", "lib/recurring/**/*.ts"],
   "exclude": ["node_modules"]
 }
