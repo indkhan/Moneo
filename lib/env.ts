@@ -122,6 +122,8 @@ export function ownerCredentials() {
 
 export const dataDir = () => read("MONEO_DATA_DIR") ?? `${process.cwd()}/.data`;
 
+export const moneoVersion = () => clean(process.env.MONEO_VERSION);
+
 export const isDesktopRuntime = () => read("MONEO_DESKTOP") === "1";
 export const isDesktopPreview = () => isDesktopRuntime() && read("MONEO_DESKTOP_PREVIEW") === "1";
 export const desktopBridgeUrl = () => isDesktopRuntime() && read("MONEO_DESKTOP_BRIDGE") ? parse("MONEO_DESKTOP_BRIDGE", urlSchema, read("MONEO_DESKTOP_BRIDGE")) : undefined;

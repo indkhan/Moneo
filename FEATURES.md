@@ -187,6 +187,7 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/ai/status` | GET | `app/api/ai/status/route.ts` |
 | `/api/analysis` | GET, POST | `app/api/analysis/route.ts` |
 | `/api/analysis/[id]` | DELETE, GET | `app/api/analysis/[id]/route.ts` |
+| `/api/app-update` | GET | `app/api/app-update/route.ts` |
 | `/api/bank/aspsps` | GET | `app/api/bank/aspsps/route.ts` |
 | `/api/bank/callback` | GET | `app/api/bank/callback/route.ts` |
 | `/api/bank/connect` | POST | `app/api/bank/connect/route.ts` |

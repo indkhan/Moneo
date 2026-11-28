@@ -99,7 +99,7 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
 
 const neverChanges = () => () => {};
 
-export function SettingsForm({ settings, currency, timeZones, aiSource, connections }: { settings: WorkspaceSettings; currency: string; timeZones: string[]; aiSource: AiSource; connections: ModelConnections }) {
+export function SettingsForm({ settings, currency, timeZones, aiSource, connections, updateChecks }: { updateChecks: boolean; settings: WorkspaceSettings; currency: string; timeZones: string[]; aiSource: AiSource; connections: ModelConnections }) {
   const [state, action, pending] = useActionState(saveSettings, {});
   const [customize, setCustomize] = useState(AI_AGENT_KEYS.some(agent => Boolean(settings.ai_models[agent])));
   const [dirty, setDirty] = useState(false);
@@ -133,6 +133,9 @@ export function SettingsForm({ settings, currency, timeZones, aiSource, connecti
         <div><label className={label}>Timezone<select className={input} name="timezone" value={zone} onChange={event => setZone(event.target.value)} {...invalid("timezone")}>{zones.map(name => <option key={name} value={name}>{name.replaceAll("_", " ")}</option>)}</select></label>
           {deviceZone && deviceZone !== zone && zones.includes(deviceZone) && <button type="button" className="mt-1 text-xs font-medium text-brand hover:underline" onClick={() => { setZone(deviceZone); setDirty(true); }}>Use this device&apos;s timezone ({deviceZone.replaceAll("_", " ")})</button>}</div>
         <label className={label}>Date and number locale<select className={input} name="locale" defaultValue={settings.locale} onChange={event => setLocale(event.target.value)} {...invalid("locale")}>{locales.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
+        <label className={label}>Automatically check GitHub for app updates
+          <select className={input} name="update_checks" defaultValue={updateChecks ? "1" : "0"}><option value="0">Off</option><option value="1">On</option></select>
+        </label>
         <label className={label}>Appearance<select className={input} name="theme" defaultValue={settings.theme}><option value="system">Follow device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       </div><p className={help}>Dates and numbers will look like {example.longDate("2026-01-31")} and {example.money(123456, currency)}.</p>
       <p className={help}>Totals are converted to your display currency using the rates available. Your original currencies and amounts are never changed. The app is available in English only.</p>

@@ -1,9 +1,14 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
 const desktop = process.env.MONEO_DESKTOP_BUILD === "1";
 
+const releasedVersion = (JSON.parse(readFileSync(path.join(__dirname, "desktop", "package.json"), "utf8")) as { version: string }).version;
+
 const nextConfig: NextConfig = {
+  env: { MONEO_VERSION: releasedVersion },
   reactStrictMode: true,
   typescript: { ignoreBuildErrors: true },
   distDir: process.env.NEXT_DIST_DIR || ".next",
