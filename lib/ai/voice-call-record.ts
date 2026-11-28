@@ -16,12 +16,19 @@ export type CallTaskRecord = z.infer<typeof callTaskSchema>;
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 
-export const callRecordSchema = z.object({
+const callTranscriptSchema = z.array(callTurnSchema).max(400);
+const transcriptWithinLimit = (turns: CallTurn[]) => bytes(turns) <= MAX_TRANSCRIPT_BYTES;
+
+export const callLogSchema = z.object({
   id: z.uuid(),
   workspaceId: z.uuid(),
   conversationId: z.uuid(),
   durationSeconds: z.number().int().min(0).max(86_400),
-  transcript: z.array(callTurnSchema).min(1).max(400).refine(turns => bytes(turns) <= MAX_TRANSCRIPT_BYTES, "Transcript is too large"),
+  transcript: callTranscriptSchema.refine(transcriptWithinLimit, "Transcript is too large"),
+}).strict();
+
+export const callRecordSchema = callLogSchema.extend({
+  transcript: callTranscriptSchema.min(1).refine(transcriptWithinLimit, "Transcript is too large"),
   tasks: z.array(callTaskSchema).max(30),
 }).strict();
 export type CallRecordInput = z.infer<typeof callRecordSchema>;

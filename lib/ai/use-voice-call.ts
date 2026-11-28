@@ -4,6 +4,7 @@ import { useEffect, useReducer, useState } from "react";
 import { awaitedLater } from "@/lib/awaited-later";
 import { readResponse, type ChatAnswer } from "./use-chat-request";
 import { VoiceCallController, type CallAsk } from "./voice-call-controller";
+import { postCallLog, VoiceCallAudio } from "./voice-call-audio";
 import { boundTranscript } from "./voice-call-record";
 import { VoicePlayback } from "./voice-playback";
 import { announceCallRecord, indexedDbStore, postCallRecord, saveOrQueue } from "./voice-record-queue";
@@ -75,22 +76,29 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     audio.autoplay = true;
     const playback = new VoicePlayback();
     let context: AudioContext | null = null, wakeLock: WakeLockSentinel | null = null;
+    let recording: VoiceCallAudio | undefined;
     const lock = () => { if (document.visibilityState === "visible") navigator.wakeLock?.request("screen").then(sentinel => { if (closed) void sentinel.release(); else wakeLock = sentinel; }, screenMayStillSleep); };
     async function connect() {
       if (!pc || !navigator.mediaDevices?.getUserMedia) throw new Error("This browser cannot make voice calls. Try a recent Chrome, Safari or Firefox.");
       const slot = pc.addTransceiver("audio", { direction: "sendrecv" });
-      pc.ontrack = event => { audio.srcObject = event.streams[0]; live.set({ moneoLevel: analyser(event.streams[0]) }); };
+      pc.ontrack = event => {
+        if (closed) return;
+        const stream = new MediaStream([event.track]);
+        audio.srcObject = stream;
+        live.set({ moneoLevel: analyser(stream) });
+        capture(() => recording?.add(stream));
+      };
       const dc = pc.createDataChannel("oai-events");
       live.set({ channel: dc });
       dc.onmessage = message => {
         const event = JSON.parse(message.data);
         if (event.type === "session.input_transcript.delta") playback.transcript(event.delta ?? "");
-        if (event.type === "session.started") { setStatus("live"); live.startedAt ??= Date.now(); lock(); }
-        else if (event.type === "session.closed") setStatus("ended");
+        if (event.type === "session.started") { setStatus("live"); live.startedAt ??= Date.now(); capture(() => recording?.start()); lock(); }
+        else if (event.type === "session.closed") { setStatus("ended"); saveRecord(); }
         if (trace && event.type !== "session.output_audio.delta") trace(`${event.type}${event.delta !== undefined ? ` ${JSON.stringify(event.delta)}` : ""}${event.start_ms !== undefined ? ` ${event.start_ms}-${event.end_ms}ms` : ""}${event.offset_ms != null ? ` offset ${event.offset_ms}ms` : ""}`);
         controller.handle(event);
       };
-      pc.onconnectionstatechange = () => { if (!closed && pc.connectionState === "failed") { setStatus("error"); setError("The call dropped. Check your connection and try again."); } };
+      pc.onconnectionstatechange = () => { if (!closed && pc.connectionState === "failed") { setStatus("error"); setError("The call dropped. Check your connection and try again."); saveRecord(); } };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       const answer = awaitedLater(fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) })
@@ -99,20 +107,33 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       if (closed) { stream.getTracks().forEach(track => track.stop()); return; }
       live.set({ mic: stream });
       context = new AudioContext();
+      const audioContext = context;
+      capture(() => {
+        recording = new VoiceCallAudio(audioContext);
+        recording.add(stream);
+      });
       live.set({ micLevel: analyser(stream) });
       await slot.sender.replaceTrack(stream.getAudioTracks()[0]);
       const sdp = await answer;
       if (!closed) await pc.setRemoteDescription({ type: "answer", sdp });
     }
     const analyser = (source: MediaStream) => { const node = context!.createAnalyser(); node.fftSize = 512; context!.createMediaStreamSource(source).connect(node); return node; };
+    function capture(action: () => void) {
+      try { action(); } catch (error) { console.warn("Voice call audio could not be captured", error); }
+    }
     function saveRecord() {
-      const transcript = boundTranscript(controller.captions);
-      if (live.startedAt === null || !live.workspaceId || !transcript.length) return;
+      if (live.startedAt === null || !live.workspaceId) return;
       const seconds = Math.min(86_400, Math.round((Date.now() - live.startedAt) / 1000));
       live.startedAt = null;
+      const transcript = boundTranscript(controller.captions);
+      const metadata = { id: live.callId, workspaceId: live.workspaceId, conversationId, durationSeconds: seconds, transcript };
+      let audio: Promise<Blob | undefined> | undefined;
+      capture(() => { audio = recording?.stop(); });
+      void Promise.resolve(audio).then(clip => postCallLog(metadata, clip)).catch(error => console.warn("Voice call log could not be saved", error));
+      if (!transcript.length) return;
       const finished = live.onEnded;
       live.set({ onAnswer: undefined });
-      const record = { id: live.callId, workspaceId: live.workspaceId, conversationId, durationSeconds: seconds, transcript,
+      const record = { ...metadata,
         tasks: controller.tasks.slice(-30).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300), ...(task.title && { title: task.title }), status: task.status })) };
       void saveOrQueue(indexedDbStore, postCallRecord, record).then(result => {
         if (result.kind === "saved") finished?.();

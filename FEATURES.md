@@ -90,7 +90,7 @@ The voice call hands every request to the same chat (`/api/chat`), so these are 
 | `related_rows` | organizer (internal) | Other payments whose description shares words with an item's payee, labelled by the owner or not… | `lib/organize/organizer.ts` |
 
 ## Voice
-Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-record-queue.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-vocabulary.ts`.
+Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-audio.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-record-queue.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-vocabulary.ts`.
 
 | Route | Methods | File |
 | --- | --- | --- |
@@ -230,6 +230,7 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/logs/audio/[id]` | GET | `app/api/logs/audio/[id]/route.ts` |
 | `/api/logs/client` | POST | `app/api/logs/client/route.ts` |
 | `/api/logs/report` | GET | `app/api/logs/report/route.ts` |
+| `/api/logs/voice-call` | POST | `app/api/logs/voice-call/route.ts` |
 | `/api/money/organization/preview` | POST | `app/api/money/organization/preview/route.ts` |
 | `/api/money/organization/suggestions` | POST | `app/api/money/organization/suggestions/route.ts` |
 | `/api/pending-holds` | POST | `app/api/pending-holds/route.ts` |
