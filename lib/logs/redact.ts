@@ -58,6 +58,9 @@ export function redactValue(value: unknown, names: readonly string[] = [], key =
   if (typeof value === "number") return value;
   if (typeof value === "string") return redactText(value, names);
   if (Array.isArray(value)) return value.map(item => redactValue(item, names, key));
+  if (typeof value === "object" && "truncated" in value && value.truncated === true
+    && "size" in value && typeof value.size === "number" && "start" in value && typeof value.start === "string")
+    return { truncated: true, size: value.size };
   if (typeof value === "object") return Object.fromEntries(Object.entries(value).map(([field, item]) => [field, redactValue(item, names, field)]));
   return "[value]";
 }

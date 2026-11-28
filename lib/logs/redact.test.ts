@@ -67,6 +67,13 @@ describe("redactValue", () => {
 });
 
 describe("redactEntries", () => {
+  it("omits serialized private text from previously truncated log entries", () => {
+    const [report] = redactEntries([entry({
+      details: { truncated: true, size: 210_000, start: '{"messages":[{"content":"A private sentence' },
+    })]);
+    expect(report?.details).toEqual({ truncated: true, size: 210_000 });
+  });
+
   it("never includes audio, only says it was left out", () => {
     const [report] = redactEntries([entry({ area: "voice", audio_path: "ws/clip.wav", details: { transcript: "pay Jane 20 euros" } })]);
     expect(report).toMatchObject({ audio: "not included", details: { transcript: "[text, 17 chars]" } });
