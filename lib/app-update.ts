@@ -3,6 +3,8 @@ import { z } from "zod";
 import { desktopUpdate, isDesktop, type UpdateStatus } from "@/lib/desktop-bridge";
 import { isDesktopPreview, moneoVersion } from "@/lib/env";
 
+export const UPDATE_CHECKS_COOKIE = "moneo-update-checks";
+
 const RELEASES = "https://github.com/indkhan/Moneo/releases";
 const LATEST_RELEASE = "https://api.github.com/repos/indkhan/Moneo/releases/latest";
 const CHECK_EVERY_MS = 6 * 60 * 60_000;

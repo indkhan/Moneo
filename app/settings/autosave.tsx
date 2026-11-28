@@ -7,7 +7,7 @@ import { serialSave } from "@/lib/serial-save";
 import { saveSettings, type SaveSettingsState } from "./actions";
 
 type Status = { section: string; state: "saving" | "saved" | "failed"; error?: string; field?: string };
-type Autosave = { register: (form: HTMLFormElement | null) => void; changed: (section: string, delayMs: number) => void; status: Status | null; invalid: (name: string) => object };
+type Autosave = { register: (form: HTMLFormElement | null) => void; changed: (section: string, delayMs: number) => void; flush: () => void; status: Status | null; invalid: (name: string) => object };
 
 const TYPING_DELAY_MS = 700;
 const AutosaveContext = createContext<Autosave | null>(null);
@@ -32,31 +32,43 @@ function focusField(forms: Set<HTMLFormElement>, name: string) {
 
 export function SettingsAutosave({ children }: { children: React.ReactNode }) {
   const forms = useRef(new Set<HTMLFormElement>());
-  const section = useRef("");
   const [status, setStatus] = useState<Status | null>(null);
-  const [after] = useDelay();
+  const [after, cancel] = useDelay();
+  const pending = useRef<{ data: FormData; section: string } | null>(null);
+  const snapshot = useRef({ data: new FormData(), section: "" });
   const saver = useRef<(() => Promise<void>) | null>(null);
-  const request = useCallback(() => (saver.current ??= serialSave(() => ({ data: collect(forms.current), section: section.current }), async ({ data, section }) => {
+  const request = useCallback(() => (saver.current ??= serialSave(() => snapshot.current, async ({ data, section }) => {
     const result: SaveSettingsState = await saveSettings({}, data).catch(() => ({ error: "Preferences could not be saved. Check that Moneo is running, then try again." }));
     startTransition(() => setStatus(result.error ? { section, state: "failed", error: result.error, field: result.field } : { section, state: "saved" }));
   }))(), []);
   useEffect(() => { if (status?.field) focusField(forms.current, status.field); }, [status]);
   const register = useCallback((form: HTMLFormElement | null) => { if (form) forms.current.add(form); }, []);
+  const flush = useCallback(() => {
+    if (!pending.current) return;
+    snapshot.current = pending.current;
+    pending.current = null;
+    cancel();
+    void request();
+  }, [cancel, request]);
+  useEffect(() => flush, [flush]);
   const changed = useCallback((name: string, delayMs: number) => {
-    section.current = name;
     setStatus({ section: name, state: "saving" });
-    after(() => void request(), delayMs);
-  }, [after, request]);
+    pending.current = { data: collect(forms.current), section: name };
+    after(() => {
+      pending.current = { data: collect(forms.current), section: name };
+      flush();
+    }, delayMs);
+  }, [after, flush]);
   const invalid = useCallback((name: string) => status?.state === "failed" && status.field === name ? { "aria-invalid": true, "aria-describedby": "settings-error" } : {}, [status]);
-  return <AutosaveContext value={{ register, changed, status, invalid }}>{children}</AutosaveContext>;
+  return <AutosaveContext value={{ register, changed, flush, status, invalid }}>{children}</AutosaveContext>;
 }
 
 export function useSettingsSection(section: string) {
   const autosave = use(AutosaveContext);
   if (!autosave) throw new Error("useSettingsSection needs SettingsAutosave");
-  const { register, changed, invalid, status } = autosave;
+  const { register, changed, flush, invalid, status } = autosave;
   return {
-    form: { ref: register, onChange: (event: React.FormEvent<HTMLFormElement>) => changed(section, typed(event.target) ? TYPING_DELAY_MS : 0), onSubmit: (event: React.FormEvent) => event.preventDefault() },
+    form: { ref: register, onChange: (event: React.FormEvent<HTMLFormElement>) => changed(section, typed(event.target) ? TYPING_DELAY_MS : 0), onBlur: (event: React.FocusEvent<HTMLFormElement>) => { if (typed(event.target)) flush(); }, onSubmit: (event: React.FormEvent) => event.preventDefault() },
     changed: (delayMs = 0) => changed(section, delayMs),
     invalid,
     status: status?.section === section ? status : null,
