@@ -47,3 +47,7 @@ A skipped spec is not a pass: it means a prerequisite (backend, QA session, serv
 ## Scalable
 
 `scalable-trading.provider.spec.ts` drives chat against a local stand-in for Scalable's MCP server (`e2e/mocks/scalable-mcp.mjs`, made-up data) with the real AI model. Start `npm run qa:server` with `SCALABLE_MCP_ORIGIN=http://127.0.0.1:3043` (and the AI key in `.env.qa`) and run the spec with the same variable and `E2E_REAL_AI=1`; the spec starts the stand-in, adds a Scalable connection to the QA workspace and removes it afterwards. It checks that an order is previewed on a card and sent only when the card is tapped, once, and that read-only access is told it can't trade.
+
+## Interaction timings
+
+Run `npm run qa:auth`, then start `npm run qa:server -- --production --mock-ai`. In another terminal, run `node scripts/perf-interactions.mjs http://localhost:3100 example 5`. The script requires the disposable QA session and database. Chat streams a synthetic reply through the real server and records timings in `.qa/interactions-example.json`. The microphone timing uses Chromium's fake microphone and the QA server's synthetic batch session.

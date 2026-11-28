@@ -6,6 +6,7 @@ import { batchEngines } from "@/lib/ai/speech/registry";
 import { voiceApiKey } from "@/lib/ai/configured";
 import { jsonBodyOrNull } from "@/lib/json-body";
 import { recordUsage } from "@/lib/ai/usage-ledger";
+import { qaMockAi } from "@/lib/env";
 
 const VOICE_MODEL = "gpt-live-transcribe";
 const inputSchema = z.object({}).strict();
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!inputSchema.safeParse(await jsonBodyOrNull(request)).success) return Response.json({ error: "Invalid request" }, { status: 400 });
+  if (qaMockAi()) return Response.json({ mode: "batch", fellBack: false, live: false }, { headers: { "Cache-Control": "no-store" } });
   const { supabase, workspace, settings } = context;
   const engines = batchEngines(settings);
   const choice = chooseSpeechEngine(settings.speech_engine, await speechAvailability(engines));

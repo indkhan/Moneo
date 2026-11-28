@@ -5,6 +5,7 @@ import { Sparkles } from "lucide-react";
 import { VoiceInput } from "@/components/voice-input";
 import { withSpoken } from "@/components/chat-composer";
 import { SafeForm } from "@/components/safe-form";
+import { ModelPicker } from "@/components/model-picker";
 import { createArtifactSafely } from "./actions";
 
 const EXAMPLE_EVENT = "moneo-artifact-example";
@@ -20,6 +21,7 @@ export function ArtifactExamples({ examples }: { examples: readonly { title: str
 export function ArtifactPrompt({ defaultValue = "", placeholder }: { defaultValue?: string; placeholder: string }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const [replaced, setReplaced] = useState("");
+  const [model, setModel] = useState("");
   const lastExample = useRef("");
   useEffect(() => {
     const use = (event: Event) => {
@@ -46,7 +48,7 @@ export function ArtifactPrompt({ defaultValue = "", placeholder }: { defaultValu
     {replaced && <button type="button" onClick={() => { if (input.current) { input.current.value = replaced; input.current.focus(); } setReplaced(""); }} className="justify-self-start text-xs underline">Restore my text</button>}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <span id="artifact-prompt-help" className="text-xs text-muted-foreground">Build uses an AI request and your real data, read-only. Ctrl or Cmd+Enter also builds. Usage is under Settings.</span>
-      <span className="flex items-center gap-1.5"><VoiceInput onSend={text => speak(text, true)} onDone={text => speak(text, false)} /><button type="submit" className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 whitespace-nowrap"><Sparkles className="size-3.5" aria-hidden="true" />Build</button></span>
+      <span className="flex items-center gap-1.5"><ModelPicker agent="artifacts" name="model" value={model} onChange={setModel} title="Model for this artifact; the default comes from Settings" /><VoiceInput onSend={text => speak(text, true)} onDone={text => speak(text, false)} /><button type="submit" className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 whitespace-nowrap"><Sparkles className="size-3.5" aria-hidden="true" />Build</button></span>
     </div>
   </SafeForm>;
 }

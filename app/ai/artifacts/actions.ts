@@ -5,14 +5,16 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { modelIdSchema } from "@/lib/ai/model-id";
 
 export async function createArtifact(form: FormData) {
   const prompt = z.string().trim().min(1).max(4000).parse(form.get("prompt"));
+  const model = modelIdSchema.optional().parse(form.get("model") || undefined);
   const { supabase, workspace } = await requireWorkspace();
   const title = prompt.split("\n")[0].slice(0, 80).trim() || "New artifact";
   const artifact = await supabase.from("artifacts").insert({ workspace_id: workspace.id, title, first_prompt: prompt }).select("id").single();
   if (artifact.error) throw new Error("Could not create the artifact; try again");
-  const chat = await supabase.from("conversations").insert({ workspace_id: workspace.id, title, artifact_id: artifact.data.id });
+  const chat = await supabase.from("conversations").insert({ workspace_id: workspace.id, title, artifact_id: artifact.data.id, ...model && { model } });
   if (chat.error) throw new Error("Could not create the artifact; try again");
   redirect(`/ai/artifacts/${artifact.data.id}`);
 }

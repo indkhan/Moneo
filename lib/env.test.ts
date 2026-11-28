@@ -1,13 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appPort, appUrl, bankTokenKey, desktopBridgeUrl, enableBankingApiUrl, getSupabaseConfig, hasBankTokenKey, hasServiceRoleKey,
-  hasSupabase, isDesktopPreview, isDesktopRuntime, loopbackUrl, ownerCredentials, scalableMcpOrigin, serviceKeyFromEnv, serviceRoleConfig, supabaseClientConfig,
+  hasSupabase, isDesktopPreview, isDesktopRuntime, loopbackUrl, ownerCredentials, qaMockAi, scalableMcpOrigin, serviceKeyFromEnv, serviceRoleConfig, supabaseClientConfig,
 } from "./env";
 
 const URL_KEY = "NEXT_PUBLIC_SUPABASE_URL";
 const ANON_KEY = "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY";
 
 afterEach(() => vi.unstubAllEnvs());
+
+it("enables the mock model only for an explicitly opted-in QA backend", () => {
+  vi.stubEnv("MONEO_QA_MOCK_AI", "");
+  vi.stubEnv(URL_KEY, "http://127.0.0.1:54521");
+  expect(qaMockAi()).toBe(false);
+  vi.stubEnv("MONEO_QA_MOCK_AI", "1");
+  expect(qaMockAi()).toBe(true);
+  vi.stubEnv(URL_KEY, "http://127.0.0.1:54321");
+  expect(qaMockAi()).toBe(false);
+});
 
 function setEnv(url: string | undefined, key: string | undefined) {
   vi.stubEnv(URL_KEY, url);
