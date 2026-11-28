@@ -54,8 +54,8 @@ export function branchOf(nodes: ChatNode[], end: string | null): Set<string> {
 
 type BranchVersion = { version: number; request_id: string | null };
 const newest = <T extends BranchVersion>(rows: T[]) => rows.reduce<T | undefined>((found, row) => !found || row.version > found.version ? row : found, undefined);
-export const newestOnBranch = <T extends BranchVersion>(rows: T[], branch: Set<string>) => newest(rows.filter(row => !row.request_id || branch.has(row.request_id)));
-export const newestOnBranchOrLatest = <T extends BranchVersion>(rows: T[], branch: Set<string>) => newestOnBranch(rows, branch) ?? newest(rows);
+export const versionsOnBranch = <T extends BranchVersion>(rows: T[], branch: Set<string>) => rows.filter(row => !row.request_id || branch.has(row.request_id));
+export const newestOnBranch = <T extends BranchVersion>(rows: T[], branch: Set<string>) => newest(versionsOnBranch(rows, branch));
 
 export function picksTo(nodes: ChatNode[], end: string | null): ChatPicks {
   const picks: ChatPicks = {};

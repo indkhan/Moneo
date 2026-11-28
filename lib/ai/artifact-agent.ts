@@ -11,7 +11,7 @@ import { checkCard } from "@/lib/cards/render";
 import { pageScriptErrors } from "@/lib/ai/page-check";
 import { CARD_BODY_HEIGHT, CARD_HEIGHT, CARD_SIZES, CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
 import { lookAt, type Session, type Shot } from "@/lib/ai/artifact-preview";
-import { newestOnBranch, newestOnBranchOrLatest } from "@/lib/ai/chat-tree";
+import { newestOnBranch } from "@/lib/ai/chat-tree";
 import { dropDraft, keepDraft } from "@/lib/ai/artifact-drafts";
 import { draftCardPath, draftPagePath, type PreviewTheme } from "@/lib/draft-preview";
 
@@ -297,7 +297,7 @@ async function pageOnBranch<Column extends "html" | "queries">(supabase: Supabas
 async function cardOnBranch(supabase: SupabaseClient, workspaceId: string, cardId: string, branch: Set<string>) {
   const { data, error } = await supabase.from("artifact_card_versions").select("version, source, request_id").eq("workspace_id", workspaceId).eq("card_id", cardId);
   if (error) throw error;
-  return newestOnBranchOrLatest(data, branch) ?? null;
+  return newestOnBranch(data, branch) ?? null;
 }
 
 export async function artifactBriefing(supabase: SupabaseClient, workspaceId: string, artifactId: string, branch: Set<string>) {
@@ -310,7 +310,7 @@ export async function artifactBriefing(supabase: SupabaseClient, workspaceId: st
   const lines = [`Artifact: ${artifact.data?.title ?? "(new)"}`,
     page ? `Page: version ${page.version}, queries ${JSON.stringify(page.queries)}` : "Page: not built yet",
     ...(cards.data ?? []).map(card => {
-      const latest = newestOnBranchOrLatest(card.artifact_card_versions, branch);
+      const latest = newestOnBranch(card.artifact_card_versions, branch);
       return `Card ${card.id} "${card.title}" (${card.size}): latest v${latest?.version ?? 0} ${latest?.kind ?? ""}${latest?.preset ? ` ${latest.preset}` : ""}, ${card.published_version ? `on Home at v${card.published_version}` : "not on Home"}; queries ${JSON.stringify(latest?.queries ?? [])}; params ${JSON.stringify(latest?.params ?? [])}`;
     })];
   return lines.join("\n");

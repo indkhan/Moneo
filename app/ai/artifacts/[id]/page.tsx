@@ -6,7 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { ArtifactFrame } from "@/components/artifact-frame";
 import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { loadConversation } from "@/lib/ai/conversation-history";
-import { branchOf, newestOnBranch, newestOnBranchOrLatest, visiblePath } from "@/lib/ai/chat-tree";
+import { branchOf, newestOnBranch, versionsOnBranch, visiblePath } from "@/lib/ai/chat-tree";
 import { cardWidgetKey, homeLayout } from "@/lib/finance/dashboard";
 import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
 
@@ -79,19 +79,22 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const home = Object.fromEntries((cards.data ?? []).map(card => [card.id, homeItems.includes(cardWidgetKey(card.id)) ? card.published_version : null]));
   const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
-  const stepper = (shown: number, newest: number, href: (version: number) => string, label: string, of = "") => <span className="inline-flex items-center text-muted-foreground">
-    {shown > 1 ? <Link href={href(shown - 1)} aria-label={`Previous version${of}`} className="rounded p-1.5 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronLeft className="size-3.5" /></span>}
+  const stepper = (shown: number, newest: number, href: (version: number) => string, label: string, of = "", previous = shown - 1, next = shown + 1) => <span className="inline-flex items-center text-muted-foreground">
+    {previous > 0 ? <Link href={href(previous)} aria-label={`Previous version${of}`} className="rounded p-1.5 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronLeft className="size-3.5" /></span>}
     <span className="whitespace-nowrap text-foreground">{label}v{shown} of {newest}</span>
-    {shown < newest ? <Link href={href(shown + 1)} aria-label={`Next version${of}`} className="rounded p-1.5 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronRight className="size-3.5" /></span>}
+    {next <= newest ? <Link href={href(next)} aria-label={`Next version${of}`} className="rounded p-1.5 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronRight className="size-3.5" /></span>}
   </span>;
 
-  const allCards = (cards.data ?? []) as CardRow[];
+  const allCards = ((cards.data ?? []) as CardRow[]).flatMap(card => {
+    const versions = versionsOnBranch(card.artifact_card_versions, branch);
+    return versions.length ? [{ ...card, artifact_card_versions: versions }] : [];
+  });
   const latestTitle = (item: CardRow) => item.artifact_card_versions.reduce((last, next) => next.version > last.version ? next : last, { version: 0, title: item.title }).title;
   const card = allCards.find(item => item.id === search.card) ?? allCards[0];
   const cardView = card && (() => {
     const all = card.artifact_card_versions.map(item => item.version).sort((a, b) => a - b);
     const newest = all.at(-1) ?? 0;
-    const shown = search.card === card.id && all.includes(Number(search.cv)) ? Number(search.cv) : newestOnBranchOrLatest(card.artifact_card_versions, branch)?.version ?? newest;
+    const shown = search.card === card.id && all.includes(Number(search.cv)) ? Number(search.cv) : newest;
     const onHome = card.published_version !== null && homeItems.includes(cardWidgetKey(card.id));
     const size = cardSize(card.size);
     const name = card.artifact_card_versions.find(item => item.version === shown)?.title ?? card.title;
@@ -104,7 +107,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
             {allCards.map(item => <Link key={item.id} href={at({ card: item.id })} aria-current={item.id === card.id} className={menuItem}>{latestTitle(item)}</Link>)}
           </BarMenu>
           : <span className="max-w-40 truncate px-1 font-medium">{name}</span>}
-        {stepper(shown, newest, version => at({ card: card.id, cv: String(version) }), "", ` of ${card.title}`)}
+        {stepper(shown, newest, version => at({ card: card.id, cv: String(version) }), "", ` of ${card.title}`, all[all.indexOf(shown) - 1] ?? 0, all[all.indexOf(shown) + 1] ?? newest + 1)}
         <SafeForm action={setCardSizeSafely}><input type="hidden" name="id" value={card.id} />
           <span role="group" aria-label={`Size of ${card.title}. Applies on Home straight away.`} title="Applies on Home straight away" className="inline-flex rounded-lg border border-border p-0.5">{CARD_SIZE_KEYS.map(key =>
             <PendingSubmit key={key} name="size" value={key} aria-pressed={size === key} className="min-h-7 min-w-7 rounded-md px-2 py-0.5 font-mono text-xs text-muted-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground">{CARD_SIZES[key].label}</PendingSubmit>)}</span></SafeForm>

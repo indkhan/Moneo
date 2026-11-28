@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import postgres from "postgres";
 import { randomUUID } from "node:crypto";
+import { compileCard } from "../lib/cards/sandbox";
 import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
 
 const state = e2eStorageStatePath();
@@ -86,6 +87,11 @@ test("an artifact's page follows the reply on screen, and the next request conti
     await db`insert into public.messages (workspace_id, conversation_id, role, content, reply_to, created_at) values (${workspaceId}, ${conversationId}, 'assistant', 'Weekly built', ${again}, now() - interval '1 minute')`;
     await db`insert into public.artifact_versions (workspace_id, artifact_id, version, prompt, html, request_id) values (${workspaceId}, ${artifactId}, 1, 'Build it', ${html("Monthly page")}, ${first}), (${workspaceId}, ${artifactId}, 2, 'Build it', ${html("Weekly page")}, ${again})`;
 
+    const [{ id: cardId }] = await db`insert into public.artifact_cards (workspace_id, artifact_id, title) values (${workspaceId}, ${artifactId}, 'Weekly Home card') returning id`;
+    const cardSource = `export default function Card() { return <p>Weekly summary</p>; }`;
+    await db`insert into public.artifact_card_versions (workspace_id, card_id, version, title, kind, source, compiled, queries, params, prompt, request_id)
+      values (${workspaceId}, ${cardId}, 1, 'Weekly Home card', 'code', ${cardSource}, ${compileCard(cardSource)}, '[]', '[]', 'Build a weekly card', ${again})`;
+
     await page.route("**/api/chat", async route => {
       if (route.request().method() !== "POST") return route.fallback();
       sent.push(route.request().postDataJSON() as Record<string, unknown>);
@@ -100,6 +106,11 @@ test("an artifact's page follows the reply on screen, and the next request conti
     await expect(chat.getByText("Monthly built")).toBeVisible();
     await expect(shown.getByText("Monthly page")).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(new RegExp(`branch=${first}`));
+    await page.getByRole("link", { name: "Home card", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Create a Home card" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add to Home" })).toHaveCount(0);
+    await page.getByRole("link", { name: "Page", exact: true }).click();
+    await expect(page).toHaveURL(/tab=page/);
 
     await page.reload();
     await expect(chat.getByText("Monthly built")).toBeVisible();
