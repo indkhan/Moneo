@@ -1,19 +1,20 @@
 import { createLiveWords, type InterimTranscriber } from "./speech/live-words";
+import { voiceUsageReporter } from "./voice-usage";
 
 export type VoiceRecording = { stop: () => Promise<string>; cancel: () => void };
 export type VoiceHandlers = { onText: (text: string) => void; onLevel: (level: number) => void; onError: (error: Error) => void; onNote: (note: string) => void };
 type Microphone = { audio: AudioContext; stream: MediaStream; release: () => void };
-type SessionPlan = { mode: "live"; fellBack: boolean; token: string; url: string } | { mode: "batch"; fellBack: boolean; live: boolean };
+type SessionPlan = { mode: "live"; fellBack: boolean; token: string; url: string; usageId: unknown } | { mode: "batch"; fellBack: boolean; live: boolean };
 
 const RATE = 24000;
 const notRunningIsReportedBelow = () => undefined;
-type RealtimeEvent = { type: string; item_id?: string; delta?: string; transcript?: string; error?: { message?: string } };
+type RealtimeEvent = { type: string; item_id?: string; delta?: string; transcript?: string; error?: { message?: string }; usage?: unknown };
 const str = (value: unknown) => typeof value === "string" ? value : undefined;
 function realtimeEvent(data: unknown): RealtimeEvent | null {
   try {
     const event = JSON.parse(String(data));
     if (typeof event?.type !== "string") return null;
-    return { type: event.type, item_id: str(event.item_id), delta: str(event.delta), transcript: str(event.transcript), error: { message: str(event.error?.message) } };
+    return { type: event.type, item_id: str(event.item_id), delta: str(event.delta), transcript: str(event.transcript), usage: event.usage, error: { message: str(event.error?.message) } };
   } catch { return null; }
 }
 
@@ -70,7 +71,7 @@ export async function startVoiceRecording(handlers: VoiceHandlers): Promise<Voic
   let plan: SessionPlan;
   try { plan = await openSession(); } catch (cause) { microphone.release(); throw cause; }
   if (plan.fellBack) handlers.onNote("Your chosen speech-to-text engine isn't available, so Moneo used OpenAI.");
-  if (plan.mode === "live") return transcribe(microphone, Promise.resolve(new WebSocket(plan.url, ["realtime", `openai-insecure-api-key.${plan.token}`])), handlers);
+  if (plan.mode === "live") return transcribe(microphone, Promise.resolve(new WebSocket(plan.url, ["realtime", `openai-insecure-api-key.${plan.token}`])), handlers, voiceUsageReporter(plan.usageId));
   return recordBatch(microphone, handlers.onLevel, async samples => {
     const body = await uploadSpeech("/api/voice/transcribe", samples);
     if (body.fellBack === true) handlers.onNote("Your chosen speech-to-text engine didn't work, so Moneo used OpenAI.");
@@ -105,10 +106,10 @@ async function openSession(): Promise<SessionPlan> {
   const fellBack = body?.fellBack === true;
   if (response.ok && body?.mode === "batch") return { mode: "batch", fellBack, live: body.live === true };
   if (!response.ok || body?.mode !== "live" || !str(body?.token) || !str(body?.url)) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
-  return { mode: "live", fellBack, token: body.token, url: body.url };
+  return { mode: "live", fellBack, token: body.token, url: body.url, usageId: body.usageId };
 }
 
-function transcribe({ audio, stream, release }: Microphone, connecting: Promise<WebSocket>, { onText, onLevel, onError }: VoiceHandlers): VoiceRecording {
+function transcribe({ audio, stream, release }: Microphone, connecting: Promise<WebSocket>, { onText, onLevel, onError }: VoiceHandlers, reportUsage: (event: unknown) => void): VoiceRecording {
   const items = new Map<string, string>();
   const text = () => [...items.values()].join(" ").replace(/\s+/g, " ").trim();
   const waiting: string[] = [];
@@ -132,7 +133,7 @@ function transcribe({ audio, stream, release }: Microphone, connecting: Promise<
       if (!parsed) return;
       const { type, item_id: id = "", delta, transcript, error } = parsed;
       if (type === "conversation.item.input_audio_transcription.delta") { items.set(id, (items.get(id) ?? "") + (delta ?? "")); onText(text()); }
-      else if (type === "conversation.item.input_audio_transcription.completed") { items.set(id, transcript ?? items.get(id) ?? ""); onText(text()); settle?.(text()); }
+      else if (type === "conversation.item.input_audio_transcription.completed") { reportUsage(parsed); items.set(id, transcript ?? items.get(id) ?? ""); onText(text()); settle?.(text()); }
       else if (type === "error") { if (settle) settle(text()); else fail(new Error(error?.message ?? "Voice transcription failed.")); }
     };
     socket.onerror = () => { if (settle) settle(text()); else fail(new Error("Lost the connection to voice transcription.")); };

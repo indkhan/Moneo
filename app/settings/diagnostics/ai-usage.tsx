@@ -42,7 +42,7 @@ export async function AiUsage({ window }: { window: UsageWindow }) {
     ["Calls", format(totals.requests)], ["Failed", format(totals.failures)],
     ["Input tokens", format(totals.input_tokens)], ["Output tokens", format(totals.output_tokens)],
     ["Reasoning tokens", format(totals.reasoning_tokens)], ["Average time", totals.average_duration_ms === null ? "—" : `${format(totals.average_duration_ms)} ms`],
-    ...totals.audio_seconds ? [["Audio transcribed", `${format(Math.round(totals.audio_seconds))} s`] as [string, string]] : [],
+    ...totals.audio_seconds ? [["Audio processed", `${format(Math.round(totals.audio_seconds))} s`] as [string, string]] : [],
   ];
   return <>
     {period}
@@ -50,7 +50,7 @@ export async function AiUsage({ window }: { window: UsageWindow }) {
       {stats.map(([label, value]) => <div key={label} className="rounded-lg border border-border p-3"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{value}</dd></div>)}
     </dl>
     {(totals.unreported > 0 || rows.length === ROW_LIMIT) && <p className="mt-3 text-sm text-muted-foreground">
-      {totals.unreported ? `${format(totals.unreported)} ${totals.unreported === 1 ? "call" : "calls"} had no token count from the provider and ${totals.unreported === 1 ? "is" : "are"} not counted as zero. ` : ""}
+      {totals.unreported ? `${format(totals.unreported)} ${totals.unreported === 1 ? "call" : "calls"} had no usage counts from the provider and ${totals.unreported === 1 ? "is" : "are"} not counted as zero. ` : ""}
       {rows.length === ROW_LIMIT ? `Showing the latest ${format(ROW_LIMIT)} calls.` : ""}
     </p>}
     <div className="mt-6">
@@ -66,15 +66,15 @@ export async function AiUsage({ window }: { window: UsageWindow }) {
       <h3 className="text-sm font-medium">Recent calls</h3>
       <div className="mt-2 overflow-x-auto">
         <table className="w-full min-w-[40rem] text-left text-sm tabular-nums text-muted-foreground">
-          <thead><tr className="border-b border-border"><th className="py-1.5 font-medium">Time</th><th className="py-1.5 font-medium">Task</th><th className="py-1.5 font-medium">Model</th><th className="py-1.5 text-right font-medium">Tokens in / out</th><th className="py-1.5 text-right font-medium">Time taken</th><th className="py-1.5 pl-3 font-medium">Status</th></tr></thead>
+          <thead><tr className="border-b border-border"><th className="py-1.5 font-medium">Time</th><th className="py-1.5 font-medium">Task</th><th className="py-1.5 font-medium">Model</th><th className="py-1.5 text-right font-medium">Token or audio usage</th><th className="py-1.5 text-right font-medium">Time taken</th><th className="py-1.5 pl-3 font-medium">Status</th></tr></thead>
           <tbody>{rows.slice(0, RECENT).map(row => {
             const link = callLink(row);
-            const tokens = row.input_tokens === null && row.output_tokens === null ? "not reported" : `${row.input_tokens === null ? "?" : format(row.input_tokens)} / ${row.output_tokens === null ? "?" : format(row.output_tokens)}`;
+            const usage = row.input_tokens === null && row.output_tokens === null ? (row.audio_seconds === null ? "not reported" : `${format(Number(row.audio_seconds))} s audio`) : `${row.input_tokens === null ? "?" : format(row.input_tokens)} / ${row.output_tokens === null ? "?" : format(row.output_tokens)}`;
             return <tr key={row.id} className="border-b border-border last:border-0">
               <td className="py-1.5 whitespace-nowrap">{link ? <Link href={link} className="underline hover:text-foreground">{dateTime(row.created_at)}</Link> : dateTime(row.created_at)}</td>
               <td className="py-1.5 text-foreground">{taskLabel(row.task)}</td>
               <td className="py-1.5 break-all">{row.model_id} <span className="text-xs">· {sourceLabel(row.source)}</span></td>
-              <td className="py-1.5 text-right">{tokens}</td>
+              <td className="py-1.5 text-right">{usage}</td>
               <td className="py-1.5 text-right">{row.duration_ms === null ? "—" : `${format(row.duration_ms)} ms`}</td>
               <td className={`py-1.5 pl-3 ${row.status === "failed" ? "text-danger" : ""}`}>{row.status === "succeeded" ? "OK" : row.status === "canceled" ? "Stopped" : `Failed${row.error_kind ? ` (${row.error_kind})` : ""}`}</td>
             </tr>;
