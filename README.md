@@ -150,21 +150,21 @@ Moneo syncs booked transactions and balances from EU banks (for example Revolut 
    - Terms of service URL: `https://indkhan.github.io/Moneo/terms.html`
 3. Let the control panel make the key pair, and keep the downloaded private key file (`<application-id>.pem`).
 4. In the control panel, link your own bank accounts to the application. Only linked accounts can be synced.
-5. In Moneo, go to **Settings → Keys and connections → Connected banks** (also on the Import page). Paste the application ID, paste the private key or upload the `.pem` file, and click **Save and check**.
-6. Click **Choose a bank**, pick yours, click **Connect bank** and approve access at your bank. Some banks (for example in Italy, Sweden and the Baltics) ask you to approve twice: once for access and once for history older than 90 days. Questions about the Enable Banking control panel go to support.api@enablebanking.com, where an assistant answers personal-use applications.
+5. In Moneo, go to **Accounts → Add account → Connect a bank** (Home's first steps open the same place). The first time, it asks for the Enable Banking app: paste the application ID, paste the private key or upload the `.pem` file, and click **Save and check**.
+6. Choose your country, search for your bank, click it and approve access at your bank. You come back to Accounts, where the bank gets its own card under **Connected** with its accounts and the first sync. To add more banks, click **Connect another bank** there. Some banks (for example in Italy, Sweden and the Baltics) ask you to approve twice: once for access and once for history older than 90 days. Questions about the Enable Banking control panel go to support.api@enablebanking.com, where an assistant answers personal-use applications.
 
 Bank consent usually lasts up to 180 days; Moneo shows a reconnect banner 7 days before it ends. Pending transactions are not synced. Your banks sync together once a day, and a few minutes after the last one lands Moneo organizes and checks the new rows in one go; if the AI's plan limit is reached, the rest waits until the limit resets. Banks usually share your full history only right after you approve access, so if that first sync fails Moneo tries again up to three times within about an hour. When the bank limits one account, that account waits as long as the bank asks while your other accounts keep syncing. If Enable Banking says it rejected the return address, add the Redirect URL from step 2 to your application and try again.
 
 ### Connect Scalable Capital (optional)
 
 1. In Scalable on the web, go to **Profile → Security → Agentic Investing** and turn on access (read-only is enough).
-2. In Moneo, click **Connect Scalable Capital** under **Settings → Keys and connections** (also on the Import page) and log in to Scalable (with 2FA in the Scalable app).
+2. In Moneo, go to **Accounts → Add account → Connect Scalable**, click **Connect Scalable Capital** and log in to Scalable (with 2FA in the Scalable app). The portfolio then shows in the Scalable card under **Connected** on Accounts.
 
 Moneo then reads your holdings, totals and cash every day and shows the portfolio on Wealth. No keys are needed. It also keeps Scalable's own record of your deposits and withdrawals, read in full once after connecting, so money moving between your bank and Scalable counts once on every day of the net worth chart, and a withdrawal that bounced back looks as if the money stayed.
 
 Soon after the first sync, a background job works out your portfolio's past value from your Scalable transactions and past prices, so its chart reaches back to your first trade and connecting a portfolio doesn't look like a gain in net worth. Those days are an estimate, saved apart from your real records: prices further than a year back are monthly. Moneo only saves them if replaying your transactions lands on the shares and cash you hold today; otherwise the chart simply starts at your first sync, and it tries again the next day. Disconnecting keeps them, like your synced values, and resetting all data clears them.
 
-Artifact Pages and Home cards can show your Scalable portfolio, recent activity and watchlist. By default they use the last sync, the same figures as Wealth. Turn on **Live Scalable data in artifacts** in Settings → AI and your data to read Scalable each time one opens; that also allows quotes, charts and news for any security, but loads slower and needs Scalable to be reachable.
+Artifact Pages and Home cards can show your Scalable portfolio, recent activity and watchlist. By default they use the last sync, the same figures as Wealth. Turn on **Live Scalable data in artifacts** on the Scalable card on Accounts to read Scalable each time one opens; that also allows quotes, charts and news for any security, but loads slower and needs Scalable to be reachable.
 
 ### Use it from your phone or tablet (optional)
 

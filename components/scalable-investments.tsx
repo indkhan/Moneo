@@ -33,7 +33,7 @@ export function ScalableInvestments({ portfolio, positions, history, calculatedB
   return <section aria-labelledby="scalable-heading" className="space-y-5 rounded-xl border border-border bg-card p-6">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h2 id="scalable-heading" className="text-sm font-medium">Scalable Capital</h2>
-      <p className="text-xs text-muted-foreground">{active ? "Synced" : "Login ended, showing the last sync"}{syncedAt ? ` ${dateTime(syncedAt)}` : ""} · <Link href="/import#scalable" className="text-brand hover:underline">Sync or manage</Link></p>
+      <p className="text-xs text-muted-foreground">{active ? "Synced" : "Login ended, showing the last sync"}{syncedAt ? ` ${dateTime(syncedAt)}` : ""} · <Link href="/money/accounts#scalable" className="text-brand hover:underline">Sync or manage</Link></p>
     </div>
 
     <div>

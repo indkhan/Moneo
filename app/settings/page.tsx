@@ -1,12 +1,11 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
 import { SkeletonCard } from "@/components/skeleton";
 import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
 import { ResetData } from "./reset";
-import { ConnectedBanks } from "@/components/connected-banks";
-import { ScalableConnection } from "@/components/scalable-connection";
 import { AiUsage } from "./ai-usage";
 import { AiAccess } from "./ai-access";
 import { chatgptStatus } from "@/lib/ai/chatgpt";
@@ -66,10 +65,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {update && <AppUpdate initial={update} />}
         <section id="connections" aria-labelledby="connections-title" className="scroll-mt-20 space-y-4">
           <div><h2 id="connections-title" className="text-base font-semibold">Keys and connections</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Every key and outside service Moneo uses is set up here. Keys are checked before they are saved and stored encrypted in your database; there is no file to edit.</p></div>
+            <p className="mt-1 text-sm text-muted-foreground">AI keys, phone access and what setup made. Keys are checked before they are saved and stored encrypted in your database; there is no file to edit. Banks and Scalable are connected on <Link href="/money/accounts#connected" className="underline hover:text-foreground">Accounts</Link>.</p></div>
           <AiAccess status={status} keys={keys} claude={claude} message={query.chatgpt} claudeMessage={query.claude} />
-          <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
-          <div id="scalable" className="scroll-mt-20"><ScalableConnection /></div>
           <div id="phone" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={2} />}><PhoneAccessSection /></Suspense></div>
           <SetupSecrets />
         </section>

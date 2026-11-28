@@ -274,7 +274,7 @@ export async function POST(request: Request) {
 
 ${CALL_MODE_PROMPT}` : ""}${scalableConnection?.tradingAccess === "read" ? `
 
-Scalable is connected with read-only access, so there are no order tools. For a buy, sell or cancel request, tell the user: "${READ_ONLY_TRADING}" Moneo notices the change at its next Scalable sync (Sync now in Import, /import).` : ""}${artifact?.briefing ? `
+Scalable is connected with read-only access, so there are no order tools. For a buy, sell or cancel request, tell the user: "${READ_ONLY_TRADING}" Moneo notices the change at its next Scalable sync (Sync now on the Scalable card in Accounts, /money/accounts#scalable).` : ""}${artifact?.briefing ? `
 
 ${artifact.agent.artifactModePrompt(scalableConnection ? settings.artifact_scalable_data : null)}
 

@@ -13,7 +13,7 @@ const syncFailureIsStoredOnTheConnection = () => undefined;
 const querySchema = z.object({ state: z.string().uuid(), code: z.string().min(1).max(2000).optional(), error: z.string().max(200).optional() });
 
 export async function GET(request: Request) {
-  const back = (result: string) => connectionReturn(request.url, `/import?scalable=${result}#scalable`);
+  const back = (result: string) => connectionReturn(request.url, `/money/accounts?scalable=${result}#scalable`);
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { return NextResponse.redirect(new URL("/setup", request.url), 303); }
   const query = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));

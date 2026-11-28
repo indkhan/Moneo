@@ -195,3 +195,12 @@ export async function undoMoneyMetadataSafely(_state: SafeState, form: FormData)
 export async function undoBalanceSafely(_state: SafeState, form: FormData) { return safely(form, undoBalance); }
 export async function removeOwnAccountSafely(_state: SafeState, form: FormData) { return safely(form, removeOwnAccount); }
 export async function findTransfersSafely(_state: SafeState, form: FormData) { return safely(form, findTransfersBetweenOwnAccounts); }
+
+export async function setScalableArtifactData(form: FormData) {
+  const { supabase, workspace, settings } = await requireWorkspace();
+  const preferences = { ...settings, artifact_scalable_data: z.enum(["snapshot", "live"]).parse(form.get("artifact_scalable_data")) };
+  const { error } = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: workspace.display_currency, p_preferences: preferences });
+  if (error) throw new Error("The setting could not be saved. Try again.");
+  revalidatePath("/", "layout");
+}
+export async function setScalableArtifactDataSafely(_state: SafeState, form: FormData) { return safely(form, setScalableArtifactData); }

@@ -16,6 +16,11 @@ import { balanceTrend, shownBalance, trendSummary } from "./history";
 import { Sparkline } from "./sparkline";
 import { OwnAccounts } from "./own-accounts";
 import { ScalablePortfolioView } from "@/components/scalable-portfolio";
+import { ConnectedArea, type ConnectionsData } from "@/components/connected-banks";
+import { loadBankConnections } from "@/lib/bank/connections";
+import { ScalableCard } from "@/components/scalable-connection";
+import { maskAccountNumber } from "@/lib/import/csv";
+import { ScalableLiveToggle } from "./scalable-live-toggle";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
 
 export const metadata = { title: "Accounts" };
@@ -36,17 +41,19 @@ function describeEvent(event: MetaEvent) {
   return `${event.entity_type === "account" ? "Account" : "Saved view"} ${String(after.name ?? before.name ?? "")}${changes.length ? `: ${changes.join(", ")}` : ""}`;
 }
 
-export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string }> } = {}) {
-  const { transfers, saved } = (await searchParams) ?? {};
-  const { supabase, workspace } = await requireWorkspace();
-  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }] = await Promise.all([
+export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string; bank?: string; connect?: string }> } = {}) {
+  const { transfers, saved, bank, connect } = (await searchParams) ?? {};
+  const { supabase, workspace, settings } = await requireWorkspace();
+  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }, { data: fileSources, error: sourceError }, bankConnections] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()),
-    supabase.from("bank_connection_accounts").select("account_name,currency_code,iban,bank_connections(status)").eq("workspace_id", workspace.id),
+    supabase.from("bank_connection_accounts").select("connection_id,account_name,currency_code,iban,last_booked_on,bank_connections(status)").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
-    supabase.from("scalable_connections").select("status, last_synced_at, portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
-      .not("portfolio", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("scalable_connections").select("portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("data_sources").select("account_id").eq("workspace_id", workspace.id).eq("kind", "file").not("account_id", "is", null),
+    loadBankConnections(supabase, workspace.id),
   ]);
-  if (bankError || identifierError) throw new Error("Could not load account identifiers");
+  if (bankError || identifierError || sourceError) throw new Error("Could not load account identifiers");
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const stillFed = new Set((bankAccounts ?? []).filter(connected => connected.bank_connections?.status !== "revoked").map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
@@ -68,7 +75,21 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
     totals.set(account.currency_code, (totals.get(account.currency_code) ?? 0n) + BigInt(amount));
   }
 
-  const row = (account: Resolved) => {
+  const key = (name: string, currency: string) => JSON.stringify([name, currency]);
+  const live = (bankAccounts ?? []).filter(connected => connected.bank_connections?.status !== "revoked");
+  const fedIds = new Set<string>();
+  const feeds = Object.fromEntries([...new Set(live.map(connected => connected.connection_id))].map(connectionId => [connectionId,
+    <ul key={connectionId} aria-label="Accounts this bank feeds" className="-mx-5 divide-y divide-border border-t border-border">{live.filter(connected => connected.connection_id === connectionId).map(connected => {
+      const account = accounts.find(item => key(item.name, item.currency_code) === key(connected.account_name, connected.currency_code));
+      if (account) fedIds.add(account.id);
+      const detail = `${connected.iban ? `${maskAccountNumber(connected.iban)} · ` : ""}${connected.last_booked_on ? `synced through ${connected.last_booked_on}` : "not synced yet"}`;
+      return <li key={key(connected.account_name, connected.currency_code)}>{account ? row(account, detail)
+        : <p className="flex justify-between gap-3 px-5 py-3 text-sm"><span className="truncate">{connected.account_name}</span><span className="shrink-0 text-muted-foreground">{connected.currency_code} · {detail}</span></p>}</li>;
+    })}</ul>]));
+  const imported = new Set([...(fileSources ?? []).map(source => source.account_id), ...evidence.snapshots.filter(snapshot => snapshot.provenance === "import").map(snapshot => snapshot.account_id)]);
+  const sourceOf = (account: Resolved) => synced.has(key(account.name, account.currency_code)) ? "From a disconnected bank" : imported.has(account.id) ? "Imported file" : "Entered by hand";
+
+  function row(account: Resolved, source = sourceOf(account)) {
     const { amount, label } = shownBalance(account.balance);
     const snapshots = snapshotsByAccount.get(account.id) ?? [];
     const trend = balanceTrend(snapshots, account.id, account.currency_code, timeZone, trendFrom, amount !== null && account.balance.status !== "ambiguous" ? { date: today, value: BigInt(amount) } : undefined);
@@ -85,6 +106,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
           <AccountForm key={`${account.id}:${account.version}`} moneyLeft={account.balance.amount_minor !== null && BigInt(account.balance.amount_minor) !== 0n ? formatMoney(account.balance.amount_minor, account.currency_code, locale) : null} targets={closingTargets(account, accounts).map(({ id, name, type, currency_code }) => ({ id, name, type, bankSynced: stillFed.has(JSON.stringify([name, currency_code])) }))} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
           <p className="mt-1 flex flex-wrap items-center gap-x-3 px-2 text-xs text-muted-foreground">
             <span>{account.currency_code}</span>
+            <span>{source}</span>
             {account.archived_at ? <span>Archived</span> : null}
             <Link aria-label={`Transactions in ${account.name}`} className="hover:text-foreground hover:underline" href={`/money/transactions?account=${account.id}`}>Transactions</Link>
           </p>
@@ -123,7 +145,11 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
         </div>
       </details> : null}
     </article>;
-  };
+  }
+  const scalableCard = scalable ? <ScalableCard key="scalable" setting={<ScalableLiveToggle live={settings.artifact_scalable_data === "live"} />}>
+      {scalable.portfolio ? <ScalablePortfolioView portfolio={scalable.portfolio as ScalablePortfolio} locale={locale} /> : <p className="text-sm text-muted-foreground">Holdings appear after the first sync.</p>}
+  </ScalableCard> : null;
+  const others = active.filter(account => !fedIds.has(account.id));
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="space-y-4">
@@ -147,19 +173,16 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
         : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: {active.length} {active.length === 1 ? "account needs" : "accounts need"} a usable balance. <a className="underline" href="#needs-balance">Review {active.length === 1 ? "it" : "them"}</a>.</p> : null}
     </header>
 
-    {active.length ? <section id="needs-balance" className="scroll-mt-20 divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
-      : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Use Add account or <Link className="underline" href="/import">import a statement</Link>.</p>}
+    <ConnectedArea locale={locale} timeZone={timeZone} result={bank} connect={connect} initial={bankConnections as ConnectionsData} feeds={feeds} hasScalable={Boolean(scalable)} scalable={scalableCard} />
 
-    {scalable?.portfolio && <section id="scalable" aria-labelledby="scalable-portfolio" className="scroll-mt-20 space-y-3 rounded-xl border border-border bg-card p-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 id="scalable-portfolio" className="text-sm font-medium">Scalable Capital</h2>
-        <p className="text-xs text-muted-foreground">{scalable.status === "active" ? "Synced" : "Login ended, showing the last sync"}{scalable.last_synced_at ? ` · ${new Date(scalable.last_synced_at).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone })}` : ""} · <Link href="/import#scalable" className="text-brand hover:underline">Manage</Link></p></div>
-      <ScalablePortfolioView portfolio={scalable.portfolio as ScalablePortfolio} locale={locale} />
-    </section>}
+    {others.length ? <section id="needs-balance" className="scroll-mt-20 space-y-3" aria-labelledby="other-accounts"><h2 id="other-accounts" className="text-base font-semibold">Imported and entered by hand</h2>
+      <div className="divide-y divide-border rounded-xl border border-border bg-card">{others.map(account => row(account))}</div></section>
+      : !active.length ? <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Use Add account to connect a bank or Scalable, <Link className="underline" href="/import">import a statement</Link> or enter one by hand.</p> : null}
 
     <OwnAccounts identifiers={identifiers ?? []} accounts={active.map(account => ({ id: account.id, name: account.name }))} transfers={transfers}
       banked={(bankAccounts ?? []).flatMap(item => item.iban ? [{ iban: item.iban, name: item.account_name }] : [])} />
 
-    {archived.length ? <section className="space-y-2 opacity-80" aria-label="Archived accounts"><h2 className="text-sm font-medium text-muted-foreground">Archived accounts ({archived.length})</h2><div className="divide-y divide-border rounded-xl border border-border bg-card">{archived.map(row)}</div></section> : null}
+    {archived.length ? <section className="space-y-2 opacity-80" aria-label="Archived accounts"><h2 className="text-sm font-medium text-muted-foreground">Archived accounts ({archived.length})</h2><div className="divide-y divide-border rounded-xl border border-border bg-card">{archived.map(account => row(account))}</div></section> : null}
 
     <Suspense fallback={<div className="h-10" aria-busy="true" />}><AccountHistory accounts={accounts} /></Suspense>
   </main>;
@@ -186,3 +209,4 @@ async function AccountHistory({ accounts }: { accounts: Resolved[] }) {
       </li>)}</ul>
     </section> : null;
 }
+

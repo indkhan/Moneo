@@ -130,9 +130,9 @@ try {
 
   await page.goto(`${origin}/settings#connections`);
   await page.waitForLoadState("networkidle").catch(() => {});
-  const sections = { ai: "#ai-access", banks: "#banks", scalable: "#scalable", phone: "#phone" };
+  const sections = { ai: "#ai-access", phone: "#phone" };
   const present = Object.fromEntries(await Promise.all(Object.entries(sections).map(async ([name, selector]) => [name, await page.locator(selector).count() > 0])));
-  check("Settings shows AI, bank, Scalable and phone sections", Object.values(present).every(Boolean), JSON.stringify(present));
+  check("Settings shows AI and phone sections", Object.values(present).every(Boolean), JSON.stringify(present));
   await page.locator("#ai-access").scrollIntoViewIfNeeded();
   await page.waitForTimeout(1_000);
   const logged = app.external().length;
@@ -140,24 +140,27 @@ try {
   const chatgpt = await until("ChatGPT sign-in in the system browser", async () => app.external().slice(logged).split("\n").find(url => url.startsWith("https://")), 20_000).catch(() => null);
   check("ChatGPT sign-in opens in the system browser", chatgpt && new URL(chatgpt).hostname.endsWith("openai.com") && new URL(page.url()).hostname === "localhost", chatgpt ? new URL(chatgpt).origin + new URL(chatgpt).pathname : "nothing logged");
   check("ChatGPT sign-in returns to this app's loopback port", chatgpt && new URL(chatgpt).searchParams.get("redirect_uri") === `http://127.0.0.1:${port}/api/ai/chatgpt/callback`);
-  await page.goto(`${origin}/settings#scalable`);
-  await page.locator("#scalable").scrollIntoViewIfNeeded();
+  const addAccount = async choice => {
+    await page.goto(`${origin}/money/accounts`, { waitUntil: "domcontentloaded" });
+    await page.getByText("Add account", { exact: true }).click();
+    await page.getByRole("button", { name: new RegExp(`^${choice}`) }).click();
+  };
+  await addAccount("Connect Scalable");
   const mockScalableUrl = "https://example.com/moneo-qa-scalable-authorize";
   await page.route("**/api/scalable/connect", route => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ url: mockScalableUrl }),
   }));
-  const scalable = page.locator("#scalable").getByRole("button", { name: "Connect Scalable Capital" });
+  const scalable = page.getByRole("button", { name: "Connect Scalable Capital" });
   if (await scalable.count() && await scalable.isEnabled()) {
     const mark = app.external().length;
     await scalable.evaluate(button => button.click());
     const url = await until("Scalable in the system browser", async () => app.external().slice(mark).split("\n").find(line => line.startsWith("https://")), 20_000).catch(() => null);
     check("Scalable UI handoff opens the mocked URL in the system browser (provider and callback not exercised)", url === mockScalableUrl, url ? new URL(url).origin : "nothing logged");
   } else console.log("SKIP Scalable connect — the button is disabled without Scalable configured");
-  await page.goto(`${origin}/settings`, { waitUntil: "domcontentloaded" });
-  await page.locator("#banks").scrollIntoViewIfNeeded();
+  await addAccount("Connect a bank");
   await page.waitForTimeout(1_000);
-  const bankButton = page.locator("#banks").getByRole("button", { name: "Connect bank" });
-  console.log(`SKIP bank connect — ${await bankButton.count() ? (await bankButton.isEnabled() ? "enabled (not clicked: it calls Enable Banking)" : "the button is disabled without Enable Banking keys") : "no Connect bank button without Enable Banking keys"}`);
+  const setupStep = await page.getByRole("button", { name: "Save and check" }).count() > 0;
+  console.log(`SKIP bank connect — ${setupStep ? "Connect a bank asks for the Enable Banking App ID and key first" : "the bank list is shown (not clicked: it calls Enable Banking)"}`);
 
   await page.goto(`${origin}/`);
   const callback = await fetch(`http://127.0.0.1:${port}/api/ai/chatgpt/callback`, { redirect: "manual" });

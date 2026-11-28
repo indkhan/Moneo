@@ -13,3 +13,9 @@ export function accountDue(account: { last_attempted_at: string | null; next_all
   if (account.next_allowed_at && Date.parse(account.next_allowed_at) > now) return false;
   return ownerPresent || !account.last_attempted_at || now - Date.parse(account.last_attempted_at) >= spacing;
 }
+
+export function nextBackgroundSync(accounts: { last_attempted_at: string | null; next_allowed_at: string | null }[], now = Date.now()) {
+  const times = accounts.map(account => Math.max(now, account.last_attempted_at ? Date.parse(account.last_attempted_at) + BACKGROUND_SPACING_MS : now,
+    account.next_allowed_at ? Date.parse(account.next_allowed_at) : now));
+  return times.length ? new Date(Math.min(...times)).toISOString() : null;
+}
