@@ -36,7 +36,7 @@ function boundedDetails(details: unknown) {
   const cleaned = logDetails(details);
   if (cleaned === null) return null;
   const size = JSON.stringify(cleaned).length;
-  return size > MAX_DETAILS ? { truncated: true, size, start: JSON.stringify(cleaned).slice(0, MAX_DETAILS) } : cleaned;
+  return size > MAX_DETAILS ? { truncated: true, size } : cleaned;
 }
 
 let ownerWorkspace: Promise<string | null> | undefined;
