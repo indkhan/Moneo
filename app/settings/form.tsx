@@ -120,7 +120,7 @@ function Toggle({ label: text, description, checked, onChange, name, value }: { 
   </label>;
 }
 
-export function GeneralSettings({ settings, currency, timeZones }: { settings: WorkspaceSettings; currency: string; timeZones: string[] }) {
+export function GeneralSettings({ settings, currency, timeZones, updateChecks }: { updateChecks: boolean; settings: WorkspaceSettings; currency: string; timeZones: string[] }) {
   const { form, changed, invalid, status } = useSettingsSection("general");
   const [zone, setZone] = useState(settings.timezone);
   const deviceZone = useSyncExternalStore(neverChanges, deviceTimeZone, () => null);
@@ -137,6 +137,9 @@ export function GeneralSettings({ settings, currency, timeZones }: { settings: W
         {deviceZone && deviceZone !== zone && zones.includes(deviceZone) && <button type="button" className="mt-1 text-xs font-medium text-brand hover:underline" onClick={() => { setZone(deviceZone); changed(); }}>Use this device&apos;s timezone ({deviceZone.replaceAll("_", " ")})</button>}</div>
       <label className={label}>Date and number format<select className={input} name="locale" defaultValue={settings.locale} onChange={event => setLocale(event.target.value)} {...invalid("locale")}>{locales.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
       <label className={label}>Appearance<select className={input} name="theme" defaultValue={settings.theme}><option value="system">Follow device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <label className={label}>Automatically check GitHub for app updates
+        <select className={input} name="update_checks" defaultValue={updateChecks ? "1" : "0"}><option value="0">Off</option><option value="1">On</option></select>
+      </label>
     </form>
   </Section>;
 }
@@ -208,4 +211,3 @@ export function InsightSwitches({ settings, children }: { settings: WorkspaceSet
     {children}
   </Section>;
 }
-
