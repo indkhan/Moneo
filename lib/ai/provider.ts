@@ -6,6 +6,7 @@ import { claudeAccount, claudeModel, type ClaudeSteering } from "./claude";
 import { serviceKey } from "@/lib/service-keys";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 import { connectedDefault } from "./model-options";
+import { usageMiddleware, type UsageScope, type UsageSource, type UsageTask } from "./usage-ledger";
 import { qaMockAi } from "@/lib/env";
 
 export async function modelConnections() {
@@ -13,27 +14,42 @@ export async function modelConnections() {
   return { openai: chatgpt.signedIn || Boolean(openai), claude: claude.signedIn, openrouter: Boolean(openrouter) };
 }
 
-export async function getModel(modelId: string) {
-  if (qaMockAi()) return (await import("./qa-model")).qaModel(modelId);
+type SourceModel = Parameters<typeof wrapLanguageModel>[0]["model"];
+
+const usageScopes = new WeakMap<object, { scope: UsageScope; source: UsageSource }>();
+
+function recorded(model: SourceModel, scope: UsageScope, source: UsageSource) {
+  const wrapped = wrapLanguageModel({ model, middleware: usageMiddleware(scope, source) });
+  usageScopes.set(wrapped, { scope, source });
+  return wrapped;
+}
+
+async function sourceModel(modelId: string): Promise<{ model: SourceModel; source: UsageSource }> {
+  if (qaMockAi()) return { model: (await import("./qa-model")).qaModel(modelId), source: "local" };
   if (modelId.includes("/")) {
     const apiKey = await serviceKey("openrouter_api_key");
     if (!apiKey) throw new Error("Model IDs with a / run on OpenRouter. Add an OpenRouter API key under Settings → AI access.");
-    return createOpenRouter({ apiKey }).chat(modelId);
+    return { model: createOpenRouter({ apiKey }).chat(modelId), source: "openrouter" };
   }
   if (modelId.startsWith("claude-")) {
     const account = await claudeAccount();
     if (!account.signedIn) throw new Error(account.problem ?? "Claude models run on your Claude plan. Sign in with Claude under Settings → AI access.");
-    return claudeModel(modelId);
+    return { model: await claudeModel(modelId), source: "claude" };
   }
   if (await usesChatGPT()) {
-    return wrapLanguageModel({ model: createOpenAI({ apiKey: "chatgpt", fetch: chatgptFetch })(modelId),
-      middleware: defaultSettingsMiddleware({ settings: { providerOptions: { openai: { store: false } } } }) });
+    return { model: wrapLanguageModel({ model: createOpenAI({ apiKey: "chatgpt", fetch: chatgptFetch })(modelId),
+      middleware: defaultSettingsMiddleware({ settings: { providerOptions: { openai: { store: false } } } }) }), source: "chatgpt" };
   }
   const apiKey = await serviceKey("openai_api_key");
-  if (apiKey) return createOpenAI({ apiKey })(modelId);
+  if (apiKey) return { model: createOpenAI({ apiKey })(modelId), source: "openai" };
   const openRouterKey = await serviceKey("openrouter_api_key");
-  if (openRouterKey) return createOpenRouter({ apiKey: openRouterKey }).chat(`openai/${modelId}`);
+  if (openRouterKey) return { model: createOpenRouter({ apiKey: openRouterKey }).chat(`openai/${modelId}`), source: "openrouter" };
   throw new Error("No AI is set up. Sign in with ChatGPT or Claude, or add an API key under Settings → AI access.");
+}
+
+export async function getModel(modelId: string, scope: UsageScope) {
+  const { model, source } = await sourceModel(modelId);
+  return recorded(model, scope, source);
 }
 
 export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent, source?: AiSource): string {
@@ -49,12 +65,17 @@ export async function currentModelId(settings: WorkspaceSettings | undefined, ag
   return connectedDefault(agent, connections, status.source === "claude");
 }
 
-export async function modelForSettings(settings: WorkspaceSettings | undefined, agent: AiAgent) {
-  return getModel(await currentModelId(settings, agent));
+export type ModelUsageScope = Omit<UsageScope, "task"> & { task?: UsageTask };
+
+export async function modelForSettings(settings: WorkspaceSettings | undefined, agent: AiAgent, scope: ModelUsageScope) {
+  return getModel(await currentModelId(settings, agent), { ...scope, task: scope.task ?? agent });
 }
 
 export async function withTools<T extends ToolSet>(model: LanguageModel, tools: T, steering?: ClaudeSteering): Promise<{ model: LanguageModel; tools: T | undefined }> {
-  return typeof model === "object" && model.provider === "claude-code" ? { model: await claudeModel(model.modelId, tools, steering), tools: undefined } : { model, tools };
+  if (typeof model !== "object" || model.provider !== "claude-code") return { model, tools };
+  const withMcp = await claudeModel(model.modelId, tools, steering);
+  const usage = usageScopes.get(model);
+  return { model: usage ? recorded(withMcp, usage.scope, usage.source) : withMcp, tools: undefined };
 }
 
 export const SYSTEM_PROMPT = `You are Moneo, the owner's personal finance assistant. Moneo runs on their own computer, and your tools read and query their real records: accounts, transactions, loans, Wealth, recurring payments, plans and Scalable investments. "About the owner" at the end lists what they have.

@@ -13,3 +13,12 @@ export function SetupSecrets() {
     Setup is incomplete: {missing.join(", ")}. {isDesktopRuntime() ? "Quit Moneo and open it again." : <>Run <code className="rounded bg-muted px-1">npm run setup</code> again.</>}
   </p>;
 }
+
+export function SetupChecks() {
+  return <ul className="mt-3 divide-y divide-border text-sm">
+    {ITEMS.map(([label, keys]) => {
+      const ok = keys.every(key => isSetupVariableSet(key));
+      return <li key={label} className="flex items-center justify-between gap-3 py-2"><span>{label}</span><span className={ok ? "text-success" : "text-warning"}>{ok ? "Set up" : "Missing"}</span></li>;
+    })}
+  </ul>;
+}

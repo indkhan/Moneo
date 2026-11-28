@@ -11,7 +11,7 @@ beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks();
   ({ GET } = await import("./route"));
   process.env.OPENAI_API_KEY = "test";
-  vi.mocked(requireWorkspace).mockResolvedValue({} as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "workspace" } } as Awaited<ReturnType<typeof requireWorkspace>>);
   fetchMock.mockImplementation(async () => new Response(new Uint8Array([1, 2, 3])));
   vi.stubGlobal("fetch", fetchMock);
 });

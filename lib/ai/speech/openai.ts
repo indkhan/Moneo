@@ -4,7 +4,7 @@ import { encodeWav } from "./audio";
 import { promptWithNames } from "./hints";
 import type { BatchSpeechEngine } from "./engine";
 
-const MODEL = "gpt-4o-transcribe";
+export const OPENAI_SPEECH_MODEL = "gpt-4o-transcribe";
 const responseSchema = z.object({ text: z.string() });
 
 export const openaiSpeech: BatchSpeechEngine = {
@@ -13,7 +13,7 @@ export const openaiSpeech: BatchSpeechEngine = {
     const apiKey = await voiceApiKey();
     if (!apiKey) throw new Error("No OpenAI API key");
     const form = new FormData();
-    form.set("model", MODEL);
+    form.set("model", OPENAI_SPEECH_MODEL);
     form.set("response_format", "json");
     form.set("prompt", promptWithNames(hints));
     form.set("file", new Blob([encodeWav(audio)], { type: "audio/wav" }), "voice.wav");

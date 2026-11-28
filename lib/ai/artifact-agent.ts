@@ -95,7 +95,8 @@ const shorten = (value: unknown): unknown => Array.isArray(value)
 const sample = (data: unknown) => { const json = JSON.stringify(shorten(data), null, 1); return json.length > 24000 ? `${json.slice(0, 24000)}\n… (truncated)` : json; };
 
 async function design(run: Run, system: string, input: string | ModelMessage[]) {
-  const model = run.model ? await getModel(run.model) : await modelForSettings(run.context.settings, "artifacts");
+  const scope = { workspaceId: run.context.workspace.id, task: "artifacts" as const };
+  const model = run.model ? await getModel(run.model, scope) : await modelForSettings(run.context.settings, "artifacts", scope);
   const { text } = await generateText({
     model, instructions: system, ...typeof input === "string" ? { prompt: input } : { messages: input }, maxOutputTokens: 32000,
     providerOptions: { openai: { reasoningEffort: "medium" } },

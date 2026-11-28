@@ -2,11 +2,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const host = vi.hoisted(() => ({ effects: [] as (() => void | (() => void))[] }));
 vi.mock("react", () => ({ useRef: (current: unknown) => ({ current }), useEffect: (effect: () => void | (() => void)) => { host.effects.push(effect); } }));
-import { usePolling as poll } from "./use-polling";
+let poll: typeof import("./use-polling").usePolling;
 
 let hidden = false;
 const listeners = new Set<() => void>();
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ usePolling: poll } = await import("./use-polling"));
   vi.useFakeTimers(); hidden = false; listeners.clear(); host.effects = [];
   vi.stubGlobal("document", { get hidden() { return hidden; }, addEventListener: (_: string, fn: () => void) => listeners.add(fn), removeEventListener: (_: string, fn: () => void) => listeners.delete(fn) });
 });

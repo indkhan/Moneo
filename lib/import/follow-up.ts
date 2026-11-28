@@ -35,7 +35,7 @@ export async function maybeStartFirstReview(db: Db, workspaceId: string, now = D
   try {
     requireAiScope(settings, "accounts", "transactions");
   } catch { return; }
-  await modelForSettings(settings, "imports");
+  await modelForSettings(settings, "imports", { workspaceId });
   const inserted = await db.from("background_jobs").upsert({ id: jobId, workspace_id: workspaceId, kind: "financial_review" }, { onConflict: "id", ignoreDuplicates: true }).select("id").maybeSingle();
   if (inserted.error) throw inserted.error;
   await dispatchFinancialReview(db, jobId, workspaceId, false);

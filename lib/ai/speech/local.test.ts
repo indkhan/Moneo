@@ -21,7 +21,7 @@ function modelFolder(name: string, type = "whisper", weights = ["encoder_model_q
   return folder;
 }
 const runner = (result: string | Error, idle = true) => ({ idle: () => idle, transcribe: vi.fn<SpeechModelRunner["transcribe"]>(async () => { if (result instanceof Error) throw result; return result; }) }) satisfies SpeechModelRunner;
-const run = (ref: string | null, model: SpeechModelRunner) => transcribeWithFallback({ chosen: "local", engines: { local: localSpeech(ref, model), openai }, audio, hints });
+const run = (ref: string | null, model: SpeechModelRunner) => transcribeWithFallback({ chosen: "local", engines: { local: localSpeech(ref, model), openai }, audio, hints, onAttempt: () => undefined });
 
 beforeEach(() => { home = mkdtempSync(path.join(tmpdir(), "moneo-speech-")); vi.stubEnv("MONEO_DATA_DIR", home); });
 afterEach(() => { rmSync(home, { recursive: true, force: true }); vi.unstubAllEnvs(); vi.mocked(openai.transcribe).mockClear(); });

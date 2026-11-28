@@ -115,6 +115,16 @@ jobs:
       - *modules
       - *npm-cache
       - *install
+      - &test-backend-images
+        name: Load test backend images from Docker Hub
+        run: |
+          load_image() {
+            docker pull "$1@$2" && docker tag "$1@$2" "public.ecr.aws/supabase/$3"
+          }
+          load_image supabase/postgres sha256:7bd84e6a1d5322c7b864b9751873a0ac50f48df3f20a776e88114eadb2948fc0 postgres:17.11.0.011
+          load_image supabase/gotrue sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b gotrue:v2.197.0
+          load_image postgrest/postgrest sha256:1347d7552b88f17832912c06afbf7c43209af6eeeb60834b04aae12c9bd9d5cc postgrest:v16.5
+          load_image supabase/storage-api sha256:dd4a100612635a8eb0d64387ddc38769fb30eb3ddd9b411d0fe3121e1cb223b3 storage-api:v1.88.0
       - name: Start the test backend
         run: |
           for attempt in 1 2 3 4; do
@@ -149,6 +159,7 @@ jobs:
           path: .next-qa/cache
           key: next-.next-qa-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
           restore-keys: next-.next-qa-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - *test-backend-images
       - name: Start the test backend, the QA app and the browser install together
         run: |
           npx playwright install --only-shell chromium > "$RUNNER_TEMP/playwright.log" 2>&1 &

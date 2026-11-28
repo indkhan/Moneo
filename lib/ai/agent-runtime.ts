@@ -65,7 +65,7 @@ async function withModel<T>(context: Context, label: string, call: (model: Await
     return null;
   }
   await report(context, { type: "tool", text: label });
-  try { return await call(await modelForSettings(context.settings, "agents")); }
+  try { return await call(await modelForSettings(context.settings, "agents", { workspaceId: workspace.id, agentRunId: runId })); }
   catch (error) {
     console.error(`Agent model call failed: ${label}`, error);
     await report(context, { type: "note", text: "The model was slow or unavailable; using deterministic results" });
@@ -167,7 +167,7 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
   const previous = checked(await db.from("agent_runs").select("organize_after").eq("workspace_id", workspace.id).neq("id", runId)
     .order("created_at", { ascending: false }).limit(1).maybeSingle()) as { organize_after: string | null } | null;
   const pausedUntil = previous?.organize_after && Date.parse(previous.organize_after) > Date.now() ? previous.organize_after : null;
-  const model = run.model_status === "available" && !pausedUntil ? await modelForSettings(context.settings, "agents").catch(runOrganizesWithRulesAloneWithoutModel) : null;
+  const model = run.model_status === "available" && !pausedUntil ? await modelForSettings(context.settings, "agents", { workspaceId: workspace.id, agentRunId: runId }).catch(runOrganizesWithRulesAloneWithoutModel) : null;
   const ask: Ask | null = model && (async request => {
     try { await activeRun(db, runId, workspace.id); } catch (error) { if (error instanceof RunInactive) throw new StopWork("The run was stopped"); throw error; }
     if (!checked(await db.rpc("reserve_agent_model_call", { p_run_id: runId, p_workspace_id: workspace.id }))) throw new StopWork("The model budget for this run is spent");
@@ -300,7 +300,7 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
     const first = (oldest.data as { posted_on: string } | null)?.posted_on;
     const months = first ? (Number(today.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(today.slice(5, 7)) - Number(first.slice(5, 7)) : 0;
     let modelStatus = "disabled";
-    if (await aiConfigured()) modelStatus = await modelForSettings(settings, "agents").then(() => "available", () => "unavailable");
+    if (await aiConfigured()) modelStatus = await modelForSettings(settings, "agents", { workspaceId, agentRunId: runId }).then(() => "available", () => "unavailable");
     const plan = planRun({ transactions: count.count ?? 0, unorganized: unorganized.count ?? 0, months, spendingLimits: limits.count ?? 0, scopes: settings.ai_data_scopes });
     checked(await db.from("agent_runs").update({ plan, model_status: modelStatus }).eq("id", runId).eq("workspace_id", workspaceId));
     checked(await db.from("agent_tasks").insert(plan.map((task, index) => ({ run_id: runId, workspace_id: workspaceId, agent: task.agent, position: index + 1,

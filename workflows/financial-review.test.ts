@@ -130,6 +130,6 @@ it("bounds provider attempts and marks a token-limited saved review as incomplet
   vi.mocked(generateText).mockResolvedValueOnce({ text: "Partial review", finishReason: "length" } as unknown as Awaited<ReturnType<typeof generateText>>);
   await financialReview("job", "workspace");
   expect(vi.mocked(generateText).mock.calls[0][0]).toMatchObject({ maxRetries: 0, abortSignal: expect.any(AbortSignal) });
-  expect(modelForSettings).toHaveBeenCalledWith(expect.anything(), "review");
+  expect(modelForSettings).toHaveBeenCalledWith(expect.anything(), "review", { workspaceId: "workspace", jobId: "job" });
   expect(fixture.writes.find(write => write.table === "finish_financial_review")?.value.p_body).toContain("Incomplete review");
 });

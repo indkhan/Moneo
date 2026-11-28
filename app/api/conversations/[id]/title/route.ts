@@ -13,7 +13,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   try { words = await conversationWords(supabase, workspace.id, id); }
   catch { return Response.json({ error: "Could not read this chat. Try again." }, { status: 500 }); }
   if (!words) return Response.json({ error: "This chat has nothing to name yet." }, { status: 400 });
-  const written = await writeTitle(() => modelForSettings(settings, "titles"), words);
+  const written = await writeTitle(() => modelForSettings(settings, "titles", { workspaceId: workspace.id, conversationId: id }), words);
   if (!written) return Response.json({ error: "Could not write a title. Try again." }, { status: 502 });
   const result = await supabase.from("conversations").update({ title: written.title, title_settled: true })
     .eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).select("id").maybeSingle();

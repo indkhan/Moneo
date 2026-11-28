@@ -109,6 +109,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"ai_usage": {
+                  Row: {
+                    "agent_run_id": string | null,"audio_seconds": number | null,"cached_input_tokens": number | null,"conversation_id": string | null,"created_at": string,"duration_ms": number | null,"error_kind": string | null,"id": string,"input_tokens": number | null,"job_id": string | null,"model_id": string,"output_tokens": number | null,"reasoning_tokens": number | null,"source": string,"status": string,"task": string,"workspace_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "agent_run_id"?: string | null,"audio_seconds"?: number | null,"cached_input_tokens"?: number | null,"conversation_id"?: string | null,"created_at"?: string,"duration_ms"?: number | null,"error_kind"?: string | null,"id"?: string,"input_tokens"?: number | null,"job_id"?: string | null,"model_id": string,"output_tokens"?: number | null,"reasoning_tokens"?: number | null,"source": string,"status": string,"task": string,"workspace_id": string
+                  }
+                  Update: {
+                    "agent_run_id"?: string | null,"audio_seconds"?: number | null,"cached_input_tokens"?: number | null,"conversation_id"?: string | null,"created_at"?: string,"duration_ms"?: number | null,"error_kind"?: string | null,"id"?: string,"input_tokens"?: number | null,"job_id"?: string | null,"model_id"?: string,"output_tokens"?: number | null,"reasoning_tokens"?: number | null,"source"?: string,"status"?: string,"task"?: string,"workspace_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "ai_usage_workspace_id_fkey"
+      columns: ["workspace_id"]
+isOneToOne: false
+      referencedRelation: "workspaces"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"artifact_card_versions": {
                   Row: {
                     "card_id": string,"compiled": string,"created_at": string,"id": string,"kind": string,"model": string | null,"params": NonNullable<Json>,"preset": string | null,"prompt": string,"queries": NonNullable<Json>,"request_id": string | null,"source": string,"title": string,"version": number,"workspace_id": string

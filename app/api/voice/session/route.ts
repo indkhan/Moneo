@@ -5,6 +5,7 @@ import { loadSpeechHints } from "@/lib/ai/speech/hints";
 import { batchEngines } from "@/lib/ai/speech/registry";
 import { voiceApiKey } from "@/lib/ai/configured";
 import { jsonBodyOrNull } from "@/lib/json-body";
+import { recordUsage } from "@/lib/ai/usage-ledger";
 import { qaMockAi } from "@/lib/env";
 
 const VOICE_MODEL = "gpt-live-transcribe";
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
   const apiKey = await voiceApiKey();
   if (!apiKey) return Response.json({ error: "Voice input is unavailable. Try again." }, { status: 502 });
   const hints = await loadSpeechHints(supabase, workspace.id, settings.ai_data_scopes);
+  const started = performance.now();
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, signal: request.signal,
     body: JSON.stringify({
@@ -35,6 +37,9 @@ export async function POST(request: Request) {
     }),
   }).catch(() => null);
   const secret = secretSchema.safeParse(await response?.json().catch(() => null));
-  if (!response?.ok || !secret.success) return Response.json({ error: "Voice input is unavailable. Try again." }, { status: 502 });
+  const failed = !response?.ok || !secret.success;
+  void recordUsage({ workspaceId: workspace.id, task: "voice_transcription" }, { modelId: VOICE_MODEL, source: "openai", durationMs: performance.now() - started, tokens: null, audioSeconds: null,
+    outcome: failed ? { status: "failed", error: { statusCode: response?.status ?? 0 } } : { status: "succeeded" } });
+  if (failed) return Response.json({ error: "Voice input is unavailable. Try again." }, { status: 502 });
   return Response.json({ mode: "live", fellBack: choice.fellBack, token: secret.data.value, expiresAt: secret.data.expires_at, url: "wss://api.openai.com/v1/realtime?intent=transcription" }, { headers: { "Cache-Control": "no-store" } });
 }

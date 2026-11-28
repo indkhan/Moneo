@@ -88,7 +88,7 @@ export async function POST(request: Request) {
   if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
   const chosenModel = viaCall ? undefined : requestedModel ?? existing.data?.model ?? undefined;
   const artifactId = existing.data?.artifact_id ?? null;
-  const modelPromise = awaitedLater(chosenModel ? getModel(chosenModel) : modelForSettings(settings, viaCall ? "voice_call" : artifactId ? "artifacts" : "chat"));
+  const modelPromise = awaitedLater(chosenModel ? getModel(chosenModel, { workspaceId: workspace.id, task: viaCall ? "voice_call" : artifactId ? "artifacts" : "chat", conversationId }) : modelForSettings(settings, viaCall ? "voice_call" : artifactId ? "artifacts" : "chat", { workspaceId: workspace.id, conversationId }));
   const scalablePromise = settings.ai_data_scopes.includes("accounts") ? awaitedLater(activeScalableConnection(workspace.id)) : Promise.resolve(null);
   const briefPromise = ownerBrief(context).catch(error => { console.error("owner brief failed", error); return null; });
   const artifactModules = artifactId ? awaitedLater(Promise.all([import("@/lib/ai/artifact-agent"), import("@/lib/ai/artifact-preview")])) : null;
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     if (artifactId) return null;
     const earlier = viaCall ? (callContextSchema.safeParse(capturedContext).data?.recentTurns ?? []).filter(turn => turn.role === "user" && turn.text !== message).map(turn => turn.text)
       : (await historyPromise).filter(item => item.role === "user").map(item => item.content);
-    return titleChatTurn({ supabase, workspaceId: workspace.id, conversationId, message, viaCall, settled: !!existing.data?.title_settled, earlier, model: () => modelForSettings(settings, "titles") });
+    return titleChatTurn({ supabase, workspaceId: workspace.id, conversationId, message, viaCall, settled: !!existing.data?.title_settled, earlier, model: () => modelForSettings(settings, "titles", { workspaceId: workspace.id, conversationId }) });
   }
   const { promise: answerStarted, resolve: startTitle } = Promise.withResolvers<void>();
   const chatTitle = answerStarted.then(writeChatTitle).catch(chatKeepsItsTitleWhenNamingFails);
