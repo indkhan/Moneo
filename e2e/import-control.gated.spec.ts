@@ -3,9 +3,29 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { hydrateWorkflowArguments } from "@workflow/core/serialization";
+import { createLocalWorld } from "@workflow/world-local";
 import postgres from "postgres";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication, deployed051 and database fixtures");
+
+async function waitForImportWorkflows(workspaceId: string) {
+  const world = createLocalWorld({ dataDir: process.env.WORKFLOW_LOCAL_DATA_DIR || ".next/workflow-data" });
+  await expect.poll(async () => {
+    for (const status of ["pending", "running"] as const) {
+      let cursor: string | undefined;
+      do {
+        const page = await world.runs.list({ workflowName: "workflow//./workflows/import-file//importFile", status, pagination: { cursor } });
+        for (const run of page.data) {
+          const args: unknown = await hydrateWorkflowArguments(run.input, run.runId, undefined);
+          if (Array.isArray(args) && args[1] === workspaceId) return run.runId;
+        }
+        cursor = page.cursor ?? undefined;
+      } while (cursor);
+    }
+    return null;
+  }, { message: "Wait for this workspace's import workflows before deleting test data", timeout: 90_000 }).toBeNull();
+}
 
 test("durable import Stop, Resume, byte deduplication, undo and reimport preserve exact sources", async ({ browser, baseURL }) => {
   test.setTimeout(600_000);
@@ -134,6 +154,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
       const reviews=await tx`select id from public.background_jobs where workspace_id=${workspace} and kind='financial_review' and status in('queued','running')`;
       for(const row of reviews)await tx`select public.cancel_financial_review(${row.id})`;
     });
+    await waitForImportWorkflows(workspace);
     const files=await db`select storage_path from public.imports where workspace_id=${workspace}`;
     for(const file of files)expect(file.storage_path.startsWith(`${workspace}/`)).toBe(true);
     const stored=await admin.storage.from("imports").list(workspace,{limit:1000});expect(stored.error).toBeNull();
