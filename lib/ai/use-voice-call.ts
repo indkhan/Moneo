@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useReducer, useState } from "react";
+import { voiceUsageReporter } from "./voice-usage";
 import { awaitedLater } from "@/lib/awaited-later";
 import { readResponse, type ChatAnswer } from "./use-chat-request";
 import { VoiceCallController, type CallAsk } from "./voice-call-controller";
@@ -90,19 +91,21 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       };
       const dc = pc.createDataChannel("oai-events");
       live.set({ channel: dc });
+      let reportVoiceUsage: ((event: unknown) => void) | undefined;
       dc.onmessage = message => {
         const event = JSON.parse(message.data);
         if (event.type === "session.input_transcript.delta") playback.transcript(event.delta ?? "");
         if (event.type === "session.started") { setStatus("live"); live.startedAt ??= Date.now(); capture(() => recording?.start()); lock(); }
         else if (event.type === "session.closed") { setStatus("ended"); saveRecord(); }
         if (trace && event.type !== "session.output_audio.delta") trace(`${event.type}${event.delta !== undefined ? ` ${JSON.stringify(event.delta)}` : ""}${event.start_ms !== undefined ? ` ${event.start_ms}-${event.end_ms}ms` : ""}${event.offset_ms != null ? ` offset ${event.offset_ms}ms` : ""}`);
+        if (event.type === "response.done" || event.type === "session.usage.updated" || event.type === "session.closed") reportVoiceUsage?.(event);
         controller.handle(event);
       };
       pc.onconnectionstatechange = () => { if (!closed && pc.connectionState === "failed") { setStatus("error"); setError("The call dropped. Check your connection and try again."); saveRecord(); } };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       const answer = awaitedLater(fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) })
-        .then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? "Could not start the call"); live.set({ workspaceId: body.workspaceId }); return body.sdp as string; }));
+        .then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? "Could not start the call"); live.set({ workspaceId: body.workspaceId }); reportVoiceUsage = voiceUsageReporter(body.usageId); return body.sdp as string; }));
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       if (closed) { stream.getTracks().forEach(track => track.stop()); return; }
       live.set({ mic: stream });

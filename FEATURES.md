@@ -90,7 +90,7 @@ The voice call hands every request to the same chat (`/api/chat`), so these are 
 | `related_rows` | organizer (internal) | Other payments whose description shares words with an item's payee, labelled by the owner or not… | `lib/organize/organizer.ts` |
 
 ## Voice
-Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-audio.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-record-queue.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-vocabulary.ts`.
+Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voice-access.ts`, `lib/ai/voice-call-audio.ts`, `lib/ai/voice-call-controller.ts`, `lib/ai/voice-call-history.ts`, `lib/ai/voice-call-record.ts`, `lib/ai/voice-call.ts`, `lib/ai/voice-context.ts`, `lib/ai/voice-playback.ts`, `lib/ai/voice-record-queue.ts`, `lib/ai/voice-recorder.ts`, `lib/ai/voice-usage-server.ts`, `lib/ai/voice-usage.ts`, `lib/ai/voice-vocabulary.ts`.
 
 | Route | Methods | File |
 | --- | --- | --- |
@@ -104,6 +104,7 @@ Call code: `lib/ai/use-voice-call.ts`, `lib/ai/use-voice-input.ts`, `lib/ai/voic
 | `/api/voice/sample` | GET | `app/api/voice/sample/route.ts` |
 | `/api/voice/session` | POST | `app/api/voice/session/route.ts` |
 | `/api/voice/transcribe` | POST | `app/api/voice/transcribe/route.ts` |
+| `/api/voice/usage` | PATCH | `app/api/voice/usage/route.ts` |
 
 ## Home widgets
 Defined in `lib/finance/dashboard.ts`; AI-built cards also appear on the home grid as `card:<id>` (`/api/cards/[id]`).
@@ -253,4 +254,5 @@ Every page with a navigation label in Pages is also a palette command in group P
 | `/api/voice/sample` | GET | `app/api/voice/sample/route.ts` |
 | `/api/voice/session` | POST | `app/api/voice/session/route.ts` |
 | `/api/voice/transcribe` | POST | `app/api/voice/transcribe/route.ts` |
+| `/api/voice/usage` | PATCH | `app/api/voice/usage/route.ts` |
 | `/artifact-lib/[file]` | GET | `app/artifact-lib/[file]/route.ts` |

@@ -39,7 +39,7 @@ it("starts a delegating session seeded with the last ten messages, without cards
   messages = Array.from({ length: 14 }, (_, index) => ({ role: index % 2 ? "assistant" : "user", content: `turn ${index}` }));
   messages[13] = { role: "assistant", content: `Done.\n\n\`\`\`moneo-proposal\nabc\n\`\`\`\n${"x".repeat(3000)}` };
   const response = await POST(request({ sdp: "offer", conversationId }));
-  expect(await response.json()).toEqual({ sdp: "answer", sessionId: "session", workspaceId: "workspace" });
+  expect(await response.json()).toEqual({ sdp: "answer", sessionId: "session", workspaceId: "workspace", usageId: null });
   const { sdp, sessionConfig } = doCreateWebRTCSession.mock.calls[0][0];
   expect(sdp).toBe("offer");
   expect(sessionConfig.voice).toBe("marin");

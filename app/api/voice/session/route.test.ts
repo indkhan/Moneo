@@ -62,7 +62,7 @@ it("returns only a short-lived secret, never the server key", async () => {
   const response = await POST(request());
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body).toEqual({ mode: "live", fellBack: false, token: "ek_short_lived", expiresAt: 1_900_000_000, url: "wss://api.openai.com/v1/realtime?intent=transcription" });
+  expect(body).toEqual({ mode: "live", fellBack: false, token: "ek_short_lived", expiresAt: 1_900_000_000, usageId: null, url: "wss://api.openai.com/v1/realtime?intent=transcription" });
   expect(JSON.stringify(body)).not.toContain("sk-server-only");
   const [url, init] = openai.mock.calls[0];
   expect(url).toBe("https://api.openai.com/v1/realtime/client_secrets");

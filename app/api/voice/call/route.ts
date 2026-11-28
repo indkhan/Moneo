@@ -5,7 +5,8 @@ import { VOICE_INSTRUCTIONS, VOICE_MODEL, seedInput } from "@/lib/ai/voice-call"
 import { voiceApiKey } from "@/lib/ai/configured";
 import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import { jsonBodyOrNull } from "@/lib/json-body";
-import { outcomeOf, recordUsage, type UsageOutcome } from "@/lib/ai/usage-ledger";
+import { recordVoiceUsage } from "@/lib/ai/voice-usage-server";
+import { outcomeOf, type UsageOutcome } from "@/lib/ai/usage-ledger";
 import { logError, logInfo } from "@/lib/log";
 
 const inputSchema = z.object({ sdp: z.string().min(1).max(20_000), conversationId: z.uuid() }).strict();
@@ -29,18 +30,18 @@ export async function POST(request: Request) {
   if (messages.error) throw messages.error;
   const history: { role: string; content: string }[] = existing.data ? (messages.data ?? []).reverse() : [];
   const started = performance.now();
-  const record = (outcome: UsageOutcome) => void recordUsage({ workspaceId: workspace.id, task: "voice_realtime", conversationId },
+  const record = (outcome: UsageOutcome) => recordVoiceUsage({ workspaceId: workspace.id, task: "voice_realtime", conversationId },
     { modelId: VOICE_MODEL, source: "openai", durationMs: performance.now() - started, tokens: null, audioSeconds: null, outcome });
   try {
     const session = await createOpenAI({ apiKey }).experimental_realtime(VOICE_MODEL).doCreateWebRTCSession({ sdp, abortSignal: request.signal, sessionConfig: {
       instructions: VOICE_INSTRUCTIONS, voice: settings.voice,
       providerOptions: { openai: { delegation: { type: "client" }, input: seedInput(history) } },
     } });
-    record({ status: "succeeded" });
+    const usageId = await record({ status: "succeeded" });
     logInfo("voice", "voice.call_start", "Voice call started", { model: VOICE_MODEL, voice: settings.voice, earlierTurns: history.length }, { workspaceId: workspace.id, conversationId });
-    return Response.json({ sdp: session.sdp, sessionId: session.sessionId, workspaceId: workspace.id });
+    return Response.json({ sdp: session.sdp, sessionId: session.sessionId, workspaceId: workspace.id, usageId });
   } catch (error) {
-    record(outcomeOf(error));
+    void record(outcomeOf(error));
     logError("voice", "voice_session_failed", "voice session failed", error);
     return Response.json({ error: "Could not start the call" }, { status: 502 });
   }
