@@ -15,11 +15,11 @@ import { WealthForm } from "./form";
 import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
 import { NetWorthProblems } from "./net-worth-problems";
 import { loadImportStates, loadRepaymentLinks, netWorthFindings } from "@/lib/finance/net-worth-checks";
-import { dayRange, firstRealValue, loadWealthEvents, monthEnds, netWorth, netWorthSeries } from "@/lib/finance/net-worth";
+import { firstRealValue, loadWealthEvents, monthEnds, netWorth } from "@/lib/finance/net-worth";
 import { describeMonthSplit, loadNetWorthEvidence, netWorthModel } from "@/lib/finance/net-worth-source";
-import { transitOn } from "@/lib/finance/transit";
 import { chartedIsins } from "@/lib/scalable/charts";
 import { scalableItemId } from "@/lib/scalable/portfolio";
+import { scalablePortfolioHistory } from "@/lib/scalable/portfolio-history";
 import { PositionDrawer } from "./position-drawer";
 
 export const metadata = { title: "Wealth" };
@@ -71,23 +71,14 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
   const chartPoints = (currency: string) => series.flatMap(point => { const value = netWorth(point).get(currency); return value === undefined || !point.known ? [] : [{ date: point.date, value, uncertain: point.uncertain.join(". ") || undefined }]; });
-  const returned = worth.windows.filter(window => window.kind === "returned");
-  const withReturns = (date: string, value: bigint, currency: string) => value + (transitOn(returned, date).get(currency) ?? 0n);
   const history = params.history === "all" ? events : events.slice(0, HISTORY);
   const portfolio = (scalable.data?.portfolio ?? null) as ScalablePortfolio | null;
-  const scalableIds = new Set(portfolio?.itemIds ?? []), knownIds = new Set([...(portfolio?.knownItemIds ?? []), ...scalableIds]);
+  const scalableIds = new Set(portfolio?.itemIds ?? []);
   const positionLinks = Object.fromEntries([...charted].map(isin => [scalableItemId(workspace.id, `isin:${isin}`), isin]));
   const openIsin = params.position && positionLinks[scalableItemId(workspace.id, `isin:${params.position}`)] ? params.position : null;
-  const scalableHistory = (() => {
-    if (!portfolio) return [];
-    const valuations = allValuations.filter(row => knownIds.has(row.item_id));
-    const from = valuations.reduce((min, row) => row.as_of < min ? row.as_of : min, today);
-    return netWorthSeries({ dates: dayRange(from, today), timeZone: workspace.timezone, accountIds: new Set(), snapshots: [], valuations })
-      .flatMap(point => { const value = netWorth(point).get(portfolio.currency); return value === undefined ? [] : [{ date: point.date, value: withReturns(point.date, value, portfolio.currency) }]; });
-  })();
   const findings = netWorthFindings({ accounts: resolved, snapshots: evidence.snapshots, ledger: evidence.ledger, timeZone: workspace.timezone, locale: workspace.locale, portfolio, imports, repayments,
     lastCalculated: calculated.rows.at(-1) ?? null, firstReal: firstRealValue(allValuations, calculatedHistory.knownIds, calculated.before, portfolio?.currency ?? "EUR"), movedOnBoundaryMinor: worth.movedOnBoundaryMinor });
-  const scalableCalculated = portfolio && calculated.before ? calculated.rows.filter(row => row.on_date < calculated.before! && row.currency_code === portfolio.currency) : [];
+  const scalableHistory = portfolio ? scalablePortfolioHistory({ evidence: netWorthEvidence, model: worth, portfolio, today, timeZone: workspace.timezone }) : { points: [], calculatedBefore: null };
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
@@ -119,7 +110,7 @@ export default async function WealthPage({ searchParams }: { searchParams?: Prom
     </section>
 
     {portfolio && <ScalableInvestments portfolio={portfolio} positions={active.filter(item => scalableIds.has(item.id) && item.kind === "holding").sort((a, b) => Number(BigInt(b.amount_minor) - BigInt(a.amount_minor)))}
-      history={[...scalableCalculated.map(row => ({ date: row.on_date, value: withReturns(row.on_date, BigInt(row.total_minor), row.currency_code) })), ...scalableHistory]} calculatedBefore={scalableCalculated.length ? calculated.before : null}
+      history={scalableHistory.points} calculatedBefore={scalableHistory.calculatedBefore}
       historyFailed={scalable.data?.history_status === "failed"} syncedAt={scalable.data?.last_synced_at ?? null} active={scalable.data?.status === "active"} locale={workspace.locale} timeZone={workspace.timezone} positionLinks={positionLinks} />}
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>

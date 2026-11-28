@@ -19,6 +19,8 @@ import { ScalablePortfolioView } from "@/components/scalable-portfolio";
 import { ConnectedArea, type ConnectionsData } from "@/components/connected-banks";
 import { loadBankConnections } from "@/lib/bank/connections";
 import { ScalableCard } from "@/components/scalable-connection";
+import { loadWealthItems } from "@/lib/finance/wealth";
+import { holdingRows } from "@/lib/scalable/holding-rows";
 import { maskAccountNumber } from "@/lib/import/csv";
 import { ScalableLiveToggle } from "./scalable-live-toggle";
 import type { ScalablePortfolio } from "@/lib/scalable/portfolio";
@@ -44,14 +46,15 @@ function describeEvent(event: MetaEvent) {
 export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string; bank?: string; connect?: string }> } = {}) {
   const { transfers, saved, bank, connect } = (await searchParams) ?? {};
   const { supabase, workspace, settings } = await requireWorkspace();
-  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }, { data: fileSources, error: sourceError }, bankConnections] = await Promise.all([
+  const [evidence, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }, { data: scalable }, { data: fileSources, error: sourceError }, bankConnections, wealthItems] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id, new Date().toISOString()),
     supabase.from("bank_connection_accounts").select("connection_id,account_name,currency_code,iban,last_booked_on,bank_connections(status)").eq("workspace_id", workspace.id),
     supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
-    supabase.from("scalable_connections").select("portfolio").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
+    supabase.from("scalable_connections").select("portfolio,last_synced_at").eq("workspace_id", workspace.id).in("status", ["active", "expired", "error"])
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("data_sources").select("account_id").eq("workspace_id", workspace.id).eq("kind", "file").not("account_id", "is", null),
     loadBankConnections(supabase, workspace.id),
+    loadWealthItems(supabase, workspace.id),
   ]);
   if (bankError || identifierError || sourceError) throw new Error("Could not load account identifiers");
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
@@ -146,8 +149,9 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
       </details> : null}
     </article>;
   }
+  const portfolio = (scalable?.portfolio ?? null) as ScalablePortfolio | null;
   const scalableCard = scalable ? <ScalableCard key="scalable" setting={<ScalableLiveToggle live={settings.artifact_scalable_data === "live"} />}>
-      {scalable.portfolio ? <ScalablePortfolioView portfolio={scalable.portfolio as ScalablePortfolio} locale={locale} /> : <p className="text-sm text-muted-foreground">Holdings appear after the first sync.</p>}
+      {portfolio ? <ScalablePortfolioView portfolio={portfolio} holdings={holdingRows(wealthItems, portfolio, locale)} version={scalable.last_synced_at ?? portfolio.asOf} locale={locale} timeZone={timeZone} /> : <p className="text-sm text-muted-foreground">Holdings appear after the first sync.</p>}
   </ScalableCard> : null;
   const others = active.filter(account => !fedIds.has(account.id));
 

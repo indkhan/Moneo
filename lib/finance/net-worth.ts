@@ -124,11 +124,11 @@ export function netWorth(point: NetWorthPoint): Map<string, bigint> {
 
 type WealthEvent = { id: string; item_id: string; before: WealthItem | null; after: WealthItem; created_at: string; undone_at: string | null };
 
-export async function loadWealthEvents(db: ReadonlyDb, workspaceId: string): Promise<WealthEvent[]> {
+export async function loadWealthEvents(db: ReadonlyDb, workspaceId: string, itemId?: string): Promise<WealthEvent[]> {
   const rows: WealthEvent[] = [];
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await db.from("wealth_events").select("id, item_id, before, after, created_at, undone_at").eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: false }).order("id").range(offset, offset + 999);
+    const query = db.from("wealth_events").select("id, item_id, before, after, created_at, undone_at").eq("workspace_id", workspaceId);
+    const { data, error } = await (itemId ? query.eq("item_id", itemId) : query).order("created_at", { ascending: false }).order("id").range(offset, offset + 999);
     if (error) throw error;
     rows.push(...(data ?? []) as WealthEvent[]);
     if (!data || data.length < 1000) return rows;
