@@ -1,9 +1,10 @@
 import { requireWorkspace } from "@/lib/auth";
-import { decodeSpeechAudio, MAX_SPEECH_BYTES } from "@/lib/ai/speech/audio";
+import { decodeSpeechAudio, encodeWav, MAX_SPEECH_BYTES } from "@/lib/ai/speech/audio";
 import { transcribeWithFallback } from "@/lib/ai/speech/choose";
 import { loadSpeechHints } from "@/lib/ai/speech/hints";
 import { batchEngines, speechModelId } from "@/lib/ai/speech/registry";
 import { outcomeOf, recordUsage } from "@/lib/ai/usage-ledger";
+import { log } from "@/lib/log";
 
 export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -18,6 +19,10 @@ export async function POST(request: Request) {
     onAttempt: ({ engine, durationMs, audioSeconds, error }) => void recordUsage({ workspaceId: workspace.id, task: "speech_to_text" }, {
       modelId: speechModelId(engine, settings), source: engine, durationMs, tokens: null, audioSeconds, outcome: error === null ? { status: "succeeded" } : outcomeOf(error),
     }) });
+  log({ level: result.ok ? "info" : "warn", area: "voice", event: "speech_to_text", workspaceId: workspace.id,
+    message: result.ok ? `Speech to text with ${result.engine}${result.fellBack ? " after a fallback" : ""}` : `Speech to text failed: ${result.reason}`,
+    details: result.ok ? { engine: result.engine, fellBack: result.fellBack, transcript: result.text } : { reason: result.reason, status: result.status },
+    audio: { bytes: encodeWav(audio), contentType: "audio/wav" } });
   if (!result.ok) return Response.json({ error: result.reason }, { status: result.status });
   return Response.json({ text: result.text, engine: result.engine, fellBack: result.fellBack }, { headers: { "Cache-Control": "no-store" } });
 }

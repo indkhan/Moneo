@@ -14,6 +14,7 @@ import { loadWorkspaceSettings } from "@/lib/settings";
 import { normalizeIban } from "@/lib/iban";
 import { startSyncAgentRun } from "@/lib/import/follow-up";
 import { importFile } from "@/workflows/import-file";
+import { log, logInfo } from "@/lib/log";
 
 type BankImport = { importId: string; rowCount: number; uid: string; lastBookedOn: string };
 type BankObservation = { accountName: string; currencyCode: string; amountMinor: string; balanceType: string; asOf: string };
@@ -101,6 +102,7 @@ async function unauthorizedCause(client: EnableBankingClient): Promise<"app" | "
 
 async function stageBankImports(connectionId: string, workspaceId: string, leaseToken: string, psu: PsuContext | undefined, firstSyncRetry: boolean, aligned: boolean): Promise<Staged> {
   "use step";
+  logInfo("sync", "bank.sync_start", "Bank sync started", { connectionId, firstSyncRetry, aligned, fromOwner: psu !== undefined }, { workspaceId });
   const db = serviceDb();
   const staged: Staged = { imports: [], observations: [], fetched: 0, failed: 0, problem: null, ended: true, retryAt: null };
   if (!(await holdBankSync(db, connectionId, leaseToken))) return staged;
@@ -203,6 +205,9 @@ async function stageImport(db: ReturnType<typeof serviceDb>, workspaceId: string
 
 async function finishBankSync(connectionId: string, workspaceId: string, leaseToken: string, staged: Staged) {
   "use step";
+  log({ level: staged.problem ? "warn" : "info", area: "sync", event: "bank.sync_finish", workspaceId,
+    message: staged.problem ? `Bank sync finished with a problem: ${staged.problem}` : `Bank sync fetched ${staged.fetched} transactions`,
+    details: { connectionId, fetched: staged.fetched, failed: staged.failed, imports: staged.imports.length, observations: staged.observations.length, retryAt: staged.retryAt, ended: staged.ended } });
   const db = serviceDb();
   if (!(await holdBankSync(db, connectionId, leaseToken))) return;
   for (const item of staged.observations) {

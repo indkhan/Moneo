@@ -29,7 +29,7 @@ it("explains a redirect address Enable Banking does not allow", async () => {
   const response = await connect();
   expect(response.status).toBe(502);
   expect((await response.json()).error).toBe("Enable Banking rejected the return address. Add https://localhost:3443/api/bank/callback as a Redirect URL in your Enable Banking application, then try again.");
-  expect(console.error).toHaveBeenCalledWith("bank connect failed", "Enable Banking POST /auth failed (400 REDIRECT_URI_NOT_ALLOWED)");
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("bank connect failed"), "Enable Banking POST /auth failed (400 REDIRECT_URI_NOT_ALLOWED)");
 });
 
 it("explains rejected credentials and names unknown codes", async () => {

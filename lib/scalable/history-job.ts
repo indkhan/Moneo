@@ -5,6 +5,7 @@ import { historyTradeRows, saveCharts } from "./charts";
 import { calculateHistory, readHistoryInput, type TradeDetails } from "./history";
 import type { ScalableExtras } from "./portfolio";
 import { withScalable } from "./server";
+import { logError } from "@/lib/log";
 
 const LOGIN_NEEDED_MS = 600_000;
 
@@ -29,7 +30,7 @@ export async function rebuildScalableHistory(connection: { id: string; workspace
       },
     };
     const input = await withScalable(connection.id, connection.workspace_id, mcp => readHistoryInput(mcp, timeZone, before, details), fetch, LOGIN_NEEDED_MS);
-    try { await saveCharts(connection.id, { charts: [], trades: historyTradeRows(input.rows), held: null }); } catch (cause) { console.error("Scalable trades were not saved", cause); }
+    try { await saveCharts(connection.id, { charts: [], trades: historyTradeRows(input.rows), held: null }); } catch (cause) { logError("sync", "scalable_trades_were_not_saved", "Scalable trades were not saved", cause); }
     const result = calculateHistory(input);
     if (!result.ok) return await failed(result.reason);
     const saved = await db.rpc("replace_scalable_value_history", { p_connection_id: connection.id, p_checked_on: today,

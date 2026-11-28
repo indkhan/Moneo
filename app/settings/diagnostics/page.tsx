@@ -6,19 +6,23 @@ import { SetupChecks } from "../setup-secrets";
 import { AiUsage } from "./ai-usage";
 import { AppBuild, BackendStatus, Connections, HealthCard, RecentJobs, ScheduledSummaries } from "./health";
 import { DIAGNOSTICS_SECTIONS } from "./sections";
+import { Logs } from "./logs";
+import { logFilterSchema } from "@/lib/logs/store";
 
 export const metadata = { title: "Diagnostics" };
 
 const card = "rounded-xl border border-border bg-card p-6";
 const link = "underline hover:text-foreground";
 
-export default async function DiagnosticsPage({ searchParams }: { searchParams: Promise<{ usage?: string }> }) {
-  const usageWindow = parseUsageWindow((await searchParams).usage);
+export default async function DiagnosticsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const params = await searchParams;
+  const usageWindow = parseUsageWindow(params.usage);
+  const logFilter = logFilterSchema.parse({ level: params.level, area: params.area, window: params.window, q: params.q || undefined });
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1">
       <p className="eyebrow"><Link href="/settings#data" className="hover:text-foreground">Settings</Link></p>
       <h1 className="page-title">Diagnostics</h1>
-      <p className="mt-1 text-sm text-muted-foreground">What AI did for you and whether every part of Moneo is running.</p>
+      <p className="mt-1 text-sm text-muted-foreground">What AI did for you, whether every part of Moneo is running, and a log of everything that happened.</p>
     </div>
     <nav aria-label="Diagnostics sections" className="mt-6 flex flex-wrap gap-2">
       {DIAGNOSTICS_SECTIONS.map(([id, label]) => <a key={id} href={`#${id}`} className="rounded-full border border-border bg-card px-3.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">{label}</a>)}
@@ -38,6 +42,11 @@ export default async function DiagnosticsPage({ searchParams }: { searchParams: 
           <HealthCard title="Scheduled summaries"><Suspense fallback={<SkeletonCard lines={3} />}><ScheduledSummaries /></Suspense></HealthCard>
           <HealthCard title="Banks and Scalable"><Suspense fallback={<SkeletonCard lines={3} />}><Connections /></Suspense></HealthCard>
         </div>
+      </section>
+      <section id="logs" aria-labelledby="logs-title" className={`${card} scroll-mt-20`}>
+        <h2 id="logs-title" className="text-base font-semibold">Logs</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Errors, warnings and events from every part of Moneo: AI chats with their thinking and tool calls, voice with its recordings, syncs, imports, background jobs and this browser. Logs stay on this computer and the assistant cannot read them. To report a problem, copy a redacted selection and share it with the Moneo project.</p>
+        <Suspense fallback={<SkeletonCard lines={6} />}><Logs filter={logFilter} /></Suspense>
       </section>
     </div>
   </main>;

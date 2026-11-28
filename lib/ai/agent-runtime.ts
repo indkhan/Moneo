@@ -18,6 +18,7 @@ import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurri
 import { AGENTS, WAVES, aiConfidence, anomalyFindings, budgetProposals, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
   daysBefore, payloadSchemas, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 import { serviceRoleConfig } from "@/lib/env";
+import { logError } from "@/lib/log";
 
 class RunInactive extends Error {}
 type Db = SupabaseClient;
@@ -67,7 +68,7 @@ async function withModel<T>(context: Context, label: string, call: (model: Await
   await report(context, { type: "tool", text: label });
   try { return await call(await modelForSettings(context.settings, "agents", { workspaceId: workspace.id, agentRunId: runId })); }
   catch (error) {
-    console.error(`Agent model call failed: ${label}`, error);
+    logError("ai", "agent_model_call_failed", `Agent model call failed: ${label}`, error);
     await report(context, { type: "note", text: "The model was slow or unavailable; using deterministic results" });
     return null;
   }

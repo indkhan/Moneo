@@ -45,6 +45,7 @@ import { chartDataInput, chartDataScopes, describeDataset, loadChartData } from 
 import { serviceRoleConfig } from "@/lib/env";
 import { jsonBodyOrNull } from "@/lib/json-body";
 import { modelIdSchema } from "@/lib/ai/model-id";
+import { logError } from "@/lib/log";
 
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
   const artifactId = existing.data?.artifact_id ?? null;
   const modelPromise = awaitedLater(chosenModel ? getModel(chosenModel, { workspaceId: workspace.id, task: viaCall ? "voice_call" : artifactId ? "artifacts" : "chat", conversationId }) : modelForSettings(settings, viaCall ? "voice_call" : artifactId ? "artifacts" : "chat", { workspaceId: workspace.id, conversationId }));
   const scalablePromise = settings.ai_data_scopes.includes("accounts") ? awaitedLater(activeScalableConnection(workspace.id)) : Promise.resolve(null);
-  const briefPromise = ownerBrief(context).catch(error => { console.error("owner brief failed", error); return null; });
+  const briefPromise = ownerBrief(context).catch(error => { logError("ai", "owner_brief_failed", "owner brief failed", error); return null; });
   const artifactModules = artifactId ? awaitedLater(Promise.all([import("@/lib/ai/artifact-agent"), import("@/lib/ai/artifact-preview")])) : null;
   if (!existing.data) {
     const { error } = await supabase.from("conversations").insert({ id: conversationId, workspace_id: workspace.id, title: viaCall ? VOICE_CALL_TITLE : message.slice(0, 80), ...(requestedModel && !viaCall && { model: requestedModel }) });
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
   if (attachments.length && !regenerates) {
     const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
       .eq("request_id", requestId).eq("role", "user");
-    if (saved.error) console.error("saving chat attachments failed", saved.error);
+    if (saved.error) logError("ai", "saving_chat_attachments_failed", "saving chat attachments failed", saved.error);
   }
   let conversationFiles: ReturnType<typeof conversationAttachments> | undefined;
   async function writeChatTitle() {
@@ -267,7 +268,7 @@ export async function POST(request: Request) {
     for (const scope of owner?.scopes ?? []) readScopes.add(scope);
     const takeSteers = async () => {
       const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
-      if (steers.error) { console.error("take_chat_steers failed", steers.error); return []; }
+      if (steers.error) { logError("ai", "take_chat_steers_failed", "take_chat_steers failed", steers.error); return []; }
       return (steers.data ?? []) as { id: string; content: string }[];
     };
     const result = streamText({

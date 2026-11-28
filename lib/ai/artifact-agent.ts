@@ -14,6 +14,7 @@ import { lookAt, type Session, type Shot } from "@/lib/ai/artifact-preview";
 import { newestOnBranch } from "@/lib/ai/chat-tree";
 import { dropDraft, keepDraft } from "@/lib/ai/artifact-drafts";
 import { draftCardPath, draftPagePath, type PreviewTheme } from "@/lib/draft-preview";
+import { logError } from "@/lib/log";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 type Run = { context: Context; artifactId: string; requestId: string; branch: Set<string>; model?: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[]; session: Session };
@@ -114,7 +115,7 @@ const CARD_SHOTS = (path: (size: CardSize, theme: PreviewTheme) => string): Shot
   ...CARD_SIZE_KEYS.map((size): Shot => ({ label: `${size}, dark`, path: path(size, "dark"), width: CARD_SIZES[size].width + 40, height: CARD_HEIGHT, full: false, root: "[data-card]", theme: "dark" })),
   { label: "M, light", path: path("M", "light"), width: CARD_SIZES.M.width + 40, height: CARD_HEIGHT, full: false, root: "[data-card]", theme: "light" },
 ];
-const previewUnavailable = (cause: unknown) => { console.error("artifact preview failed", cause); return null; };
+const previewUnavailable = (cause: unknown) => { logError("ai", "artifact_preview_failed", "artifact preview failed", cause); return null; };
 
 type Reviewed = { text: string; looked: string[]; remaining: string[]; hiddenRows: string[] };
 async function review(run: Run, { system, prompt, text, what, shots, accept }: {

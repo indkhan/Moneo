@@ -1,0 +1,10 @@
+export const LOG_LEVELS = ["error", "warn", "info"] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+export const LOG_AREAS = ["ai", "voice", "sync", "import", "jobs", "server", "browser"] as const;
+export type LogArea = (typeof LOG_AREAS)[number];
+export const LOG_AREA_LABELS: Record<LogArea, string> = { ai: "AI", voice: "Voice", sync: "Sync", import: "Imports", jobs: "Jobs", server: "App and server", browser: "Browser" };
+export const LOG_RETENTIONS = ["7", "14", "30", "90", "forever"] as const;
+export type LogRetention = (typeof LOG_RETENTIONS)[number];
+export const DEFAULT_LOG_RETENTION: LogRetention = "14";
+export const LOG_RETENTION_LABELS: Record<LogRetention, string> = { "7": "1 week", "14": "14 days", "30": "30 days", "90": "90 days", forever: "Forever" };
+export const LOG_AUDIO_BUCKET = "logs";

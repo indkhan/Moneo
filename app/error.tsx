@@ -1,8 +1,14 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { describeError, reportClientError } from "@/lib/client-log";
 
 export default function PageError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  useEffect(() => {
+    const { message, details } = describeError(error);
+    reportClientError({ kind: "boundary", message, details: { ...details, digest: error.digest } });
+  }, [error]);
   return <main className="mx-auto flex w-full max-w-xl flex-col items-start gap-3 px-5 py-16">
     <p className="eyebrow">Something went wrong</p>
     <h1 className="page-title">This page couldn’t load</h1>

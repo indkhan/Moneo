@@ -4,6 +4,7 @@ import { VOICES } from "@/lib/settings";
 import { voiceApiKey } from "@/lib/ai/configured";
 import { VOICE_NEEDS_OPENAI_KEY } from "@/lib/ai/voice-access";
 import { outcomeOf, recordUsage, type UsageOutcome } from "@/lib/ai/usage-ledger";
+import { log, logError } from "@/lib/log";
 
 const querySchema = z.object({ voice: z.enum(VOICES) }).strict();
 const SPEECH_MODEL = "gpt-4o-mini-tts";
@@ -18,7 +19,11 @@ function makeClip(voice: string, apiKey: string, workspaceId: string) {
     method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: SPEECH_MODEL, voice, input: SAMPLE_LINE, response_format: "mp3" }),
   }).then(response => { if (!response.ok) throw Object.assign(new Error(`speech ${response.status}`), { statusCode: response.status }); return response.arrayBuffer(); })
-    .then(clip => { record({ status: "succeeded" }); return clip; }, (error: unknown) => { record(outcomeOf(error)); throw error; });
+    .then(clip => {
+      record({ status: "succeeded" });
+      log({ level: "info", area: "voice", event: "text_to_speech", message: `Spoke the ${voice} voice sample`, details: { model: SPEECH_MODEL, voice, text: SAMPLE_LINE }, workspaceId, audio: { bytes: clip, contentType: "audio/mpeg" } });
+      return clip;
+    }, (error: unknown) => { record(outcomeOf(error)); throw error; });
 }
 
 export async function GET(request: Request) {
@@ -34,7 +39,7 @@ export async function GET(request: Request) {
     return new Response(await clips.get(voice)!, { headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=86400" } });
   } catch (error) {
     clips.delete(voice);
-    console.error("voice sample failed", error);
+    logError("voice", "voice_sample_failed", "voice sample failed", error);
     return Response.json({ error: "Could not play the sample" }, { status: 502 });
   }
 }

@@ -129,6 +129,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"app_logs": {
+                  Row: {
+                    "agent_run_id": string | null,"area": string,"audio_path": string | null,"conversation_id": string | null,"created_at": string,"details": Json | null,"event": string,"id": string,"job_id": string | null,"level": string,"message": string,"usage_id": string | null,"workspace_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "agent_run_id"?: string | null,"area": string,"audio_path"?: string | null,"conversation_id"?: string | null,"created_at"?: string,"details"?: Json | null,"event": string,"id"?: string,"job_id"?: string | null,"level": string,"message": string,"usage_id"?: string | null,"workspace_id": string
+                  }
+                  Update: {
+                    "agent_run_id"?: string | null,"area"?: string,"audio_path"?: string | null,"conversation_id"?: string | null,"created_at"?: string,"details"?: Json | null,"event"?: string,"id"?: string,"job_id"?: string | null,"level"?: string,"message"?: string,"usage_id"?: string | null,"workspace_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "app_logs_workspace_id_fkey"
+      columns: ["workspace_id"]
+isOneToOne: false
+      referencedRelation: "workspaces"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"artifact_card_versions": {
                   Row: {
                     "card_id": string,"compiled": string,"created_at": string,"id": string,"kind": string,"model": string | null,"params": NonNullable<Json>,"preset": string | null,"prompt": string,"queries": NonNullable<Json>,"request_id": string | null,"source": string,"title": string,"version": number,"workspace_id": string
@@ -2257,14 +2277,14 @@ isOneToOne: false
                   ]
                 },"workspace_settings": {
                   Row: {
-                    "ai_data_scopes": (string)[],"ai_models": NonNullable<Json>,"ai_setup_skipped_at": string | null,"artifact_scalable_data": string,"locale": string,"muted_insight_types": (string)[],"speech_engine": string,"speech_local_model": string | null,"speech_openrouter_model": string | null,"summary_cadence": string,"summary_time": string,"theme": string,"timezone": string,"uncategorized_skipped_at": string | null,"updated_at": string,"voice": string,"workspace_id": string
+                    "ai_data_scopes": (string)[],"ai_models": NonNullable<Json>,"ai_setup_skipped_at": string | null,"artifact_scalable_data": string,"locale": string,"log_retention": string,"muted_insight_types": (string)[],"speech_engine": string,"speech_local_model": string | null,"speech_openrouter_model": string | null,"summary_cadence": string,"summary_time": string,"theme": string,"timezone": string,"uncategorized_skipped_at": string | null,"updated_at": string,"voice": string,"workspace_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"ai_setup_skipped_at"?: string | null,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone": string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id": string
+                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"ai_setup_skipped_at"?: string | null,"artifact_scalable_data"?: string,"locale"?: string,"log_retention"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone": string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id": string
                   }
                   Update: {
-                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"ai_setup_skipped_at"?: string | null,"artifact_scalable_data"?: string,"locale"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone"?: string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id"?: string
+                    "ai_data_scopes"?: (string)[],"ai_models"?: NonNullable<Json>,"ai_setup_skipped_at"?: string | null,"artifact_scalable_data"?: string,"locale"?: string,"log_retention"?: string,"muted_insight_types"?: (string)[],"speech_engine"?: string,"speech_local_model"?: string | null,"speech_openrouter_model"?: string | null,"summary_cadence"?: string,"summary_time"?: string,"theme"?: string,"timezone"?: string,"uncategorized_skipped_at"?: string | null,"updated_at"?: string,"voice"?: string,"workspace_id"?: string
                   }
                   Relationships: [
                     {
