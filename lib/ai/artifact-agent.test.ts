@@ -12,15 +12,19 @@ vi.mock("@/lib/ai/artifact-preview", () => ({ lookAt: async () => preview.seen }
 const BROKEN = "<html><body><script>const x = list.filter(s => (s.a || (s.b)) : [];</script></body></html>";
 const FIXED = "<html><body><script>const x = [];</script></body></html>";
 
-function run() {
+type Saved = { version: number; request_id: string | null; html: string };
+function run(versions: Saved[] = [{ version: 1, request_id: null, html: "<p>v1</p>" }], branch = new Set(["this-turn"])) {
   const inserts: Record<string, unknown>[] = [];
+  let version: number | undefined;
   const query: Record<string, unknown> = {};
-  for (const name of ["select", "eq", "order", "limit", "update"]) query[name] = () => query;
-  query.maybeSingle = async () => ({ data: { version: 1, html: "<p>v1</p>" }, error: null });
+  for (const name of ["select", "order", "limit", "update"]) query[name] = () => query;
+  query.eq = (column: string, value: unknown) => { if (column === "version") version = value as number; return query; };
+  query.single = async () => ({ data: versions.find(row => row.version === version), error: null });
+  query.maybeSingle = async () => ({ data: versions.reduce((newest, row) => row.version > newest.version ? row : newest), error: null });
   query.insert = async (row: Record<string, unknown>) => { inserts.push(row); return { error: null }; };
-  query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve);
-  const context = { supabase: { from: () => query }, workspace: { id: "w", locale: "en-GB" }, settings: { timezone: "Europe/Berlin" } };
-  const tools = artifactTools({ context, artifactId: "a", signal: new AbortController().signal, ensureActive: async () => {}, scalable: null, ownerWords: [], session: [] } as never);
+  query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: versions, error: null }).then(resolve);
+  const context = { supabase: { from: () => { version = undefined; return query; } }, workspace: { id: "w", locale: "en-GB" }, settings: { timezone: "Europe/Berlin" } };
+  const tools = artifactTools({ context, artifactId: "a", requestId: "this-turn", branch, signal: new AbortController().signal, ensureActive: async () => {}, scalable: null, ownerWords: [], session: [] } as never);
   const write = (input: object) => (tools.write_page.execute as unknown as (input: object, options: object) => Promise<Record<string, unknown>>)(input, { toolCallId: "t", messages: [] });
   return { inserts, write };
 }
@@ -34,6 +38,16 @@ it("sends a page whose script doesn't parse back to the designer and saves the f
   expect(await write(input)).toMatchObject({ saved: true, pageVersion: 2 });
   expect(inserts).toEqual([expect.objectContaining({ html: FIXED, version: 2 })]);
   expect(String(vi.mocked(generateText).mock.calls[1][0].prompt)).toContain("does not parse");
+});
+
+it("changes the page of the reply being continued, not a newer one from another branch, and files the new version under this turn", async () => {
+  vi.mocked(generateText).mockResolvedValue({ text: FIXED } as never);
+  const { inserts, write } = run([{ version: 1, request_id: "first", html: "<p>monthly</p>" }, { version: 2, request_id: "regenerated", html: "<p>weekly</p>" }], new Set(["first", "this-turn"]));
+  expect(await write(input)).toMatchObject({ saved: true, pageVersion: 3 });
+  const prompt = String(vi.mocked(generateText).mock.calls[0]?.[0].prompt);
+  expect(prompt).toContain("<p>monthly</p>");
+  expect(prompt).not.toContain("<p>weekly</p>");
+  expect(inserts).toEqual([expect.objectContaining({ version: 3, request_id: "this-turn" })]);
 });
 
 it("keeps the current version when the designer can't produce a page that parses", async () => {

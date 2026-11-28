@@ -18,6 +18,7 @@ import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { branchHistory, chatSkeleton } from "@/lib/ai/branch-history";
+import { ancestors } from "@/lib/ai/chat-tree";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
@@ -87,12 +88,11 @@ export async function POST(request: Request) {
   if (existing.error) throw existing.error;
   if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
   const chosenModel = viaCall ? undefined : requestedModel ?? existing.data?.model ?? undefined;
-  const modelPromise = awaitedLater(chosenModel ? getModel(chosenModel, { workspaceId: workspace.id, task: viaCall ? "voice_call" : "chat", conversationId }) : modelForSettings(settings, viaCall ? "voice_call" : "chat", { workspaceId: workspace.id, conversationId }));
+  const artifactId = existing.data?.artifact_id ?? null;
+  const modelPromise = awaitedLater(chosenModel ? getModel(chosenModel, { workspaceId: workspace.id, task: viaCall ? "voice_call" : artifactId ? "artifacts" : "chat", conversationId }) : modelForSettings(settings, viaCall ? "voice_call" : artifactId ? "artifacts" : "chat", { workspaceId: workspace.id, conversationId }));
   const scalablePromise = settings.ai_data_scopes.includes("accounts") ? awaitedLater(activeScalableConnection(workspace.id)) : Promise.resolve(null);
   const briefPromise = ownerBrief(context).catch(error => { logError("ai", "owner_brief_failed", "owner brief failed", error); return null; });
-  const artifactId = existing.data?.artifact_id ?? null;
-  const artifactPromise = artifactId ? awaitedLater(Promise.all([import("@/lib/ai/artifact-agent"), import("@/lib/ai/artifact-preview")])
-    .then(async ([agent, preview]) => ({ agent, briefing: await agent.artifactBriefing(supabase, workspace.id, artifactId), session: preview.sessionOf(request) }))) : null;
+  const artifactModules = artifactId ? awaitedLater(Promise.all([import("@/lib/ai/artifact-agent"), import("@/lib/ai/artifact-preview")])) : null;
   if (!existing.data) {
     const { error } = await supabase.from("conversations").insert({ id: conversationId, workspace_id: workspace.id, title: viaCall ? VOICE_CALL_TITLE : message.slice(0, 80), ...(requestedModel && !viaCall && { model: requestedModel }) });
     if (error && error.code !== "23505") return Response.json({ error: "Conversation unavailable" }, { status: 403 });
@@ -106,6 +106,10 @@ export async function POST(request: Request) {
     return Response.json({ error: `Request is ${claim.data.status}`, status: claim.data.status }, { status: 409 });
   }
   const claimedParent = claim.data.parent ?? null;
+  const artifactPromise = artifactId && artifactModules ? awaitedLater(Promise.all([artifactModules, skeletonPromise]).then(async ([[agent, preview], nodes]) => {
+    const branch = new Set([...ancestors(nodes, claimedParent).map(node => node.id), requestId]);
+    return { agent, branch, briefing: await agent.artifactBriefing(supabase, workspace.id, artifactId, branch), session: preview.sessionOf(request) };
+  })) : null;
   const historyPromise = awaitedLater(skeletonPromise.then(nodes => branchHistory(supabase, workspace.id, conversationId, nodes, claimedParent)));
   if (attachments.length && !regenerates) {
     const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
@@ -305,7 +309,7 @@ ${artifact.briefing}` : ""}`,
             if (isImage(file.type)) return { error: `"${file.name}" is a photo; it can only be seen in the message it was attached to.` };
             return { text: readDocument(await documentText(supabase, file), { name: file.name, id: attachmentId(file.path), location, search }) };
           } }),
-        ...(artifact && artifactId ? artifact.agent.artifactTools({ context, artifactId, model: chosenModel, scalable: scalableConnection ? settings.artifact_scalable_data : null, ownerWords: [message, ...priorUserText.filter(text => text !== message)], session: artifact.session, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
+        ...(artifact && artifactId ? artifact.agent.artifactTools({ context, artifactId, requestId, branch: artifact.branch, model: chosenModel, scalable: scalableConnection ? settings.artifact_scalable_data : null, ownerWords: [message, ...priorUserText.filter(text => text !== message)], session: artifact.session, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports"), sourceVersions: false }), false, true) }),
           finance_entities: tool({ description: "Optional: list owned account, category and merchant names with ids, tags and events. Other tools already accept names and label ids with names.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),

@@ -28,6 +28,20 @@ export function VersionPicker({ versions, label }: { versions?: Versions; label:
   </span>;
 }
 
+export function RegenerateButtons({ regenerate, models, label, className = button }: { regenerate: Resend; models: string[]; label: string; className?: string }) {
+  return <>
+    <button type="button" aria-label={label} title={label} className={className} onClick={() => resend(regenerate)}><RotateCcw className="size-4" aria-hidden="true" /></button>
+    {models.length > 0 && <details className="relative">
+      <summary aria-label={`${label} with another model`} title={`${label} with another model`} className={`${className} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}><ChevronDown className="size-4" aria-hidden="true" /></summary>
+      <div className="absolute bottom-full right-0 z-20 mb-1 w-56 rounded-xl border border-border bg-card p-1 shadow-lg sm:left-0 sm:right-auto">
+        <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{label} with</p>
+        {models.map(option => <button key={option} type="button" className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-sm text-foreground hover:bg-muted"
+          onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); resend({ ...regenerate, model: option }); }}>{option}</button>)}
+      </div>
+    </details>}
+  </>;
+}
+
 export function MessageActions({ content, model, regenerate, models = [], versions }: { content: string; model?: string; regenerate: Resend | null; models?: string[]; versions?: Versions }) {
   const [copied, setCopied] = useState(false);
   return <div className="mt-2 flex items-center gap-0.5 text-muted-foreground">
@@ -35,15 +49,7 @@ export function MessageActions({ content, model, regenerate, models = [], versio
     <button type="button" aria-label="Copy message" title="Copy" className={button} onClick={async () => {
       try { await navigator.clipboard.writeText(content); setCopied(true); } catch { setCopied(false); }
     }}>{copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}</button>
-    {regenerate && <button type="button" aria-label="Regenerate reply" title="Regenerate" className={button} onClick={() => resend(regenerate)}><RotateCcw className="size-4" aria-hidden="true" /></button>}
-    {regenerate && models.length > 0 && <details className="relative">
-      <summary aria-label="Regenerate with another model" title="Regenerate with another model" className={`${button} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}><ChevronDown className="size-4" aria-hidden="true" /></summary>
-      <div className="absolute bottom-full left-0 z-20 mb-1 w-56 rounded-xl border border-border bg-card p-1 shadow-lg">
-        <p className="px-2.5 py-1.5 text-xs text-muted-foreground">Regenerate with</p>
-        {models.map(option => <button key={option} type="button" className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-sm text-foreground hover:bg-muted"
-          onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); resend({ ...regenerate, model: option }); }}>{option}</button>)}
-      </div>
-    </details>}
+    {regenerate && <RegenerateButtons regenerate={regenerate} models={models} label="Regenerate" />}
     {model && <span className="ml-1.5 min-w-0 truncate text-xs"><span className="sr-only">Model: </span>{model}</span>}
   </div>;
 }

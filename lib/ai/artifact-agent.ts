@@ -11,12 +11,13 @@ import { checkCard } from "@/lib/cards/render";
 import { pageScriptErrors } from "@/lib/ai/page-check";
 import { CARD_BODY_HEIGHT, CARD_HEIGHT, CARD_SIZES, CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
 import { lookAt, type Session, type Shot } from "@/lib/ai/artifact-preview";
+import { newestOnBranch } from "@/lib/ai/chat-tree";
 import { dropDraft, keepDraft } from "@/lib/ai/artifact-drafts";
 import { draftCardPath, draftPagePath, type PreviewTheme } from "@/lib/draft-preview";
 import { logError } from "@/lib/log";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-type Run = { context: Context; artifactId: string; model?: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[]; session: Session };
+type Run = { context: Context; artifactId: string; requestId: string; branch: Set<string>; model?: string; signal: AbortSignal; ensureActive: () => Promise<void>; scalable: ScalableArtifactAccess; ownerWords: string[]; session: Session };
 
 const SCALABLE_HELP: Record<"snapshot" | "live", string> = {
   snapshot: "Scalable sources show the portfolio as of the last sync (dataFrom last_sync, syncedAt), the same figures as Wealth: say \"as of\" with that date. Your investments_ tools read Scalable live and their fields differ, so take field paths for a brief from the sample the designer gets, not from them. Quotes, charts and news for other securities need live Scalable data, which the owner can turn on in Settings.",
@@ -164,12 +165,8 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
   const { supabase, workspace } = context;
   const errors = [...frozenDates(input.queries, input.fixedDates), ...checkQueries(input.queries, today(context))];
   if (errors.length) return { saved: false, errors };
-  const [data, current] = await Promise.all([
-    runArtifactQueries(input.queries, context, today(context)),
-    supabase.from("artifact_versions").select("version, html").eq("workspace_id", workspace.id).eq("artifact_id", artifactId).order("version", { ascending: false }).limit(1).maybeSingle(),
-  ]);
-  if (current.error) throw current.error;
-  let prompt = `${current.data ? `Current page (change it as the brief says, keep the rest):\n${current.data.html}\n\n` : ""}${ownerWords(run)}Brief:\n${input.brief}\n\nQueries:\n${JSON.stringify(input.queries)}\n\nData now (window.MONEO_DATA):\n${sample(data)}`;
+  const [data, current] = await Promise.all([runArtifactQueries(input.queries, context, today(context)), pageOnBranch(supabase, workspace.id, artifactId, run.branch, "html")]);
+  let prompt = `${current ? `Current page (change it as the brief says, keep the rest):\n${current.html}\n\n` : ""}${ownerWords(run)}Brief:\n${input.brief}\n\nQueries:\n${JSON.stringify(input.queries)}\n\nData now (window.MONEO_DATA):\n${sample(data)}`;
   let text = "", model = "";
   for (let attempt = 0; ; attempt++) {
     ({ text, model } = await design(run, PAGE_DESIGNER, prompt));
@@ -185,12 +182,12 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
     accept: async html => /<[a-z]/i.test(html) && !pageScriptErrors(html).length });
   text = reviewed.text;
   await run.ensureActive();
-  const version = (current.data?.version ?? 0) + 1;
-  const saved = await supabase.from("artifact_versions").insert({ workspace_id: workspace.id, artifact_id: artifactId, version, prompt: input.brief.slice(0, 4000), html: text, queries: input.queries, model });
+  const version = await nextVersion(supabase, "artifact_versions", "artifact_id", artifactId, workspace.id);
+  const saved = await supabase.from("artifact_versions").insert({ workspace_id: workspace.id, artifact_id: artifactId, version, prompt: input.brief.slice(0, 4000), html: text, queries: input.queries, model, request_id: run.requestId });
   if (saved.error) return { saved: false, errors: [saved.error.code === "23505" ? "Another change finished first; try again" : "Could not save the page"] };
   const touched = await supabase.from("artifacts").update({ title: input.title, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", artifactId);
   if (touched.error) throw touched.error;
-  return { saved: true, pageVersion: version, note: "The Page tab shows it now.", ...lookNote(reviewed) };
+  return { saved: true, pageVersion: version, model, note: "The Page tab shows it now.", ...lookNote(reviewed) };
 }
 
 async function saveCard(run: Run, card: { cardId?: string; title: string; kind: "preset" | "code"; preset?: PresetName; source: string; compiled: string; queries: ArtifactQuery[]; params: CardParam[]; prompt: string; model?: string; hidden: string[] }) {
@@ -208,9 +205,9 @@ async function saveCard(run: Run, card: { cardId?: string; title: string; kind: 
   }
   const version = await nextVersion(supabase, "artifact_card_versions", "card_id", cardId, workspace.id);
   const saved = await supabase.from("artifact_card_versions").insert({ workspace_id: workspace.id, card_id: cardId, version, title: card.title, kind: card.kind, preset: card.preset ?? null,
-    source: card.source, compiled: card.compiled, queries: card.queries, params: card.params, prompt: card.prompt.slice(0, 4000), model: card.model ?? null });
+    source: card.source, compiled: card.compiled, queries: card.queries, params: card.params, prompt: card.prompt.slice(0, 4000), model: card.model ?? null, request_id: run.requestId });
   if (saved.error) return { saved: false, errors: [saved.error.code === "23505" ? "Another change finished first; try again" : "Could not save the card"] };
-  return { saved: true, cardId, version, note: "It shows as a draft in the Home card tab; the user adds it to Home (or updates Home) from there.", ...card.hidden.length ? { hidden: card.hidden } : {} };
+  return { saved: true, cardId, version, ...card.model ? { model: card.model } : {}, note: "It shows as a draft in the Home card tab; the user adds it to Home (or updates Home) from there.", ...card.hidden.length ? { hidden: card.hidden } : {} };
 }
 
 export function artifactTools(run: Run) {
@@ -246,12 +243,11 @@ export function artifactTools(run: Run) {
         const { resolved } = resolveParams(params, {}, today(context), context.workspace.locale);
         const queryErrors = [...frozenDates(queries, fixed), ...checkQueries(queries, today(context), resolved)];
         if (queryErrors.length) return { saved: false, errors: queryErrors };
-        const current = cardId ? await context.supabase.from("artifact_card_versions").select("source").eq("workspace_id", context.workspace.id).eq("card_id", cardId).order("version", { ascending: false }).limit(1).maybeSingle() : null;
-        if (current?.error) throw current.error;
+        const current = cardId ? await cardOnBranch(context.supabase, context.workspace.id, cardId, run.branch) : null;
         const other = otherOption(params, today(context), context.workspace.locale);
         const [data, otherData] = await Promise.all([runArtifactQueries(queries, context, today(context), { params: resolved }),
           other ? runArtifactQueries(queries, context, today(context), { params: other.resolved }) : null]);
-        let prompt = `${current?.data ? `Current card (change it as the brief says, keep the rest):\n${current.data.source}\n\n` : ""}${ownerWords(run)}Title (shown by the app): ${title}\nBrief:\n${brief}\n\nParams: ${JSON.stringify(params)}\n\nData now:\n${sample(data)}${otherData && other ? `\n\nData for ${JSON.stringify(other.values)} (same shape, for reference):\n${sample(otherData)}` : ""}`;
+        let prompt = `${current ? `Current card (change it as the brief says, keep the rest):\n${current.source}\n\n` : ""}${ownerWords(run)}Title (shown by the app): ${title}\nBrief:\n${brief}\n\nParams: ${JSON.stringify(params)}\n\nData now:\n${sample(data)}${otherData && other ? `\n\nData for ${JSON.stringify(other.values)} (same shape, for reference):\n${sample(otherData)}` : ""}`;
         for (let attempt = 0; attempt < 3; attempt++) {
           const { text, model } = await design(run, CARD_DESIGNER, prompt);
           const checked = await checkCard(text, queries, params, context);
@@ -290,18 +286,33 @@ export function artifactTools(run: Run) {
   };
 }
 
-export async function artifactBriefing(supabase: SupabaseClient, workspaceId: string, artifactId: string) {
+async function pageOnBranch<Column extends "html" | "queries">(supabase: SupabaseClient, workspaceId: string, artifactId: string, branch: Set<string>, column: Column) {
+  const all = await supabase.from("artifact_versions").select("version, request_id").eq("workspace_id", workspaceId).eq("artifact_id", artifactId);
+  if (all.error) throw all.error;
+  const shown = newestOnBranch(all.data, branch);
+  if (!shown) return null;
+  const row = await supabase.from("artifact_versions").select(column).eq("workspace_id", workspaceId).eq("artifact_id", artifactId).eq("version", shown.version).single();
+  if (row.error) throw row.error;
+  return { version: shown.version, ...row.data as Record<Column, Column extends "html" ? string : unknown> };
+}
+
+async function cardOnBranch(supabase: SupabaseClient, workspaceId: string, cardId: string, branch: Set<string>) {
+  const { data, error } = await supabase.from("artifact_card_versions").select("version, source, request_id").eq("workspace_id", workspaceId).eq("card_id", cardId);
+  if (error) throw error;
+  return newestOnBranch(data, branch) ?? null;
+}
+
+export async function artifactBriefing(supabase: SupabaseClient, workspaceId: string, artifactId: string, branch: Set<string>) {
   const [artifact, page, cards] = await Promise.all([
     supabase.from("artifacts").select("title").eq("workspace_id", workspaceId).eq("id", artifactId).maybeSingle(),
-    supabase.from("artifact_versions").select("version, queries").eq("workspace_id", workspaceId).eq("artifact_id", artifactId).order("version", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, kind, preset, queries, params)").eq("workspace_id", workspaceId).eq("artifact_id", artifactId).is("deleted_at", null).order("created_at"),
+    pageOnBranch(supabase, workspaceId, artifactId, branch, "queries"),
+    supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, kind, preset, queries, params, request_id)").eq("workspace_id", workspaceId).eq("artifact_id", artifactId).is("deleted_at", null).order("created_at"),
   ]);
-  if (artifact.error || page.error || cards.error) throw artifact.error ?? page.error ?? cards.error;
+  if (artifact.error || cards.error) throw artifact.error ?? cards.error;
   const lines = [`Artifact: ${artifact.data?.title ?? "(new)"}`,
-    page.data ? `Page: version ${page.data.version}, queries ${JSON.stringify(page.data.queries)}` : "Page: not built yet",
+    page ? `Page: version ${page.version}, queries ${JSON.stringify(page.queries)}` : "Page: not built yet",
     ...(cards.data ?? []).map(card => {
-      const versions = (card.artifact_card_versions as { version: number; kind: string; preset: string | null; queries: unknown; params: unknown }[]).sort((a, b) => b.version - a.version);
-      const latest = versions[0];
+      const latest = newestOnBranch(card.artifact_card_versions, branch);
       return `Card ${card.id} "${card.title}" (${card.size}): latest v${latest?.version ?? 0} ${latest?.kind ?? ""}${latest?.preset ? ` ${latest.preset}` : ""}, ${card.published_version ? `on Home at v${card.published_version}` : "not on Home"}; queries ${JSON.stringify(latest?.queries ?? [])}; params ${JSON.stringify(latest?.params ?? [])}`;
     })];
   return lines.join("\n");
