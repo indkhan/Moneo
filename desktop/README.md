@@ -52,7 +52,7 @@ address and ChatGPT's callback name it). If it is taken on the first run, a free
   loopback address that is random for each launch and refuses browser requests (`src/bridge.ts`);
   if the window cannot take it, the browser shows the result as in a source checkout. Every other address also goes to the browser
   (https only). The window allows only the microphone and copying, for Moneo's own pages.
-- Updates: when Moneo is open, it asks for the newest published GitHub release with update metadata at most every six
+- Updates: enable automatic GitHub update checks in **Settings** in the app window. While enabled, Moneo asks for the newest published GitHub release with update metadata at most every six
   hours (`src/updates.ts`, electron-updater; never in a preview run). Only when there is a newer one, the top bar shows
   an Update pill with its notes. On Windows and with the AppImage, Download fetches it and Restart to install quits
   Moneo cleanly, installs it and starts Moneo again; data stays in the user folder, and a pending

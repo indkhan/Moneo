@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { UPDATE_CHECKS_COOKIE } from "@/lib/app-update";
 import { Suspense } from "react";
 import Link from "next/link";
 import { InsightSettings } from "./insights";
@@ -43,6 +45,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const [context, query] = await Promise.all([requireWorkspace(), searchParams]);
   const usageWindow = parseUsageWindow(query.usage);
   const { workspace, settings } = context;
+  const updateChecks = (await cookies()).get(UPDATE_CHECKS_COOKIE)?.value === "1";
   const runs = awaitedLater(loadRuns(context));
   const [status, keys, claude] = await Promise.all([chatgptStatus(), serviceKeyStatus(), claudeAccount()]);
   const connections = { openai: status.signedIn || Boolean(keys.openai_api_key.source), claude: claude.signedIn, openrouter: Boolean(keys.openrouter_api_key.source) };
@@ -62,7 +65,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div id="phone" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={2} />}><PhoneAccessSection /></Suspense></div>
           <SetupSecrets />
         </section>
-        <SettingsForm settings={settings} aiSource={status.source} connections={connections} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
+        <SettingsForm updateChecks={updateChecks} settings={settings} aiSource={status.source} connections={connections} currency={workspace.display_currency} timeZones={[...new Set(["UTC", ...Intl.supportedValuesOf("timeZone")])]} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
